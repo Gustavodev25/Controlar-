@@ -59,7 +59,7 @@ const generateTOTP = async (secret: string, timestamp = Date.now(), digits = 6) 
   return otp.toString().padStart(digits, "0");
 };
 
-export const verifyTOTP = async (secret: string, token: string, window = 1) => {
+export const verifyTOTP = async (secret: string, token: string, window = 2) => {
   const sanitized = (token || "").replace(/\s+/g, "");
   if (sanitized.length !== 6) return false;
 
@@ -72,7 +72,7 @@ export const verifyTOTP = async (secret: string, token: string, window = 1) => {
   return false;
 };
 
-export const generateBase32Secret = (length = 20) => {
+export const generateBase32Secret = (length = 32) => {
   const crypto = getCrypto();
   const randomBytes = new Uint8Array(length);
   crypto.getRandomValues(randomBytes);
