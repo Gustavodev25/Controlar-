@@ -72,30 +72,32 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
   return (
     <div className="bg-gray-900 rounded-xl shadow-sm border border-gray-800 overflow-hidden flex flex-col h-full animate-fade-in">
       {/* Toolbar */}
-      <div className="p-4 border-b border-gray-800 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4 bg-gray-900">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-200 flex items-center gap-2">
-            Transações Recentes
-          </h3>
-          <span className="text-xs px-2 py-1 bg-gray-800 rounded-full text-gray-400 border border-gray-700">{filteredTransactions.length}</span>
+      <div className="p-3 lg:p-4 border-b border-gray-800 flex flex-col gap-3 bg-gray-900">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <h3 className="font-semibold text-gray-200 text-sm lg:text-base">
+              Transações
+            </h3>
+            <span className="text-xs px-2 py-1 bg-gray-800 rounded-full text-gray-400 border border-gray-700">{filteredTransactions.length}</span>
+          </div>
         </div>
-        
-        <div className="flex flex-col sm:flex-row gap-2 w-full lg:w-auto items-center">
-          
+
+        <div className="flex flex-wrap gap-2 items-center">
+
           {/* Year Selector - Custom */}
-          <div className="w-32 relative z-30">
+          <div className="w-24 lg:w-32 relative z-30">
             <CustomSelect
               value={selectedYear}
               onChange={(val) => setSelectedYear(Number(val))}
               options={yearOptions}
               placeholder="Ano"
-              className="h-11"
+              className="h-10 lg:h-11"
             />
           </div>
 
           {/* Start Date - Custom Date Picker Standalone */}
-          <div className="w-36 relative z-20">
-             <CustomDatePicker 
+          <div className="w-28 lg:w-36 relative z-20">
+             <CustomDatePicker
                value={startDate}
                onChange={setStartDate}
                placeholder="Início"
@@ -103,31 +105,31 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
           </div>
 
           {/* End Date - Custom Date Picker Standalone */}
-          <div className="w-36 relative z-10">
-             <CustomDatePicker 
+          <div className="w-28 lg:w-36 relative z-10">
+             <CustomDatePicker
                value={endDate}
                onChange={setEndDate}
                placeholder="Fim"
              />
           </div>
-          
+
           {/* Reset Dates Button */}
           {(startDate || endDate) && (
-             <button 
+             <button
                onClick={() => { setStartDate(''); setEndDate(''); }}
-               className="h-11 w-8 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700 transition-colors"
+               className="h-10 lg:h-11 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700 transition-colors shrink-0"
                title="Limpar datas"
              >
                <X size={14} />
              </button>
           )}
 
-          <div className="relative flex-1 lg:w-64 w-full z-0 h-11">
+          <div className="relative flex-1 min-w-full sm:min-w-0 lg:w-64 z-0 h-10 lg:h-11">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
-            <input 
-              type="text" 
-              placeholder="Filtrar descrição ou categoria..." 
-              className="input-primary pl-9 py-2.5 text-sm h-full"
+            <input
+              type="text"
+              placeholder="Filtrar..."
+              className="input-primary pl-9 py-2.5 text-sm h-full w-full"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
@@ -135,9 +137,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
         </div>
       </div>
 
-      {/* Spreadsheet Grid */}
+      {/* Spreadsheet Grid - Desktop Table / Mobile Cards */}
       <div className="overflow-auto flex-1 custom-scrollbar z-0">
-        <table className="min-w-full border-collapse text-sm text-left">
+        {/* Desktop Table View */}
+        <table className="hidden lg:table min-w-full border-collapse text-sm text-left">
           <thead className="bg-gray-800 sticky top-0 z-10 text-xs font-semibold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
               <th className="px-4 py-3 border-b border-r border-gray-700 cursor-pointer hover:bg-gray-700 w-32" onClick={() => handleSort('date')}>
@@ -188,7 +191,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
                    </span>
                 </td>
                 <td className="px-4 py-2 text-center">
-                  <button 
+                  <button
                     onClick={() => setDeleteId(t.id)}
                     className="text-gray-500 hover:text-red-400 p-1 rounded hover:bg-red-900/20 transition-colors"
                     title="Excluir"
@@ -207,12 +210,56 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
             )}
           </tbody>
         </table>
+
+        {/* Mobile Card View */}
+        <div className="lg:hidden p-3 space-y-3">
+          {filteredTransactions.map((t) => (
+            <div key={t.id} className="bg-gray-950 rounded-xl border border-gray-800 p-4 relative overflow-hidden">
+              <div className={`absolute left-0 top-0 bottom-0 w-1 ${t.type === 'income' ? 'bg-green-500' : 'bg-red-500'}`}></div>
+
+              <div className="flex justify-between items-start mb-3 pl-2">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-bold text-gray-200 text-sm mb-1 truncate">{t.description}</h4>
+                  <div className="flex items-center gap-2 text-xs text-gray-500">
+                    <span className="flex items-center gap-1">
+                      {getCategoryIcon(t.category || "Outros", 12)}
+                      {t.category}
+                    </span>
+                    <span>•</span>
+                    <span className="font-mono">{formatDate(t.date)}</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setDeleteId(t.id)}
+                  className="text-gray-600 hover:text-red-400 p-1.5 rounded hover:bg-red-900/20 transition-colors ml-2"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+
+              <div className="flex justify-between items-center pl-2">
+                <span className={`text-lg font-bold font-mono ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
+                  {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                </span>
+                <span className={`text-[10px] uppercase tracking-wide px-2 py-1 rounded-full font-bold ${t.status === 'completed' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>
+                  {t.status === 'completed' ? 'Pago' : 'Pendente'}
+                </span>
+              </div>
+            </div>
+          ))}
+
+          {filteredTransactions.length === 0 && (
+            <div className="py-12 text-center text-gray-500">
+              Nenhuma transação encontrada no período selecionado.
+            </div>
+          )}
+        </div>
       </div>
-      
+
       {/* Excel-like footer summary */}
-      <div className="bg-gray-900 border-t border-gray-800 px-4 py-2 text-xs text-gray-500 flex justify-between">
-        <div>Total de registros: {filteredTransactions.length}</div>
-        <div className="font-mono">Soma visível: {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}</div>
+      <div className="bg-gray-900 border-t border-gray-800 px-3 lg:px-4 py-2 text-xs text-gray-500 flex flex-col sm:flex-row justify-between gap-2">
+        <div>Total: {filteredTransactions.length}</div>
+        <div className="font-mono">Soma: {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}</div>
       </div>
 
       {/* Delete Confirmation Card (Bottom Centered) */}

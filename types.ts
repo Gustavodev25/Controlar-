@@ -7,6 +7,7 @@ export interface User {
   avatarUrl?: string;
   baseSalary?: number;
   twoFactorEnabled?: boolean; // Novo campo para status do 2FA
+  twoFactorSecret?: string | null;
 }
 
 export interface Member {

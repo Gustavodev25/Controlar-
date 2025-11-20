@@ -106,7 +106,7 @@ const AIInteractiveDemo = () => {
   }, [text, phase, currentExample]);
 
   return (
-    <div className="relative w-full max-w-md mx-auto animate-fade-in-up" style={{ animationDelay: '0.2s' }}>
+    <div className="relative w-full max-w-md mx-auto animate-fade-in-up px-4 lg:px-0" style={{ animationDelay: '0.2s' }}>
       <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden relative z-20">
         
         <div className="bg-gray-950 px-4 py-3 border-b border-gray-800 flex items-center gap-3">
@@ -212,8 +212,8 @@ const AIInteractiveDemo = () => {
 // --- COMPONENTE: MOCKUP REALISTA (SISTEMA) ---
 const RealisticDashboardPreview = () => {
   return (
-    <div className="relative w-full max-w-6xl mx-auto mt-8 perspective-1000 group">
-       <div className="bg-[#0f100f] border border-gray-800/80 rounded-xl shadow-2xl overflow-hidden transform rotate-x-12 group-hover:rotate-0 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]">
+    <div className="relative w-full max-w-6xl mx-auto mt-8 perspective-1000 group px-4 lg:px-0">
+       <div className="bg-[#0f100f] border border-gray-800/80 rounded-xl shadow-2xl overflow-hidden transform lg:rotate-x-12 lg:group-hover:rotate-0 transition-all duration-700 ease-[cubic-bezier(0.23,1,0.32,1)]">
           
           {/* Browser Chrome */}
           <div className="h-9 bg-[#1a1a19] border-b border-gray-800 flex items-center px-4 gap-2 justify-between">
@@ -232,10 +232,10 @@ const RealisticDashboardPreview = () => {
           </div>
 
           {/* App Interface */}
-          <div className="flex h-[600px] text-[#faf9f5] font-sans">
-             
-             {/* 1. Sidebar (Replica) */}
-             <div className="w-16 lg:w-64 bg-[#0a0a0a] border-r border-gray-800 hidden md:flex flex-col">
+          <div className="flex h-[400px] lg:h-[600px] text-[#faf9f5] font-sans overflow-hidden">
+
+             {/* 1. Sidebar (Replica) - Hidden on mobile */}
+             <div className="w-16 lg:w-64 bg-[#0a0a0a] border-r border-gray-800 hidden lg:flex flex-col">
                 <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-800/50">
                    <Logo
                      size={32}
@@ -293,9 +293,9 @@ const RealisticDashboardPreview = () => {
                 </div>
 
                 {/* Dashboard Body */}
-                <div className="p-8 overflow-hidden flex-1">
+                <div className="p-3 lg:p-8 overflow-hidden flex-1">
                    {/* Stats Row */}
-                   <div className="grid grid-cols-3 gap-6 mb-8">
+                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6 mb-4 lg:mb-8">
                       <div className="bg-[#161716] p-5 rounded-xl border border-gray-800 shadow-sm relative overflow-hidden">
                          <p className="text-xs text-gray-400 font-medium mb-1">Saldo Total</p>
                          <p className="text-2xl font-bold text-white">R$ 12.450,20</p>
@@ -319,8 +319,8 @@ const RealisticDashboardPreview = () => {
                       </div>
                    </div>
 
-                   {/* Chart & Table Mock */}
-                   <div className="grid grid-cols-3 gap-6 h-full">
+                   {/* Chart & Table Mock - Hidden on mobile */}
+                   <div className="hidden lg:grid grid-cols-3 gap-6 h-full">
                       {/* Chart Area */}
                       <div className="col-span-2 bg-[#161716] border border-gray-800 rounded-xl p-6 flex flex-col">
                          <div className="flex justify-between items-center mb-6">
@@ -440,7 +440,7 @@ const FAQSection = () => {
 // --- COMPONENTE: PLANOS (PRICING) ---
 const PricingSection = () => {
   return (
-    <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto">
        {/* Free */}
        <div className="bg-[#1a1a19] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
           <div className="flex justify-center mb-4">
@@ -463,7 +463,7 @@ const PricingSection = () => {
        </div>
 
        {/* Pro */}
-       <div className="bg-gray-900 border border-[#d97757] rounded-3xl p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 transform md:-translate-y-4">
+       <div className="bg-gray-900 border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-4">
           <div className="absolute top-0 right-0 bg-[#d97757] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
              MAIS POPULAR
           </div>
@@ -544,36 +544,36 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </nav>
 
       {/* Hero Section - REMOVED BACKGROUND BLURS */}
-      <section className="relative pt-32 pb-20 lg:pt-48 lg:pb-32 px-6 overflow-hidden bg-[#0a0a0a]">
-         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-16 items-center relative z-10">
-            
+      <section className="relative pt-24 pb-16 lg:pt-48 lg:pb-32 px-4 lg:px-6 overflow-hidden bg-[#0a0a0a]">
+         <div className="max-w-7xl mx-auto grid lg:grid-cols-2 gap-8 lg:gap-16 items-center relative z-10">
+
             {/* Left: Content */}
             <div className="text-center lg:text-left relative z-20">
-                <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#d97757]/10 border border-[#d97757]/20 text-[#d97757] text-sm font-bold mb-8 animate-fade-in-up">
+                <div className="inline-flex items-center gap-2 px-3 lg:px-4 py-2 rounded-full bg-[#d97757]/10 border border-[#d97757]/20 text-[#d97757] text-xs lg:text-sm font-bold mb-6 lg:mb-8 animate-fade-in-up">
                   <Sparkles size={14} />
-                  <span>Inteligência Artificial Financeira v2.0</span>
+                  <span className="truncate">Inteligência Artificial Financeira v2.0</span>
                 </div>
-                
-                <h1 className="text-5xl lg:text-7xl font-bold tracking-tight mb-6 leading-[1.1] animate-fade-in-up" style={{animationDelay: '0.1s'}}>
+
+                <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold tracking-tight mb-4 lg:mb-6 leading-[1.1] animate-fade-in-up" style={{animationDelay: '0.1s'}}>
                   O fim das <br/>
                   planilhas chatas.
                 </h1>
-                
-                <p className="text-xl text-gray-400 mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up" style={{animationDelay: '0.2s'}}>
+
+                <p className="text-base lg:text-xl text-gray-400 mb-8 lg:mb-10 max-w-xl mx-auto lg:mx-0 leading-relaxed animate-fade-in-up" style={{animationDelay: '0.2s'}}>
                   Apenas diga o que gastou. Nossa IA categoriza, organiza e gera insights para você assumir o controle do seu dinheiro sem esforço.
                 </p>
-                
-                <div className="flex flex-col sm:flex-row items-center lg:items-start gap-4 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
-                  <button onClick={onLogin} className="w-full sm:w-auto px-8 py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-2xl font-bold text-lg transition-all shadow-xl shadow-[#d97757]/30 flex items-center justify-center gap-2 group hover:-translate-y-1">
+
+                <div className="flex flex-col sm:flex-row items-center lg:items-start gap-3 lg:gap-4 animate-fade-in-up" style={{animationDelay: '0.3s'}}>
+                  <button onClick={onLogin} className="w-full sm:w-auto px-6 lg:px-8 py-3 lg:py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-2xl font-bold text-base lg:text-lg transition-all shadow-xl shadow-[#d97757]/30 flex items-center justify-center gap-2 group hover:-translate-y-1">
                       Criar Conta Grátis
                       <ArrowRight className="group-hover:translate-x-1 transition-transform" />
                   </button>
-                  <button onClick={onLogin} className="w-full sm:w-auto px-8 py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold text-lg transition-all border border-gray-700 flex items-center justify-center gap-2">
+                  <button onClick={onLogin} className="w-full sm:w-auto px-6 lg:px-8 py-3 lg:py-4 bg-gray-800 hover:bg-gray-700 text-white rounded-2xl font-bold text-base lg:text-lg transition-all border border-gray-700 flex items-center justify-center gap-2">
                       Ver Demo
                   </button>
                 </div>
-                
-                <div className="mt-8 flex items-center justify-center lg:justify-start gap-6 text-sm text-gray-500 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
+
+                <div className="mt-6 lg:mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-4 lg:gap-6 text-xs lg:text-sm text-gray-500 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
                    <div className="flex items-center gap-2"><CheckCircle size={16} className="text-gray-600" /> Sem cartão necessário</div>
                    <div className="flex items-center gap-2"><Users size={16} className="text-gray-600" /> +10k Usuários</div>
                 </div>
@@ -603,7 +603,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
              <RealisticDashboardPreview />
              
              {/* Feature Strip */}
-             <div className="mt-24 grid grid-cols-2 md:grid-cols-4 gap-8 pt-12">
+             <div className="mt-12 lg:mt-24 grid grid-cols-2 md:grid-cols-4 gap-4 lg:gap-8 pt-8 lg:pt-12">
                 <div className="text-center p-6 bg-[#1a1a19] rounded-2xl border border-gray-800">
                    <div className="text-3xl font-bold text-white mb-1">100%</div>
                    <div className="text-sm text-gray-500 font-medium uppercase">Automático</div>
@@ -625,15 +625,15 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </section>
 
       {/* Features Grid */}
-      <section id="features" className="py-24 relative overflow-hidden bg-[#0f100f] border-t border-gray-900">
-          <div className="max-w-7xl mx-auto px-6">
-             
-             <div className="flex flex-col items-center text-center max-w-2xl mx-auto mb-20">
+      <section id="features" className="py-16 lg:py-24 relative overflow-hidden bg-[#0f100f] border-t border-gray-900">
+          <div className="max-w-7xl mx-auto px-4 lg:px-6">
+
+             <div className="flex flex-col items-center text-center max-w-2xl mx-auto mb-12 lg:mb-20">
                 <div className="inline-block px-3 py-1 rounded-full bg-gray-800 border border-gray-700 text-xs font-bold text-gray-300 mb-4 uppercase tracking-wider relative z-10">Recursos</div>
-                <h2 className="text-3xl lg:text-4xl font-bold mb-6 relative z-10">Tudo o que você precisa para <br/>prosperar financeiramente</h2>
+                <h2 className="text-2xl lg:text-4xl font-bold mb-4 lg:mb-6 relative z-10">Tudo o que você precisa para <br className="hidden lg:block"/>prosperar financeiramente</h2>
              </div>
-             
-             <div className="grid lg:grid-cols-3 gap-8">
+
+             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-8">
                 {[
                   { icon: <BrainCircuit size={24} />, title: "Consultor IA", desc: "Pergunte 'Como posso economizar?' e receba planos de ação personalizados baseados nos seus dados." },
                   { icon: <TrendingUp size={24} />, title: "Projeções Futuras", desc: "Saiba se vai fechar o mês no azul antes mesmo dele acabar. Previsibilidade total." },
@@ -655,35 +655,35 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </section>
 
       {/* Pricing Section */}
-      <section id="pricing" className="py-32 relative overflow-hidden">
-         <div className="max-w-7xl mx-auto px-6 relative z-10">
-            
-            <div className="flex flex-col items-center text-center mb-16">
-              <h2 className="text-3xl lg:text-5xl font-bold mb-4 relative z-10">Planos transparentes</h2>
-              <p className="text-gray-400 relative z-10">Todos os planos custam R$ 0. Escolha o formato que faz mais sentido.</p>
+      <section id="pricing" className="py-16 lg:py-32 relative overflow-hidden">
+         <div className="max-w-7xl mx-auto px-4 lg:px-6 relative z-10">
+
+            <div className="flex flex-col items-center text-center mb-12 lg:mb-16">
+              <h2 className="text-2xl lg:text-5xl font-bold mb-3 lg:mb-4 relative z-10">Planos transparentes</h2>
+              <p className="text-sm lg:text-base text-gray-400 relative z-10">Todos os planos custam R$ 0. Escolha o formato que faz mais sentido.</p>
             </div>
             <PricingSection />
          </div>
       </section>
 
       {/* FAQ Section */}
-      <section className="py-24 bg-[#0f100f] border-t border-gray-900">
-         <div className="max-w-7xl mx-auto px-6">
-            <div className="text-center mb-16">
-               <h2 className="text-3xl font-bold mb-4">Perguntas Frequentes</h2>
+      <section className="py-16 lg:py-24 bg-[#0f100f] border-t border-gray-900">
+         <div className="max-w-7xl mx-auto px-4 lg:px-6">
+            <div className="text-center mb-12 lg:mb-16">
+               <h2 className="text-2xl lg:text-3xl font-bold mb-4">Perguntas Frequentes</h2>
             </div>
             <FAQSection />
          </div>
       </section>
 
       {/* CTA Final */}
-      <section className="py-24 relative overflow-hidden bg-black">
-         <div className="max-w-4xl mx-auto px-6 text-center relative z-10">
-            <h2 className="text-4xl lg:text-6xl font-bold mb-8 text-white tracking-tight">Pronto para assumir o controle?</h2>
-            <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto">
+      <section className="py-16 lg:py-24 relative overflow-hidden bg-black">
+         <div className="max-w-4xl mx-auto px-4 lg:px-6 text-center relative z-10">
+            <h2 className="text-3xl lg:text-6xl font-bold mb-6 lg:mb-8 text-white tracking-tight">Pronto para assumir o controle?</h2>
+            <p className="text-base lg:text-xl text-gray-400 mb-8 lg:mb-12 max-w-2xl mx-auto">
                Junte-se a milhares de pessoas que pararam de brigar com planilhas e começaram a usar inteligência.
             </p>
-            <button onClick={onLogin} className="px-12 py-6 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-full font-bold text-xl transition-all shadow-2xl shadow-[#d97757]/40 hover:scale-105 flex items-center gap-3 mx-auto group">
+            <button onClick={onLogin} className="px-8 lg:px-12 py-4 lg:py-6 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-full font-bold text-lg lg:text-xl transition-all shadow-2xl shadow-[#d97757]/40 hover:scale-105 flex items-center gap-3 mx-auto group">
                Criar Conta Grátis
                <ArrowRight size={24} className="group-hover:translate-x-1 transition-transform"/>
             </button>
@@ -691,9 +691,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 py-16 bg-[#0a0a0a]">
-         <div className="max-w-7xl mx-auto px-6">
-            <div className="grid md:grid-cols-4 gap-12 mb-12">
+      <footer className="border-t border-gray-800 py-12 lg:py-16 bg-[#0a0a0a]">
+         <div className="max-w-7xl mx-auto px-4 lg:px-6">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12 mb-8 lg:mb-12">
                <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-6">
                      <Logo

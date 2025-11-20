@@ -92,29 +92,30 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
     <div className="animate-fade-in space-y-8">
        
        {/* Header Banner */}
-       <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 p-6 rounded-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="relative z-10">
-             <div className="flex items-center gap-3 mb-2">
+       <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 p-4 lg:p-6 rounded-2xl relative overflow-hidden flex flex-col md:flex-row items-center justify-between gap-4 lg:gap-6">
+          <div className="relative z-10 text-center md:text-left">
+             <div className="flex items-center gap-3 mb-2 justify-center md:justify-start">
                 <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
-                   <Users size={24} />
+                   <Users size={20} className="lg:hidden" />
+                   <Users size={24} className="hidden lg:block" />
                 </div>
-                <h2 className="text-2xl font-bold text-white">Relatório Familiar</h2>
+                <h2 className="text-xl lg:text-2xl font-bold text-white">Relatório Familiar</h2>
              </div>
-             <p className="text-gray-400 max-w-md text-sm">
+             <p className="text-gray-400 max-w-md text-xs lg:text-sm">
                Visão unificada de todas as contas. Acompanhe o progresso coletivo e gerencie metas conjuntas.
              </p>
           </div>
           <div className="flex -space-x-4 relative z-10">
              {members.map(m => (
-               <div key={m.id} className={`w-12 h-12 rounded-full border-4 border-gray-800 ${m.avatarUrl || 'bg-gray-600'} flex items-center justify-center text-white font-bold shadow-lg`}>
+               <div key={m.id} className={`w-10 lg:w-12 h-10 lg:h-12 rounded-full border-4 border-gray-800 ${m.avatarUrl || 'bg-gray-600'} flex items-center justify-center text-white font-bold shadow-lg text-sm`}>
                  {m.name.substring(0,1)}
                </div>
              ))}
-             <div className="w-12 h-12 rounded-full border-4 border-gray-800 bg-gray-700 flex items-center justify-center text-gray-400 font-bold text-xs shadow-lg">
+             <div className="w-10 lg:w-12 h-10 lg:h-12 rounded-full border-4 border-gray-800 bg-gray-700 flex items-center justify-center text-gray-400 font-bold text-[10px] lg:text-xs shadow-lg">
                 Total
              </div>
           </div>
-          
+
           {/* Decor */}
           <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/5 rounded-full blur-3xl -mr-10 -mt-10 pointer-events-none"></div>
        </div>
@@ -127,13 +128,13 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
 
        {/* Family Goals Section */}
        <div>
-          <div className="flex items-center justify-between mb-4">
-             <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+             <h3 className="text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider flex items-center gap-2">
                <Trophy size={16} className="text-yellow-500" /> Metas Compartilhadas
              </h3>
-             <button 
+             <button
                onClick={() => setIsAddingGoal(true)}
-               className="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2"
+               className="text-xs bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded-lg transition-colors flex items-center gap-2 w-full sm:w-auto justify-center"
              >
                <Plus size={14} /> Nova Meta
              </button>
@@ -141,38 +142,38 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
 
           {isAddingGoal && (
              <div className="mb-6 bg-gray-900 border border-gray-800 p-4 rounded-xl animate-slide-up">
-                <h4 className="text-white font-bold mb-4">Criar Meta Familiar</h4>
-                <form onSubmit={handleSaveGoal} className="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
-                   <div className="md:col-span-2">
+                <h4 className="text-white font-bold mb-4 text-sm lg:text-base">Criar Meta Familiar</h4>
+                <form onSubmit={handleSaveGoal} className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+                   <div className="lg:col-span-2">
                       <label className="text-xs text-gray-500 mb-1 block">Nome da Meta</label>
-                      <input 
-                        required 
+                      <input
+                        required
                         value={newGoal.title}
                         onChange={e => setNewGoal({...newGoal, title: e.target.value})}
-                        placeholder="Ex: Viagem de Férias" 
-                        className="input-primary py-2" 
+                        placeholder="Ex: Viagem de Férias"
+                        className="input-primary py-2"
                       />
                    </div>
                    <div>
                       <label className="text-xs text-gray-500 mb-1 block">Valor Alvo (R$)</label>
-                      <input 
-                        required 
+                      <input
+                        required
                         type="number"
                         value={newGoal.targetAmount}
                         onChange={e => setNewGoal({...newGoal, targetAmount: e.target.value})}
-                        placeholder="0.00" 
-                        className="input-primary py-2" 
+                        placeholder="0.00"
+                        className="input-primary py-2"
                       />
                    </div>
-                   <div className="flex gap-2">
-                      <button type="button" onClick={() => setIsAddingGoal(false)} className="px-4 py-2 bg-gray-800 text-gray-300 rounded-lg text-sm">Cancelar</button>
-                      <button type="submit" className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold flex-1">Salvar</button>
+                   <div className="flex gap-2 lg:flex-row">
+                      <button type="button" onClick={() => setIsAddingGoal(false)} className="flex-1 lg:flex-none px-4 py-2 bg-gray-800 text-gray-300 rounded-lg text-sm">Cancelar</button>
+                      <button type="submit" className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-bold">Salvar</button>
                    </div>
                 </form>
              </div>
           )}
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 lg:gap-6">
              {goals.length === 0 && !isAddingGoal && (
                <div className="col-span-full py-12 text-center bg-gray-900/50 rounded-xl border border-dashed border-gray-800">
                   <Target size={48} className="mx-auto text-gray-700 mb-4" />
@@ -185,12 +186,13 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                 const percentage = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100);
                 
                 return (
-                  <div key={goal.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-6 flex flex-col shadow-lg relative overflow-hidden group hover:border-gray-700 transition-colors">
-                     <div className="flex justify-between items-start mb-4 relative z-10">
-                        <div className="bg-gray-800 p-3 rounded-xl text-yellow-500 shadow-inner">
-                           <Trophy size={24} />
+                  <div key={goal.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 lg:p-6 flex flex-col shadow-lg relative overflow-hidden group hover:border-gray-700 transition-colors">
+                     <div className="flex justify-between items-start mb-3 lg:mb-4 relative z-10">
+                        <div className="bg-gray-800 p-2 lg:p-3 rounded-xl text-yellow-500 shadow-inner">
+                           <Trophy size={20} className="lg:hidden" />
+                           <Trophy size={24} className="hidden lg:block" />
                         </div>
-                        <button 
+                        <button
                           onClick={() => onDeleteGoal(goal.id)}
                           className="text-gray-600 hover:text-red-400 transition-colors"
                         >
@@ -198,14 +200,14 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                         </button>
                      </div>
 
-                     <h4 className="text-lg font-bold text-white mb-1 relative z-10">{goal.title}</h4>
-                     <p className="text-sm text-gray-400 mb-6 relative z-10">
+                     <h4 className="text-base lg:text-lg font-bold text-white mb-1 relative z-10">{goal.title}</h4>
+                     <p className="text-xs lg:text-sm text-gray-400 mb-4 lg:mb-6 relative z-10">
                         {formatCurrency(goal.currentAmount)} <span className="text-gray-600">de {formatCurrency(goal.targetAmount)}</span>
                      </p>
 
                      {/* Progress Bar */}
-                     <div className="w-full h-4 bg-gray-800 rounded-full overflow-hidden mb-6 relative z-10 shadow-inner">
-                        <div 
+                     <div className="w-full h-3 lg:h-4 bg-gray-800 rounded-full overflow-hidden mb-4 lg:mb-6 relative z-10 shadow-inner">
+                        <div
                           className="h-full bg-gradient-to-r from-yellow-600 to-yellow-400 transition-all duration-1000 ease-out relative"
                           style={{ width: `${percentage}%` }}
                         >
@@ -213,9 +215,9 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                         </div>
                      </div>
 
-                     <button 
+                     <button
                        onClick={() => setContributeGoalId(goal.id)}
-                       className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2 mt-auto relative z-10"
+                       className="w-full py-2.5 lg:py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2 mt-auto relative z-10"
                      >
                        <Plus size={16} /> Contribuir
                      </button>
@@ -230,8 +232,8 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
 
        {/* Contribute Modal */}
        {contributeGoalId && (
-          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-4">
-             <div className="bg-gray-900 rounded-2xl w-full max-w-md border border-gray-800 p-6 shadow-2xl animate-fade-in">
+          <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-3 lg:p-4">
+             <div className="bg-gray-900 rounded-2xl w-full max-w-md border border-gray-800 p-5 lg:p-6 shadow-2xl animate-fade-in">
                 <div className="flex justify-between items-center mb-6">
                    <h3 className="text-lg font-bold text-white">Adicionar Economia</h3>
                    <button onClick={() => setContributeGoalId(null)} className="text-gray-500 hover:text-white"><X size={20}/></button>
@@ -240,9 +242,9 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                 <form onSubmit={handleContribute} className="space-y-4">
                    <div>
                       <label className="text-xs text-gray-500 mb-1.5 block uppercase font-bold">Quem está contribuindo?</label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                          {members.map(m => (
-                           <button 
+                           <button
                              key={m.id}
                              type="button"
                              onClick={() => setContributionMemberId(m.id)}

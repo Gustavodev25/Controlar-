@@ -74,14 +74,14 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 animate-pulse">
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 h-80 flex flex-col gap-4">
-           <div className="h-5 w-40 bg-gray-800 rounded"></div>
-           <div className="flex-1 bg-gray-800/50 rounded-full w-48 h-48 mx-auto"></div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 animate-pulse">
+        <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
+           <div className="h-4 lg:h-5 w-32 lg:w-40 bg-gray-800 rounded"></div>
+           <div className="flex-1 bg-gray-800/50 rounded-full w-40 h-40 lg:w-48 lg:h-48 mx-auto"></div>
         </div>
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 h-80 flex flex-col gap-4">
-           <div className="h-5 w-52 bg-gray-800 rounded"></div>
-           <div className="flex-1 flex items-end gap-4 px-8">
+        <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
+           <div className="h-4 lg:h-5 w-40 lg:w-52 bg-gray-800 rounded"></div>
+           <div className="flex-1 flex items-end gap-4 px-4 lg:px-8">
              <div className="w-1/2 h-1/2 bg-gray-800 rounded-t"></div>
              <div className="w-1/2 h-3/4 bg-gray-800 rounded-t"></div>
            </div>
@@ -91,10 +91,10 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6 animate-fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 animate-fade-in">
       {/* Pie Chart - Categories */}
-      <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 h-80 flex flex-col">
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Despesas por Categoria</h3>
+      <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
+        <h3 className="text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 lg:mb-4">Despesas por Categoria</h3>
         <div className="flex-1 min-h-0 flex items-center">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
@@ -129,8 +129,8 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
       </div>
 
       {/* Bar Chart - Income vs Expense */}
-      <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 h-80 flex flex-col">
-        <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Comparativo: Receitas vs Despesas</h3>
+      <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
+        <h3 className="text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 lg:mb-4">Comparativo: Receitas vs Despesas</h3>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart

@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  LayoutDashboard, 
-  Table2, 
-  Bot, 
-  ChevronLeft, 
+import {
+  LayoutDashboard,
+  Table2,
+  Bot,
+  ChevronLeft,
   ChevronRight,
   Bell,
   BrainCircuit,
@@ -13,7 +13,8 @@ import {
   Filter,
   Tag,
   X,
-  RotateCcw
+  RotateCcw,
+  Menu
 } from './components/Icons';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal } from './types';
 import { StatsCards } from './components/StatsCards';
@@ -30,9 +31,11 @@ import { AIAdvisor } from './components/AIAdvisor';
 import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
+import { TwoFactorPrompt } from './components/TwoFactorPrompt';
 import { auth } from './services/firebase';
 import { onAuthStateChanged } from "firebase/auth";
 import * as dbService from './services/database';
+import { verifyTOTP } from './services/twoFactor';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter } from './components/NotificationCenter';
 import { Logo } from './components/Logo';
@@ -83,16 +86,30 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
 
 type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
 
+interface PendingTwoFactor {
+  uid: string;
+  email: string;
+  name: string;
+  profile: Partial<User>;
+  secret: string;
+}
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
+  const [pendingTwoFactor, setPendingTwoFactor] = useState<PendingTwoFactor | null>(null);
+  const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
   const toast = useToasts();
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'advisor'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
+    // Check if mobile on initial load
+    const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
+    if (!isDesktop) return false; // Always start closed on mobile
+
     const saved = localStorage.getItem('finances_sidebar_open');
     return saved !== null ? JSON.parse(saved) : true;
   });
@@ -137,22 +154,44 @@ const App: React.FC = () => {
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (firebaseUser) {
-        setUserId(firebaseUser.uid);
-        setIsLoadingData(true);
         setShowLanding(false); // Hide landing if user is logged in
         
-        // Fetch initial profile
         try {
           const profile = await dbService.getUserProfile(firebaseUser.uid);
-          setCurrentUser({
-              name: firebaseUser.displayName || 'Usuário',
+          const baseProfile: User = {
+              name: firebaseUser.displayName || profile?.name || 'Usuário',
               email: firebaseUser.email || '',
               baseSalary: profile?.baseSalary || 0,
-              avatarUrl: profile?.avatarUrl
-          });
+              avatarUrl: profile?.avatarUrl,
+              twoFactorEnabled: profile?.twoFactorEnabled,
+              twoFactorSecret: profile?.twoFactorSecret
+          };
+
+          if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
+            setPendingTwoFactor({
+              uid: firebaseUser.uid,
+              email: firebaseUser.email || '',
+              name: baseProfile.name,
+              profile: profile,
+              secret: profile.twoFactorSecret
+            });
+            setCurrentUser(null);
+            setUserId(null);
+            setIsLoadingData(false);
+            setIsLoadingAuth(false);
+            return;
+          }
+
+          setPendingTwoFactor(null);
+          setUserId(firebaseUser.uid);
+          setIsLoadingData(true);
+          setCurrentUser(baseProfile);
         } catch (err) {
           console.error("Erro ao carregar perfil:", err);
           toast.warning("Não foi possível carregar o perfil (offline). Dados locais serão usados.");
+          setPendingTwoFactor(null);
+          setUserId(firebaseUser.uid);
+          setIsLoadingData(true);
           setCurrentUser({
               name: firebaseUser.displayName || 'Usuário',
               email: firebaseUser.email || '',
@@ -160,6 +199,7 @@ const App: React.FC = () => {
           });
         }
       } else {
+        setPendingTwoFactor(null);
         setUserId(null);
         setCurrentUser(null);
         setTransactions([]);
@@ -170,6 +210,37 @@ const App: React.FC = () => {
     });
 
     return () => unsubscribe();
+  }, []);
+
+  // Auto-close sidebar on mobile, auto-open on desktop (on resize only)
+  useEffect(() => {
+    let lastWidth = window.innerWidth;
+
+    const handleResize = () => {
+      const currentWidth = window.innerWidth;
+      const wasDesktop = lastWidth >= 1024;
+      const isDesktop = currentWidth >= 1024;
+
+      // Only act when crossing the desktop/mobile boundary
+      if (wasDesktop !== isDesktop) {
+        if (!isDesktop) {
+          // Switched to mobile - close sidebar
+          setSidebarOpen(false);
+        } else {
+          // Switched to desktop - open sidebar based on preference
+          const saved = localStorage.getItem('finances_sidebar_open');
+          const shouldBeOpen = saved !== null ? JSON.parse(saved) : true;
+          if (shouldBeOpen) {
+            setSidebarOpen(true);
+          }
+        }
+      }
+
+      lastWidth = currentWidth;
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   // Data Listeners
@@ -219,6 +290,45 @@ const App: React.FC = () => {
         unsubGoals();
     };
   }, [userId, currentUser?.name]);
+
+  // Two-Factor Verification
+  const handleVerifyTwoFactor = async (code: string) => {
+    if (!pendingTwoFactor) return;
+    setIsVerifyingTwoFactor(true);
+
+    try {
+      const isValid = await verifyTOTP(pendingTwoFactor.secret, code);
+      if (!isValid) {
+        toast.error("Código inválido ou expirado.");
+        return;
+      }
+
+      setUserId(pendingTwoFactor.uid);
+      setIsLoadingData(true);
+      setCurrentUser({
+        name: pendingTwoFactor.name,
+        email: pendingTwoFactor.email,
+        baseSalary: pendingTwoFactor.profile.baseSalary || 0,
+        avatarUrl: pendingTwoFactor.profile.avatarUrl,
+        twoFactorEnabled: true,
+        twoFactorSecret: pendingTwoFactor.profile.twoFactorSecret
+      });
+      setPendingTwoFactor(null);
+    } catch (err) {
+      console.error("Erro ao validar 2FA:", err);
+      toast.error("Erro ao validar o código. Tente novamente.");
+    } finally {
+      setIsVerifyingTwoFactor(false);
+    }
+  };
+
+  const handleCancelTwoFactor = async () => {
+    setPendingTwoFactor(null);
+    if (auth) {
+      await auth.signOut();
+    }
+    setShowLanding(true);
+  };
 
   // --- Filter Logic ---
   
@@ -470,11 +580,11 @@ const App: React.FC = () => {
   const headerInfo = getHeaderInfo();
 
   const sidebarClasses = `
-    fixed lg:static inset-y-0 left-0 z-50
+    fixed inset-y-0 left-0 z-50
     bg-gray-950 border-r border-gray-800
     transition-all duration-300 ease-in-out
-    flex flex-col
-    ${isSidebarOpen ? 'w-64' : 'w-20'}
+    flex flex-col overflow-hidden
+    ${isSidebarOpen ? 'w-64 translate-x-0' : '-translate-x-full w-0 lg:translate-x-0 lg:w-20'}
   `;
 
   if (isLoadingAuth) {
@@ -483,12 +593,37 @@ const App: React.FC = () => {
      </div>
   }
 
+  if (pendingTwoFactor) {
+    return (
+      <div className="min-h-screen bg-gray-950 text-[#faf9f5]">
+        <ToastContainer />
+        <TwoFactorPrompt
+          isOpen={true}
+          email={pendingTwoFactor.email}
+          onConfirm={handleVerifyTwoFactor}
+          onCancel={handleCancelTwoFactor}
+          isVerifying={isVerifyingTwoFactor}
+        />
+      </div>
+    );
+  }
+
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
     if (showLanding) {
-      return <LandingPage onLogin={() => setShowLanding(false)} />;
+      return (
+        <>
+          <ToastContainer />
+          <LandingPage onLogin={() => setShowLanding(false)} />
+        </>
+      );
     }
-    return <AuthModal onLogin={() => {}} onBack={() => setShowLanding(true)} />;
+    return (
+      <>
+        <ToastContainer />
+        <AuthModal onLogin={() => {}} onBack={() => setShowLanding(true)} />
+      </>
+    );
   }
 
   // --- MAIN APP ---
@@ -553,31 +688,31 @@ const App: React.FC = () => {
                  />
               ) : (
                 <>
-                  <NavItem 
-                    active={activeTab === 'dashboard'} 
-                    onClick={() => setActiveTab('dashboard')}
+                  <NavItem
+                    active={activeTab === 'dashboard'}
+                    onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                     icon={<LayoutDashboard size={20} />}
                     label="Visão Geral"
                     isOpen={isSidebarOpen}
                   />
-                  <NavItem 
-                    active={activeTab === 'table'} 
-                    onClick={() => setActiveTab('table')}
+                  <NavItem
+                    active={activeTab === 'table'}
+                    onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                     icon={<Table2 size={20} />}
                     label="Lançamentos"
                     isOpen={isSidebarOpen}
                   />
-                  <NavItem 
-                    active={activeTab === 'reminders'} 
-                    onClick={() => setActiveTab('reminders')}
+                  <NavItem
+                    active={activeTab === 'reminders'}
+                    onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                     icon={<Bell size={20} />}
                     label="Lembretes"
                     isOpen={isSidebarOpen}
                     badge={overdueRemindersCount}
                   />
-                  <NavItem 
-                    active={activeTab === 'advisor'} 
-                    onClick={() => setActiveTab('advisor')}
+                  <NavItem
+                    active={activeTab === 'advisor'}
+                    onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                     icon={<BrainCircuit size={20} />}
                     label="Consultor IA"
                     isOpen={isSidebarOpen}
@@ -610,32 +745,50 @@ const App: React.FC = () => {
         </div>
       </aside>
 
+      {/* Mobile Overlay */}
+      {isSidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+        ></div>
+      )}
+
       {/* Main Content */}
-      <main className={`flex-1 min-w-0 transition-all duration-300 ml-20 lg:ml-0 relative`}>
-        <header className="bg-gray-950/80 backdrop-blur-md h-20 border-b border-gray-800 sticky top-0 z-40 px-6 flex items-center justify-between gap-4">
-          <div className="flex flex-col min-w-0">
-             <h1 className="text-2xl font-bold text-[#faf9f5] tracking-tight truncate">
-               {headerInfo.title}
-             </h1>
-             <p className="text-xs text-gray-400 font-medium truncate hidden sm:block">
-               {headerInfo.desc}
-             </p>
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-0' : 'lg:ml-0'} relative`}>
+        <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+             {/* Mobile Menu Button */}
+             <button
+               onClick={() => setSidebarOpen(!isSidebarOpen)}
+               className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+             >
+               <Menu size={20} />
+             </button>
+
+             <div className="flex flex-col min-w-0 flex-1">
+               <h1 className="text-lg lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate">
+                 {headerInfo.title}
+               </h1>
+               <p className="text-xs text-gray-400 font-medium truncate hidden sm:block">
+                 {headerInfo.desc}
+               </p>
+             </div>
           </div>
           
           <div className="flex items-center gap-4">
              {/* Dashboard Advanced Filters */}
              {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 lg:gap-2 flex-wrap">
                    {/* Filter Mode Selector */}
-                   <div className="w-36 hidden md:block">
-                     <CustomSelect 
+                   <div className="w-28 lg:w-36 hidden sm:block">
+                     <CustomSelect
                         value={filterMode}
                         onChange={(v) => setFilterMode(v as any)}
                         options={[
                           { value: 'month', label: 'Mensal' },
                           { value: 'year', label: 'Anual' },
-                          { value: 'last3', label: 'Últimos 3 Meses' },
-                          { value: 'last6', label: 'Últimos 6 Meses' },
+                          { value: 'last3', label: 'Últimos 3' },
+                          { value: 'last6', label: 'Últimos 6' },
                           { value: 'all', label: 'Tudo' }
                         ]}
                         icon={<Filter size={16} />}
@@ -645,8 +798,8 @@ const App: React.FC = () => {
 
                    {/* Dynamic Date Picker based on mode */}
                    {filterMode === 'month' && (
-                     <div className="w-64">
-                       <CustomMonthPicker 
+                     <div className="w-40 lg:w-64">
+                       <CustomMonthPicker
                          value={dashboardDate}
                          onChange={setDashboardDate}
                        />
@@ -654,8 +807,8 @@ const App: React.FC = () => {
                    )}
 
                    {filterMode === 'year' && (
-                    <div className="w-28">
-                      <CustomSelect 
+                    <div className="w-24 lg:w-28">
+                      <CustomSelect
                         value={dashboardYear}
                         onChange={(v) => setDashboardYear(Number(v))}
                         options={Array.from({length: 5}, (_, i) => {
@@ -668,24 +821,12 @@ const App: React.FC = () => {
                     </div>
                    )}
 
-                   {/* Category Filter */}
-                   <div className="w-40 hidden md:block">
-                      <CustomSelect 
-                        value={dashboardCategory}
-                        onChange={setDashboardCategory}
-                        options={[{ value: '', label: 'Todas Categorias' }, ...availableCategories]}
-                        icon={<Tag size={16} />}
-                        placeholder="Todas Categorias"
-                        className="text-sm"
-                      />
-                   </div>
-
                    {/* Clear Filters Button */}
                    {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
-                     <button 
+                     <button
                        onClick={handleResetFilters}
-                       className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
-                       title="Limpar Filtros (Voltar para Hoje)"
+                       className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0"
+                       title="Limpar Filtros"
                      >
                        <RotateCcw size={16} />
                      </button>
@@ -694,16 +835,16 @@ const App: React.FC = () => {
              )}
 
              {activeTab === 'reminders' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-               <button 
+               <button
                  onClick={() => setIsReminderModalOpen(true)}
-                 className="hidden sm:flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
+                 className="flex items-center gap-2 px-3 lg:px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
                >
                  <Plus size={18} />
-                 Novo Lembrete
+                 <span className="hidden sm:inline">Novo Lembrete</span>
                </button>
              )}
 
-             <div className="h-8 w-px bg-gray-800 mx-2 hidden sm:block"></div>
+             <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
              
              {/* Notification Center added here */}
              <NotificationCenter reminders={reminders} />
@@ -716,7 +857,7 @@ const App: React.FC = () => {
           </div>
         </header>
 
-        <div className="p-6 max-w-7xl mx-auto">
+        <div className="p-3 lg:p-6 max-w-7xl mx-auto">
           
           {activeMemberId === 'FAMILY_OVERVIEW' ? (
              <FamilyDashboard 

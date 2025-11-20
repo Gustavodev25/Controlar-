@@ -8,12 +8,13 @@ import {
 } from 'lucide-react';
 import { User as UserType, Transaction } from '../types';
 import { useToasts } from './Toast';
+import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   user: UserType;
-  onUpdateUser: (user: UserType) => void;
+  onUpdateUser: (user: UserType) => Promise<void> | void;
   transactions?: Transaction[]; 
 }
 
@@ -32,19 +33,22 @@ type SettingsTab = 'account' | 'security' | 'plan' | 'notifications' | 'data';
 interface TwoFactorModalProps {
     isOpen: boolean;
     onClose: () => void;
-    onSuccess: () => void;
+    onSuccess: (code: string) => Promise<boolean> | boolean;
     userEmail: string;
     secretKey: string;
     qrCodeUrl: string;
+    isVerifying: boolean;
 }
 
-const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSuccess, userEmail, secretKey, qrCodeUrl }) => {
+const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSuccess, userEmail, secretKey, qrCodeUrl, isVerifying }) => {
     const [step, setStep] = useState<'setup' | 'verify'>('setup');
     const [otp, setOtp] = useState<string[]>(new Array(6).fill(""));
     const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
     const [isAnimating, setIsAnimating] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
     const toast = useToasts();
+    const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+    const isBusy = isVerifying || isVerifyingCode;
 
     // Animation Logic
     useEffect(() => {
@@ -118,13 +122,23 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
         inputRefs.current[Math.min(pastedData.length, 5) - 1]?.focus();
     };
 
-    const verifyCode = () => {
+    const verifyCode = async () => {
         const code = otp.join('');
-        if (code.length === 6) {
-           onSuccess();
-           setStep('setup'); // Reset for next time
-        } else {
-           toast.error("CÃ³digo incompleto ou invÃ¡lido.");
+        if (code.length !== 6) {
+           toast.error("Código incompleto ou inválido.");
+           return;
+        }
+        try {
+           setIsVerifyingCode(true);
+           const ok = await onSuccess(code);
+           if (ok) {
+              setStep('setup');
+              setOtp(new Array(6).fill(""));
+           }
+        } catch (err) {
+           toast.error("Não foi possível validar o código.");
+        } finally {
+           setIsVerifyingCode(false);
         }
     };
 
@@ -150,7 +164,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                       <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
                          <Smartphone size={20} />
                       </div>
-                      <h3 className="font-bold text-white">AutenticaÃ§Ã£o em 2 Fatores</h3>
+                      <h3 className="font-bold text-white">Autenticação em 2 Fatores</h3>
                    </div>
                    <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800">
                       <X size={20} />
@@ -161,8 +175,9 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                     {step === 'setup' ? (
                         <>
                            <p className="text-sm text-gray-400 mb-6">
-                              Abra seu aplicativo autenticador (Google Authenticator, Authy) e escaneie o cÃ³digo abaixo.
+                              Abra seu aplicativo autenticador (Google Authenticator, Authy) e escaneie o código abaixo.
                            </p>
+                           {userEmail && <p className="text-xs text-gray-500 mb-2">Conta: {userEmail}</p>}
 
                            <div className="p-4 bg-white rounded-2xl shadow-lg mb-6 mx-auto">
                               {/* Mock QR Code Display */}
@@ -186,7 +201,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                     ) : (
                         <>
                             <p className="text-sm text-gray-400 mb-8">
-                                Insira o cÃ³digo de 6 dÃ­gitos gerado pelo seu aplicativo para confirmar.
+                                Insira o código de 6 dígitos gerado pelo seu aplicativo para confirmar.
                             </p>
 
                             <div className="flex justify-center gap-2 mb-8">
@@ -207,10 +222,15 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
 
                             <button 
                               onClick={verifyCode}
-                              disabled={otp.join('').length !== 6}
+                              disabled={otp.join('').length !== 6 || isBusy}
                               className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                              <CheckCircle size={18} /> Ativar ProteÃ§Ã£o
+                              {isBusy ? (
+                                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                <CheckCircle size={18} />
+                              )}
+                              Ativar Proteção
                             </button>
                             
                             <button 
@@ -240,7 +260,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
   // 2FA State
   const [isTwoFactorModalOpen, setIsTwoFactorModalOpen] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
-  const [secretKey] = useState('JBSWY3DPEHPK3PXP'); // Mock Secret
+  const [secretKey, setSecretKey] = useState('');
+  const [isVerifying2FA, setIsVerifying2FA] = useState(false);
 
   // Mock Notifications
   const [notifications, setNotifications] = useState({ email: true, push: true, marketing: false });
@@ -259,8 +280,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
   if (!isVisible) return null;
 
   // --- HANDLERS ---
-  const handleSave = () => {
-    onUpdateUser(formData);
+  const persistUser = async (payload: UserType) => {
+    await Promise.resolve(onUpdateUser(payload));
+  };
+
+  const handleSave = async () => {
+    await persistUser(formData);
     toast.success("Perfil atualizado com sucesso!");
   };
 
@@ -278,25 +303,49 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
 
   // --- 2FA HANDLERS ---
   const open2FAModal = () => {
-    const label = encodeURIComponent("Controlar+");
-    const email = encodeURIComponent(user.email);
-    const issuer = encodeURIComponent("Controlar+");
-    const otpAuthUrl = `otpauth://totp/${label}:${email}?secret=${secretKey}&issuer=${issuer}`;
-    
-    // Mock QR Code generation
+    const issuer = "Controlar+";
+    const newSecret = generateBase32Secret(20);
+    setSecretKey(newSecret);
+
+    const otpAuthUrl = buildOtpAuthUrl(newSecret, `${issuer}:${user.email || 'usuario'}`, issuer);
     setQrCodeUrl(`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(otpAuthUrl)}`);
     setIsTwoFactorModalOpen(true);
   };
 
-  const handle2FASuccess = () => {
-      onUpdateUser({ ...formData, twoFactorEnabled: true });
-      setIsTwoFactorModalOpen(false);
-      toast.success("AutenticaÃ§Ã£o de 2 fatores ativada!");
+  const handle2FASuccess = async (code: string) => {
+      if (!secretKey) {
+        toast.error("Não foi possível gerar a chave. Tente novamente.");
+        return false;
+      }
+      try {
+        setIsVerifying2FA(true);
+        const isValid = await verifyTOTP(secretKey, code);
+        if (!isValid) {
+          toast.error("Código inválido ou expirado.");
+          return false;
+        }
+        const updated = { ...formData, twoFactorEnabled: true, twoFactorSecret: secretKey };
+        await persistUser(updated);
+        setFormData(updated);
+        setIsTwoFactorModalOpen(false);
+        toast.success("Autenticação de 2 fatores ativada!");
+        return true;
+      } catch (err) {
+        toast.error("Erro ao ativar 2FA. Tente novamente.");
+        return false;
+      } finally {
+        setIsVerifying2FA(false);
+      }
   };
 
-  const disable2FA = () => {
-    onUpdateUser({ ...formData, twoFactorEnabled: false });
-    toast.success("AutenticaÃ§Ã£o de 2 fatores desativada.");
+  const disable2FA = async () => {
+    setIsVerifying2FA(true);
+    const updated = { ...formData, twoFactorEnabled: false, twoFactorSecret: null };
+    await persistUser(updated);
+    setFormData(updated);
+    setSecretKey('');
+    toast.success("Autenticação de 2 fatores desativada.");
+    setIsVerifying2FA(false);
   };
 
   // --- DATA EXPORT ---
@@ -438,8 +487,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                    <Smartphone size={20}/>
                                 </div>
                                 <div>
-                                    <h4 className="text-white font-bold">AutenticaÃ§Ã£o de 2 Fatores</h4>
-                                    <p className="text-xs text-gray-500 mt-0.5">Camada extra de proteÃ§Ã£o.</p>
+                                    <h4 className="text-white font-bold">Autenticação de 2 Fatores</h4>
+                                    <p className="text-xs text-gray-500 mt-0.5">Camada extra de proteção.</p>
                                 </div>
                              </div>
                              {formData.twoFactorEnabled && (
@@ -451,11 +500,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                         </div>
                         <div className="pl-[52px]">
                            {formData.twoFactorEnabled ? (
-                              <button onClick={disable2FA} className="text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-900/20 px-4 py-2 rounded-lg transition-colors border border-transparent hover:border-red-900/30">
-                                 Desativar
+                              <button 
+                                onClick={disable2FA} 
+                                disabled={isVerifying2FA}
+                                className="text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-900/20 px-4 py-2 rounded-lg transition-colors border border-transparent hover:border-red-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
+                                 {isVerifying2FA ? 'Processando...' : 'Desativar'}
                               </button>
                            ) : (
-                              <button onClick={open2FAModal} className="text-sm font-bold text-white bg-[#d97757] hover:bg-[#c56a4d] px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-[#d97757]/20">
+                              <button 
+                                onClick={open2FAModal} 
+                                disabled={isVerifying2FA}
+                                className="text-sm font-bold text-white bg-[#d97757] hover:bg-[#c56a4d] px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-[#d97757]/20 disabled:opacity-60 disabled:cursor-not-allowed"
+                              >
                                  Configurar Agora
                               </button>
                            )}
@@ -593,6 +650,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
           userEmail={user.email}
           secretKey={secretKey}
           qrCodeUrl={qrCodeUrl}
+          isVerifying={isVerifying2FA}
       />
     </div>
   );
