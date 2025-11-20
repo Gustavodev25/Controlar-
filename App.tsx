@@ -39,6 +39,7 @@ import { verifyTOTP } from './services/twoFactor';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter } from './components/NotificationCenter';
 import { Logo } from './components/Logo';
+import { AIChatAssistant } from './components/AIChatAssistant';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -939,6 +940,11 @@ const App: React.FC = () => {
           )}
         </div>
       </main>
+
+      <AIChatAssistant
+        onAddTransaction={handleAddTransaction}
+        transactions={transactions}
+      />
 
       <AIModal
         isOpen={isAIModalOpen}

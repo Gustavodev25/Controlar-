@@ -20,7 +20,7 @@ const ensureClient = () => {
   return ai;
 };
 // Usando Flash pois Ã© rÃ¡pido e excelente com documentos/imagens longos
-const MODEL_NAME = "gemini-2.5-flash"; 
+const MODEL_NAME = "gemini-2.5-flash";
 
 export interface AIParsedReminder {
   description: string;
@@ -41,24 +41,24 @@ async function generateWithRetry(params: any, retries = 5) {
       // Check for various 503 error structures (Standard, Axios, Nested JSON)
       let statusCode = error.status || error.response?.status;
       if (!statusCode && error.error?.code) {
-         statusCode = error.error.code;
+        statusCode = error.error.code;
       }
-      
+
       const msg = (error.message || JSON.stringify(error)).toLowerCase();
-      
-      const isOverloaded = 
-          statusCode === 503 || 
-          msg.includes('overloaded') || 
-          msg.includes('unavailable') ||
-          msg.includes('503');
+
+      const isOverloaded =
+        statusCode === 503 ||
+        msg.includes('overloaded') ||
+        msg.includes('unavailable') ||
+        msg.includes('503');
 
       if (isOverloaded) {
         if (i < retries - 1) {
-            // Backoff: 2s, 4s, 8s, 16s, 32s
-            const delay = 2000 * Math.pow(2, i); 
-            console.warn(`Gemini overloaded (Attempt ${i+1}/${retries}). Retrying in ${delay}ms...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
+          // Backoff: 2s, 4s, 8s, 16s, 32s
+          const delay = 2000 * Math.pow(2, i);
+          console.warn(`Gemini overloaded (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+          continue;
         }
       }
       throw error;
@@ -74,7 +74,7 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
   if (!transactions.length) return { analysis: "Adicione transaÃ§Ãµes para receber uma anÃ¡lise da IA." };
   if (!API_KEY) return { analysis: "Configure a VITE_GEMINI_API_KEY para usar o consultor IA." };
 
-  const transactionSummary = transactions.slice(0, 50).map(t => 
+  const transactionSummary = transactions.slice(0, 50).map(t =>
     `${t.date}: ${t.description} (${t.category}) - R$ ${t.amount} [${t.type}]`
   ).join("\n");
 
@@ -121,9 +121,9 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
 export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date();
-  const currentYear = today.getFullYear(); 
+  const currentYear = today.getFullYear();
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-  
+
   const prompt = `
     Hoje Ã© EXATAMENTE: ${todayStr}.
     O ANO ATUAL Ã‰ ${currentYear}. 
@@ -169,17 +169,17 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
     });
 
     const result = JSON.parse(response.text || "{}") as AIParsedTransaction;
-    
+
     // Defaults defensivos - CRITICAL TO AVOID undefined errors in UI
     if (!result.description) result.description = "Nova TransaÃ§Ã£o";
     if (result.amount === undefined || result.amount === null) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.type) result.type = "expense";
     if (!result.date) result.date = new Date().toISOString().split('T')[0];
-    
+
     // Garantir fallback de parcelas
     if (!result.installments || result.installments < 1) {
-        result.installments = 1;
+      result.installments = 1;
     }
 
     return result;
@@ -217,7 +217,7 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
     const result = JSON.parse(response.text || "{}") as AIParsedReminder;
-    
+
     if (!result.description) result.description = "Lembrete";
     if (!result.amount) result.amount = 0;
     if (!result.category) result.category = "Outros";
@@ -266,29 +266,29 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
       model: MODEL_NAME,
       contents: {
         parts: [
-            {
-                inlineData: {
-                    mimeType: mimeType,
-                    data: base64Data
-                }
-            },
-            { text: prompt }
+          {
+            inlineData: {
+              mimeType: mimeType,
+              data: base64Data
+            }
+          },
+          { text: prompt }
         ]
       },
-      config: { 
-        responseMimeType: "application/json", 
-        responseSchema: schema 
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: schema
       }
     });
 
     const results = JSON.parse(response.text || "[]") as AIParsedTransaction[];
     return results.map(r => ({
-        ...r,
-        description: r.description || "TransaÃ§Ã£o",
-        amount: r.amount || 0,
-        category: r.category || "Outros",
-        type: r.type || "expense",
-        date: r.date || new Date().toISOString().split('T')[0]
+      ...r,
+      description: r.description || "TransaÃ§Ã£o",
+      amount: r.amount || 0,
+      category: r.category || "Outros",
+      type: r.type || "expense",
+      date: r.date || new Date().toISOString().split('T')[0]
     }));
   } catch (error) {
     console.error("Erro ao processar extrato:", error);
@@ -296,3 +296,104 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
   }
 };
 
+
+export type AssistantResponse =
+  | { type: 'text'; content: string }
+  | { type: 'transaction'; data: AIParsedTransaction };
+
+export const processAssistantMessage = async (text: string, contextTransactions: Transaction[] = []): Promise<AssistantResponse> => {
+  if (!API_KEY) return { type: 'text', content: "Configure a VITE_GEMINI_API_KEY para usar o assistente." };
+
+  const today = new Date();
+  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  // Contexto simplificado das últimas transações para ajudar na resposta
+  const recentTx = contextTransactions.slice(0, 5).map(t =>
+    `${t.date}: ${t.description} (${t.amount})`
+  ).join("\n");
+
+  const prompt = `
+    Hoje é: ${todayStr}.
+    Você é um assistente financeiro pessoal inteligente e amigável.
+    
+    O usuário enviou: "${text}"
+    
+    Contexto recente (apenas para referência):
+    ${recentTx}
+
+    Sua tarefa é classificar a intenção e responder adequadamente:
+    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
+    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "transaction" | "chat",
+      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
+      "transactionData": { ...dados da transação (se intent=transaction) }
+    }
+
+    Para transactionData, siga as regras:
+    - amount: número positivo
+    - type: 'income' ou 'expense'
+    - category: escolha a melhor categoria
+    - date: YYYY-MM-DD (hoje se não especificado)
+    - description: título curto
+    - installments: 1 se à vista
+  `;
+
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      intent: { type: Type.STRING, enum: ["transaction", "chat"] },
+      chatResponse: { type: Type.STRING },
+      transactionData: {
+        type: Type.OBJECT,
+        properties: {
+          description: { type: Type.STRING },
+          amount: { type: Type.NUMBER },
+          category: { type: Type.STRING },
+          date: { type: Type.STRING },
+          type: { type: Type.STRING, enum: ["income", "expense"] },
+          installments: { type: Type.INTEGER }
+        },
+        nullable: true
+      }
+    },
+    required: ["intent"]
+  };
+
+  try {
+    const response = await generateWithRetry({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: { responseMimeType: "application/json", responseSchema: schema }
+    });
+
+    const result = JSON.parse(response.text || "{}");
+
+    if (result.intent === 'transaction' && result.transactionData) {
+      // Garantir defaults
+      const td = result.transactionData;
+      return {
+        type: 'transaction',
+        data: {
+          description: td.description || "Nova Transação",
+          amount: td.amount || 0,
+          category: td.category || "Outros",
+          type: td.type || "expense",
+          date: td.date || new Date().toISOString().split('T')[0],
+          installments: td.installments || 1
+        }
+      };
+    } else {
+      return {
+        type: 'text',
+        content: result.chatResponse || "Não entendi, pode repetir?"
+      };
+    }
+
+  } catch (error) {
+    console.error("Erro no assistente:", error);
+    return { type: 'text', content: "Desculpe, tive um erro ao processar. Tente novamente." };
+  }
+};
