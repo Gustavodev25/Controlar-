@@ -28,6 +28,9 @@ import {
   MessageSquare,
   ChevronDown
 } from './Icons';
+import quebraCabecaImg from '../assets/quebra-cabeca.png';
+import fogueteImg from '../assets/foguete.png';
+import familiaImg from '../assets/familia.png';
 import { Logo } from './Logo';
 
 interface LandingPageProps {
@@ -441,7 +444,7 @@ const PricingSection = () => {
        {/* Free */}
        <div className="bg-[#1a1a19] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
           <div className="flex justify-center mb-4">
-             <img src="/assets/quebra-cabeca.png" alt="Starter" className="w-16 h-16 object-contain" />
+             <img src={quebraCabecaImg} alt="Starter" className="w-16 h-16 object-contain" />
           </div>
           <h3 className="text-xl font-bold text-white mb-2">Starter</h3>
           <p className="text-gray-500 text-sm mb-6">Para quem está começando a se organizar.</p>
@@ -465,7 +468,7 @@ const PricingSection = () => {
              MAIS POPULAR
           </div>
           <div className="flex justify-center mb-4">
-             <img src="/assets/foguete.png.png" alt="Pro" className="w-16 h-16 object-contain" />
+             <img src={fogueteImg} alt="Pro" className="w-16 h-16 object-contain" />
           </div>
           <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
              Pro <Sparkles size={16} className="text-[#d97757]" />
@@ -489,7 +492,7 @@ const PricingSection = () => {
        {/* Family */}
        <div className="bg-[#1a1a19] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
           <div className="flex justify-center mb-4">
-             <img src="/assets/familia.png" alt="Family" className="w-16 h-16 object-contain" />
+             <img src={familiaImg} alt="Family" className="w-16 h-16 object-contain" />
           </div>
           <h3 className="text-xl font-bold text-white mb-2">Family</h3>
           <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa, sem custo.</p>
