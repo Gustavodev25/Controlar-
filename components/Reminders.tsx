@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Reminder } from '../types';
@@ -45,7 +45,7 @@ interface ReminderCardProps {
 const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete }) => {
   const daysDiff = getDaysDiff(item.dueDate);
   
-  // Configuração visual baseada no status
+  // ConfiguraÃ§Ã£o visual baseada no status
   let statusConfig = {
       borderColor: "border-gray-800",
       barColor: "bg-gray-700",
@@ -59,7 +59,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
         borderColor: "border-red-900/30",
         barColor: "bg-red-500",
         iconColor: "text-red-500",
-        statusText: `Venceu há ${Math.abs(daysDiff)} dias`,
+        statusText: `Venceu hÃ¡ ${Math.abs(daysDiff)} dias`,
         textColor: "text-red-400"
     };
   } else if (daysDiff === 0) {
@@ -85,14 +85,14 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
       {/* Barra Lateral de Status */}
       <div className={`absolute left-0 top-0 bottom-0 w-1 ${statusConfig.barColor}`}></div>
 
-      {/* Ícone */}
+      {/* Ãcone */}
       <div className="pl-2 hidden sm:block">
         <div className={`w-10 h-10 rounded-lg bg-gray-950 border border-gray-800 flex items-center justify-center ${statusConfig.iconColor}`}>
            {daysDiff < 0 ? <AlertCircle size={18} /> : <CalendarClock size={18} />}
         </div>
       </div>
 
-      {/* Conteúdo Principal */}
+      {/* ConteÃºdo Principal */}
       <div className="flex-1 w-full sm:w-auto min-w-0">
          <div className="flex items-center gap-2 mb-1">
            <h4 className="font-bold text-gray-200 text-base truncate">{item.description}</h4>
@@ -108,7 +108,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
                {getCategoryIcon(item.category, 14)} 
                <span>{item.category}</span>
             </span>
-            <span className="hidden sm:inline">•</span>
+            <span className="hidden sm:inline">â€¢</span>
             <span className="flex items-center gap-1.5">
                <Calendar size={14} /> 
                <span className="font-mono">{formatDate(item.dueDate)}</span>
@@ -116,7 +116,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
          </div>
       </div>
 
-      {/* Lado Direito: Valores e Ações */}
+      {/* Lado Direito: Valores e AÃ§Ãµes */}
       <div className="flex items-center justify-between w-full sm:w-auto gap-6 border-t border-gray-800 pt-3 sm:pt-0 sm:border-t-0">
          <div className="text-right">
             <p className="font-mono font-bold text-gray-200 text-lg">{formatCurrency(item.amount)}</p>
@@ -172,7 +172,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const categories = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Investimentos', 'Outros'];
+  const categories = ['Moradia', 'AlimentaÃ§Ã£o', 'Transporte', 'SaÃºde', 'EducaÃ§Ã£o', 'Lazer', 'Investimentos', 'Outros'];
   const frequencies = [
       { value: 'monthly', label: 'Mensalmente' },
       { value: 'weekly', label: 'Semanalmente' },
@@ -208,10 +208,10 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       if (result) {
         setParsedReminder(result);
       } else {
-        setAiError("Não entendi o lembrete. Tente: 'Conta de luz 150 reais dia 10'");
+        setAiError("NÃ£o entendi o lembrete. Tente: 'Conta de luz 150 reais dia 10'");
       }
     } catch (e) {
-      setAiError("Erro de conexão com a IA.");
+      setAiError("Erro de conexÃ£o com a IA.");
     } finally {
       setIsProcessing(false);
     }
@@ -304,7 +304,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
             <h3 className="text-3xl font-bold text-[#faf9f5]">
               {formatCurrency(reminders.reduce((acc, curr) => acc + curr.amount, 0))}
             </h3>
-            <p className="text-sm text-gray-400">Comprometido este mês</p>
+            <p className="text-sm text-gray-400">Comprometido este mÃªs</p>
           </div>
            <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-[#d97757]/5 to-transparent"></div>
         </div>
@@ -314,7 +314,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-gray-800 pb-4 gap-4">
           <h3 className="text-lg font-bold text-gray-200 px-1 flex items-center gap-2">
             <CalendarClock className="text-[#d97757]" size={20} />
-            Próximos Pagamentos
+            PrÃ³ximos Pagamentos
           </h3>
           
           {/* View Toggles */}
@@ -345,7 +345,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
             <Bell size={32} />
           </div>
           <h4 className="text-white font-bold text-lg mb-2">Tudo em dia!</h4>
-          <p className="text-gray-500 text-sm max-w-xs">Você não tem nenhum lembrete de pagamento pendente.</p>
+          <p className="text-gray-500 text-sm max-w-xs">VocÃª nÃ£o tem nenhum lembrete de pagamento pendente.</p>
         </div>
       ) : (
         <div className="animate-fade-in overflow-visible">
@@ -416,7 +416,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${modalMode === 'ai' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                   >
                     <Sparkles size={14} />
-                    Inteligência
+                    InteligÃªncia
                   </button>
                   <button 
                     onClick={() => setModalMode('manual')}
@@ -507,7 +507,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                             <div className="p-5 space-y-4">
                                <div className="flex items-start justify-between">
                                   <div>
-                                     <p className="text-xs text-gray-400 mb-1">Descrição</p>
+                                     <p className="text-xs text-gray-400 mb-1">DescriÃ§Ã£o</p>
                                      <p className="text-lg font-bold text-white">{parsedReminder.description}</p>
                                   </div>
                                   <div className="text-right">
@@ -525,13 +525,13 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                                      </div>
                                   </div>
                                   <div className="bg-gray-950/50 p-3 rounded-xl border border-gray-700/50">
-                                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Recorrência</p>
+                                     <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">RecorrÃªncia</p>
                                      <div className="flex items-center gap-2">
                                         <Clock size={14} className="text-gray-400" />
                                         <span className="text-sm font-medium text-gray-200">
                                           {parsedReminder.isRecurring 
                                             ? (parsedReminder.frequency === 'monthly' ? 'Mensal' : parsedReminder.frequency === 'weekly' ? 'Semanal' : 'Anual') 
-                                            : 'Único'
+                                            : 'Ãšnico'
                                           }
                                         </span>
                                      </div>
@@ -564,7 +564,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                {modalMode === 'manual' && (
                  <form onSubmit={handleManualSubmit} className="space-y-5 animate-fade-in">
                   <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Descrição</label>
+                    <label className="block text-xs font-medium text-gray-400 mb-1.5">DescriÃ§Ã£o</label>
                     <div className="relative group">
                       <FileText className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
                       <input 
@@ -643,7 +643,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
                     {newReminder.isRecurring && (
                       <div className="pt-2 animate-slide-up">
-                         <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5 tracking-wider">Frequência</label>
+                         <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5 tracking-wider">FrequÃªncia</label>
                          <div className="relative z-10">
                             <CustomSelect
                                value={newReminder.frequency}
@@ -679,7 +679,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && onDeleteReminder(deleteId)}
         title="Excluir Lembrete?"
-        description="Você vai parar de receber notificações para este item."
+        description="VocÃª vai parar de receber notificaÃ§Ãµes para este item."
         isDestructive={true}
         confirmText="Sim, excluir"
         cancelText="Manter"
@@ -687,3 +687,4 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     </div>
   );
 };
+

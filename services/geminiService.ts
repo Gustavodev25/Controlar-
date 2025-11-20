@@ -8,12 +8,14 @@ const API_KEY =
   (typeof process !== "undefined" ? process.env.VITE_GEMINI_API_KEY : "") ||
   "";
 
+export const hasGeminiKey = !!API_KEY;
+
 // Initialize client only when key is set to avoid build failures when config.ts is not present
 const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 const ensureClient = () => {
   if (!ai) {
-    throw new Error("Gemini API key nÃ£o configurada. Defina VITE_GEMINI_API_KEY.");
+    throw new Error("MISSING_GEMINI_API_KEY");
   }
   return ai;
 };
@@ -117,7 +119,7 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
  * Parses natural language text into a structured transaction object.
  */
 export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
-  if (!API_KEY) return null;
+  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date();
   const currentYear = today.getFullYear(); 
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
@@ -191,7 +193,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
  * Parses natural language text into a Reminder object.
  */
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
-  if (!API_KEY) return null;
+  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date().toISOString().split('T')[0];
   const prompt = `Analise o texto para um lembrete de conta. Hoje Ã© ${today}. Texto: "${text}"`;
 
@@ -230,7 +232,7 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
 };
 
 export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
-  if (!API_KEY) return null;
+  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const prompt = `
     Analise este documento (extrato bancÃ¡rio) e extraia todas as transaÃ§Ãµes financeiras listadas.
     Ignore saldos e cabeÃ§alhos irrelevantes.
