@@ -27,7 +27,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
 import { SalaryManager } from './components/SalaryManager';
-import { AIAdvisor } from './components/AIAdvisor'; 
+import { AIAdvisor } from './components/AIAdvisor';
 import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
@@ -51,38 +51,54 @@ interface NavItemProps {
   disabled?: boolean;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen, badge, disabled }) => (
-  <button 
-    onClick={onClick}
-    disabled={disabled}
-    className={`
-      w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group relative
-      ${active 
-        ? 'bg-gray-800 text-white shadow-sm' 
-        : disabled 
-          ? 'text-gray-600 cursor-not-allowed opacity-50' 
-          : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-      }
-      ${!isOpen && 'justify-center'}
-    `}
-    title={!isOpen ? label : undefined}
-  >
-    <span className={`transition-colors ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
-      {icon}
-    </span>
-    {isOpen && <span className="font-medium text-sm truncate animate-fade-in">{label}</span>}
-    
-    {badge && badge > 0 && (
-       <span className={`absolute ${isOpen ? 'right-2 top-1/2 -translate-y-1/2' : 'top-1 right-1'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white`}>
-         {badge > 9 ? '9+' : badge}
-       </span>
-    )}
+const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen, badge, disabled }) => {
+  const [isHovered, setIsHovered] = useState(false);
 
-    {!isOpen && active && (
-       <div className="absolute left-0 w-1 h-6 bg-[#d97757] rounded-r-full"></div>
-    )}
-  </button>
-);
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      className={`
+        w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group relative
+        ${active
+          ? 'bg-gray-800 text-white shadow-sm'
+          : disabled
+            ? 'text-gray-600 cursor-not-allowed opacity-50'
+            : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
+        }
+        ${!isOpen && 'justify-center'}
+      `}
+    >
+      <span className={`transition-colors ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
+        {icon}
+      </span>
+
+      {isOpen && <span className="font-medium text-sm truncate animate-fade-in">{label}</span>}
+
+      {/* Badge */}
+      {(badge || 0) > 0 && (
+        <span className={`absolute ${isOpen ? 'right-2 top-1/2 -translate-y-1/2' : 'top-1 right-1'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white`}>
+          {badge && badge > 9 ? '9+' : badge}
+        </span>
+      )}
+
+      {/* Active Indicator (Collapsed) */}
+      {!isOpen && active && (
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-r-full"></div>
+      )}
+
+      {/* Tooltip Card (Collapsed Only) */}
+      {!isOpen && isHovered && (
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left animate-fade-in">
+          <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
+          <p className="text-sm font-bold text-white whitespace-nowrap">{label}</p>
+        </div>
+      )}
+    </button>
+  );
+};
 
 type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
 
@@ -139,7 +155,7 @@ const App: React.FC = () => {
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
-  
+
   useEffect(() => {
     localStorage.setItem('finances_sidebar_open', JSON.stringify(isSidebarOpen));
   }, [isSidebarOpen]);
@@ -155,16 +171,16 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (firebaseUser) {
         setShowLanding(false); // Hide landing if user is logged in
-        
+
         try {
           const profile = await dbService.getUserProfile(firebaseUser.uid);
           const baseProfile: User = {
-              name: firebaseUser.displayName || profile?.name || 'Usuário',
-              email: firebaseUser.email || '',
-              baseSalary: profile?.baseSalary || 0,
-              avatarUrl: profile?.avatarUrl,
-              twoFactorEnabled: profile?.twoFactorEnabled,
-              twoFactorSecret: profile?.twoFactorSecret
+            name: firebaseUser.displayName || profile?.name || 'Usuário',
+            email: firebaseUser.email || '',
+            baseSalary: profile?.baseSalary || 0,
+            avatarUrl: profile?.avatarUrl,
+            twoFactorEnabled: profile?.twoFactorEnabled,
+            twoFactorSecret: profile?.twoFactorSecret
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -193,9 +209,9 @@ const App: React.FC = () => {
           setUserId(firebaseUser.uid);
           setIsLoadingData(true);
           setCurrentUser({
-              name: firebaseUser.displayName || 'Usuário',
-              email: firebaseUser.email || '',
-              baseSalary: 0
+            name: firebaseUser.displayName || 'Usuário',
+            email: firebaseUser.email || '',
+            baseSalary: 0
           });
         }
       } else {
@@ -248,46 +264,46 @@ const App: React.FC = () => {
     if (!userId) return;
 
     const unsubTx = dbService.listenToTransactions(userId, (data) => {
-       setTransactions(data);
-       setIsLoadingData(false);
+      setTransactions(data);
+      setIsLoadingData(false);
     });
 
     const unsubRem = dbService.listenToReminders(userId, (data) => {
-       setReminders(data);
+      setReminders(data);
     });
-    
+
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
-        setCurrentUser(prev => prev ? { ...prev, ...data } : null);
+      setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     });
 
     const unsubMembers = dbService.listenToMembers(userId, (data) => {
-        if (data.length === 0 && currentUser) {
-           const adminMember: Omit<Member, 'id'> = {
-             name: currentUser.name,
-             avatarUrl: currentUser.avatarUrl || 'bg-gradient-to-br from-purple-600 to-blue-600',
-             role: 'admin'
-           };
-           dbService.addMember(userId, adminMember).then(id => {
-             setActiveMemberId(id);
-           });
-        } else {
-           setMembers(data);
-           if (activeMemberId !== 'FAMILY_OVERVIEW' && !data.find(m => m.id === activeMemberId)) {
-              setActiveMemberId('FAMILY_OVERVIEW');
-           }
+      if (data.length === 0 && currentUser) {
+        const adminMember: Omit<Member, 'id'> = {
+          name: currentUser.name,
+          avatarUrl: currentUser.avatarUrl || 'bg-gradient-to-br from-purple-600 to-blue-600',
+          role: 'admin'
+        };
+        dbService.addMember(userId, adminMember).then(id => {
+          setActiveMemberId(id);
+        });
+      } else {
+        setMembers(data);
+        if (activeMemberId !== 'FAMILY_OVERVIEW' && !data.find(m => m.id === activeMemberId)) {
+          setActiveMemberId('FAMILY_OVERVIEW');
         }
+      }
     });
 
     const unsubGoals = dbService.listenToGoals(userId, (data) => {
-       setFamilyGoals(data);
+      setFamilyGoals(data);
     });
 
     return () => {
-        unsubTx();
-        unsubRem();
-        unsubProfile();
-        unsubMembers();
-        unsubGoals();
+      unsubTx();
+      unsubRem();
+      unsubProfile();
+      unsubMembers();
+      unsubGoals();
     };
   }, [userId, currentUser?.name]);
 
@@ -331,7 +347,7 @@ const App: React.FC = () => {
   };
 
   // --- Filter Logic ---
-  
+
   // 1. Filter by Member (Base filtering)
   const memberFilteredTransactions = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return transactions;
@@ -351,7 +367,7 @@ const App: React.FC = () => {
 
     // Apply Category Filter
     if (dashboardCategory) {
-        filtered = filtered.filter(t => t.category === dashboardCategory);
+      filtered = filtered.filter(t => t.category === dashboardCategory);
     }
 
     if (filterMode === 'all') return filtered;
@@ -362,25 +378,25 @@ const App: React.FC = () => {
     return filtered.filter(t => {
       // Ensure transaction date handles local/UTC properly by appending time
       const tDate = new Date(t.date + 'T12:00:00');
-      
+
       if (filterMode === 'month') {
         return t.date.startsWith(dashboardDate);
       }
-      
+
       if (filterMode === 'year') {
-         return tDate.getFullYear() === dashboardYear;
+        return tDate.getFullYear() === dashboardYear;
       }
-      
+
       if (filterMode === 'last3') {
-         const cutoff = new Date(now);
-         cutoff.setMonth(now.getMonth() - 3);
-         return tDate >= cutoff && tDate <= now;
+        const cutoff = new Date(now);
+        cutoff.setMonth(now.getMonth() - 3);
+        return tDate >= cutoff && tDate <= now;
       }
 
       if (filterMode === 'last6') {
-         const cutoff = new Date(now);
-         cutoff.setMonth(now.getMonth() - 6);
-         return tDate >= cutoff && tDate <= now;
+        const cutoff = new Date(now);
+        cutoff.setMonth(now.getMonth() - 6);
+        return tDate >= cutoff && tDate <= now;
       }
 
       return true;
@@ -394,11 +410,11 @@ const App: React.FC = () => {
   }, [reminders, activeMemberId]);
 
   const overdueRemindersCount = filteredReminders.filter(r => {
-      const today = new Date();
-      today.setHours(0,0,0,0);
-      const due = new Date(r.dueDate);
-      due.setHours(0,0,0,0);
-      return due <= today;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const due = new Date(r.dueDate);
+    due.setHours(0, 0, 0, 0);
+    return due <= today;
   }).length;
 
   // Stats based on DASHBOARD Filtered
@@ -415,15 +431,15 @@ const App: React.FC = () => {
 
   // Handlers
   const handleResetFilters = () => {
-     const now = new Date();
-     setFilterMode('month');
-     setDashboardDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
-     setDashboardCategory('');
-     toast.message({ text: "Filtros restaurados para este mês." });
+    const now = new Date();
+    setFilterMode('month');
+    setDashboardDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+    setDashboardCategory('');
+    toast.message({ text: "Filtros restaurados para este mês." });
   };
 
   const handleAddMember = async (name: string, avatarUrl: string) => {
-    if(userId) {
+    if (userId) {
       await dbService.addMember(userId, { name, avatarUrl, role: 'member' });
       toast.success("Membro adicionado!");
     }
@@ -431,16 +447,16 @@ const App: React.FC = () => {
 
   const handleAddTransaction = async (data: Omit<Transaction, 'id'>) => {
     if (!userId) return;
-    
+
     let targetMemberId = activeMemberId;
-    
+
     if (targetMemberId === 'FAMILY_OVERVIEW') {
-       const admin = members.find(m => m.role === 'admin') || members[0];
-       if (admin) targetMemberId = admin.id;
-       else {
-         toast.error("Crie um membro primeiro.");
-         return;
-       }
+      const admin = members.find(m => m.role === 'admin') || members[0];
+      if (admin) targetMemberId = admin.id;
+      else {
+        toast.error("Crie um membro primeiro.");
+        return;
+      }
     }
 
     const finalMemberId = data.memberId || targetMemberId;
@@ -479,8 +495,8 @@ const App: React.FC = () => {
 
   const handleAddExtraIncome = async (amount: number, description: string) => {
     const admin = members.find(m => m.role === 'admin') || members[0];
-    if(!admin) return;
-    
+    if (!admin) return;
+
     const extraIncome: Omit<Transaction, 'id'> = {
       description: description,
       amount: amount,
@@ -495,11 +511,11 @@ const App: React.FC = () => {
 
   const handleAddReminder = async (data: Omit<Reminder, 'id'>) => {
     if (!userId) return;
-    
+
     let targetMemberId = activeMemberId;
     if (targetMemberId === 'FAMILY_OVERVIEW') {
-       const admin = members.find(m => m.role === 'admin') || members[0];
-       targetMemberId = admin ? admin.id : '';
+      const admin = members.find(m => m.role === 'admin') || members[0];
+      targetMemberId = admin ? admin.id : '';
     }
 
     try {
@@ -526,49 +542,49 @@ const App: React.FC = () => {
       category: reminder.category,
       type: 'expense',
       status: 'completed',
-      memberId: reminder.memberId 
+      memberId: reminder.memberId
     };
-    
+
     await dbService.addTransaction(userId, newTransaction);
 
     if (reminder.isRecurring) {
-       const nextDate = new Date(reminder.dueDate);
-       if (reminder.frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
-       else if (reminder.frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
-       else nextDate.setMonth(nextDate.getMonth() + 1);
+      const nextDate = new Date(reminder.dueDate);
+      if (reminder.frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
+      else if (reminder.frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
+      else nextDate.setMonth(nextDate.getMonth() + 1);
 
-       const updatedReminder = { ...reminder, dueDate: nextDate.toISOString().split('T')[0] };
-       await dbService.updateReminder(userId, updatedReminder);
-       toast.success("Conta Paga! Vencimento atualizado.");
+      const updatedReminder = { ...reminder, dueDate: nextDate.toISOString().split('T')[0] };
+      await dbService.updateReminder(userId, updatedReminder);
+      toast.success("Conta Paga! Vencimento atualizado.");
     } else {
-       await dbService.deleteReminder(userId, reminder.id);
-       toast.success("Conta paga e removida.");
+      await dbService.deleteReminder(userId, reminder.id);
+      toast.success("Conta paga e removida.");
     }
   };
 
   const handleAddGoal = async (goal: Omit<FamilyGoal, 'id'>) => {
-    if(userId) await dbService.addFamilyGoal(userId, goal);
+    if (userId) await dbService.addFamilyGoal(userId, goal);
     toast.success("Meta criada!");
   };
   const handleUpdateGoal = async (goal: FamilyGoal) => {
-    if(userId) await dbService.updateFamilyGoal(userId, goal);
+    if (userId) await dbService.updateFamilyGoal(userId, goal);
     toast.success("Meta atualizada!");
   };
   const handleDeleteGoal = async (id: string) => {
-    if(userId) await dbService.deleteFamilyGoal(userId, id);
+    if (userId) await dbService.deleteFamilyGoal(userId, id);
     toast.success("Meta removida.");
   };
 
   const getHeaderInfo = () => {
-    const memberName = activeMemberId === 'FAMILY_OVERVIEW' 
-        ? 'Família' 
-        : members.find(m => m.id === activeMemberId)?.name || 'Membro';
+    const memberName = activeMemberId === 'FAMILY_OVERVIEW'
+      ? 'Família'
+      : members.find(m => m.id === activeMemberId)?.name || 'Membro';
 
     if (activeMemberId === 'FAMILY_OVERVIEW') {
-         return { title: 'Visão Familiar', desc: 'Resumo financeiro de todos os membros.' };
+      return { title: 'Visão Familiar', desc: 'Resumo financeiro de todos os membros.' };
     }
 
-    switch(activeTab) {
+    switch (activeTab) {
       case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
       case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
@@ -583,14 +599,15 @@ const App: React.FC = () => {
     fixed inset-y-0 left-0 z-50
     bg-gray-950 border-r border-gray-800
     transition-all duration-300 ease-in-out
-    flex flex-col overflow-hidden
+    flex flex-col
+    ${isSidebarOpen ? 'overflow-hidden' : 'overflow-hidden lg:overflow-visible'}
     ${isSidebarOpen ? 'w-64 translate-x-0' : '-translate-x-full w-0 lg:translate-x-0 lg:w-20'}
   `;
 
   if (isLoadingAuth) {
-     return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-         <div className="w-8 h-8 border-2 border-[#d97757] border-t-transparent rounded-full animate-spin"></div>
-     </div>
+    return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-[#d97757] border-t-transparent rounded-full animate-spin"></div>
+    </div>
   }
 
   if (pendingTwoFactor) {
@@ -621,7 +638,7 @@ const App: React.FC = () => {
     return (
       <>
         <ToastContainer />
-        <AuthModal onLogin={() => {}} onBack={() => setShowLanding(true)} />
+        <AuthModal onLogin={() => { }} onBack={() => setShowLanding(true)} />
       </>
     );
   }
@@ -634,114 +651,121 @@ const App: React.FC = () => {
 
       {/* Sidebar */}
       <aside className={sidebarClasses}>
-           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800/50 mb-4">
-           <div className={`flex items-center overflow-hidden transition-all duration-300 ${!isSidebarOpen ? 'w-full justify-center' : ''}`}>
-             <Logo
-               size={32}
-               withText={isSidebarOpen}
-               className="gap-3"
-               textClassName="font-bold text-lg whitespace-nowrap text-[#faf9f5]"
-               imgClassName="rounded-lg"
-             />
-           </div>
-           
-           {isSidebarOpen && (
-             <button 
-               onClick={() => setSidebarOpen(false)}
-               className="hidden lg:flex p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
-             >
-               <ChevronLeft size={16} />
-             </button>
-           )}
+        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800/50 mb-4">
+          <div className={`flex items-center overflow-hidden transition-all duration-300 ${!isSidebarOpen ? 'w-full justify-center' : ''}`}>
+            <Logo
+              size={32}
+              withText={isSidebarOpen}
+              className="gap-3"
+              textClassName="font-bold text-lg whitespace-nowrap text-[#faf9f5]"
+              imgClassName="rounded-lg"
+            />
+          </div>
+
+          {isSidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="hidden lg:flex p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
+            >
+              <ChevronLeft size={16} />
+            </button>
+          )}
         </div>
 
         {!isSidebarOpen && (
-           <div className="hidden lg:flex justify-center py-3 border-b border-gray-800/30 mb-4">
-              <button 
-               onClick={() => setSidebarOpen(true)}
-               className="p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
-             >
-               <ChevronRight size={16} />
-             </button>
-           </div>
+          <div className="hidden lg:flex justify-center py-3 border-b border-gray-800/30 mb-4">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
+            >
+              <ChevronRight size={16} />
+            </button>
+          </div>
         )}
-        
-        <MemberSelector 
-           members={members}
-           activeMemberId={activeMemberId}
-           onSelectMember={setActiveMemberId}
-           onAddMember={handleAddMember}
-           isSidebarOpen={isSidebarOpen}
+
+        <MemberSelector
+          members={members}
+          activeMemberId={activeMemberId}
+          onSelectMember={setActiveMemberId}
+          onAddMember={handleAddMember}
+          isSidebarOpen={isSidebarOpen}
         />
 
-        <div className="flex-1 px-3 space-y-6 overflow-y-auto custom-scrollbar">
-           <div className="space-y-1">
-              {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Menu</p>}
-              
-              {activeMemberId === 'FAMILY_OVERVIEW' ? (
-                 <NavItem 
-                    active={true} 
-                    onClick={() => {}}
-                    icon={<LayoutDashboard size={20} />}
-                    label="Visão Geral"
-                    isOpen={isSidebarOpen}
-                 />
-              ) : (
-                <>
-                  <NavItem
-                    active={activeTab === 'dashboard'}
-                    onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<LayoutDashboard size={20} />}
-                    label="Visão Geral"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'table'}
-                    onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Table2 size={20} />}
-                    label="Lançamentos"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'reminders'}
-                    onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Bell size={20} />}
-                    label="Lembretes"
-                    isOpen={isSidebarOpen}
-                    badge={overdueRemindersCount}
-                  />
-                  <NavItem
-                    active={activeTab === 'advisor'}
-                    onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<BrainCircuit size={20} />}
-                    label="Consultor IA"
-                    isOpen={isSidebarOpen}
-                  />
-                </>
-              )}
-           </div>
+        <div className={`flex-1 px-3 space-y-6 custom-scrollbar ${isSidebarOpen ? 'overflow-y-auto' : 'overflow-visible'}`}>
+          <div className="space-y-1">
+            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Menu</p>}
 
-           <div className="space-y-1">
-              {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
-              
-              <button
-                onClick={() => setIsAIModalOpen(true)}
-                disabled={activeMemberId === 'FAMILY_OVERVIEW'} 
-                className={`
-                  w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group shadow-lg
-                  ${activeMemberId === 'FAMILY_OVERVIEW' 
-                    ? 'bg-gray-800 text-gray-600 cursor-not-allowed shadow-none'
-                    : isSidebarOpen 
-                        ? 'bg-[#d97757] text-[#faf9f5] hover:bg-[#c56a4d] shadow-[#d97757]/20' 
-                        : 'justify-center bg-transparent text-[#d97757] hover:bg-gray-800 shadow-none'
-                  }
+            {activeMemberId === 'FAMILY_OVERVIEW' ? (
+              <NavItem
+                active={true}
+                onClick={() => { }}
+                icon={<LayoutDashboard size={20} />}
+                label="Visão Geral"
+                isOpen={isSidebarOpen}
+              />
+            ) : (
+              <>
+                <NavItem
+                  active={activeTab === 'dashboard'}
+                  onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<LayoutDashboard size={20} />}
+                  label="Visão Geral"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
+                  active={activeTab === 'table'}
+                  onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<Table2 size={20} />}
+                  label="Lançamentos"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
+                  active={activeTab === 'reminders'}
+                  onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<Bell size={20} />}
+                  label="Lembretes"
+                  isOpen={isSidebarOpen}
+                  badge={overdueRemindersCount}
+                />
+                <NavItem
+                  active={activeTab === 'advisor'}
+                  onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<BrainCircuit size={20} />}
+                  label="Consultor IA"
+                  isOpen={isSidebarOpen}
+                />
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
+
+            <button
+              onClick={() => setIsAIModalOpen(true)}
+              disabled={activeMemberId === 'FAMILY_OVERVIEW'}
+              className={`
+                  w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group shadow-lg relative
+                  ${activeMemberId === 'FAMILY_OVERVIEW'
+                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed shadow-none'
+                  : isSidebarOpen
+                    ? 'bg-[#d97757] text-[#faf9f5] hover:bg-[#c56a4d] shadow-[#d97757]/20'
+                    : 'justify-center bg-transparent text-[#d97757] hover:bg-gray-800 shadow-none'
+                }
                 `}
-                title="Novo Lançamento com IA"
-              >
-                 <Bot size={20} className={`${isSidebarOpen ? 'text-[#faf9f5]' : 'text-[#d97757]'} ${activeMemberId !== 'FAMILY_OVERVIEW' ? 'group-hover:scale-110 transition-transform' : ''}`} />
-                 {isSidebarOpen && <span className="font-medium text-sm">Novo c/ IA</span>}
-              </button>
-           </div>
+            >
+              <Bot size={20} className={`${isSidebarOpen ? 'text-[#faf9f5]' : 'text-[#d97757]'} ${activeMemberId !== 'FAMILY_OVERVIEW' ? 'group-hover:scale-110 transition-transform' : ''}`} />
+              {isSidebarOpen && <span className="font-medium text-sm">Novo c/ IA</span>}
+
+              {/* Tooltip */}
+              {!isSidebarOpen && (
+                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left hidden group-hover:block animate-fade-in pointer-events-none">
+                  <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
+                  <p className="text-sm font-bold text-white whitespace-nowrap">Novo c/ IA</p>
+                </div>
+              )}
+            </button>
+          </div>
         </div>
       </aside>
 
@@ -757,177 +781,177 @@ const App: React.FC = () => {
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
         <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
           <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
-             {/* Mobile Menu Button */}
-             <button
-               onClick={() => setSidebarOpen(!isSidebarOpen)}
-               className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
-             >
-               <Menu size={20} />
-             </button>
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setSidebarOpen(!isSidebarOpen)}
+              className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
+            >
+              <Menu size={20} />
+            </button>
 
-             <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
-               <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
-                 {headerInfo.title}
-               </h1>
-               <p className="text-[11px] lg:text-xs text-gray-400 font-medium truncate leading-tight mt-0.5">
-                 {headerInfo.desc}
-               </p>
-             </div>
+            <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
+              <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
+                {headerInfo.title}
+              </h1>
+              <p className="text-[11px] lg:text-xs text-gray-400 font-medium truncate leading-tight mt-0.5">
+                {headerInfo.desc}
+              </p>
+            </div>
           </div>
-          
+
           <div className="flex items-center gap-4">
-             {/* Dashboard Advanced Filters */}
-             {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-                <div className="flex items-center gap-1 lg:gap-2 flex-wrap">
-                   {/* Filter Mode Selector */}
-                   <div className="w-28 lg:w-36 hidden sm:block">
-                     <CustomSelect
-                        value={filterMode}
-                        onChange={(v) => setFilterMode(v as any)}
-                        options={[
-                          { value: 'month', label: 'Mensal' },
-                          { value: 'year', label: 'Anual' },
-                          { value: 'last3', label: 'Últimos 3' },
-                          { value: 'last6', label: 'Últimos 6' },
-                          { value: 'all', label: 'Tudo' }
-                        ]}
-                        icon={<Filter size={16} />}
-                        className="text-sm"
-                     />
-                   </div>
-
-                   {/* Dynamic Date Picker based on mode */}
-                   {filterMode === 'month' && (
-                     <div className="w-40 lg:w-64">
-                       <CustomMonthPicker
-                         value={dashboardDate}
-                         onChange={setDashboardDate}
-                       />
-                     </div>
-                   )}
-
-                   {filterMode === 'year' && (
-                    <div className="w-24 lg:w-28">
-                      <CustomSelect
-                        value={dashboardYear}
-                        onChange={(v) => setDashboardYear(Number(v))}
-                        options={Array.from({length: 5}, (_, i) => {
-                           const y = new Date().getFullYear() - i;
-                           return { value: y, label: String(y) };
-                        })}
-                        icon={<Calendar size={16} />}
-                        className="text-sm"
-                      />
-                    </div>
-                   )}
-
-                   {/* Clear Filters Button */}
-                   {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
-                     <button
-                       onClick={handleResetFilters}
-                       className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0"
-                       title="Limpar Filtros"
-                     >
-                       <RotateCcw size={16} />
-                     </button>
-                   )}
+            {/* Dashboard Advanced Filters */}
+            {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
+              <div className="flex items-center gap-1 lg:gap-2 flex-wrap">
+                {/* Filter Mode Selector */}
+                <div className="w-28 lg:w-36 hidden sm:block">
+                  <CustomSelect
+                    value={filterMode}
+                    onChange={(v) => setFilterMode(v as any)}
+                    options={[
+                      { value: 'month', label: 'Mensal' },
+                      { value: 'year', label: 'Anual' },
+                      { value: 'last3', label: 'Últimos 3' },
+                      { value: 'last6', label: 'Últimos 6' },
+                      { value: 'all', label: 'Tudo' }
+                    ]}
+                    icon={<Filter size={16} />}
+                    className="text-sm"
+                  />
                 </div>
-             )}
 
-             {activeTab === 'reminders' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-               <button
-                 onClick={() => setIsReminderModalOpen(true)}
-                 className="flex items-center gap-2 px-3 lg:px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
-               >
-                 <Plus size={18} />
-                 <span className="hidden sm:inline">Novo Lembrete</span>
-               </button>
-             )}
+                {/* Dynamic Date Picker based on mode */}
+                {filterMode === 'month' && (
+                  <div className="w-40 lg:w-64">
+                    <CustomMonthPicker
+                      value={dashboardDate}
+                      onChange={setDashboardDate}
+                    />
+                  </div>
+                )}
 
-             <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
-             
-             {/* Notification Center added here */}
-             <NotificationCenter reminders={reminders} />
+                {filterMode === 'year' && (
+                  <div className="w-24 lg:w-28">
+                    <CustomSelect
+                      value={dashboardYear}
+                      onChange={(v) => setDashboardYear(Number(v))}
+                      options={Array.from({ length: 5 }, (_, i) => {
+                        const y = new Date().getFullYear() - i;
+                        return { value: y, label: String(y) };
+                      })}
+                      icon={<Calendar size={16} />}
+                      className="text-sm"
+                    />
+                  </div>
+                )}
 
-             <UserMenu 
-                user={currentUser} 
-                onLogout={() => auth.signOut()} 
-                onOpenSettings={() => setIsSettingsOpen(true)}
-             />
+                {/* Clear Filters Button */}
+                {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
+                  <button
+                    onClick={handleResetFilters}
+                    className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0"
+                    title="Limpar Filtros"
+                  >
+                    <RotateCcw size={16} />
+                  </button>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'reminders' && activeMemberId !== 'FAMILY_OVERVIEW' && (
+              <button
+                onClick={() => setIsReminderModalOpen(true)}
+                className="flex items-center gap-2 px-3 lg:px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
+              >
+                <Plus size={18} />
+                <span className="hidden sm:inline">Novo Lembrete</span>
+              </button>
+            )}
+
+            <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
+
+            {/* Notification Center added here */}
+            <NotificationCenter reminders={reminders} />
+
+            <UserMenu
+              user={currentUser}
+              onLogout={() => auth.signOut()}
+              onOpenSettings={() => setIsSettingsOpen(true)}
+            />
           </div>
         </header>
 
         <div className="p-3 lg:p-6 max-w-7xl mx-auto">
-          
+
           {activeMemberId === 'FAMILY_OVERVIEW' ? (
-             <FamilyDashboard 
-                transactions={transactions} 
-                members={members}
-                goals={familyGoals}
-                onAddGoal={handleAddGoal}
-                onUpdateGoal={handleUpdateGoal}
-                onDeleteGoal={handleDeleteGoal}
-                onAddTransaction={handleAddTransaction} 
-             />
+            <FamilyDashboard
+              transactions={transactions}
+              members={members}
+              goals={familyGoals}
+              onAddGoal={handleAddGoal}
+              onUpdateGoal={handleUpdateGoal}
+              onDeleteGoal={handleDeleteGoal}
+              onAddTransaction={handleAddTransaction}
+            />
           ) : (
-             <>
-               {activeTab === 'dashboard' && (
-                  <>
-                    {/* Only show Salary Manager in Monthly mode where it makes sense */}
-                    {filterMode === 'month' && !dashboardCategory && (
-                      <SalaryManager 
-                        baseSalary={currentUser.baseSalary || 0} 
-                        currentIncome={stats.totalIncome}
-                        onUpdateSalary={handleUpdateSalary}
-                        onAddExtra={handleAddExtraIncome}
-                      />
-                    )}
-                    <StatsCards stats={stats} isLoading={isLoadingData} />
-                    <div className="animate-fade-in space-y-6">
-                      <DashboardCharts transactions={dashboardFilteredTransactions} isLoading={isLoadingData} />
-                    </div>
-                  </>
-               )}
-
-               {activeTab === 'table' && (
-                  <div className="h-[calc(100vh-280px)] animate-fade-in">
-                    <ExcelTable transactions={memberFilteredTransactions} onDelete={handleDeleteTransaction} />
+            <>
+              {activeTab === 'dashboard' && (
+                <>
+                  {/* Only show Salary Manager in Monthly mode where it makes sense */}
+                  {filterMode === 'month' && !dashboardCategory && (
+                    <SalaryManager
+                      baseSalary={currentUser.baseSalary || 0}
+                      currentIncome={stats.totalIncome}
+                      onUpdateSalary={handleUpdateSalary}
+                      onAddExtra={handleAddExtraIncome}
+                    />
+                  )}
+                  <StatsCards stats={stats} isLoading={isLoadingData} />
+                  <div className="animate-fade-in space-y-6">
+                    <DashboardCharts transactions={dashboardFilteredTransactions} isLoading={isLoadingData} />
                   </div>
-               )}
+                </>
+              )}
 
-               {activeTab === 'reminders' && (
-                 <Reminders 
-                   reminders={filteredReminders} 
-                   onAddReminder={handleAddReminder}
-                   onDeleteReminder={handleDeleteReminder}
-                   onPayReminder={handlePayReminder}
-                   isModalOpen={isReminderModalOpen}
-                   onCloseModal={() => setIsReminderModalOpen(false)}
-                 />
-               )}
+              {activeTab === 'table' && (
+                <div className="h-[calc(100vh-280px)] animate-fade-in">
+                  <ExcelTable transactions={memberFilteredTransactions} onDelete={handleDeleteTransaction} />
+                </div>
+              )}
 
-               {activeTab === 'advisor' && (
-                  <div className="h-[calc(100vh-140px)]">
-                     <AIAdvisor transactions={memberFilteredTransactions} />
-                  </div>
-               )}
-             </>
+              {activeTab === 'reminders' && (
+                <Reminders
+                  reminders={filteredReminders}
+                  onAddReminder={handleAddReminder}
+                  onDeleteReminder={handleDeleteReminder}
+                  onPayReminder={handlePayReminder}
+                  isModalOpen={isReminderModalOpen}
+                  onCloseModal={() => setIsReminderModalOpen(false)}
+                />
+              )}
+
+              {activeTab === 'advisor' && (
+                <div className="h-[calc(100vh-140px)]">
+                  <AIAdvisor transactions={memberFilteredTransactions} />
+                </div>
+              )}
+            </>
           )}
         </div>
       </main>
 
-      <AIModal 
-        isOpen={isAIModalOpen} 
-        onClose={() => setIsAIModalOpen(false)} 
-        onConfirm={handleAddTransaction} 
+      <AIModal
+        isOpen={isAIModalOpen}
+        onClose={() => setIsAIModalOpen(false)}
+        onConfirm={handleAddTransaction}
       />
 
-      <SettingsModal 
+      <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         user={currentUser}
         onUpdateUser={async (u) => {
-           if(userId) await dbService.updateUserProfile(userId, u);
+          if (userId) await dbService.updateUserProfile(userId, u);
         }}
         transactions={transactions}
       />
