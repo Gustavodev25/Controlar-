@@ -1,0 +1,77 @@
+
+export type TransactionType = 'income' | 'expense';
+
+export interface User {
+  name: string;
+  email: string;
+  avatarUrl?: string;
+  baseSalary?: number;
+}
+
+export interface Member {
+  id: string;
+  name: string;
+  avatarUrl?: string; // Gradient string
+  role: 'admin' | 'member';
+}
+
+export interface FamilyGoal {
+  id: string;
+  title: string;
+  targetAmount: number;
+  currentAmount: number;
+  deadline?: string;
+  icon?: string;
+}
+
+export interface Transaction {
+  id: string;
+  memberId?: string; // Link to specific profile
+  date: string; // ISO format YYYY-MM-DD
+  description: string;
+  amount: number;
+  category: string;
+  type: TransactionType;
+  status: 'completed' | 'pending';
+}
+
+export interface Reminder {
+  id: string;
+  memberId?: string;
+  description: string;
+  amount: number;
+  dueDate: string; // ISO format YYYY-MM-DD
+  category: string;
+  isRecurring: boolean;
+  frequency?: 'monthly' | 'weekly' | 'yearly';
+}
+
+export interface DashboardStats {
+  totalBalance: number;
+  totalIncome: number;
+  totalExpense: number;
+  monthlySavings: number;
+}
+
+export interface AIAnalysisResult {
+  summary: string;
+  insights: string[];
+  recommendations: string[];
+}
+
+export interface AIParsedTransaction {
+  description: string;
+  amount: number;
+  category: string;
+  date: string;
+  type: TransactionType;
+}
+
+export type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+export interface ToastMessage {
+  id: string;
+  type: ToastType;
+  title: string;
+  message?: string;
+}
