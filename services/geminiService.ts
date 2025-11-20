@@ -3,9 +3,9 @@ import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, AIParsedTransaction, Reminder } from "../types";
 
 // Initialize Gemini Client
-// NOTE: In a real production app, these calls would likely go through a backend proxy to secure the key.
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-const MODEL_NAME = "gemini-2.5-flash";
+// Usando Flash pois é rápido e excelente com documentos/imagens longos
+const MODEL_NAME = "gemini-2.5-flash"; 
 
 export interface AIParsedReminder {
   description: string;
@@ -16,13 +16,48 @@ export interface AIParsedReminder {
   frequency?: 'monthly' | 'weekly' | 'yearly';
 }
 
+// Helper function to handle 503 Overloaded errors with exponential backoff
+async function generateWithRetry(params: any, retries = 5) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await ai.models.generateContent(params);
+    } catch (error: any) {
+      // Check for various 503 error structures (Standard, Axios, Nested JSON)
+      let statusCode = error.status || error.response?.status;
+      if (!statusCode && error.error?.code) {
+         statusCode = error.error.code;
+      }
+      
+      const msg = (error.message || JSON.stringify(error)).toLowerCase();
+      
+      const isOverloaded = 
+          statusCode === 503 || 
+          msg.includes('overloaded') || 
+          msg.includes('unavailable') ||
+          msg.includes('503');
+
+      if (isOverloaded) {
+        if (i < retries - 1) {
+            // Backoff: 2s, 4s, 8s, 16s, 32s
+            const delay = 2000 * Math.pow(2, i); 
+            console.warn(`Gemini overloaded (Attempt ${i+1}/${retries}). Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+        }
+      }
+      throw error;
+    }
+  }
+  throw new Error("Failed to generate content after retries");
+}
+
 /**
  * Analyzes financial data to provide insights.
  */
 export const analyzeFinances = async (transactions: Transaction[], focus: 'general' | 'savings' | 'future' = 'general'): Promise<{ analysis: string }> => {
   if (!transactions.length) return { analysis: "Adicione transações para receber uma análise da IA." };
 
-  const transactionSummary = transactions.map(t => 
+  const transactionSummary = transactions.slice(0, 50).map(t => 
     `${t.date}: ${t.description} (${t.category}) - R$ ${t.amount} [${t.type}]`
   ).join("\n");
 
@@ -45,27 +80,21 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
     - Use ### para títulos de seções (ex: ### 📊 Resumo Geral).
     - Use **negrito** para valores e pontos chave.
     - Use listas com marcadores (- ) para facilitar a leitura.
-    - Seja direto, evite texto genérico. Fale diretamente com o usuário ("Você gastou...").
+    - Seja direto, evite texto genérico.
     
-    Dados das transações:
+    Dados das transações (Amostra das 50 mais recentes):
     ${transactionSummary}
   `;
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateWithRetry({
       model: MODEL_NAME,
       contents: prompt,
     });
     return { analysis: response.text || "Não foi possível gerar análise no momento." };
   } catch (error: any) {
     console.error("Erro ao analisar finanças:", error);
-    
-    // Handle Leaked/Invalid Key Error
-    if (error.toString().includes("leaked") || error.message?.includes("leaked") || error.toString().includes("403") || error.status === "PERMISSION_DENIED") {
-       return { analysis: "### ⚠️ Chave de API Bloqueada\n\nA chave de API utilizada foi identificada como vazada ou inválida pelo Google. \n\n**Para corrigir:**\n1. Gere uma nova chave no Google AI Studio.\n2. Atualize o arquivo `.env` ou a configuração de ambiente do projeto." };
-    }
-
-    return { analysis: "Erro ao conectar com o serviço de IA. Verifique sua chave de API ou tente novamente mais tarde." };
+    return { analysis: "O consultor IA está temporariamente indisponível (sobrecarga). Tente novamente em alguns segundos." };
   }
 };
 
@@ -73,55 +102,71 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
  * Parses natural language text into a structured transaction object.
  */
 export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
+  const today = new Date();
+  const currentYear = today.getFullYear(); 
+  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  
   const prompt = `
-    Analise o seguinte texto e extraia os dados de uma transação financeira.
+    Hoje é EXATAMENTE: ${todayStr}.
+    O ANO ATUAL É ${currentYear}. 
+    ATENÇÃO: Se o usuário não especificar o ano, ASSUMA ${currentYear}. NÃO USE 2024.
+
+    Analise o texto do usuário e extraia os dados da transação financeira.
+    Texto: "${text}"
     
-    PRIORIDADE DE CATEGORIZAÇÃO:
-    Tente categorizar a transação em uma das seguintes opções principais se fizer sentido:
-    - 'Alimentação' (mercado, restaurantes, delivery)
-    - 'Transporte' (uber, gasolina, ônibus, manutenção)
-    - 'Moradia' (aluguel, luz, internet, condomínio)
-    - 'Lazer' (cinema, jogos, streaming, festas)
-    - 'Saúde' (farmácia, médico, plano de saúde)
-    - 'Salário' (ou Renda Extra)
+    Regras Críticas:
+    1. DATA: 
+       - Se o usuário não falar data, use hoje (${today.toISOString().split('T')[0]}).
+       - Se disser "comecei em outubro", a data deve ser outubro DESTE ANO (${currentYear}).
+       - Se disser "ontem", calcule baseado na data de hoje (${todayStr}).
     
-    Se não se encaixar nessas, use uma categoria curta e descritiva (ex: 'Educação', 'Compras').
-    Se a data não for especificada, use a data de hoje (YYYY-MM-DD).
+    2. PARCELAMENTO:
+       - Identifique palavras como "10x", "10 vezes", "parcelado em 5".
+       - Campo 'installments': Número total de parcelas.
+       - Campo 'amount': O valor de UMA parcela. Se o usuário disser o valor total, divida.
+         EXEMPLO 1: "Compra de 1000 reais em 10x". -> amount: 100, installments: 10.
+         EXEMPLO 2: "10x de 50 reais". -> amount: 50, installments: 10.
     
-    Texto do usuário: "${text}"
+    3. CATEGORIA: Escolha entre: Alimentação, Transporte, Moradia, Lazer, Saúde, Salário, Investimentos, Outros.
   `;
 
   const schema: Schema = {
     type: Type.OBJECT,
     properties: {
-      description: { type: Type.STRING, description: "Descrição curta da transação" },
-      amount: { type: Type.NUMBER, description: "Valor numérico da transação" },
-      category: { type: Type.STRING, description: "Categoria da transação" },
-      date: { type: Type.STRING, description: "Data no formato YYYY-MM-DD" },
-      type: { type: Type.STRING, enum: ["income", "expense"], description: "Tipo da transação" }
+      description: { type: Type.STRING },
+      amount: { type: Type.NUMBER, description: "Valor da parcela mensal individual" },
+      category: { type: Type.STRING },
+      date: { type: Type.STRING, description: "YYYY-MM-DD (Data da compra ou da PRIMEIRA parcela)" },
+      type: { type: Type.STRING, enum: ["income", "expense"] },
+      installments: { type: Type.INTEGER, description: "Quantidade total de parcelas (1 se for à vista)" }
     },
     required: ["description", "amount", "category", "type", "date"]
   };
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateWithRetry({
       model: MODEL_NAME,
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema
-      }
+      config: { responseMimeType: "application/json", responseSchema: schema }
     });
 
-    const resultText = response.text;
-    if (!resultText) return null;
-
-    return JSON.parse(resultText) as AIParsedTransaction;
-  } catch (error: any) {
-    console.error("Erro ao interpretar texto:", error);
-    if (error.toString().includes("leaked") || error.message?.includes("leaked")) {
-        console.warn("API Key leaked - functionality disabled");
+    const result = JSON.parse(response.text || "{}") as AIParsedTransaction;
+    
+    // Defaults defensivos - CRITICAL TO AVOID undefined errors in UI
+    if (!result.description) result.description = "Nova Transação";
+    if (result.amount === undefined || result.amount === null) result.amount = 0;
+    if (!result.category) result.category = "Outros";
+    if (!result.type) result.type = "expense";
+    if (!result.date) result.date = new Date().toISOString().split('T')[0];
+    
+    // Garantir fallback de parcelas
+    if (!result.installments || result.installments < 1) {
+        result.installments = 1;
     }
+
+    return result;
+  } catch (error) {
+    console.error("Erro ao interpretar texto:", error);
     return null;
   }
 };
@@ -131,27 +176,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
  */
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
   const today = new Date().toISOString().split('T')[0];
-  
-  const prompt = `
-    Analise o seguinte texto e extraia os dados de um Lembrete de Pagamento (Conta a Pagar).
-    
-    Data de Referência (Hoje): ${today}
-    
-    Instruções de Data:
-    - Se o usuário disser "dia 15", assuma o próximo dia 15 mais próximo (se hoje é dia 20, dia 15 é do próximo mês).
-    - Se disser "daqui a 3 dias", calcule a data baseada em ${today}.
-    - Se não tiver data específica, assuma ${today}.
-
-    Instruções de Recorrência:
-    - Se disser "todo mês", "mensal", "assinatura", isRecurring = true, frequency = 'monthly'.
-    - Se disser "toda semana", "semanal", isRecurring = true, frequency = 'weekly'.
-    - Se disser "todo ano" ou "anual", isRecurring = true, frequency = 'yearly'.
-    - Se não mencionar repetição, isRecurring = false.
-    
-    Categorias sugeridas: Moradia, Alimentação, Saúde, Educação, Lazer, Investimentos, Cartão de Crédito.
-    
-    Texto do usuário: "${text}"
-  `;
+  const prompt = `Analise o texto para um lembrete de conta. Hoje é ${today}. Texto: "${text}"`;
 
   const schema: Schema = {
     type: Type.OBJECT,
@@ -167,20 +192,86 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
   };
 
   try {
-    const response = await ai.models.generateContent({
+    const response = await generateWithRetry({
       model: MODEL_NAME,
       contents: prompt,
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: schema
+      config: { responseMimeType: "application/json", responseSchema: schema }
+    });
+    const result = JSON.parse(response.text || "{}") as AIParsedReminder;
+    
+    if (!result.description) result.description = "Lembrete";
+    if (!result.amount) result.amount = 0;
+    if (!result.category) result.category = "Outros";
+    if (!result.dueDate) result.dueDate = today;
+    if (result.isRecurring === undefined) result.isRecurring = false;
+
+    return result;
+  } catch (error) {
+    console.error("Erro ao interpretar lembrete:", error);
+    return null;
+  }
+};
+
+export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
+  const prompt = `
+    Analise este documento (extrato bancário) e extraia todas as transações financeiras listadas.
+    Ignore saldos e cabeçalhos irrelevantes.
+    Ano atual de referência: ${new Date().getFullYear()}.
+    
+    Para cada transação:
+    - Descrição: Nome do estabelecimento.
+    - Valor: Positivo.
+    - Data: YYYY-MM-DD.
+    - Tipo: 'expense' ou 'income'.
+    - Categoria: Sugira uma.
+  `;
+
+  const schema: Schema = {
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        description: { type: Type.STRING },
+        amount: { type: Type.NUMBER },
+        category: { type: Type.STRING },
+        date: { type: Type.STRING, description: "YYYY-MM-DD" },
+        type: { type: Type.STRING, enum: ["income", "expense"] }
+      },
+      required: ["description", "amount", "category", "type", "date"]
+    }
+  };
+
+  try {
+    const response = await generateWithRetry({
+      model: MODEL_NAME,
+      contents: {
+        parts: [
+            {
+                inlineData: {
+                    mimeType: mimeType,
+                    data: base64Data
+                }
+            },
+            { text: prompt }
+        ]
+      },
+      config: { 
+        responseMimeType: "application/json", 
+        responseSchema: schema 
       }
     });
 
-    const resultText = response.text;
-    if (!resultText) return null;
-    return JSON.parse(resultText) as AIParsedReminder;
-  } catch (error: any) {
-    console.error("Erro ao interpretar lembrete:", error);
+    const results = JSON.parse(response.text || "[]") as AIParsedTransaction[];
+    return results.map(r => ({
+        ...r,
+        description: r.description || "Transação",
+        amount: r.amount || 0,
+        category: r.category || "Outros",
+        type: r.type || "expense",
+        date: r.date || new Date().toISOString().split('T')[0]
+    }));
+  } catch (error) {
+    console.error("Erro ao processar extrato:", error);
     return null;
   }
 };

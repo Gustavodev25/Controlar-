@@ -14,7 +14,9 @@
     "react": "^19.2.0",
     "recharts": "^3.4.1",
     "react-dom": "^19.2.0",
-    "clsx": "^2.1.1"
+    "clsx": "^2.1.1",
+    "react-pluggy-connect": "latest",
+    "firebase": "^12.6.0"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

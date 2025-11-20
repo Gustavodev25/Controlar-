@@ -12,7 +12,7 @@ import {
   Search, 
   Menu, 
   X,
-  Bot,
+  Bot, 
   FileSpreadsheet,
   Settings,
   ChevronLeft,
@@ -42,6 +42,7 @@ import {
   Lock,
   UserCircle,
   Shield,
+  ShieldCheck,
   Bell,
   Clock,
   AlertCircle,
@@ -76,12 +77,22 @@ import {
   Facebook,
   Send,
   Link,
-  Landmark
+  Landmark,
+  ScanLine,
+  Image as ImageIcon,
+  QrCode,
+  Building,
+  RotateCcw,
+  CreditCard,
+  Download,
+  Upload,
+  Copy
 } from 'lucide-react';
 
 // Helper to get icon based on category
 export const getCategoryIcon = (category: string, size: number = 16) => {
-  const normalized = category.toLowerCase();
+  // FIX: Safety check to prevent crash if category is undefined/null
+  const normalized = (category || "").toLowerCase();
   
   if (normalized.includes('aliment') || normalized.includes('comida') || normalized.includes('restaurante')) return <Utensils size={size} />;
   if (normalized.includes('transport') || normalized.includes('uber') || normalized.includes('gasolina')) return <Car size={size} />;
@@ -139,6 +150,7 @@ export {
   Lock,
   UserCircle,
   Shield,
+  ShieldCheck,
   Bell,
   Clock,
   AlertCircle,
@@ -173,5 +185,14 @@ export {
   Facebook,
   Send,
   Link,
-  Landmark
+  Landmark,
+  ScanLine,
+  ImageIcon,
+  QrCode,
+  Building,
+  RotateCcw,
+  CreditCard,
+  Download,
+  Upload,
+  Copy
 };

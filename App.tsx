@@ -9,7 +9,12 @@ import {
   ChevronRight,
   Bell,
   BrainCircuit,
-  Plus
+  Plus,
+  Calendar,
+  Filter,
+  Tag,
+  X,
+  RotateCcw
 } from './components/Icons';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal } from './types';
 import { StatsCards } from './components/StatsCards';
@@ -28,7 +33,8 @@ import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
 import { auth } from './services/firebase';
 import * as dbService from './services/database';
-import { BankConnect } from './components/BankConnect';
+import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
+import { NotificationCenter } from './components/NotificationCenter';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -74,6 +80,8 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
   </button>
 );
 
+type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -96,6 +104,15 @@ const App: React.FC = () => {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [familyGoals, setFamilyGoals] = useState<FamilyGoal[]>([]);
+
+  // Dashboard Filter State
+  const [filterMode, setFilterMode] = useState<FilterMode>('month');
+  const [dashboardCategory, setDashboardCategory] = useState<string>(''); // New Category Filter
+  const [dashboardDate, setDashboardDate] = useState<string>(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  });
+  const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
 
   // Member Management State
   const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>('FAMILY_OVERVIEW');
@@ -138,7 +155,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Data Listeners and other logic...
+  // Data Listeners
   useEffect(() => {
     if (!userId) return;
 
@@ -186,12 +203,64 @@ const App: React.FC = () => {
     };
   }, [userId, currentUser?.name]);
 
-  // Filter Logic
-  const filteredTransactions = useMemo(() => {
+  // --- Filter Logic ---
+  
+  // 1. Filter by Member (Base filtering)
+  const memberFilteredTransactions = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return transactions;
     return transactions.filter(t => t.memberId === activeMemberId);
   }, [transactions, activeMemberId]);
 
+  // Extract available categories from the filtered transactions
+  const availableCategories = useMemo(() => {
+    const cats = new Set(memberFilteredTransactions.map(t => t.category));
+    return Array.from(cats).sort().map(c => ({ value: c, label: c }));
+  }, [memberFilteredTransactions]);
+
+  // 2. Filter by Date/Period AND Category (Dashboard Only)
+  const dashboardFilteredTransactions = useMemo(() => {
+    // First apply Member filter
+    let filtered = memberFilteredTransactions;
+
+    // Apply Category Filter
+    if (dashboardCategory) {
+        filtered = filtered.filter(t => t.category === dashboardCategory);
+    }
+
+    if (filterMode === 'all') return filtered;
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+
+    return filtered.filter(t => {
+      // Ensure transaction date handles local/UTC properly by appending time
+      const tDate = new Date(t.date + 'T12:00:00');
+      
+      if (filterMode === 'month') {
+        return t.date.startsWith(dashboardDate);
+      }
+      
+      if (filterMode === 'year') {
+         return tDate.getFullYear() === dashboardYear;
+      }
+      
+      if (filterMode === 'last3') {
+         const cutoff = new Date(now);
+         cutoff.setMonth(now.getMonth() - 3);
+         return tDate >= cutoff && tDate <= now;
+      }
+
+      if (filterMode === 'last6') {
+         const cutoff = new Date(now);
+         cutoff.setMonth(now.getMonth() - 6);
+         return tDate >= cutoff && tDate <= now;
+      }
+
+      return true;
+    });
+  }, [memberFilteredTransactions, dashboardDate, dashboardYear, filterMode, dashboardCategory]);
+
+  // 3. Filter Reminders
   const filteredReminders = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return reminders;
     return reminders.filter(t => t.memberId === activeMemberId);
@@ -205,18 +274,27 @@ const App: React.FC = () => {
       return due <= today;
   }).length;
 
+  // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
-    const totalIncome = filteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-    const totalExpense = filteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+    const totalIncome = dashboardFilteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
+    const totalExpense = dashboardFilteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
     return {
       totalIncome,
       totalExpense,
       totalBalance: totalIncome - totalExpense,
       monthlySavings: totalIncome > 0 ? (totalIncome - totalExpense) : 0
     };
-  }, [filteredTransactions]);
+  }, [dashboardFilteredTransactions]);
 
   // Handlers
+  const handleResetFilters = () => {
+     const now = new Date();
+     setFilterMode('month');
+     setDashboardDate(`${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`);
+     setDashboardCategory('');
+     toast.message({ text: "Filtros restaurados para este mês." });
+  };
+
   const handleAddMember = async (name: string, avatarUrl: string) => {
     if(userId) {
       await dbService.addMember(userId, { name, avatarUrl, role: 'member' });
@@ -354,7 +432,6 @@ const App: React.FC = () => {
     toast.success("Meta removida.");
   };
 
-
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW' 
         ? 'Família' 
@@ -365,8 +442,8 @@ const App: React.FC = () => {
     }
 
     switch(activeTab) {
-      case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Visão geral pessoal.` };
-      case 'table': return { title: 'Transações', desc: 'Gerencie lançamentos deste perfil.' };
+      case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
+      case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
       default: return { title: 'Finanças', desc: '' };
@@ -390,7 +467,6 @@ const App: React.FC = () => {
   }
 
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
-
   if (!currentUser) {
     if (showLanding) {
       return <LandingPage onLogin={() => setShowLanding(false)} />;
@@ -491,17 +567,6 @@ const App: React.FC = () => {
                 </>
               )}
            </div>
-           
-           {/* Added Pluggy Connect Button in Sidebar */}
-           {isSidebarOpen && (
-             <div className="px-1">
-               <BankConnect 
-                  userId={userId} 
-                  onSyncComplete={() => { /* Optional: Refresh data logic if needed */ }} 
-                  isSidebar={true}
-               />
-             </div>
-           )}
 
            <div className="space-y-1">
               {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
@@ -529,18 +594,87 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className={`flex-1 min-w-0 transition-all duration-300 ml-20 lg:ml-0 relative`}>
-        <header className="bg-gray-950/80 backdrop-blur-md h-20 border-b border-gray-800 sticky top-0 z-40 px-6 flex items-center justify-between">
-          <div className="flex flex-col">
-             <h1 className="text-2xl font-bold text-[#faf9f5] tracking-tight">
+        <header className="bg-gray-950/80 backdrop-blur-md h-20 border-b border-gray-800 sticky top-0 z-40 px-6 flex items-center justify-between gap-4">
+          <div className="flex flex-col min-w-0">
+             <h1 className="text-2xl font-bold text-[#faf9f5] tracking-tight truncate">
                {headerInfo.title}
              </h1>
-             <p className="text-xs text-gray-400 font-medium">
+             <p className="text-xs text-gray-400 font-medium truncate hidden sm:block">
                {headerInfo.desc}
              </p>
           </div>
           
           <div className="flex items-center gap-4">
-             {/* Replaced button with BankConnect main button when appropriate, or keep new reminder */}
+             {/* Dashboard Advanced Filters */}
+             {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
+                <div className="flex items-center gap-2">
+                   {/* Filter Mode Selector */}
+                   <div className="w-36 hidden md:block">
+                     <CustomSelect 
+                        value={filterMode}
+                        onChange={(v) => setFilterMode(v as any)}
+                        options={[
+                          { value: 'month', label: 'Mensal' },
+                          { value: 'year', label: 'Anual' },
+                          { value: 'last3', label: 'Últimos 3 Meses' },
+                          { value: 'last6', label: 'Últimos 6 Meses' },
+                          { value: 'all', label: 'Tudo' }
+                        ]}
+                        icon={<Filter size={16} />}
+                        className="text-sm"
+                     />
+                   </div>
+
+                   {/* Dynamic Date Picker based on mode */}
+                   {filterMode === 'month' && (
+                     <div className="w-64">
+                       <CustomMonthPicker 
+                         value={dashboardDate}
+                         onChange={setDashboardDate}
+                       />
+                     </div>
+                   )}
+
+                   {filterMode === 'year' && (
+                    <div className="w-28">
+                      <CustomSelect 
+                        value={dashboardYear}
+                        onChange={(v) => setDashboardYear(Number(v))}
+                        options={Array.from({length: 5}, (_, i) => {
+                           const y = new Date().getFullYear() - i;
+                           return { value: y, label: String(y) };
+                        })}
+                        icon={<Calendar size={16} />}
+                        className="text-sm"
+                      />
+                    </div>
+                   )}
+
+                   {/* Category Filter */}
+                   <div className="w-40 hidden md:block">
+                      <CustomSelect 
+                        value={dashboardCategory}
+                        onChange={setDashboardCategory}
+                        options={[{ value: '', label: 'Todas Categorias' }, ...availableCategories]}
+                        icon={<Tag size={16} />}
+                        placeholder="Todas Categorias"
+                        className="text-sm"
+                      />
+                   </div>
+
+                   {/* Clear Filters Button */}
+                   {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
+                     <button 
+                       onClick={handleResetFilters}
+                       className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700"
+                       title="Limpar Filtros (Voltar para Hoje)"
+                     >
+                       <RotateCcw size={16} />
+                     </button>
+                   )}
+                </div>
+             )}
+
              {activeTab === 'reminders' && activeMemberId !== 'FAMILY_OVERVIEW' && (
                <button 
                  onClick={() => setIsReminderModalOpen(true)}
@@ -553,6 +687,9 @@ const App: React.FC = () => {
 
              <div className="h-8 w-px bg-gray-800 mx-2 hidden sm:block"></div>
              
+             {/* Notification Center added here */}
+             <NotificationCenter reminders={reminders} />
+
              <UserMenu 
                 user={currentUser} 
                 onLogout={() => auth.signOut()} 
@@ -577,22 +714,25 @@ const App: React.FC = () => {
              <>
                {activeTab === 'dashboard' && (
                   <>
-                    <SalaryManager 
-                      baseSalary={currentUser.baseSalary || 0} 
-                      currentIncome={stats.totalIncome}
-                      onUpdateSalary={handleUpdateSalary}
-                      onAddExtra={handleAddExtraIncome}
-                    />
+                    {/* Only show Salary Manager in Monthly mode where it makes sense */}
+                    {filterMode === 'month' && !dashboardCategory && (
+                      <SalaryManager 
+                        baseSalary={currentUser.baseSalary || 0} 
+                        currentIncome={stats.totalIncome}
+                        onUpdateSalary={handleUpdateSalary}
+                        onAddExtra={handleAddExtraIncome}
+                      />
+                    )}
                     <StatsCards stats={stats} isLoading={isLoadingData} />
                     <div className="animate-fade-in space-y-6">
-                      <DashboardCharts transactions={filteredTransactions} isLoading={isLoadingData} />
+                      <DashboardCharts transactions={dashboardFilteredTransactions} isLoading={isLoadingData} />
                     </div>
                   </>
                )}
 
                {activeTab === 'table' && (
                   <div className="h-[calc(100vh-280px)] animate-fade-in">
-                    <ExcelTable transactions={filteredTransactions} onDelete={handleDeleteTransaction} />
+                    <ExcelTable transactions={memberFilteredTransactions} onDelete={handleDeleteTransaction} />
                   </div>
                )}
 
@@ -609,7 +749,7 @@ const App: React.FC = () => {
 
                {activeTab === 'advisor' && (
                   <div className="h-[calc(100vh-140px)]">
-                     <AIAdvisor transactions={filteredTransactions} />
+                     <AIAdvisor transactions={memberFilteredTransactions} />
                   </div>
                )}
              </>
@@ -630,6 +770,7 @@ const App: React.FC = () => {
         onUpdateUser={async (u) => {
            if(userId) await dbService.updateUserProfile(userId, u);
         }}
+        transactions={transactions}
       />
     </div>
   );

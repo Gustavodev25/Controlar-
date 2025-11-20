@@ -1,6 +1,7 @@
+
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight } from './Icons';
 import { useToasts } from './Toast';
 
 interface SalaryManagerProps {
@@ -38,14 +39,29 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   // Validation State
   const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean}>({});
 
-  // Calculated values
-  // If baseSalary is 0, we use a fallback (e.g., 1) to avoid division by zero in UI display, though logic handles it.
-  const safeMonthlyHours = parseFloat(monthlyHours) || 0;
-  const safeOtQuantity = parseFloat(otQuantity) || 0;
-  
-  const hourlyRate = safeMonthlyHours > 0 ? baseSalary / safeMonthlyHours : 0;
-  const otRate = hourlyRate * (1 + (parseFloat(otPercent) || 50) / 100);
-  const totalCalculated = otRate * safeOtQuantity;
+  // --- Calculated Values (Real-time) ---
+  // Helper to safely parse inputs that might contain commas
+  const parseInput = (val: string) => {
+      if (!val) return 0;
+      // Replace comma with dot
+      const normalized = val.replace(',', '.');
+      const parsed = parseFloat(normalized);
+      return isNaN(parsed) ? 0 : parsed;
+  };
+
+  // 1. Valor da Hora Normal
+  const safeBaseSalary = baseSalary || 0;
+  const safeMonthlyHours = parseInput(monthlyHours) || 220; 
+  const hourlyRate = safeMonthlyHours > 0 ? safeBaseSalary / safeMonthlyHours : 0;
+
+  // 2. Valor da Hora com Adicional (Hora + %)
+  const safeOtPercent = parseInput(otPercent) || 50;
+  const otMultiplier = 1 + (safeOtPercent / 100);
+  const otHourlyRate = hourlyRate * otMultiplier;
+
+  // 3. Total Final
+  const safeOtQuantity = parseInput(otQuantity) || 0;
+  const totalCalculated = otHourlyRate * safeOtQuantity;
 
   // --- Effects for Animation ---
   useEffect(() => {
@@ -68,7 +84,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
 
   const handleSaveSalary = () => {
     setSalaryError(null);
-    const val = parseFloat(tempSalary);
+    const val = parseInput(tempSalary);
     
     if (isNaN(val)) {
       setSalaryError("Insira um número válido");
@@ -96,7 +112,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
 
   const handleAddSimple = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseFloat(extraAmount);
+    const val = parseInput(extraAmount);
     if (!isNaN(val) && val > 0) {
       onAddExtra(val, extraDesc);
       handleCloseModal();
@@ -113,18 +129,20 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     setErrors(newErrors);
 
     if (newErrors.monthlyHours || newErrors.otQuantity) {
-      toast.error("Verifique os campos em vermelho.");
+      toast.error("Preencha as horas corretamente.");
       return;
     }
 
     if (totalCalculated > 0) {
-      const hours = parseFloat(otQuantity);
-      const percent = parseFloat(otPercent);
-      const desc = `Hora Extra (${hours}h à ${percent}%)`;
-      onAddExtra(totalCalculated, desc);
+      // Generate description with calculation details
+      const desc = `Hora Extra (${safeOtQuantity.toString().replace('.', ',')}h à ${safeOtPercent}%)`;
+      // Arredondamos para 2 casas decimais para o registro
+      const finalAmount = Math.round((totalCalculated + Number.EPSILON) * 100) / 100;
+      
+      onAddExtra(finalAmount, desc);
       handleCloseModal();
     } else {
-      toast.error("Valor calculado é inválido.");
+      toast.error("O valor total deve ser maior que zero.");
     }
   };
 
@@ -146,7 +164,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   return (
     <>
       {/* Widget Principal do Dashboard */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 shadow-sm overflow-hidden mb-6 flex flex-col lg:flex-row">
+      <div className="bg-gray-900 rounded-xl border border-gray-800 shadow-sm overflow-hidden mb-6 flex flex-col lg:flex-row animate-fade-in">
         
         {/* Lado Esquerdo: Visualização e Edição do Salário */}
         <div className="p-6 flex-1 relative overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-800">
@@ -160,7 +178,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
             </div>
             {!isEditing && baseSalary > 0 && (
                <button 
-                 onClick={() => { setTempSalary(baseSalary.toString()); setIsEditing(true); setSalaryError(null); }} 
+                 onClick={() => { setTempSalary(baseSalary.toString().replace('.', ',')); setIsEditing(true); setSalaryError(null); }} 
                  className="text-gray-500 hover:text-[#d97757] transition-colors text-xs flex items-center gap-1"
                >
                  <Edit2 size={12} /> Editar Meta
@@ -174,7 +192,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                   <div className="flex items-center gap-2 w-full">
                     <span className="text-gray-400 text-xl font-medium">R$</span>
                     <input 
-                        type="number"
+                        type="text"
+                        inputMode="decimal"
                         value={tempSalary}
                         onChange={(e) => {
                             setTempSalary(e.target.value);
@@ -183,7 +202,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                         onKeyDown={handleKeyDown}
                         className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
                         autoFocus
-                        placeholder="0.00"
+                        placeholder="0,00"
                     />
                     <button 
                     onClick={handleSaveSalary}
@@ -201,7 +220,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
               </div>
             ) : (
               <div 
-                onClick={() => { setTempSalary(baseSalary.toString()); setIsEditing(true); setSalaryError(null); }}
+                onClick={() => { setTempSalary(baseSalary.toString().replace('.', ',')); setIsEditing(true); setSalaryError(null); }}
                 className="flex items-baseline gap-2 cursor-pointer hover:bg-gray-800/50 p-2 -ml-2 rounded-lg transition-all group w-full"
                 title="Clique para editar seu salário base"
               >
@@ -354,10 +373,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                         <div className="relative group">
                             <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
                             <input 
-                            type="number" 
+                            type="text"
+                            inputMode="decimal"
                             required
-                            step="0.01"
-                            placeholder="0.00"
+                            placeholder="0,00"
                             value={extraAmount}
                             onChange={e => setExtraAmount(e.target.value)}
                             className="input-primary pl-10 text-xl font-bold text-white focus:border-[#d97757]"
@@ -378,114 +397,134 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
               {/* ABA: CALCULADORA */}
               {activeTab === 'calculator' && (
                 <div className="space-y-6 animate-slide-up">
-                   <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
-                      <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
-                      <div>
-                        <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Como funciona o cálculo?</h4>
-                        {baseSalary > 0 ? (
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Baseado no seu salário atual de {formatCurrency(baseSalary)}. O cálculo divide o salário pelas horas mensais e aplica o percentual extra.
-                          </p>
-                        ) : (
-                          <p className="text-xs text-gray-400 leading-relaxed">
-                            Defina um salário base no painel principal para usar a calculadora com precisão.
-                          </p>
-                        )}
-                      </div>
-                   </div>
+                   {baseSalary > 0 ? (
+                    <>
+                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                          <div>
+                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Hora Extra</h4>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                              Usando seu salário base de <span className="text-white font-bold">{formatCurrency(baseSalary)}</span>.
+                              <br />
+                              <span className="opacity-70">Fórmula: (Salário / Divisor) * (1 + %) * Horas</span>
+                            </p>
+                          </div>
+                       </div>
 
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Inputs */}
-                      <div className="space-y-5">
-                         <div>
-                            <label className="flex justify-between text-xs font-medium text-gray-400 mb-1.5">
-                              <span>Divisor Mensal (Horas)</span>
-                            </label>
-                            <div className="relative group">
-                              <Clock className={`absolute left-3 top-3.5 ${errors.monthlyHours ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#d97757]'}`} size={16} />
-                              <input 
-                                type="number" 
-                                value={monthlyHours}
-                                onChange={e => { setMonthlyHours(e.target.value); if(errors.monthlyHours) setErrors({...errors, monthlyHours: false}); }}
-                                className={`input-primary pl-10 ${errors.monthlyHours ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
-                              />
-                            </div>
-                         </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Inputs */}
+                          <div className="space-y-5">
+                             <div>
+                                <label className="flex justify-between text-xs font-medium text-gray-400 mb-1.5">
+                                  <span>Divisor Mensal (Horas)</span>
+                                </label>
+                                <div className="relative group">
+                                  <Clock className={`absolute left-3 top-3.5 ${errors.monthlyHours ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#d97757]'}`} size={16} />
+                                  <input 
+                                    type="text" 
+                                    inputMode="numeric"
+                                    value={monthlyHours}
+                                    onChange={e => { setMonthlyHours(e.target.value); if(errors.monthlyHours) setErrors({...errors, monthlyHours: false}); }}
+                                    className={`input-primary pl-10 ${errors.monthlyHours ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
+                                    placeholder="Padrão: 220"
+                                  />
+                                </div>
+                             </div>
 
-                         <div>
-                            <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                              Adicional (%)
-                            </label>
-                            <div className="grid grid-cols-3 gap-2">
-                               {[
-                                 { label: '50%', value: '50', desc: 'Dia útil' }, 
-                                 { label: '60%', value: '60', desc: 'Noturno' }, 
-                                 { label: '100%', value: '100', desc: 'Feriado' }
-                               ].map((opt) => (
-                                 <button
-                                   key={opt.value}
-                                   onClick={() => setOtPercent(opt.value)}
-                                   className={`p-2 rounded-lg border text-center transition-all ${otPercent === opt.value ? 'bg-[#d97757] border-[#d97757] text-[#faf9f5] shadow-lg' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                                 >
-                                   <div className="font-bold text-sm">{opt.label}</div>
-                                 </button>
-                               ))}
-                            </div>
-                         </div>
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Adicional (%)
+                                </label>
+                                <div className="grid grid-cols-3 gap-2">
+                                   {[
+                                     { label: '50%', value: '50', desc: 'Dia útil' }, 
+                                     { label: '60%', value: '60', desc: 'Noturno' }, 
+                                     { label: '100%', value: '100', desc: 'Feriado' }
+                                   ].map((opt) => (
+                                     <button
+                                       key={opt.value}
+                                       onClick={() => setOtPercent(opt.value)}
+                                       className={`p-2 rounded-lg border text-center transition-all ${otPercent === opt.value ? 'bg-[#d97757] border-[#d97757] text-[#faf9f5] shadow-lg' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                                     >
+                                       <div className="font-bold text-sm">{opt.label}</div>
+                                     </button>
+                                   ))}
+                                </div>
+                             </div>
 
-                         <div>
-                            <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                              Quantidade de Horas
-                            </label>
-                            <div className="relative group">
-                                <input 
-                                    type="number" 
-                                    placeholder="Ex: 2.5"
-                                    value={otQuantity}
-                                    onChange={e => { setOtQuantity(e.target.value); if(errors.otQuantity) setErrors({...errors, otQuantity: false}); }}
-                                    className={`input-primary text-lg font-bold ${errors.otQuantity ? 'border-red-500 bg-red-900/10 focus:border-red-500 text-red-400' : 'focus:border-[#d97757]'}`}
-                                    autoFocus
-                                />
-                                <span className="absolute right-3 top-3.5 text-xs font-bold text-gray-500 uppercase">Horas</span>
-                            </div>
-                         </div>
-                      </div>
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Quantidade de Horas Feitas
+                                </label>
+                                <div className="relative group">
+                                    <input 
+                                        type="text"
+                                        inputMode="decimal" 
+                                        placeholder="Ex: 2,5"
+                                        value={otQuantity}
+                                        onChange={e => { setOtQuantity(e.target.value); if(errors.otQuantity) setErrors({...errors, otQuantity: false}); }}
+                                        className={`input-primary text-lg font-bold ${errors.otQuantity ? 'border-red-500 bg-red-900/10 focus:border-red-500 text-red-400' : 'focus:border-[#d97757]'}`}
+                                        autoFocus
+                                    />
+                                    <span className="absolute right-3 top-3.5 text-xs font-bold text-gray-500 uppercase">Horas</span>
+                                </div>
+                             </div>
+                          </div>
 
-                      {/* Result Card */}
-                      <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
-                         
-                         <div className="space-y-3 relative z-0 mb-4">
-                            <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Resumo</h5>
-                            
-                            <div className="flex justify-between items-center text-xs">
-                               <span className="text-gray-400">Valor Hora</span>
-                               <span className="text-gray-300 font-mono">{formatCurrency(hourlyRate)}</span>
-                            </div>
-                            <div className="flex justify-between items-center text-xs">
-                               <span className="text-gray-400">Hora Extra (+{otPercent}%)</span>
-                               <span className="text-[#eab3a3] font-mono font-medium">{formatCurrency(otRate)}</span>
-                            </div>
-                         </div>
+                          {/* Result Card */}
+                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+                             
+                             <div className="space-y-3 relative z-0 mb-4">
+                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhamento</h5>
+                                
+                                <div className="flex justify-between items-center text-xs group">
+                                   <span className="text-gray-400">Valor da Hora Normal</span>
+                                   <span className="text-gray-300 font-mono">{formatCurrency(hourlyRate)}</span>
+                                </div>
+                                
+                                <div className="flex justify-between items-center text-xs group">
+                                   <span className="text-gray-400 flex items-center gap-1"><ChevronRight size={10}/> Valor Hora Extra (+{otPercent}%)</span>
+                                   <span className="text-[#eab3a3] font-mono font-medium">{formatCurrency(otHourlyRate)}</span>
+                                </div>
+                             </div>
 
-                         <div className="relative z-0">
-                            <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner ${totalCalculated > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
-                               <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 text-center">Total a Receber</p>
-                               <p className={`text-3xl font-bold text-center ${totalCalculated > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                 {formatCurrency(totalCalculated)}
-                               </p>
-                            </div>
-                            
-                            <button 
-                              onClick={handleAddCalculated}
-                              disabled={totalCalculated <= 0}
-                              className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                            >
-                              <Check size={18} />
-                              Lançar
-                            </button>
-                         </div>
-                      </div>
-                   </div>
+                             <div className="relative z-0">
+                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${totalCalculated > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total a Receber</p>
+                                   <p className={`text-3xl font-bold ${totalCalculated > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                     {formatCurrency(totalCalculated)}
+                                   </p>
+                                </div>
+                                
+                                <button 
+                                  onClick={handleAddCalculated}
+                                  disabled={totalCalculated <= 0}
+                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                  <Check size={18} />
+                                  Lançar Renda
+                                </button>
+                             </div>
+                          </div>
+                       </div>
+                    </>
+                   ) : (
+                     <div className="text-center py-12 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
+                        <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-500">
+                           <AlertCircle size={32} />
+                        </div>
+                        <h3 className="text-white font-bold text-lg mb-2">Salário Base Não Definido</h3>
+                        <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">
+                          Para calcular horas extras com precisão, precisamos saber seu salário base mensal primeiro.
+                        </p>
+                        <button 
+                          onClick={() => { setIsModalOpen(false); setTimeout(() => { setIsEditing(true); setTempSalary(''); }, 300); }}
+                          className="px-6 py-2 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-colors"
+                        >
+                          Definir Salário Agora
+                        </button>
+                     </div>
+                   )}
                 </div>
               )}
             </div>

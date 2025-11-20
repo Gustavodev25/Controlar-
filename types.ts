@@ -6,6 +6,7 @@ export interface User {
   email: string;
   avatarUrl?: string;
   baseSalary?: number;
+  twoFactorEnabled?: boolean; // Novo campo para status do 2FA
 }
 
 export interface Member {
@@ -65,6 +66,7 @@ export interface AIParsedTransaction {
   category: string;
   date: string;
   type: TransactionType;
+  installments?: number; // Novo campo: Quantidade de parcelas detectada
 }
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';

@@ -1,208 +1,179 @@
 
+import { 
+    doc, 
+    setDoc, 
+    getDoc, 
+    collection, 
+    addDoc, 
+    deleteDoc, 
+    updateDoc,
+    onSnapshot,
+    query,
+    where,
+    orderBy
+} from "firebase/firestore";
+import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal } from "../types";
-
-const DB_KEY = 'financas_ai_db';
-
-// --- Helpers for LocalStorage ---
-const getDB = () => {
-  try {
-    const str = localStorage.getItem(DB_KEY);
-    return str ? JSON.parse(str) : { users: {} };
-  } catch (e) {
-    console.error("Error reading DB", e);
-    return { users: {} };
-  }
-};
-
-const saveDB = (db: any) => {
-  try {
-    localStorage.setItem(DB_KEY, JSON.stringify(db));
-    // Dispatch event to simulate realtime updates across components
-    window.dispatchEvent(new Event('db-change'));
-  } catch (e) {
-    console.error("Error saving DB", e);
-  }
-};
-
-// --- Realtime Subscription System ---
-const listeners: Function[] = [];
-
-if (typeof window !== 'undefined') {
-    window.addEventListener('db-change', () => {
-       listeners.forEach(cb => cb());
-    });
-}
-
-const subscribe = (callback: () => void) => {
-    listeners.push(callback);
-    return () => {
-        const idx = listeners.indexOf(callback);
-        if(idx > -1) listeners.splice(idx, 1);
-    }
-}
 
 // --- User Services ---
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
-  const db = getDB();
-  if (!db.users) db.users = {};
-  if (!db.users[userId]) db.users[userId] = {};
-  
-  db.users[userId].profile = { ...(db.users[userId].profile || {}), ...data };
-  saveDB(db);
+  if(!db) return;
+  const userRef = doc(db, "users", userId);
+  // Merge true para não sobrescrever outros campos
+  await setDoc(userRef, { profile: data }, { merge: true });
 };
 
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
-  const db = getDB();
-  return db.users?.[userId]?.profile || null;
+  if(!db) return null;
+  const userRef = doc(db, "users", userId);
+  const snap = await getDoc(userRef);
+  
+  if (snap.exists()) {
+      return snap.data().profile as Partial<User>;
+  }
+  return null;
 };
 
 export const listenToUserProfile = (userId: string, callback: (data: Partial<User>) => void) => {
-    const handler = () => {
-        const db = getDB();
-        callback(db.users?.[userId]?.profile || {});
-    };
-    handler(); // Initial call
-    return subscribe(handler);
+    if(!db) return () => {};
+    const userRef = doc(db, "users", userId);
+    
+    return onSnapshot(userRef, (doc) => {
+        if (doc.exists()) {
+            callback(doc.data().profile || {});
+        } else {
+            callback({});
+        }
+    });
 };
 
 // --- Members Services ---
 export const addMember = async (userId: string, member: Omit<Member, 'id'>) => {
-  const db = getDB();
-  if (!db.users[userId].members) db.users[userId].members = {};
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  db.users[userId].members[id] = { id, ...member };
-  saveDB(db);
-  return id;
+  if(!db) return "";
+  const membersRef = collection(db, "users", userId, "members");
+  const docRef = await addDoc(membersRef, member);
+  
+  // Opcional: Atualizar o documento com o próprio ID se necessário, 
+  // mas o Firestore já dá o ID. O App assume que o objeto retornado tem ID.
+  return docRef.id;
 };
 
 export const listenToMembers = (userId: string, callback: (members: Member[]) => void) => {
-  const handler = () => {
-    const db = getDB();
-    const memMap = db.users?.[userId]?.members || {};
-    const list = Object.values(memMap) as Member[];
-    callback(list);
-  };
-  handler();
-  return subscribe(handler);
+  if(!db) return () => {};
+  const membersRef = collection(db, "users", userId, "members");
+  
+  return onSnapshot(membersRef, (snapshot) => {
+      const members: Member[] = [];
+      snapshot.forEach(doc => {
+          members.push({ id: doc.id, ...doc.data() } as Member);
+      });
+      callback(members);
+  });
 };
 
 // --- Family Goals Services ---
 export const addFamilyGoal = async (userId: string, goal: Omit<FamilyGoal, 'id'>) => {
-    const db = getDB();
-    if (!db.users[userId].goals) db.users[userId].goals = {};
-    const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-    db.users[userId].goals[id] = { id, ...goal };
-    saveDB(db);
+    if(!db) return;
+    const goalsRef = collection(db, "users", userId, "goals");
+    await addDoc(goalsRef, goal);
 };
 
 export const updateFamilyGoal = async (userId: string, goal: FamilyGoal) => {
-    const db = getDB();
-    if (db.users[userId]?.goals?.[goal.id]) {
-        db.users[userId].goals[goal.id] = goal;
-        saveDB(db);
-    }
+    if(!db) return;
+    const goalRef = doc(db, "users", userId, "goals", goal.id);
+    const { id, ...data } = goal; 
+    await updateDoc(goalRef, data);
 };
 
 export const deleteFamilyGoal = async (userId: string, goalId: string) => {
-    const db = getDB();
-    if (db.users[userId]?.goals?.[goalId]) {
-        delete db.users[userId].goals[goalId];
-        saveDB(db);
-    }
+    if(!db) return;
+    const goalRef = doc(db, "users", userId, "goals", goalId);
+    await deleteDoc(goalRef);
 };
 
 export const listenToGoals = (userId: string, callback: (goals: FamilyGoal[]) => void) => {
-    const handler = () => {
-        const db = getDB();
-        const map = db.users?.[userId]?.goals || {};
-        callback(Object.values(map) as FamilyGoal[]);
-    };
-    handler();
-    return subscribe(handler);
+    if(!db) return () => {};
+    const goalsRef = collection(db, "users", userId, "goals");
+    
+    return onSnapshot(goalsRef, (snapshot) => {
+        const goals: FamilyGoal[] = [];
+        snapshot.forEach(doc => {
+            goals.push({ id: doc.id, ...doc.data() } as FamilyGoal);
+        });
+        callback(goals);
+    });
 }
 
 // --- Transactions Services ---
 export const addTransaction = async (userId: string, transaction: Omit<Transaction, 'id'>) => {
-  const db = getDB();
-  if (!db.users) db.users = {};
-  if (!db.users[userId]) db.users[userId] = {};
-  if (!db.users[userId].transactions) db.users[userId].transactions = {};
-  
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  db.users[userId].transactions[id] = { id, ...transaction };
-  saveDB(db);
-  return id;
+  if(!db) return "";
+  const txRef = collection(db, "users", userId, "transactions");
+  const docRef = await addDoc(txRef, transaction);
+  return docRef.id;
 };
 
 export const deleteTransaction = async (userId: string, transactionId: string) => {
-  const db = getDB();
-  if (db.users?.[userId]?.transactions?.[transactionId]) {
-      delete db.users[userId].transactions[transactionId];
-      saveDB(db);
-  }
+  if(!db) return;
+  const txRef = doc(db, "users", userId, "transactions", transactionId);
+  await deleteDoc(txRef);
 };
 
 export const restoreTransaction = async (userId: string, transaction: Transaction) => {
-   const db = getDB();
-   if (!db.users) db.users = {};
-   if (!db.users[userId]) db.users[userId] = {};
-   if (!db.users[userId].transactions) db.users[userId].transactions = {};
-   
-   db.users[userId].transactions[transaction.id] = transaction;
-   saveDB(db);
+   if(!db) return;
+   // Ao restaurar, usamos o ID original se possível, ou criamos novo
+   // SetDoc permite definir o ID manualmente
+   const txRef = doc(db, "users", userId, "transactions", transaction.id);
+   const { id, ...data } = transaction;
+   await setDoc(txRef, data);
 };
 
 export const listenToTransactions = (userId: string, callback: (transactions: Transaction[]) => void) => {
-  const handler = () => {
-    const db = getDB();
-    const txMap = db.users?.[userId]?.transactions || {};
-    const formatted: Transaction[] = Object.values(txMap);
-    // Sort by date desc
-    formatted.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    callback(formatted);
-  };
+  if(!db) return () => {};
+  const txRef = collection(db, "users", userId, "transactions");
+  // Ordenação por data descendente idealmente deve ser feita na query, 
+  // mas requer índices compostos no Firestore às vezes. Faremos no cliente por simplicidade.
   
-  handler();
-  return subscribe(handler);
+  return onSnapshot(txRef, (snapshot) => {
+      const transactions: Transaction[] = [];
+      snapshot.forEach(doc => {
+          transactions.push({ id: doc.id, ...doc.data() } as Transaction);
+      });
+      // Sort client-side
+      transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+      callback(transactions);
+  });
 };
 
 // --- Reminders Services ---
 export const addReminder = async (userId: string, reminder: Omit<Reminder, 'id'>) => {
-  const db = getDB();
-  if (!db.users) db.users = {};
-  if (!db.users[userId]) db.users[userId] = {};
-  if (!db.users[userId].reminders) db.users[userId].reminders = {};
-  
-  const id = Date.now().toString(36) + Math.random().toString(36).substr(2);
-  db.users[userId].reminders[id] = { id, ...reminder };
-  saveDB(db);
-  return id;
+  if(!db) return "";
+  const remRef = collection(db, "users", userId, "reminders");
+  const docRef = await addDoc(remRef, reminder);
+  return docRef.id;
 };
 
 export const deleteReminder = async (userId: string, reminderId: string) => {
-  const db = getDB();
-  if (db.users?.[userId]?.reminders?.[reminderId]) {
-      delete db.users[userId].reminders[reminderId];
-      saveDB(db);
-  }
+  if(!db) return;
+  const remRef = doc(db, "users", userId, "reminders", reminderId);
+  await deleteDoc(remRef);
 };
 
 export const updateReminder = async (userId: string, reminder: Reminder) => {
-    const db = getDB();
-    if (db.users?.[userId]?.reminders?.[reminder.id]) {
-        db.users[userId].reminders[reminder.id] = reminder;
-        saveDB(db);
-    }
+    if(!db) return;
+    const remRef = doc(db, "users", userId, "reminders", reminder.id);
+    const { id, ...data } = reminder;
+    await updateDoc(remRef, data);
 };
 
 export const listenToReminders = (userId: string, callback: (reminders: Reminder[]) => void) => {
-  const handler = () => {
-    const db = getDB();
-    const remMap = db.users?.[userId]?.reminders || {};
-    const formatted: Reminder[] = Object.values(remMap);
-    callback(formatted);
-  };
+  if(!db) return () => {};
+  const remRef = collection(db, "users", userId, "reminders");
   
-  handler();
-  return subscribe(handler);
+  return onSnapshot(remRef, (snapshot) => {
+      const reminders: Reminder[] = [];
+      snapshot.forEach(doc => {
+          reminders.push({ id: doc.id, ...doc.data() } as Reminder);
+      });
+      callback(reminders);
+  });
 };

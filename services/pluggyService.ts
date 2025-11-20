@@ -2,9 +2,9 @@
 import { Transaction } from "../types";
 import { addTransaction } from "./database";
 
-// CREDENCIAIS HARDCODED (Inseridas diretamente conforme solicitado)
-const PLUGGY_CLIENT_ID = "dbec653f-8d09-4300-bf66-dac77475ad73";
-const PLUGGY_CLIENT_SECRET = "92e6d41f-75de-40ba-ac5f-978d46cc63d7";
+// CREDENCIAIS DIRETAS (Nota: Em produção, use um backend para proteger o Client Secret)
+const PLUGGY_CLIENT_ID = "d93b0176-0cd8-4563-b9c1-bcb9c6e510bd".trim();
+const PLUGGY_CLIENT_SECRET = "2b45852a-9638-4677-8232-6b2da7c54967".trim();
 const API_URL = "https://api.pluggy.ai";
 
 interface PluggyAuthResponse {
@@ -16,16 +16,18 @@ interface PluggyConnectTokenResponse {
 }
 
 // Helper: Map Pluggy Categories to App Categories
-const mapCategory = (pluggyCategory: string): string => {
-  const lower = pluggyCategory?.toLowerCase() || "";
+const mapCategory = (pluggyCategory: string | undefined, description: string): string => {
+  const lowerCat = pluggyCategory?.toLowerCase() || "";
+  const lowerDesc = description.toLowerCase();
+  const combined = lowerCat + " " + lowerDesc;
   
-  if (lower.includes("transport") || lower.includes("uber") || lower.includes("posto") || lower.includes("gasolina")) return "Transporte";
-  if (lower.includes("food") || lower.includes("aliment") || lower.includes("restaurante") || lower.includes("ifood") || lower.includes("mercado")) return "Alimentação";
-  if (lower.includes("home") || lower.includes("housing") || lower.includes("aluguel") || lower.includes("luz") || lower.includes("internet") || lower.includes("condominio")) return "Moradia";
-  if (lower.includes("health") || lower.includes("saude") || lower.includes("farmacia") || lower.includes("drogaria")) return "Saúde";
-  if (lower.includes("entertainment") || lower.includes("lazer") || lower.includes("streaming") || lower.includes("cinema")) return "Lazer";
-  if (lower.includes("shopping") || lower.includes("compras") || lower.includes("loja")) return "Outros";
-  if (lower.includes("transfer") && lower.includes("credit")) return "Salário";
+  if (combined.includes("transport") || combined.includes("uber") || combined.includes("posto") || combined.includes("gasolina")) return "Transporte";
+  if (combined.includes("food") || combined.includes("aliment") || combined.includes("restaurante") || combined.includes("ifood") || combined.includes("mercado")) return "Alimentação";
+  if (combined.includes("home") || combined.includes("housing") || combined.includes("aluguel") || combined.includes("luz") || combined.includes("internet") || combined.includes("condominio")) return "Moradia";
+  if (combined.includes("health") || combined.includes("saude") || combined.includes("farmacia") || combined.includes("drogaria")) return "Saúde";
+  if (combined.includes("entertainment") || combined.includes("lazer") || combined.includes("streaming") || combined.includes("cinema")) return "Lazer";
+  if (combined.includes("salary") || combined.includes("salario") || combined.includes("payroll") || combined.includes("pagamento")) return "Salário";
+  if (combined.includes("investment") || combined.includes("rendimento") || combined.includes("aplicacao")) return "Investimentos";
   
   return "Outros";
 };
@@ -48,15 +50,10 @@ const authenticate = async (): Promise<string> => {
     });
 
     if (!response.ok) {
-        const errText = await response.text();
-        console.error("Pluggy Auth Error:", errText);
         throw new Error(`Falha na autenticação Pluggy (${response.status})`);
     }
     
     const data: PluggyAuthResponse = await response.json();
-    if (!data.apiKey) {
-         throw new Error("Chave de API não retornada pelo Pluggy.");
-    }
     return data.apiKey;
   } catch (error) {
     console.error("Pluggy Auth Exception:", error);
@@ -71,9 +68,6 @@ export const createConnectToken = async (): Promise<string> => {
   try {
     const apiKey = await authenticate();
     
-    // Usando um ID fixo e simples para Sandbox para evitar problemas de validação
-    const staticUserId = "financas-ai-guest";
-
     const response = await fetch(`${API_URL}/connect_tokens`, {
       method: "POST",
       headers: {
@@ -82,22 +76,15 @@ export const createConnectToken = async (): Promise<string> => {
         "X-API-KEY": apiKey
       },
       body: JSON.stringify({
-        clientUserId: staticUserId,
-        options: {
-           clientUserName: "Visitante Finanças AI",
-           clientUserEmail: "guest@financas.ai"
-        }
-      }),
+          // Unique ID to maintain session state if needed, or let Pluggy handle it
+          options: {
+            clientUserId: `user_${Date.now()}` 
+          }
+      }), 
     });
 
     if (!response.ok) {
-      const errText = await response.text();
-      console.error("Pluggy Connect Token Error Body:", errText);
-      
-      if (response.status === 403) {
-         throw new Error("Acesso Negado (403). Verifique suas credenciais de Sandbox.");
-      }
-      throw new Error(`Erro API Pluggy: ${response.status} - ${errText}`);
+      throw new Error(`Erro ao criar token de conexão: ${response.status}`);
     }
 
     const data: PluggyConnectTokenResponse = await response.json();
@@ -109,30 +96,25 @@ export const createConnectToken = async (): Promise<string> => {
 };
 
 /**
- * Fetches accounts and transactions.
+ * Fetches accounts and transactions for a specific Item (Connection).
  */
 export const syncPluggyData = async (userId: string, itemId: string): Promise<number> => {
   try {
     const apiKey = await authenticate();
     let importedCount = 0;
 
-    // 1. Get Accounts
+    // 1. Get Accounts associated with the Item
     const accountsRes = await fetch(`${API_URL}/accounts?itemId=${itemId}`, {
       headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
     });
     
-    if(!accountsRes.ok) {
-        const err = await accountsRes.text();
-        console.error("Error fetching accounts:", err);
-        throw new Error("Erro ao buscar contas");
-    }
-    
+    if(!accountsRes.ok) throw new Error("Erro ao buscar contas");
     const accountsData = await accountsRes.json();
     const accounts = accountsData.results || [];
 
     if (accounts.length === 0) return 0;
 
-    // 2. Get Transactions (Last 30 days)
+    // 2. Get Transactions (Last 30 days) for each account
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
@@ -147,19 +129,27 @@ export const syncPluggyData = async (userId: string, itemId: string): Promise<nu
         const txData = await txRes.json();
         const transactions = txData.results || [];
 
-        // 3. Map and Save
+        // 3. Map and Save to Database
         for (const tx of transactions) {
+            // Pluggy logic: Expenses are negative, Income is positive usually, but depends on type.
+            // Usually: amount is positive, type determines flow.
+            // Let's check amount sign just in case or use tx.type if available explicitly.
+            // Standard Pluggy: Credit = Positive, Debit = Negative.
+            
             const isExpense = tx.amount < 0;
             const absAmount = Math.abs(tx.amount);
             
+            // Skip zero amount transactions if any
+            if (absAmount === 0) continue;
+
             const newTx: Omit<Transaction, 'id'> = {
-                description: tx.description,
+                description: tx.description || "Transação Bancária",
                 amount: absAmount,
                 date: tx.date.split('T')[0],
                 type: isExpense ? 'expense' : 'income',
-                category: tx.category ? mapCategory(tx.category) : mapCategory(tx.description),
-                status: 'completed',
-                memberId: undefined // Belongs to the main user flow for now
+                category: mapCategory(tx.category, tx.description),
+                status: 'completed', // Assumed completed since it comes from bank
+                memberId: undefined // Main user
             };
 
             await addTransaction(userId, newTx);

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { TrendingUp, TrendingDown, Wallet, Sparkles } from './Icons';
 import { DashboardStats } from '../types';
@@ -68,7 +69,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
 
       <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
         <div className="relative z-10">
-          <p className="text-sm text-gray-400 font-medium">Economia Mensal</p>
+          {/* Changed generic label to accommodate Year/Custom filters */}
+          <p className="text-sm text-gray-400 font-medium">Resultado do Período</p>
           <p className="text-2xl font-bold mt-1 text-purple-400">
             {formatCurrency(stats.monthlySavings)}
           </p>

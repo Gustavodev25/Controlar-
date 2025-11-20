@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus } from './Icons';
+import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X } from './Icons';
 
 // --- CUSTOM AUTOCOMPLETE (Combobox) ---
 interface AutocompleteOption {
@@ -29,8 +30,6 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
-        // On blur, if input doesn't match the controlled value exactly, we technically allow it (creation mode),
-        // but usually we sync input to value. Here we assume onChange handles the "commit".
         if (inputValue !== value && value !== '') {
             setInputValue(value);
         }
@@ -40,8 +39,8 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [inputValue, value]);
 
-  const filteredOptions = options.filter(opt => 
-    opt.toLowerCase().includes(inputValue.toLowerCase())
+  const filteredOptions = (options || []).filter(opt => 
+    (opt || "").toLowerCase().includes((inputValue || "").toLowerCase())
   );
 
   const handleSelect = (val: string) => {
@@ -55,14 +54,13 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
     setIsOpen(true);
   };
 
-  // Check if the current input exactly matches an option
-  const exactMatch = options.some(opt => opt.toLowerCase() === inputValue.toLowerCase());
+  const exactMatch = (options || []).some(opt => (opt || "").toLowerCase() === (inputValue || "").toLowerCase());
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div 
         className={`
-          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 py-3 flex items-center gap-3 transition-all group focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)]
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 transition-all group focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)]
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
       >
@@ -111,7 +109,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
   );
 };
 
-// --- CUSTOM SELECT (Legacy Wrapper or kept for strict selection) ---
+// --- CUSTOM SELECT ---
 interface Option {
   value: string | number;
   label: string;
@@ -151,7 +149,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
       <div 
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 py-3 flex items-center justify-between cursor-pointer transition-all
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center justify-between cursor-pointer transition-all
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
       >
@@ -187,7 +185,171 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
   );
 };
 
-// --- CUSTOM DATE PICKER ---
+// --- CUSTOM MONTH PICKER ---
+interface CustomMonthPickerProps {
+  value: string; // Format: YYYY-MM
+  onChange: (value: string) => void;
+  placeholder?: string;
+  className?: string;
+}
+
+export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onChange, placeholder = "Mês de referência", className = "" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // State to track the year currently being viewed in the popup
+  const [viewYear, setViewYear] = useState<number>(() => {
+    return value ? parseInt(value.split('-')[0]) : new Date().getFullYear();
+  });
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleMonthSelect = (monthIndex: number) => {
+    const monthStr = String(monthIndex + 1).padStart(2, '0');
+    onChange(`${viewYear}-${monthStr}`);
+    setIsOpen(false);
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange('');
+    setIsOpen(false);
+  };
+
+  const handleCurrentMonth = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, '0');
+    setViewYear(y);
+    onChange(`${y}-${m}`);
+    setIsOpen(false);
+  };
+
+  const months = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const fullMonths = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+
+  // Helper to format display text (e.g. "novembro de 2025")
+  const getDisplayText = () => {
+    if (!value) return placeholder;
+    const [y, m] = value.split('-');
+    const monthIndex = parseInt(m) - 1;
+    if (monthIndex >= 0 && monthIndex < 12) {
+      return `${fullMonths[monthIndex]} de ${y}`;
+    }
+    return value;
+  };
+
+  const selectedYear = value ? parseInt(value.split('-')[0]) : null;
+  const selectedMonthIndex = value ? parseInt(value.split('-')[1]) - 1 : null;
+  const currentMonthIndex = new Date().getMonth();
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <div className={`relative ${className}`} ref={containerRef}>
+       <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-pointer transition-all group
+          ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
+        `}
+      >
+        <Calendar size={16} className={value ? 'text-[#d97757]' : 'text-gray-500'} />
+        <span className={`truncate ${!value ? 'text-gray-500' : 'text-[#faf9f5]'} flex-1`}>
+          {getDisplayText()}
+        </span>
+        {value ? (
+          <div 
+            onClick={handleClear}
+            className="p-1 rounded-full hover:bg-gray-700 text-gray-500 hover:text-white transition-colors"
+          >
+             <X size={12} />
+          </div>
+        ) : (
+          <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        )}
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-fade-in">
+          
+          {/* Year Navigation Header */}
+          <div className="flex items-center justify-between mb-2 px-1">
+            <span className="text-lg font-bold text-white tracking-wide">{viewYear}</span>
+             <div className="flex gap-1">
+                <button 
+                  onClick={(e) => {e.preventDefault(); setViewYear(prev => prev - 1);}} 
+                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <button 
+                  onClick={(e) => {e.preventDefault(); setViewYear(prev => prev + 1);}} 
+                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+             </div>
+          </div>
+
+          {/* Separator Line */}
+          <div className="h-px w-full bg-gray-700/50 mb-4"></div>
+
+          {/* Month Grid */}
+          <div className="grid grid-cols-4 gap-2 mb-4">
+             {months.map((m, i) => {
+               const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
+               const isCurrent = currentYear === viewYear && currentMonthIndex === i;
+               
+               return (
+                 <button
+                   key={m}
+                   onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
+                   className={`
+                     h-9 rounded-lg text-sm font-medium transition-all
+                     ${isSelected 
+                       ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30 scale-105' 
+                       : isCurrent 
+                         ? 'bg-gray-800 text-[#d97757] border border-[#d97757]/50'
+                         : 'text-gray-300 hover:bg-gray-700 hover:text-white'}
+                   `}
+                 >
+                   {m}
+                 </button>
+               );
+             })}
+          </div>
+
+          {/* Footer Actions */}
+          <div className="flex justify-between items-center text-xs font-medium pt-2 border-t border-gray-700/50">
+             <button 
+               onClick={handleClear}
+               className="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
+             >
+               Limpar
+             </button>
+             <button 
+               onClick={handleCurrentMonth}
+               className="text-[#d97757] hover:text-[#e68e70] transition-colors px-2 py-1 rounded hover:bg-[#d97757]/10"
+             >
+               Este mês
+             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- CUSTOM DATE PICKER (Full Date) ---
 interface CustomDatePickerProps {
   value: string; // YYYY-MM-DD
   onChange: (date: string) => void;
@@ -280,7 +442,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
        <div 
         onClick={() => setIsOpen(!isOpen)}
         className={`
-          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 py-3 flex items-center gap-3 cursor-pointer transition-all
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-pointer transition-all
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
       >

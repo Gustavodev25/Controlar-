@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { Trash2, Search, Calendar, getCategoryIcon, X, Filter } from './Icons';
@@ -43,9 +44,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
       const transactionYear = new Date(t.date).getFullYear();
       const matchesYear = transactionYear === selectedYear;
 
+      // FIX: Guard against undefined description/category
       const matchesSearch = 
-        t.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        t.category.toLowerCase().includes(searchTerm.toLowerCase());
+        (t.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (t.category || "").toLowerCase().includes(searchTerm.toLowerCase());
       
       const matchesStartDate = startDate ? t.date >= startDate : true;
       const matchesEndDate = endDate ? t.date <= endDate : true;
@@ -87,41 +89,40 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
               onChange={(val) => setSelectedYear(Number(val))}
               options={yearOptions}
               placeholder="Ano"
-              className="h-full"
+              className="h-11"
             />
           </div>
 
-          {/* Date Filters - Custom */}
-          <div className="flex items-center gap-2 bg-gray-800 p-1 rounded-xl border border-gray-700 relative z-20">
-             <div className="w-32">
-               <CustomDatePicker 
-                 value={startDate}
-                 onChange={setStartDate}
-                 placeholder="Início"
-                 className="border-none"
-               />
-             </div>
-             <span className="text-gray-600">-</span>
-             <div className="w-32">
-               <CustomDatePicker 
-                 value={endDate}
-                 onChange={setEndDate}
-                 placeholder="Fim"
-                 className="border-none"
-               />
-             </div>
-             {(startDate || endDate) && (
-                <button 
-                  onClick={() => { setStartDate(''); setEndDate(''); }}
-                  className="p-1 hover:bg-gray-700 rounded-full text-gray-500 hover:text-gray-300 mr-1"
-                  title="Limpar datas"
-                >
-                  <X size={12} />
-                </button>
-             )}
+          {/* Start Date - Custom Date Picker Standalone */}
+          <div className="w-36 relative z-20">
+             <CustomDatePicker 
+               value={startDate}
+               onChange={setStartDate}
+               placeholder="Início"
+             />
           </div>
 
-          <div className="relative flex-1 lg:w-64 w-full z-10">
+          {/* End Date - Custom Date Picker Standalone */}
+          <div className="w-36 relative z-10">
+             <CustomDatePicker 
+               value={endDate}
+               onChange={setEndDate}
+               placeholder="Fim"
+             />
+          </div>
+          
+          {/* Reset Dates Button */}
+          {(startDate || endDate) && (
+             <button 
+               onClick={() => { setStartDate(''); setEndDate(''); }}
+               className="h-11 w-8 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700 transition-colors"
+               title="Limpar datas"
+             >
+               <X size={14} />
+             </button>
+          )}
+
+          <div className="relative flex-1 lg:w-64 w-full z-0 h-11">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-500" size={16} />
             <input 
               type="text" 
@@ -171,10 +172,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete }
                 <td className="px-4 py-2 border-r border-gray-800 text-gray-400">
                   <div className="flex items-center gap-2">
                     <span className="text-gray-500">
-                      {getCategoryIcon(t.category, 14)}
+                      {getCategoryIcon(t.category || "Outros", 14)}
                     </span>
                     <span className="px-2 py-0.5 rounded-md bg-gray-800 text-xs border border-gray-700">
-                      {t.category}
+                      {t.category || "Outros"}
                     </span>
                   </div>
                 </td>

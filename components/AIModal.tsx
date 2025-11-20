@@ -1,5 +1,6 @@
+
 import React, { useState, useEffect } from 'react';
-import { X, Sparkles, Bot, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Check, ArrowRight } from './Icons';
+import { X, Sparkles, Bot, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Check, ArrowRight, Clock } from './Icons';
 import { parseTransactionFromText } from '../services/geminiService';
 import { AIParsedTransaction, Transaction } from '../types';
 import { CustomAutocomplete, CustomDatePicker } from './UIComponents';
@@ -71,7 +72,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
         setError("Não consegui entender os detalhes. Tente algo como: 'Gastei 50 reais na padaria hoje'");
       }
     } catch (err) {
-      setError("Erro de conexão com a IA.");
+      setError("Erro ao conectar com a IA. O serviço pode estar sobrecarregado.");
     } finally {
       setIsLoading(false);
     }
@@ -79,12 +80,55 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
 
   const handleSaveAI = () => {
     if (parsedResult) {
-      onConfirm({
-        ...parsedResult,
-        status: 'completed'
-      });
+      const installments = parsedResult.installments || 1;
+      
+      if (installments > 1) {
+        // Lógica de Parcelamento
+        // Precisamos garantir que a data é tratada como UTC/Local corretamente para não pular dias
+        // Parse YYYY-MM-DD
+        const [y, m, d] = parsedResult.date.split('-').map(Number);
+        
+        // Loop para criar N transações
+        for (let i = 0; i < installments; i++) {
+            // Cria a data baseada no ano/mês/dia originais
+            // O mês em JS é 0-indexado, então subtraímos 1 do parse e somamos 'i' para avançar
+            const newDate = new Date(y, (m - 1) + i, d);
+            
+            // Formata de volta para YYYY-MM-DD
+            const year = newDate.getFullYear();
+            const month = String(newDate.getMonth() + 1).padStart(2, '0');
+            const day = String(newDate.getDate()).padStart(2, '0');
+            const formattedDate = `${year}-${month}-${day}`;
+            
+            onConfirm({
+                description: `${parsedResult.description} (${i + 1}/${installments})`,
+                amount: parsedResult.amount, // O parser já retorna o valor da parcela
+                category: parsedResult.category,
+                date: formattedDate,
+                type: parsedResult.type as 'income' | 'expense',
+                status: 'completed' // Assumimos como "agendado/concluído" para aparecer no fluxo
+            });
+        }
+      } else {
+        // Transação Única
+        onConfirm({
+          description: parsedResult.description,
+          amount: parsedResult.amount,
+          category: parsedResult.category,
+          date: parsedResult.date,
+          type: parsedResult.type as 'income' | 'expense',
+          status: 'completed'
+        });
+      }
+      
       handleClose();
     }
+  };
+
+  const formatDate = (dateStr: string) => {
+    if(!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
   };
 
   // Manual Handlers
@@ -137,7 +181,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
         `}
       >
         
-        {/* Background Effects Container - Clip the blurs to the card shape */}
+        {/* Background Effects Container */}
         <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
@@ -180,7 +224,8 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
                      </div>
                      <h3 className="text-lg font-bold text-white">Como posso ajudar?</h3>
                      <p className="text-sm text-gray-400 max-w-xs mx-auto">
-                       Digite naturalmente. <br/> Ex: <span className="text-[#d97757]">"Paguei 120 reais no restaurante ontem"</span>
+                       Fale a data e parcelas se necessário.<br/> 
+                       <span className="text-[#d97757]">"Notebook 3000 em 10x começando mês que vem"</span>
                      </p>
                   </div>
 
@@ -237,7 +282,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
                             <Sparkles size={14} className="text-[#d97757]" />
                             <span className="text-xs font-bold text-[#d97757] uppercase tracking-wider">Confirmação IA</span>
                          </div>
-                         <span className="text-xs text-gray-500">{new Date().toLocaleDateString()}</span>
+                         <span className="text-xs text-gray-500">{formatDate(parsedResult.date)}</span>
                       </div>
                       
                       {/* Ticket Body */}
@@ -248,10 +293,26 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
                                <p className="text-lg font-bold text-white">{parsedResult.description}</p>
                             </div>
                             <div className="text-right">
-                               <p className="text-xs text-gray-400 mb-1">Valor</p>
+                               <p className="text-xs text-gray-400 mb-1">Valor {parsedResult.installments && parsedResult.installments > 1 ? '(parcela)' : ''}</p>
                                <p className="text-2xl font-bold text-white">R$ {parsedResult.amount.toFixed(2)}</p>
                             </div>
                          </div>
+
+                         {parsedResult.installments && parsedResult.installments > 1 && (
+                             <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-lg p-3 flex items-center gap-3">
+                                <div className="p-2 bg-[#d97757]/20 rounded-full text-[#d97757]">
+                                    <Clock size={16} />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-[#e68e70] uppercase">Parcelamento Inteligente</p>
+                                    <p className="text-sm text-gray-300">
+                                        Serão gerados <strong className="text-white">{parsedResult.installments} lançamentos</strong> mensais.
+                                        <br/>
+                                        <span className="text-xs text-gray-400">Total da compra: R$ {(parsedResult.amount * parsedResult.installments).toFixed(2)}</span>
+                                    </p>
+                                </div>
+                             </div>
+                         )}
 
                          <div className="grid grid-cols-2 gap-4 pt-2">
                             <div className="bg-gray-950/50 p-3 rounded-xl border border-gray-700/50">
@@ -286,7 +347,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
                       className="flex-[2] py-3.5 bg-green-600 text-white hover:bg-green-500 rounded-xl font-bold transition-all shadow-lg shadow-green-900/40 flex items-center justify-center gap-2"
                     >
                       <Check size={18} />
-                      Confirmar Lançamento
+                      {parsedResult.installments && parsedResult.installments > 1 ? `Gerar ${parsedResult.installments} Parcelas` : 'Confirmar'}
                     </button>
                   </div>
                 </div>
