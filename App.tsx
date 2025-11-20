@@ -754,22 +754,22 @@ const App: React.FC = () => {
       )}
 
       {/* Main Content */}
-      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-0' : 'lg:ml-0'} relative`}>
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
         <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
-          <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
              {/* Mobile Menu Button */}
              <button
                onClick={() => setSidebarOpen(!isSidebarOpen)}
-               className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+               className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
              >
                <Menu size={20} />
              </button>
 
-             <div className="flex flex-col min-w-0 flex-1">
-               <h1 className="text-lg lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate">
+             <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
+               <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
                  {headerInfo.title}
                </h1>
-               <p className="text-xs text-gray-400 font-medium truncate hidden sm:block">
+               <p className="text-[11px] lg:text-xs text-gray-400 font-medium truncate leading-tight mt-0.5">
                  {headerInfo.desc}
                </p>
              </div>
