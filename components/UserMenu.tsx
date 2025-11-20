@@ -43,7 +43,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
       >
         <div className="text-right hidden sm:block">
           <p className="text-xs font-bold text-gray-200">{user.name}</p>
-          <p className="text-[10px] text-gray-500">Conta Pro</p>
+          <p className="text-[10px] text-gray-500">Plano gratuito</p>
         </div>
         <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-xs font-bold text-white shadow-md border border-gray-700`}>
           {getInitials(user.name)}

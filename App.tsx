@@ -4,7 +4,6 @@ import {
   LayoutDashboard, 
   Table2, 
   Bot, 
-  FileSpreadsheet,
   ChevronLeft, 
   ChevronRight,
   Bell,
@@ -32,9 +31,11 @@ import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
 import { auth } from './services/firebase';
+import { onAuthStateChanged } from "firebase/auth";
 import * as dbService from './services/database';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter } from './components/NotificationCenter';
+import { Logo } from './components/Logo';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -128,20 +129,36 @@ const App: React.FC = () => {
 
   // Authentication Listener
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (firebaseUser: any) => {
+    if (!auth) {
+      toast.error("Firebase Auth não inicializado.");
+      setIsLoadingAuth(false);
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (firebaseUser) {
         setUserId(firebaseUser.uid);
         setIsLoadingData(true);
         setShowLanding(false); // Hide landing if user is logged in
         
         // Fetch initial profile
-        const profile = await dbService.getUserProfile(firebaseUser.uid);
-        setCurrentUser({
-            name: firebaseUser.displayName || 'Usuário',
-            email: firebaseUser.email || '',
-            baseSalary: profile?.baseSalary || 0,
-            avatarUrl: profile?.avatarUrl
-        });
+        try {
+          const profile = await dbService.getUserProfile(firebaseUser.uid);
+          setCurrentUser({
+              name: firebaseUser.displayName || 'Usuário',
+              email: firebaseUser.email || '',
+              baseSalary: profile?.baseSalary || 0,
+              avatarUrl: profile?.avatarUrl
+          });
+        } catch (err) {
+          console.error("Erro ao carregar perfil:", err);
+          toast.warning("Não foi possível carregar o perfil (offline). Dados locais serão usados.");
+          setCurrentUser({
+              name: firebaseUser.displayName || 'Usuário',
+              email: firebaseUser.email || '',
+              baseSalary: 0
+          });
+        }
       } else {
         setUserId(null);
         setCurrentUser(null);
@@ -446,7 +463,7 @@ const App: React.FC = () => {
       case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
-      default: return { title: 'Finanças', desc: '' };
+      default: return { title: 'Controlar+', desc: '' };
     }
   };
 
@@ -482,14 +499,15 @@ const App: React.FC = () => {
 
       {/* Sidebar */}
       <aside className={sidebarClasses}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800/50 mb-4">
-           <div className={`flex items-center gap-3 overflow-hidden transition-all duration-300 ${!isSidebarOpen ? 'w-full justify-center' : ''}`}>
-             <div className="min-w-[32px] h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white shadow-lg shadow-[#d97757]/20">
-               <FileSpreadsheet size={18} strokeWidth={2.5} />
-             </div>
-             <span className={`font-bold text-lg whitespace-nowrap transition-opacity duration-200 ${isSidebarOpen ? 'opacity-100' : 'opacity-0 w-0 hidden'} text-[#faf9f5]`}>
-               Finanças<span className="text-[#d97757]">.ai</span>
-             </span>
+           <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800/50 mb-4">
+           <div className={`flex items-center overflow-hidden transition-all duration-300 ${!isSidebarOpen ? 'w-full justify-center' : ''}`}>
+             <Logo
+               size={32}
+               withText={isSidebarOpen}
+               className="gap-3"
+               textClassName="font-bold text-lg whitespace-nowrap text-[#faf9f5]"
+               imgClassName="rounded-lg"
+             />
            </div>
            
            {isSidebarOpen && (

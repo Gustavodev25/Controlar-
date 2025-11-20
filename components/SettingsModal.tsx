@@ -1,4 +1,4 @@
-
+﻿
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { 
@@ -28,7 +28,7 @@ const AVATAR_GRADIENTS = [
 
 type SettingsTab = 'account' | 'security' | 'plan' | 'notifications' | 'data';
 
-// --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
+// --- COMPONENTE TWO FACTOR MODAL (ExtraÃ­do para evitar re-renders) ---
 interface TwoFactorModalProps {
     isOpen: boolean;
     onClose: () => void;
@@ -124,7 +124,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
            onSuccess();
            setStep('setup'); // Reset for next time
         } else {
-           toast.error("Código incompleto ou inválido.");
+           toast.error("CÃ³digo incompleto ou invÃ¡lido.");
         }
     };
 
@@ -150,7 +150,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                       <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
                          <Smartphone size={20} />
                       </div>
-                      <h3 className="font-bold text-white">Autenticação em 2 Fatores</h3>
+                      <h3 className="font-bold text-white">AutenticaÃ§Ã£o em 2 Fatores</h3>
                    </div>
                    <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800">
                       <X size={20} />
@@ -161,7 +161,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                     {step === 'setup' ? (
                         <>
                            <p className="text-sm text-gray-400 mb-6">
-                              Abra seu aplicativo autenticador (Google Authenticator, Authy) e escaneie o código abaixo.
+                              Abra seu aplicativo autenticador (Google Authenticator, Authy) e escaneie o cÃ³digo abaixo.
                            </p>
 
                            <div className="p-4 bg-white rounded-2xl shadow-lg mb-6 mx-auto">
@@ -186,7 +186,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                     ) : (
                         <>
                             <p className="text-sm text-gray-400 mb-8">
-                                Insira o código de 6 dígitos gerado pelo seu aplicativo para confirmar.
+                                Insira o cÃ³digo de 6 dÃ­gitos gerado pelo seu aplicativo para confirmar.
                             </p>
 
                             <div className="flex justify-center gap-2 mb-8">
@@ -210,7 +210,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                               disabled={otp.join('').length !== 6}
                               className="w-full py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-green-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
-                              <CheckCircle size={18} /> Ativar Proteção
+                              <CheckCircle size={18} /> Ativar ProteÃ§Ã£o
                             </button>
                             
                             <button 
@@ -241,9 +241,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
   const [isTwoFactorModalOpen, setIsTwoFactorModalOpen] = useState(false);
   const [qrCodeUrl, setQrCodeUrl] = useState('');
   const [secretKey] = useState('JBSWY3DPEHPK3PXP'); // Mock Secret
-
-  // Billing State (Mock Data)
-  const [paymentMethod, setPaymentMethod] = useState<'credit_card' | 'pix'>('credit_card');
 
   // Mock Notifications
   const [notifications, setNotifications] = useState({ email: true, push: true, marketing: false });
@@ -281,9 +278,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
 
   // --- 2FA HANDLERS ---
   const open2FAModal = () => {
-    const label = encodeURIComponent("Finanças.ai Pro");
+    const label = encodeURIComponent("Controlar+");
     const email = encodeURIComponent(user.email);
-    const issuer = encodeURIComponent("Finanças.ai");
+    const issuer = encodeURIComponent("Controlar+");
     const otpAuthUrl = `otpauth://totp/${label}:${email}?secret=${secretKey}&issuer=${issuer}`;
     
     // Mock QR Code generation
@@ -294,12 +291,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
   const handle2FASuccess = () => {
       onUpdateUser({ ...formData, twoFactorEnabled: true });
       setIsTwoFactorModalOpen(false);
-      toast.success("Autenticação de 2 fatores ativada!");
+      toast.success("AutenticaÃ§Ã£o de 2 fatores ativada!");
   };
 
   const disable2FA = () => {
     onUpdateUser({ ...formData, twoFactorEnabled: false });
-    toast.success("Autenticação de 2 fatores desativada.");
+    toast.success("AutenticaÃ§Ã£o de 2 fatores desativada.");
   };
 
   // --- DATA EXPORT ---
@@ -308,7 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
         toast.error("Sem dados para exportar.");
         return;
     }
-    const headers = ["Data", "Descrição", "Categoria", "Valor", "Tipo", "Status"];
+    const headers = ["Data", "DescriÃ§Ã£o", "Categoria", "Valor", "Tipo", "Status"];
     const rows = transactions.map(t => [
         t.date, `"${t.description}"`, t.category, t.amount.toFixed(2), t.type, t.status
     ]);
@@ -346,13 +343,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
         {/* Sidebar */}
         <div className="w-64 bg-gray-900 border-r border-gray-800 p-6 flex flex-col hidden md:flex">
            <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2 px-2">
-             <div className="w-2 h-2 rounded-full bg-[#d97757]"></div> Configurações
+             <div className="w-2 h-2 rounded-full bg-[#d97757]"></div> ConfiguraÃ§Ãµes
            </h2>
            <div className="space-y-1 flex-1">
               {renderSidebarItem('account', 'Minha Conta', <User size={18} />)}
-              {renderSidebarItem('security', 'Segurança', <Shield size={18} />)}
+              {renderSidebarItem('security', 'SeguranÃ§a', <Shield size={18} />)}
               {renderSidebarItem('plan', 'Planos e Assinatura', <CreditCard size={18} />)}
-              {renderSidebarItem('notifications', 'Notificações', <Bell size={18} />)}
+              {renderSidebarItem('notifications', 'NotificaÃ§Ãµes', <Bell size={18} />)}
               {renderSidebarItem('data', 'Dados e Privacidade', <Download size={18} />)}
            </div>
         </div>
@@ -361,7 +358,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
         <div className="flex-1 flex flex-col min-w-0 bg-gray-950 relative">
            {/* Mobile Header */}
            <div className="md:hidden p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
-              <h2 className="font-bold text-white">Configurações</h2>
+              <h2 className="font-bold text-white">ConfiguraÃ§Ãµes</h2>
               <button onClick={onClose} className="text-gray-500"><X size={24}/></button>
            </div>
            
@@ -379,7 +376,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                  <div className="space-y-10 animate-fade-in max-w-2xl">
                     <div>
                        <h3 className="text-3xl font-bold text-white mb-2">Minha Conta</h3>
-                       <p className="text-gray-400">Gerencie suas informações pessoais.</p>
+                       <p className="text-gray-400">Gerencie suas informaÃ§Ãµes pessoais.</p>
                     </div>
                     <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 pb-8 border-b border-gray-800">
                        <div className="relative group shrink-0">
@@ -430,7 +427,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
               {activeTab === 'security' && (
                  <div className="space-y-10 animate-fade-in max-w-2xl">
                     <div>
-                       <h3 className="text-3xl font-bold text-white mb-2">Segurança</h3>
+                       <h3 className="text-3xl font-bold text-white mb-2">SeguranÃ§a</h3>
                        <p className="text-gray-400">Proteja sua conta.</p>
                     </div>
 
@@ -441,8 +438,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                    <Smartphone size={20}/>
                                 </div>
                                 <div>
-                                    <h4 className="text-white font-bold">Autenticação de 2 Fatores</h4>
-                                    <p className="text-xs text-gray-500 mt-0.5">Camada extra de proteção.</p>
+                                    <h4 className="text-white font-bold">AutenticaÃ§Ã£o de 2 Fatores</h4>
+                                    <p className="text-xs text-gray-500 mt-0.5">Camada extra de proteÃ§Ã£o.</p>
                                 </div>
                              </div>
                              {formData.twoFactorEnabled && (
@@ -472,13 +469,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                  <div className="space-y-8 animate-fade-in">
                     <div>
                         <h3 className="text-3xl font-bold text-white mb-2">Planos e Assinatura</h3>
-                        <p className="text-gray-400">Detalhes do seu plano atual e forma de pagamento.</p>
+                        <p className="text-gray-400">Todas as contas estÃƒÂ£o no plano gratuito com recursos liberados sem cobranÃƒÂ§as.</p>
                     </div>
 
                     <div className="grid md:grid-cols-1 gap-6">
                         {/* PLANO ATUAL - DESTAQUE */}
                         <div className="bg-gradient-to-r from-[#d97757]/20 to-gray-900 border border-[#d97757]/30 rounded-2xl p-6 relative overflow-hidden">
-                            <div className="absolute top-0 right-0 bg-[#d97757] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">VIGENTE</div>
+                            <div className="absolute top-0 right-0 bg-[#d97757] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">PLANO GRATUITO</div>
                             
                             <div className="flex items-center gap-4 mb-6">
                                 <div className="p-3 bg-[#d97757] rounded-xl text-white shadow-lg">
@@ -486,60 +483,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                 </div>
                                 <div>
                                     <p className="text-xs text-[#d97757] font-bold uppercase tracking-wide mb-1">Seu Plano</p>
-                                    <h4 className="text-3xl font-bold text-white">Finanças Pro</h4>
+                                  <h4 className="text-3xl font-bold text-white">Controlar+ Gratuito</h4>
+                                  <p className="text-sm text-gray-300 mt-1">Sem assinatura; todos os recursos essenciais estÃƒÂ£o liberados para qualquer conta.</p>
                                 </div>
                             </div>
 
                             <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
                                 <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Ciclo de Cobrança</p>
-                                    <p className="text-white font-medium">Anual (R$ 299,90/ano)</p>
+                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">CobranÃ§a</p>
+                                    <p className="text-white font-medium">Gratuito para todas as contas</p>
                                 </div>
                                 <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Próxima Renovação</p>
-                                    <p className="text-white font-medium">15 de Outubro, 2025</p>
+                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">RenovaÃ§Ã£o</p>
+                                    <p className="text-white font-medium">NÃ£o expira nem gera faturas</p>
                                 </div>
                             </div>
                         </div>
 
-                        {/* DADOS DO PAGAMENTO - CARTÃO/PIX ABAIXO */}
+                        {/* INFORMAÇÕES DE COBRANÇA (GRATUITO) */}
                         <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
                              <div className="flex items-center justify-between mb-6">
                                 <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                                   <CreditCard size={20} className="text-gray-400"/> Método de Pagamento
+                                   <CreditCard size={20} className="text-gray-400"/> Cobrança
                                 </h4>
-                                <button className="text-xs text-[#d97757] hover:text-white transition-colors font-bold uppercase">Alterar</button>
                              </div>
 
-                             {/* Visualização condicional (Mockada para exemplo, mas estrutura pronta) */}
-                             {paymentMethod === 'credit_card' ? (
-                                 <div className="flex items-center gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                     <div className="w-12 h-8 bg-gray-700 rounded flex items-center justify-center text-xs font-bold text-white">VISA</div>
-                                     <div>
-                                         <p className="text-sm font-bold text-white">•••• •••• •••• 4242</p>
-                                         <p className="text-xs text-gray-500">Expira em 12/28</p>
-                                     </div>
-                                     <div className="ml-auto">
-                                         <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">Padrão</span>
-                                     </div>
+                             <div className="flex items-center gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
+                                 <div className="w-12 h-12 rounded flex items-center justify-center bg-gray-700 text-white font-bold">Grátis</div>
+                                 <div className="flex-1">
+                                     <p className="text-sm font-bold text-white">Nenhuma forma de pagamento necessária</p>
+                                     <p className="text-xs text-gray-500">Plano gratuito ativo para todas as contas.</p>
                                  </div>
-                             ) : (
-                                 <div className="flex items-center gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                     <div className="w-12 h-8 bg-gray-700 rounded flex items-center justify-center text-xs font-bold text-white">PIX</div>
-                                     <div>
-                                         <p className="text-sm font-bold text-white">Pagamento Instantâneo</p>
-                                         <p className="text-xs text-gray-500">Chave CPF cadastrada</p>
-                                     </div>
+                                 <div className="ml-auto">
+                                     <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">Ativo</span>
                                  </div>
-                             )}
+                             </div>
 
-                             {/* Histórico Breve */}
                              <div className="mt-6 pt-6 border-t border-gray-800">
-                                <p className="text-xs font-bold text-gray-500 uppercase mb-3">Última Fatura</p>
-                                <div className="flex justify-between items-center text-sm">
-                                    <span className="text-gray-300">15/10/2024</span>
-                                    <span className="font-mono text-white">R$ 299,90</span>
-                                    <span className="text-green-400 text-xs font-bold flex items-center gap-1"><CheckCircle size={12}/> Pago</span>
+                                <p className="text-xs font-bold text-gray-500 uppercase mb-3">Benefícios incluídos</p>
+                                <div className="space-y-3 text-sm text-gray-300">
+                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Consultor IA e lançamentos inteligentes sem custo</div>
+                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Modo família e metas compartilhadas liberados</div>
+                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Lembretes e exportações ilimitados</div>
                                 </div>
                              </div>
                         </div>
@@ -551,13 +536,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
               {activeTab === 'notifications' && (
                  <div className="space-y-10 animate-fade-in max-w-2xl">
                     <div>
-                       <h3 className="text-3xl font-bold text-white mb-2">Notificações</h3>
-                       <p className="text-gray-400">Controle o que você recebe.</p>
+                       <h3 className="text-3xl font-bold text-white mb-2">NotificaÃ§Ãµes</h3>
+                       <p className="text-gray-400">Controle o que vocÃª recebe.</p>
                     </div>
                     <div className="space-y-0 divide-y divide-gray-800 border border-gray-800 rounded-2xl bg-gray-900/30 overflow-hidden">
                        {[
-                          { id: 'email', label: 'E-mails de Resumo', desc: 'Balanço semanal.' },
-                          { id: 'push', label: 'Notificações Push', desc: 'Alertas de contas.' },
+                          { id: 'email', label: 'E-mails de Resumo', desc: 'BalanÃ§o semanal.' },
+                          { id: 'push', label: 'NotificaÃ§Ãµes Push', desc: 'Alertas de contas.' },
                        ].map((item) => (
                           <div key={item.id} className="p-6 flex items-center justify-between hover:bg-gray-900/50 transition-colors">
                              <div className="pr-4">
@@ -589,7 +574,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                     >
                         <div>
                             <h4 className="text-white font-bold flex items-center gap-2"><Download size={18}/> Exportar CSV</h4>
-                            <p className="text-sm text-gray-500">Baixar todas as transações.</p>
+                            <p className="text-sm text-gray-500">Baixar todas as transaÃ§Ãµes.</p>
                         </div>
                         <div className="px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg">Baixar</div>
                     </button>

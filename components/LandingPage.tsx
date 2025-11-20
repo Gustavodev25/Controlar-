@@ -1,7 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  FileSpreadsheet, 
   Sparkles, 
   ArrowRight, 
   Shield, 
@@ -29,6 +28,7 @@ import {
   MessageSquare,
   ChevronDown
 } from './Icons';
+import { Logo } from './Logo';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -112,7 +112,7 @@ const AIInteractiveDemo = () => {
              <div className="w-3 h-3 rounded-full bg-yellow-500/20 border border-yellow-500/50"></div>
              <div className="w-3 h-3 rounded-full bg-green-500/20 border border-green-500/50"></div>
            </div>
-           <div className="text-xs font-medium text-gray-500 ml-2">Finanças AI Assistant</div>
+           <div className="text-xs font-medium text-gray-500 ml-2">Controlar+ Assistant</div>
         </div>
 
         <div className="p-6 space-y-6 min-h-[320px] bg-gray-900">
@@ -220,10 +220,10 @@ const RealisticDashboardPreview = () => {
                 <div className="w-3 h-3 rounded-full bg-[#28c840]"></div>
              </div>
              <div className="flex-1 flex justify-center">
-                <div className="bg-[#0f100f] border border-gray-800 rounded-md px-3 py-0.5 text-[10px] text-gray-500 font-mono flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  app.financas.ai/dashboard
-                </div>
+                  <div className="bg-[#0f100f] border border-gray-800 rounded-md px-3 py-0.5 text-[10px] text-gray-500 font-mono flex items-center gap-2">
+                   <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                   app.controlarplus/dashboard
+                  </div>
              </div>
              <div className="w-10"></div> 
           </div>
@@ -234,10 +234,12 @@ const RealisticDashboardPreview = () => {
              {/* 1. Sidebar (Replica) */}
              <div className="w-16 lg:w-64 bg-[#0a0a0a] border-r border-gray-800 hidden md:flex flex-col">
                 <div className="h-16 flex items-center gap-3 px-6 border-b border-gray-800/50">
-                   <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white shadow-md">
-                     <FileSpreadsheet size={18} strokeWidth={2.5} />
-                   </div>
-                   <span className="font-bold text-lg hidden lg:block">Finanças<span className="text-[#d97757]">.ai</span></span>
+                   <Logo
+                     size={32}
+                     className="gap-3"
+                     textClassName="font-bold text-lg hidden lg:block text-white"
+                     imgClassName="rounded-lg"
+                   />
                 </div>
                 
                 <div className="p-4 space-y-6">
@@ -402,8 +404,8 @@ const FAQSection = () => {
   const faqs = [
     { q: "Meus dados bancários estão seguros?", a: "Absolutamente. Utilizamos criptografia AES-256 de ponta a ponta. Seus dados são armazenados localmente no seu dispositivo quando possível e nunca vendemos suas informações para terceiros." },
     { q: "Como a IA categoriza meus gastos?", a: "Nossa IA analisa o texto natural que você digita (ex: 'Almoço R$ 40'). Ela identifica padrões, palavras-chave e contexto para atribuir a categoria correta (Alimentação), a data e o valor automaticamente." },
-    { q: "Posso compartilhar com minha família?", a: "Sim! O plano 'Family' permite adicionar múltiplos membros, ver gráficos consolidados e criar metas de economia em conjunto, mantendo a privacidade de gastos individuais se desejado." },
-    { q: "Preciso conectar minha conta bancária?", a: "Não. O Finanças.ai funciona com input manual inteligente. Isso garante maior privacidade e evita problemas de conexão com bancos. Você digita ou fala, e nós organizamos." }
+    { q: "Posso compartilhar com minha família?", a: "Sim! O modo 'Family' está incluso no plano gratuito: adicione múltiplos membros, veja gráficos consolidados e crie metas em conjunto mantendo os gastos individuais privados." },
+    { q: "Preciso conectar minha conta bancária?", a: "Não. O Controlar+ funciona com input manual inteligente. Isso garante maior privacidade e evita problemas de conexão com bancos. Você digita ou fala, e nós organizamos." }
   ];
 
   return (
@@ -438,6 +440,9 @@ const PricingSection = () => {
     <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
        {/* Free */}
        <div className="bg-[#1a1a19] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
+          <div className="flex justify-center mb-4">
+             <img src="/assets/quebra-cabeca.png" alt="Starter" className="w-16 h-16 object-contain" />
+          </div>
           <h3 className="text-xl font-bold text-white mb-2">Starter</h3>
           <p className="text-gray-500 text-sm mb-6">Para quem está começando a se organizar.</p>
           <div className="mb-6">
@@ -459,12 +464,15 @@ const PricingSection = () => {
           <div className="absolute top-0 right-0 bg-[#d97757] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
              MAIS POPULAR
           </div>
+          <div className="flex justify-center mb-4">
+             <img src="/assets/foguete.png.png" alt="Pro" className="w-16 h-16 object-contain" />
+          </div>
           <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
              Pro <Sparkles size={16} className="text-[#d97757]" />
           </h3>
-          <p className="text-gray-400 text-sm mb-6">Poder total da IA para suas finanças.</p>
+          <p className="text-gray-400 text-sm mb-6">Todos os recursos avançados agora gratuitos.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 29</span>
+             <span className="text-4xl font-bold text-white">R$ 0</span>
              <span className="text-gray-500">/mês</span>
           </div>
           <ul className="space-y-4 mb-8 flex-1">
@@ -474,26 +482,29 @@ const PricingSection = () => {
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#d97757]"/> Metas e Lembretes</li>
           </ul>
           <button className="w-full py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold transition-colors shadow-lg shadow-[#d97757]/25">
-             Assinar Pro
+             Usar gratuitamente
           </button>
        </div>
 
        {/* Family */}
        <div className="bg-[#1a1a19] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
+          <div className="flex justify-center mb-4">
+             <img src="/assets/familia.png" alt="Family" className="w-16 h-16 object-contain" />
+          </div>
           <h3 className="text-xl font-bold text-white mb-2">Family</h3>
-          <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa.</p>
+          <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa, sem custo.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 49</span>
+             <span className="text-4xl font-bold text-white">R$ 0</span>
              <span className="text-gray-500">/mês</span>
           </div>
           <ul className="space-y-4 mb-8 flex-1">
-             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Tudo do plano Pro</li>
+             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Tudo incluso no plano gratuito</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Até 5 Membros</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Metas Compartilhadas</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Relatórios Unificados</li>
           </ul>
           <button className="w-full py-3 rounded-xl border border-gray-700 text-white font-bold hover:bg-gray-800 transition-colors">
-             Assinar Family
+             Usar gratuitamente em família
           </button>
        </div>
     </div>
@@ -505,16 +516,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
   return (
     <div className="min-h-screen bg-[#0a0a0a] text-[#faf9f5] font-sans overflow-x-hidden selection:bg-[#d97757]/30">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0a]/80 backdrop-blur-xl border-b border-white/5">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#0a0a0a]/80 border-b border-white/5">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
-           <div className="flex items-center gap-2">
-              <div className="w-10 h-10 bg-[#d97757] rounded-xl flex items-center justify-center text-white shadow-lg shadow-[#d97757]/20">
-                 <FileSpreadsheet size={22} strokeWidth={2.5} />
-              </div>
-              <span className="font-bold text-xl tracking-tight">
-                Finanças<span className="text-[#d97757]">.ai</span>
-              </span>
-           </div>
+           <Logo
+             size={40}
+             className="flex items-center gap-3"
+             textClassName="font-bold text-xl tracking-tight text-white"
+             imgClassName="rounded-xl"
+           />
            <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
               <a href="#features" className="hover:text-white transition-colors">Recursos</a>
               <a href="#system" className="hover:text-white transition-colors">Sistema</a>
@@ -648,7 +657,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             
             <div className="flex flex-col items-center text-center mb-16">
               <h2 className="text-3xl lg:text-5xl font-bold mb-4 relative z-10">Planos transparentes</h2>
-              <p className="text-gray-400 relative z-10">Escolha a melhor forma de organizar sua vida.</p>
+              <p className="text-gray-400 relative z-10">Todos os planos custam R$ 0. Escolha o formato que faz mais sentido.</p>
             </div>
             <PricingSection />
          </div>
@@ -684,10 +693,12 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             <div className="grid md:grid-cols-4 gap-12 mb-12">
                <div className="col-span-2">
                   <div className="flex items-center gap-2 mb-6">
-                     <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white">
-                        <FileSpreadsheet size={18} strokeWidth={2.5} />
-                     </div>
-                     <span className="font-bold text-xl">Finanças.ai</span>
+                     <Logo
+                       size={32}
+                       className="gap-2"
+                       textClassName="font-bold text-xl"
+                       imgClassName="rounded-lg"
+                     />
                   </div>
                   <p className="text-gray-500 max-w-xs mb-6">
                      A plataforma de gestão financeira pessoal mais inteligente do mercado. Simples, rápida e segura.
@@ -721,7 +732,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
             </div>
             
             <div className="pt-8 border-t border-gray-900 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-600">
-               <div>© 2025 Finanças.ai Pro. Todos os direitos reservados.</div>
+               <div>© 2025 Controlar+ Pro. Todos os direitos reservados.</div>
                <div className="flex gap-6">
                   <a href="#" className="hover:text-gray-400">Privacidade</a>
                   <a href="#" className="hover:text-gray-400">Termos</a>

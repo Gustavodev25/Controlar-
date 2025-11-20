@@ -1,7 +1,9 @@
 
 import React, { useState } from 'react';
-import { Mail, Lock, User as UserIcon, ArrowRight, Sparkles, FileSpreadsheet, CheckCircle, ChevronLeft } from './Icons';
+import { Mail, Lock, User as UserIcon, ArrowRight, Sparkles, CheckCircle, ChevronLeft } from './Icons';
+import { Logo } from './Logo';
 import { auth } from '../services/firebase';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword, updateProfile } from "firebase/auth";
 import { updateUserProfile } from '../services/database';
 
 interface AuthModalProps {
@@ -25,21 +27,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
     setError('');
     
     try {
+      if (!auth) throw new Error("Auth não inicializado");
+
       if (isLogin) {
-        await auth.signInWithEmailAndPassword(formData.email, formData.password);
+        await signInWithEmailAndPassword(auth, formData.email, formData.password);
       } else {
-        const userCredential = await auth.createUserWithEmailAndPassword(formData.email, formData.password);
-        
+        const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
         if (userCredential.user) {
-            await userCredential.user.updateProfile({
-              displayName: formData.name
-            });
-            // Create initial DB Profile with 0 base salary
-            await updateUserProfile(userCredential.user.uid, {
-                name: formData.name,
-                email: formData.email,
-                baseSalary: 0 
-            });
+          await updateProfile(userCredential.user, { displayName: formData.name });
+          // Create initial DB Profile with 0 base salary
+          await updateUserProfile(userCredential.user.uid, {
+            name: formData.name,
+            email: formData.email,
+            baseSalary: 0
+          });
         }
       }
     } catch (err: any) {
@@ -82,18 +83,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
             }}
         ></div>
 
-        {/* Ambient Glow */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-[#d97757]/10 rounded-full blur-[120px] pointer-events-none"></div>
-        
         {/* Header / Logo */}
-        <div className="relative z-10 flex items-center gap-2 ml-10">
-           <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white shadow-lg shadow-[#d97757]/20">
-              <FileSpreadsheet size={18} strokeWidth={2.5} />
-           </div>
-           <span className="font-bold text-xl tracking-tight">
-             Finanças<span className="text-[#d97757]">.ai</span>
-           </span>
-        </div>
+        <Logo
+          size={32}
+          className="relative z-10 ml-10 gap-2"
+          textClassName="font-bold text-xl tracking-tight"
+          imgClassName="rounded-lg"
+        />
 
         {/* Central Visual Element (Abstract Chart/UI representation) */}
         <div className="relative z-10 flex-1 flex items-center justify-center">
@@ -139,9 +135,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
                "A organização financeira que transformou meus planos em realidade. Simples, direto e inteligente."
             </blockquote>
             <div className="mt-4 flex items-center gap-3">
-               <div className="text-sm font-bold text-white">Carlos Mendes</div>
-               <div className="w-1 h-1 bg-gray-600 rounded-full"></div>
-               <div className="text-sm text-gray-400">Usuário Pro</div>
+              <div className="text-sm font-bold text-white">Carlos Mendes</div>
+              <div className="w-1 h-1 bg-gray-600 rounded-full"></div>
+               <div className="text-sm text-gray-400">Usuário do plano gratuito</div>
             </div>
         </div>
       </div>
@@ -152,10 +148,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
             
             {/* Mobile Logo (Only visible on mobile) */}
             <div className="lg:hidden flex items-center gap-2 mb-8 justify-center">
-              <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white">
-                  <FileSpreadsheet size={18} strokeWidth={2.5} />
-              </div>
-              <span className="font-bold text-xl">Finanças.ai</span>
+              <Logo
+                size={32}
+                className="gap-2"
+                textClassName="font-bold text-xl"
+                imgClassName="rounded-lg"
+              />
             </div>
 
             {/* Animated Container */}
@@ -261,9 +259,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
          </div>
 
          {/* Subtle footer text */}
-         <div className="absolute bottom-6 text-[10px] text-gray-600">
-            © 2025 Finanças.ai Pro. Todos os direitos reservados.
-         </div>
+        <div className="absolute bottom-6 text-[10px] text-gray-600">
+           © 2025 Controlar+ Pro. Todos os direitos reservados.
+        </div>
       </div>
     </div>
   );

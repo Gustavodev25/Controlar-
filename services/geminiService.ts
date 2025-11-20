@@ -1,9 +1,10 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, AIParsedTransaction, Reminder } from "../types";
+import { config } from "../config";
 
 // Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+const ai = new GoogleGenAI({ apiKey: config.GEMINI_API_KEY });
 // Usando Flash pois é rápido e excelente com documentos/imagens longos
 const MODEL_NAME = "gemini-2.5-flash"; 
 

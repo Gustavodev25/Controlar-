@@ -1,42 +1,36 @@
-
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore } from "firebase/firestore";
+import { getDatabase } from "firebase/database";
 
-// --- CONFIGURAÇÃO DO FIREBASE ---
-// NOTA: Esta é uma configuração de exemplo. 
-// Em um ambiente real, você deve substituir pelos dados do seu console Firebase.
+// Configuracao do Firebase (fornecida)
 const firebaseConfig = {
-  apiKey: "api-key-placeholder",
-  authDomain: "project-id.firebaseapp.com",
-  projectId: "project-id",
-  storageBucket: "project-id.appspot.com",
-  messagingSenderId: "sender-id",
-  appId: "app-id"
+  apiKey: "AIzaSyBGhm5J90b4fVlhmyP7bhVPliQZmQUSmmo",
+  authDomain: "financeiro-609e1.firebaseapp.com",
+  databaseURL: "https://financeiro-609e1-default-rtdb.firebaseio.com",
+  projectId: "financeiro-609e1",
+  storageBucket: "financeiro-609e1.firebasestorage.app",
+  messagingSenderId: "412536649666",
+  appId: "1:412536649666:web:f630c5be490c5539f1485b",
+  measurementId: "G-QSH7W2GYXD"
 };
 
-// Initialize Firebase
 let app;
 let auth;
 let database;
+let realtimeDb;
 
 try {
-    app = initializeApp(firebaseConfig);
-    auth = getAuth(app);
-    database = getFirestore(app);
-    console.log("Firebase initialized successfully");
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+  // Long polling helps in restricted networks that block WebSockets
+  database = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  realtimeDb = getDatabase(app);
 } catch (error) {
-    console.error("Erro ao inicializar Firebase.", error);
-    // Fallback object to prevent immediate crashes if config is invalid, 
-    // allowing the UI to at least render (though auth won't work).
-    auth = {
-        onAuthStateChanged: () => {},
-        signInWithEmailAndPassword: async () => { throw new Error("Firebase não configurado corretamente."); },
-        createUserWithEmailAndPassword: async () => { throw new Error("Firebase não configurado corretamente."); },
-        currentUser: null,
-        signOut: async () => {}
-    } as any;
-    database = {} as any;
+  console.error("Erro ao inicializar Firebase:", error);
+  auth = null as any;
+  database = null as any;
+  realtimeDb = null as any;
 }
 
-export { auth, database };
+export { app, auth, database, realtimeDb };

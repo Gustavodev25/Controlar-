@@ -25,13 +25,18 @@ export const updateUserProfile = async (userId: string, data: Partial<User>) => 
 
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
   if(!db) return null;
-  const userRef = doc(db, "users", userId);
-  const snap = await getDoc(userRef);
-  
-  if (snap.exists()) {
-      return snap.data().profile as Partial<User>;
+  try {
+    const userRef = doc(db, "users", userId);
+    const snap = await getDoc(userRef);
+    
+    if (snap.exists()) {
+        return snap.data().profile as Partial<User>;
+    }
+    return null;
+  } catch (error) {
+    console.error("Erro ao buscar perfil:", error);
+    throw error;
   }
-  return null;
 };
 
 export const listenToUserProfile = (userId: string, callback: (data: Partial<User>) => void) => {
