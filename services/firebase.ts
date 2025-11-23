@@ -3,16 +3,16 @@ import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
 
-// Configuracao do Firebase (fornecida)
+// Configuracao do Firebase usando variáveis de ambiente
 const firebaseConfig = {
-  apiKey: "AIzaSyBGhm5J90b4fVlhmyP7bhVPliQZmQUSmmo",
-  authDomain: "financeiro-609e1.firebaseapp.com",
-  databaseURL: "https://financeiro-609e1-default-rtdb.firebaseio.com",
-  projectId: "financeiro-609e1",
-  storageBucket: "financeiro-609e1.firebasestorage.app",
-  messagingSenderId: "412536649666",
-  appId: "1:412536649666:web:f630c5be490c5539f1485b",
-  measurementId: "G-QSH7W2GYXD"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBGhm5J90b4fVlhmyP7bhVPliQZmQUSmmo",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "financeiro-609e1.firebaseapp.com",
+  databaseURL: import.meta.env.VITE_FIREBASE_DATABASE_URL || "https://financeiro-609e1-default-rtdb.firebaseio.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "financeiro-609e1",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "financeiro-609e1.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "412536649666",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:412536649666:web:f630c5be490c5539f1485b",
+  measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-QSH7W2GYXD"
 };
 
 let app;
