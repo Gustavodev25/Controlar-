@@ -15,6 +15,12 @@ const firebaseConfig = {
   measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || "G-QSH7W2GYXD"
 };
 
+// Log para debug (remover em produção)
+console.log("Firebase Config:", {
+  ...firebaseConfig,
+  apiKey: firebaseConfig.apiKey.substring(0, 10) + "..." // Ocultar parte da chave
+});
+
 let app;
 let auth;
 let database;

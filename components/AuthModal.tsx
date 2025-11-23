@@ -53,16 +53,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({ onLogin, onBack }) => {
         }
       }
     } catch (err: any) {
-      console.error(err);
+      console.error("Erro de autenticação completo:", err);
+      console.error("Código do erro:", err.code);
+      console.error("Mensagem do erro:", err.message);
       let msg = "Ocorreu um erro. Tente novamente.";
       if (err.code === 'auth/invalid-credential' || err.code === 'auth/user-not-found' || err.code === 'auth/wrong-password') {
-        msg = "E-mail ou senha incorretos.";
+        msg = "E-mail ou senha incorretos. Verifique suas credenciais.";
       } else if (err.code === 'auth/email-already-in-use') {
         msg = "Este e-mail já está em uso.";
       } else if (err.code === 'auth/weak-password') {
         msg = "A senha deve ter pelo menos 6 caracteres.";
       } else if (err.code === 'auth/invalid-email') {
         msg = "E-mail inválido.";
+      } else if (err.code === 'auth/too-many-requests') {
+        msg = "Muitas tentativas falhadas. Tente novamente mais tarde ou redefina sua senha.";
       }
       setError(msg);
       setIsLoading(false);
