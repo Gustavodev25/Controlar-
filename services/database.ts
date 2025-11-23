@@ -13,7 +13,7 @@ import {
     orderBy
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment } from "../types";
 
 // --- User Services ---
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
@@ -76,6 +76,19 @@ export const listenToMembers = (userId: string, callback: (members: Member[]) =>
   });
 };
 
+export const deleteMember = async (userId: string, memberId: string) => {
+  if(!db) return;
+  const memberRef = doc(db, "users", userId, "members", memberId);
+  await deleteDoc(memberRef);
+};
+
+export const restoreMember = async (userId: string, member: Member) => {
+  if(!db) return;
+  const memberRef = doc(db, "users", userId, "members", member.id);
+  const { id, ...data } = member;
+  await setDoc(memberRef, data);
+};
+
 // --- Family Goals Services ---
 export const addFamilyGoal = async (userId: string, goal: Omit<FamilyGoal, 'id'>) => {
     if(!db) return;
@@ -115,6 +128,13 @@ export const addTransaction = async (userId: string, transaction: Omit<Transacti
   const txRef = collection(db, "users", userId, "transactions");
   const docRef = await addDoc(txRef, transaction);
   return docRef.id;
+};
+
+export const updateTransaction = async (userId: string, transaction: Transaction) => {
+  if(!db) return;
+  const txRef = doc(db, "users", userId, "transactions", transaction.id);
+  const { id, ...data } = transaction;
+  await updateDoc(txRef, data);
 };
 
 export const deleteTransaction = async (userId: string, transactionId: string) => {
@@ -173,12 +193,46 @@ export const updateReminder = async (userId: string, reminder: Reminder) => {
 export const listenToReminders = (userId: string, callback: (reminders: Reminder[]) => void) => {
   if(!db) return () => {};
   const remRef = collection(db, "users", userId, "reminders");
-  
+
   return onSnapshot(remRef, (snapshot) => {
       const reminders: Reminder[] = [];
       snapshot.forEach(doc => {
           reminders.push({ id: doc.id, ...doc.data() } as Reminder);
       });
       callback(reminders);
+  });
+};
+
+// --- Investments Services ---
+export const addInvestment = async (userId: string, investment: Omit<Investment, 'id'>) => {
+  if(!db) return "";
+  const invRef = collection(db, "users", userId, "investments");
+  const docRef = await addDoc(invRef, investment);
+  return docRef.id;
+};
+
+export const updateInvestment = async (userId: string, investment: Investment) => {
+  if(!db) return;
+  const invRef = doc(db, "users", userId, "investments", investment.id);
+  const { id, ...data } = investment;
+  await updateDoc(invRef, data);
+};
+
+export const deleteInvestment = async (userId: string, investmentId: string) => {
+  if(!db) return;
+  const invRef = doc(db, "users", userId, "investments", investmentId);
+  await deleteDoc(invRef);
+};
+
+export const listenToInvestments = (userId: string, callback: (investments: Investment[]) => void) => {
+  if(!db) return () => {};
+  const invRef = collection(db, "users", userId, "investments");
+
+  return onSnapshot(invRef, (snapshot) => {
+      const investments: Investment[] = [];
+      snapshot.forEach(doc => {
+          investments.push({ id: doc.id, ...doc.data() } as Investment);
+      });
+      callback(investments);
   });
 };

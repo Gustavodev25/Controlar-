@@ -35,9 +35,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const [monthlyHours, setMonthlyHours] = useState('220');
   const [otQuantity, setOtQuantity] = useState('');
   const [otPercent, setOtPercent] = useState('50');
-  
+  const [tempBaseSalary, setTempBaseSalary] = useState('');
+
   // Validation State
-  const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean}>({});
+  const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean, tempBaseSalary?: boolean}>({});
 
   // --- Calculated Values (Real-time) ---
   // Helper to safely parse inputs that might contain commas
@@ -50,8 +51,9 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   };
 
   // 1. Valor da Hora Normal
-  const safeBaseSalary = baseSalary || 0;
-  const safeMonthlyHours = parseInput(monthlyHours) || 220; 
+  const effectiveBaseSalary = baseSalary > 0 ? baseSalary : parseInput(tempBaseSalary);
+  const safeBaseSalary = effectiveBaseSalary || 0;
+  const safeMonthlyHours = parseInput(monthlyHours) || 220;
   const hourlyRate = safeMonthlyHours > 0 ? safeBaseSalary / safeMonthlyHours : 0;
 
   // 2. Valor da Hora com Adicional (Hora + %)
@@ -124,12 +126,13 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const handleAddCalculated = () => {
     const newErrors = {
       monthlyHours: !safeMonthlyHours || safeMonthlyHours <= 0,
-      otQuantity: !safeOtQuantity || safeOtQuantity <= 0
+      otQuantity: !safeOtQuantity || safeOtQuantity <= 0,
+      tempBaseSalary: baseSalary <= 0 && (!effectiveBaseSalary || effectiveBaseSalary <= 0)
     };
     setErrors(newErrors);
 
-    if (newErrors.monthlyHours || newErrors.otQuantity) {
-      toast.error("Preencha as horas corretamente.");
+    if (newErrors.monthlyHours || newErrors.otQuantity || newErrors.tempBaseSalary) {
+      toast.error("Preencha todos os campos corretamente.");
       return;
     }
 
@@ -151,6 +154,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     setTimeout(() => {
         setExtraAmount('');
         setOtQuantity('');
+        setTempBaseSalary('');
         setExtraDesc('Freelance');
         setErrors({});
         setSalaryError(null);
@@ -276,19 +280,33 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         </div>
 
         {/* Lado Direito: Botão de Ação */}
-        <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center items-center gap-4 border-t lg:border-t-0 border-gray-800">
+        <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center items-center gap-3 border-t lg:border-t-0 border-gray-800">
            <div className="text-center">
-             <p className="text-base font-medium text-gray-200">Renda Extra ou Hora Extra?</p>
-             <p className="text-xs text-gray-500 mt-1">Registre ganhos adicionais para alcançar sua meta mais rápido.</p>
+             <p className="text-base font-medium text-gray-200">Registrar Renda</p>
+             <p className="text-xs text-gray-500 mt-1">Adicione seu salário mensal ou renda extra rapidamente.</p>
            </div>
-           <button 
+
+           {baseSalary > 0 && (
+             <button
+               onClick={() => {
+                 onAddExtra(baseSalary, "Salário Mensal");
+                 toast.success(`Salário de ${formatCurrency(baseSalary)} adicionado!`);
+               }}
+               className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 group text-sm"
+             >
+               <Coins size={16} />
+               Registrar Salário Base
+             </button>
+           )}
+
+           <button
              onClick={() => setIsModalOpen(true)}
              className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-medium transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 group border border-[#d97757]/50"
            >
              <div className="bg-white/20 p-1 rounded-full group-hover:scale-110 transition-transform">
                <PlusCircle size={18} />
              </div>
-             Adicionar Renda
+             Adicionar Outra Renda
            </button>
         </div>
       </div>
@@ -397,14 +415,17 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
               {/* ABA: CALCULADORA */}
               {activeTab === 'calculator' && (
                 <div className="space-y-6 animate-slide-up">
-                   {baseSalary > 0 ? (
                     <>
                        <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
                           <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
                           <div>
                             <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Hora Extra</h4>
                             <p className="text-xs text-gray-400 leading-relaxed">
-                              Usando seu salário base de <span className="text-white font-bold">{formatCurrency(baseSalary)}</span>.
+                              {baseSalary > 0 ? (
+                                <>Usando seu salário base de <span className="text-white font-bold">{formatCurrency(baseSalary)}</span>.</>
+                              ) : (
+                                <>Insira seu salário base abaixo para calcular horas extras.</>
+                              )}
                               <br />
                               <span className="opacity-70">Fórmula: (Salário / Divisor) * (1 + %) * Horas</span>
                             </p>
@@ -414,14 +435,32 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                           {/* Inputs */}
                           <div className="space-y-5">
+                             {baseSalary <= 0 && (
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Salário Base (R$)
+                                </label>
+                                <div className="relative group">
+                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="Ex: 3000,00"
+                                    value={tempBaseSalary}
+                                    onChange={e => { setTempBaseSalary(e.target.value); if(errors.tempBaseSalary) setErrors({...errors, tempBaseSalary: false}); }}
+                                    className={`input-primary pl-10 text-lg font-bold ${errors.tempBaseSalary ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
+                                  />
+                                </div>
+                             </div>
+                             )}
                              <div>
                                 <label className="flex justify-between text-xs font-medium text-gray-400 mb-1.5">
                                   <span>Divisor Mensal (Horas)</span>
                                 </label>
                                 <div className="relative group">
                                   <Clock className={`absolute left-3 top-3.5 ${errors.monthlyHours ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#d97757]'}`} size={16} />
-                                  <input 
-                                    type="text" 
+                                  <input
+                                    type="text"
                                     inputMode="numeric"
                                     value={monthlyHours}
                                     onChange={e => { setMonthlyHours(e.target.value); if(errors.monthlyHours) setErrors({...errors, monthlyHours: false}); }}
@@ -508,23 +547,6 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                           </div>
                        </div>
                     </>
-                   ) : (
-                     <div className="text-center py-12 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
-                        <div className="w-16 h-16 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-500">
-                           <AlertCircle size={32} />
-                        </div>
-                        <h3 className="text-white font-bold text-lg mb-2">Salário Base Não Definido</h3>
-                        <p className="text-gray-400 text-sm max-w-xs mx-auto mb-6">
-                          Para calcular horas extras com precisão, precisamos saber seu salário base mensal primeiro.
-                        </p>
-                        <button 
-                          onClick={() => { setIsModalOpen(false); setTimeout(() => { setIsEditing(true); setTempSalary(''); }, 300); }}
-                          className="px-6 py-2 bg-white text-black font-bold rounded-xl hover:bg-gray-200 transition-colors"
-                        >
-                          Definir Salário Agora
-                        </button>
-                     </div>
-                   )}
                 </div>
               )}
             </div>

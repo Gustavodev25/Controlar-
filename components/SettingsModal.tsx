@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import {
    X, User, Mail, Check, Save, Sparkles, Shield, CreditCard,
    Bell, Download, Trash2, Upload, Smartphone,
-   CheckCircle, Copy, FileText, ChevronRight, ArrowLeft
+   CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins
 } from 'lucide-react';
 import { User as UserType, Transaction } from '../types';
 import { useToasts } from './Toast';
@@ -460,6 +460,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                     />
                                  </div>
                               </div>
+                              <div className="space-y-2">
+                                 <label className="text-xs font-medium text-gray-400 ml-1 flex items-center gap-2">
+                                    <Coins size={14} className="text-[#d97757]" />
+                                    Salário Base Mensal
+                                 </label>
+                                 <div className="relative">
+                                    <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
+                                    <input
+                                       type="text"
+                                       inputMode="decimal"
+                                       placeholder="0,00"
+                                       value={formData.baseSalary ? formData.baseSalary.toString().replace('.', ',') : ''}
+                                       onChange={(e) => {
+                                          const val = e.target.value.replace(',', '.');
+                                          const parsed = parseFloat(val);
+                                          setFormData({ ...formData, baseSalary: isNaN(parsed) ? 0 : parsed });
+                                       }}
+                                       className="input-primary pl-10 text-lg font-bold"
+                                    />
+                                 </div>
+                                 <p className="text-xs text-gray-500 ml-1">Este valor será usado como base para cálculo de horas extras</p>
+                              </div>
                               <button
                                  onClick={handleSave}
                                  className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
@@ -621,19 +643,79 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                   {activeTab === 'data' && (
                      <div className="space-y-10 animate-fade-in max-w-2xl">
                         <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Dados</h3>
-                           <p className="text-gray-400">Exporte ou apague seus registros.</p>
+                           <h3 className="text-3xl font-bold text-white mb-2">Dados e Relatórios</h3>
+                           <p className="text-gray-400">Exporte seus registros financeiros.</p>
                         </div>
-                        <button
-                           onClick={handleExportData}
-                           className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors"
-                        >
-                           <div>
-                              <h4 className="text-white font-bold flex items-center gap-2"><Download size={18} /> Exportar CSV</h4>
-                              <p className="text-sm text-gray-500">Baixar todas as transaÃ§Ãµes.</p>
-                           </div>
-                           <div className="px-4 py-2 bg-gray-800 text-white text-sm font-bold rounded-lg">Baixar</div>
-                        </button>
+
+                        <div className="space-y-3">
+                           <button
+                              onClick={handleExportData}
+                              className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group"
+                           >
+                              <div className="flex items-center gap-4">
+                                 <div className="p-3 bg-green-900/20 rounded-xl text-green-400 group-hover:bg-green-900/30 transition-colors">
+                                    <FileText size={24} />
+                                 </div>
+                                 <div className="text-left">
+                                    <h4 className="text-white font-bold flex items-center gap-2">Exportar CSV</h4>
+                                    <p className="text-sm text-gray-500">Baixar todas as transações em formato planilha</p>
+                                 </div>
+                              </div>
+                              <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />
+                           </button>
+
+                           <button
+                              onClick={() => {
+                                 if (transactions.length === 0) {
+                                    toast.error("Sem dados para exportar.");
+                                    return;
+                                 }
+                                 // Generate detailed report
+                                 const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                                 const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                                 const balance = totalIncome - totalExpense;
+
+                                 const headers = ["=== RELATÓRIO FINANCEIRO ===", "", `Gerado em: ${new Date().toLocaleString('pt-BR')}`, "", "---", ""];
+                                 const summary = [
+                                    "RESUMO GERAL:",
+                                    `Total de Receitas: R$ ${totalIncome.toFixed(2)}`,
+                                    `Total de Despesas: R$ ${totalExpense.toFixed(2)}`,
+                                    `Saldo: R$ ${balance.toFixed(2)}`,
+                                    `Total de Transações: ${transactions.length}`,
+                                    "",
+                                    "---",
+                                    "",
+                                    "TRANSAÇÕES DETALHADAS:",
+                                    "Data,Descrição,Categoria,Valor,Tipo,Status"
+                                 ];
+                                 const rows = transactions
+                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                    .map(t => `${t.date},"${t.description}",${t.category},${t.amount.toFixed(2)},${t.type === 'income' ? 'Receita' : 'Despesa'},${t.status === 'completed' ? 'Pago' : 'Pendente'}`);
+
+                                 const content = [...headers, ...summary, ...rows].join("\n");
+                                 const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                                 const link = document.createElement("a");
+                                 link.href = URL.createObjectURL(blob);
+                                 link.setAttribute("download", `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`);
+                                 document.body.appendChild(link);
+                                 link.click();
+                                 document.body.removeChild(link);
+                                 toast.success("Relatório gerado com sucesso!");
+                              }}
+                              className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group"
+                           >
+                              <div className="flex items-center gap-4">
+                                 <div className="p-3 bg-blue-900/20 rounded-xl text-blue-400 group-hover:bg-blue-900/30 transition-colors">
+                                    <Download size={24} />
+                                 </div>
+                                 <div className="text-left">
+                                    <h4 className="text-white font-bold flex items-center gap-2">Gerar Relatório Completo</h4>
+                                    <p className="text-sm text-gray-500">Extrato detalhado com resumo financeiro</p>
+                                 </div>
+                              </div>
+                              <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />
+                           </button>
+                        </div>
                      </div>
                   )}
 

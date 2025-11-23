@@ -44,8 +44,21 @@ export interface Reminder {
   amount: number;
   dueDate: string; // ISO format YYYY-MM-DD
   category: string;
+  type?: TransactionType; // 'income' | 'expense' - Default to 'expense' if missing
   isRecurring: boolean;
   frequency?: 'monthly' | 'weekly' | 'yearly';
+}
+
+export interface Investment {
+  id: string;
+  memberId?: string;
+  name: string;
+  icon: string;
+  color: string;
+  targetAmount: number;
+  currentAmount: number;
+  createdAt: string;
+  deadline?: string;
 }
 
 export interface DashboardStats {

@@ -7,6 +7,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Bell,
+  TrendingUp,
   BrainCircuit,
   Plus,
   Calendar,
@@ -28,6 +29,7 @@ import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
 import { SalaryManager } from './components/SalaryManager';
 import { AIAdvisor } from './components/AIAdvisor';
+import { Investments, Investment } from './components/Investments';
 import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
@@ -121,7 +123,7 @@ const App: React.FC = () => {
   const toast = useToasts();
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'advisor'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'advisor'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -137,6 +139,7 @@ const App: React.FC = () => {
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [investments, setInvestments] = useState<Investment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [familyGoals, setFamilyGoals] = useState<FamilyGoal[]>([]);
 
@@ -271,6 +274,10 @@ const App: React.FC = () => {
 
     const unsubRem = dbService.listenToReminders(userId, (data) => {
       setReminders(data);
+    });
+
+    const unsubInv = dbService.listenToInvestments(userId, (data) => {
+      setInvestments(data);
     });
 
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
@@ -446,6 +453,35 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteMember = async (memberId: string) => {
+    if (!userId) return;
+
+    const member = members.find(m => m.id === memberId);
+    if (member?.role === 'admin') {
+      toast.error("Nao e possivel remover o administrador.");
+      return;
+    }
+
+    try {
+      const toRestore = member;
+      await dbService.deleteMember(userId, memberId);
+      if (activeMemberId === memberId) {
+        setActiveMemberId('FAMILY_OVERVIEW');
+      }
+      toast.message({
+        text: "Membro removido.",
+        action: "Desfazer",
+        onAction: async () => {
+          if (toRestore) {
+            await dbService.restoreMember(userId, toRestore);
+          }
+        }
+      });
+    } catch (e) {
+      toast.error("Erro ao remover membro.");
+    }
+  };
+
   const handleAddTransaction = async (data: Omit<Transaction, 'id'>) => {
     if (!userId) return;
 
@@ -467,6 +503,16 @@ const App: React.FC = () => {
       toast.success("Transação Adicionada!");
     } catch (e) {
       toast.error("Erro ao salvar.");
+    }
+  };
+
+  const handleUpdateTransaction = async (transaction: Transaction) => {
+    if (!userId) return;
+    try {
+      await dbService.updateTransaction(userId, transaction);
+      toast.success("Lançamento atualizado com sucesso!");
+    } catch (e) {
+      toast.error("Erro ao atualizar lançamento.");
     }
   };
 
@@ -541,7 +587,7 @@ const App: React.FC = () => {
       amount: reminder.amount,
       date: new Date().toISOString().split('T')[0],
       category: reminder.category,
-      type: 'expense',
+      type: reminder.type || 'expense',
       status: 'completed',
       memberId: reminder.memberId
     };
@@ -556,10 +602,10 @@ const App: React.FC = () => {
 
       const updatedReminder = { ...reminder, dueDate: nextDate.toISOString().split('T')[0] };
       await dbService.updateReminder(userId, updatedReminder);
-      toast.success("Conta Paga! Vencimento atualizado.");
+      toast.success(reminder.type === 'income' ? "Recebimento confirmado! Próxima data agendada." : "Conta Paga! Vencimento atualizado.");
     } else {
       await dbService.deleteReminder(userId, reminder.id);
-      toast.success("Conta paga e removida.");
+      toast.success(reminder.type === 'income' ? "Recebimento confirmado e removido." : "Conta paga e removida.");
     }
   };
 
@@ -576,6 +622,27 @@ const App: React.FC = () => {
     toast.success("Meta removida.");
   };
 
+  const handleAddInvestment = async (investment: Omit<Investment, 'id'>) => {
+    if (!userId) return;
+    const targetMemberId = activeMemberId === 'FAMILY_OVERVIEW'
+      ? (members.find(m => m.role === 'admin') || members[0])?.id
+      : activeMemberId;
+    await dbService.addInvestment(userId, { ...investment, memberId: targetMemberId });
+    toast.success("Investimento adicionado!");
+  };
+
+  const handleUpdateInvestment = async (investment: Investment) => {
+    if (!userId) return;
+    await dbService.updateInvestment(userId, investment);
+    toast.success("Investimento atualizado!");
+  };
+
+  const handleDeleteInvestment = async (id: string) => {
+    if (!userId) return;
+    await dbService.deleteInvestment(userId, id);
+    toast.success("Investimento removido!");
+  };
+
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW'
       ? 'Família'
@@ -589,6 +656,7 @@ const App: React.FC = () => {
       case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
       case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
+      case 'investments': return { title: 'Investimentos', desc: 'Gerencie sua carteira de investimentos.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
       default: return { title: 'Controlar+', desc: '' };
     }
@@ -689,6 +757,7 @@ const App: React.FC = () => {
           activeMemberId={activeMemberId}
           onSelectMember={setActiveMemberId}
           onAddMember={handleAddMember}
+          onDeleteMember={handleDeleteMember}
           isSidebarOpen={isSidebarOpen}
         />
 
@@ -727,6 +796,13 @@ const App: React.FC = () => {
                   label="Lembretes"
                   isOpen={isSidebarOpen}
                   badge={overdueRemindersCount}
+                />
+                <NavItem
+                  active={activeTab === 'investments'}
+                  onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<TrendingUp size={20} />}
+                  label="Investimentos"
+                  isOpen={isSidebarOpen}
                 />
                 <NavItem
                   active={activeTab === 'advisor'}
@@ -916,7 +992,11 @@ const App: React.FC = () => {
 
               {activeTab === 'table' && (
                 <div className="h-[calc(100vh-280px)] animate-fade-in">
-                  <ExcelTable transactions={memberFilteredTransactions} onDelete={handleDeleteTransaction} />
+                  <ExcelTable
+                    transactions={memberFilteredTransactions}
+                    onDelete={handleDeleteTransaction}
+                    onUpdate={handleUpdateTransaction}
+                  />
                 </div>
               )}
 
@@ -929,6 +1009,21 @@ const App: React.FC = () => {
                   isModalOpen={isReminderModalOpen}
                   onCloseModal={() => setIsReminderModalOpen(false)}
                 />
+              )}
+
+              {activeTab === 'investments' && (
+                <div className="h-[calc(100vh-280px)] animate-fade-in">
+                  <Investments
+                    investments={activeMemberId === 'FAMILY_OVERVIEW'
+                      ? investments
+                      : investments.filter(inv => inv.memberId === activeMemberId)
+                    }
+                    onAdd={handleAddInvestment}
+                    onUpdate={handleUpdateInvestment}
+                    onDelete={handleDeleteInvestment}
+                    onAddTransaction={handleAddTransaction}
+                  />
+                </div>
               )}
 
               {activeTab === 'advisor' && (

@@ -1,6 +1,7 @@
 
 import React, { useState } from 'react';
-import { Users, Plus, Check, Crown, UserCircle, X } from './Icons';
+import { Users, Plus, Check, Crown, X } from './Icons';
+import { ConfirmationCard } from './UIComponents';
 import { Member } from '../types';
 
 interface MemberSelectorProps {
@@ -8,6 +9,7 @@ interface MemberSelectorProps {
   activeMemberId: string | 'FAMILY_OVERVIEW';
   onSelectMember: (id: string | 'FAMILY_OVERVIEW') => void;
   onAddMember: (name: string, avatarUrl: string) => void;
+  onDeleteMember: (id: string) => void;
   isSidebarOpen: boolean;
 }
 
@@ -24,17 +26,19 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
   activeMemberId,
   onSelectMember,
   onAddMember,
+  onDeleteMember,
   isSidebarOpen
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
-  const [selectedGradient, setSelectedGradient] = useState(GRADIENTS[0]);
+  const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
     if (newName.trim()) {
-      onAddMember(newName, selectedGradient);
+      const autoGradient = GRADIENTS[members.length % GRADIENTS.length];
+      onAddMember(newName, autoGradient);
       setNewName('');
       setIsAdding(false);
       setIsOpen(false);
@@ -69,6 +73,7 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
   }
 
   return (
+    <>
     <div className="px-3 mb-6 relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
@@ -107,9 +112,14 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
             {/* Member List */}
             <div className="max-h-48 overflow-y-auto custom-scrollbar">
               {members.map(member => (
-                <button
+                <div
                   key={member.id}
+                  role="button"
+                  tabIndex={0}
                   onClick={() => { onSelectMember(member.id); setIsOpen(false); }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { onSelectMember(member.id); setIsOpen(false); }
+                  }}
                   className={`w-full p-3 flex items-center gap-3 hover:bg-gray-800 transition-colors ${activeMemberId === member.id ? 'bg-gray-800/50' : ''}`}
                 >
                   <div className={`w-8 h-8 rounded-full ${member.avatarUrl} flex items-center justify-center text-white text-xs font-bold`}>
@@ -119,8 +129,23 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
                     <span className="text-sm font-medium text-gray-300 block">{member.name}</span>
                     {member.role === 'admin' && <span className="text-[10px] text-yellow-500 flex items-center gap-1"><Crown size={8} /> Admin</span>}
                   </div>
-                  {activeMemberId === member.id && <Check size={14} className="ml-auto text-[#d97757]" />}
-                </button>
+                  <div className="flex items-center gap-2 ml-auto">
+                    {activeMemberId === member.id && <Check size={14} className="text-[#d97757]" />}
+                    {member.role !== 'admin' && (
+                      <button
+                        type="button"
+                        onClick={(ev) => {
+                          ev.stopPropagation();
+                          setDeleteTarget(member);
+                        }}
+                        className="p-1 rounded-lg text-gray-500 hover:text-red-400 hover:bg-gray-900 transition-colors"
+                        title="Remover membro"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
               ))}
             </div>
 
@@ -136,16 +161,6 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
                     value={newName}
                     onChange={e => setNewName(e.target.value)}
                   />
-                </div>
-                <div className="flex gap-1 mb-3 justify-center">
-                  {GRADIENTS.map(g => (
-                    <button
-                      key={g}
-                      type="button"
-                      onClick={() => setSelectedGradient(g)}
-                      className={`w-5 h-5 rounded-full ${g} ${selectedGradient === g ? 'ring-2 ring-white' : 'opacity-50 hover:opacity-100'}`}
-                    />
-                  ))}
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -175,5 +190,22 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
         </div>
       )}
     </div>
+
+      <ConfirmationCard
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget) {
+            onDeleteMember(deleteTarget.id);
+            setIsOpen(false);
+          }
+        }}
+        title="Remover conta da familia?"
+        description={deleteTarget ? `Voce esta prestes a apagar ${deleteTarget.name}. Esta acao pode ser desfeita.` : ''}
+        confirmText="Sim, remover"
+        cancelText="Cancelar"
+        isDestructive
+      />
+    </>
   );
 };

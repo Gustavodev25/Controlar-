@@ -29,6 +29,7 @@ export interface AIParsedReminder {
   dueDate: string;
   isRecurring: boolean;
   frequency?: 'monthly' | 'weekly' | 'yearly';
+  type: 'income' | 'expense';
 }
 
 // Helper function to handle 503 Overloaded errors with exponential backoff
@@ -71,7 +72,7 @@ async function generateWithRetry(params: any, retries = 5) {
  * Analyzes financial data to provide insights.
  */
 export const analyzeFinances = async (transactions: Transaction[], focus: 'general' | 'savings' | 'future' = 'general'): Promise<{ analysis: string }> => {
-  if (!transactions.length) return { analysis: "Adicione transaÃ§Ãµes para receber uma anÃ¡lise da IA." };
+  if (!transactions.length) return { analysis: "Adicione transações para receber uma análise da IA." };
   if (!API_KEY) return { analysis: "Configure a VITE_GEMINI_API_KEY para usar o consultor IA." };
 
   const transactionSummary = transactions.slice(0, 50).map(t =>
@@ -80,26 +81,26 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
 
   let focusInstruction = "";
   if (focus === 'savings') {
-    focusInstruction = "Foque EXCLUSIVAMENTE em encontrar gastos desnecessÃ¡rios e sugerir cortes prÃ¡ticos. Seja rigoroso.";
+    focusInstruction = "Foque EXCLUSIVAMENTE em encontrar gastos desnecessários e sugerir cortes práticos. Seja rigoroso.";
   } else if (focus === 'future') {
-    focusInstruction = "Foque em projeÃ§Ã£o. Baseado no gasto atual, diga se o usuÃ¡rio vai fechar o mÃªs no positivo e sugira metas de investimento.";
+    focusInstruction = "Foque em projeção. Baseado no gasto atual, diga se o usuário vai fechar o mês no positivo e sugira metas de investimento.";
   } else {
-    focusInstruction = "FaÃ§a uma anÃ¡lise geral: saÃºde financeira, categorias mais pesadas e um elogio ou alerta.";
+    focusInstruction = "Faça uma análise geral: saúde financeira, categorias mais pesadas e um elogio ou alerta.";
   }
 
   const prompt = `
     Atue como um Consultor Financeiro Pessoal de Elite. Analise os dados abaixo (BRL).
     
-    Objetivo da anÃ¡lise: ${focusInstruction}
+    Objetivo da análise: ${focusInstruction}
 
-    InstruÃ§Ãµes de FormataÃ§Ã£o (RIGOROSO):
+    Instruções de Formatação (RIGOROSO):
     - Use Markdown.
-    - Use ### para tÃ­tulos de seÃ§Ãµes (ex: ### ðŸ“Š Resumo Geral).
+    - Use ### para títulos de seções (ex: ### 📊 Resumo Geral).
     - Use **negrito** para valores e pontos chave.
     - Use listas com marcadores (- ) para facilitar a leitura.
-    - Seja direto, evite texto genÃ©rico.
+    - Seja direto, evite texto genérico.
     
-    Dados das transaÃ§Ãµes (Amostra das 50 mais recentes):
+    Dados das transações (Amostra das 50 mais recentes):
     ${transactionSummary}
   `;
 
@@ -108,10 +109,10 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
       model: MODEL_NAME,
       contents: prompt,
     });
-    return { analysis: response.text || "NÃ£o foi possÃ­vel gerar anÃ¡lise no momento." };
+    return { analysis: response.text || "Não foi possível gerar análise no momento." };
   } catch (error: any) {
-    console.error("Erro ao analisar finanÃ§as:", error);
-    return { analysis: "O consultor IA estÃ¡ temporariamente indisponÃ­vel (sobrecarga). Tente novamente em alguns segundos." };
+    console.error("Erro ao analisar finanças:", error);
+    return { analysis: "O consultor IA está temporariamente indisponível (sobrecarga). Tente novamente em alguns segundos." };
   }
 };
 
@@ -125,27 +126,27 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   const prompt = `
-    Hoje Ã© EXATAMENTE: ${todayStr}.
-    O ANO ATUAL Ã‰ ${currentYear}. 
-    ATENÃ‡ÃƒO: Se o usuÃ¡rio nÃ£o especificar o ano, ASSUMA ${currentYear}. NÃƒO USE 2024.
+    Hoje é EXATAMENTE: ${todayStr}.
+    O ANO ATUAL É ${currentYear}. 
+    ATENÇÃO: Se o usuário não especificar o ano, ASSUMA ${currentYear}. NÃO USE 2024.
 
-    Analise o texto do usuÃ¡rio e extraia os dados da transaÃ§Ã£o financeira.
+    Analise o texto do usuário e extraia os dados da transação financeira.
     Texto: "${text}"
     
-    Regras CrÃ­ticas:
+    Regras Críticas:
     1. DATA: 
-       - Se o usuÃ¡rio nÃ£o falar data, use hoje (${today.toISOString().split('T')[0]}).
+       - Se o usuário não falar data, use hoje (${today.toISOString().split('T')[0]}).
        - Se disser "comecei em outubro", a data deve ser outubro DESTE ANO (${currentYear}).
        - Se disser "ontem", calcule baseado na data de hoje (${todayStr}).
     
     2. PARCELAMENTO:
        - Identifique palavras como "10x", "10 vezes", "parcelado em 5".
-       - Campo 'installments': NÃºmero total de parcelas.
-       - Campo 'amount': O valor de UMA parcela. Se o usuÃ¡rio disser o valor total, divida.
+       - Campo 'installments': Número total de parcelas.
+       - Campo 'amount': O valor de UMA parcela. Se o usuário disser o valor total, divida.
          EXEMPLO 1: "Compra de 1000 reais em 10x". -> amount: 100, installments: 10.
          EXEMPLO 2: "10x de 50 reais". -> amount: 50, installments: 10.
     
-    3. CATEGORIA: Escolha entre: AlimentaÃ§Ã£o, Transporte, Moradia, Lazer, SaÃºde, SalÃ¡rio, Investimentos, Outros.
+    3. CATEGORIA: Escolha entre: Alimentação, Transporte, Moradia, Lazer, Saúde, Salário, Investimentos, Outros.
   `;
 
   const schema: Schema = {
@@ -156,7 +157,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
       category: { type: Type.STRING },
       date: { type: Type.STRING, description: "YYYY-MM-DD (Data da compra ou da PRIMEIRA parcela)" },
       type: { type: Type.STRING, enum: ["income", "expense"] },
-      installments: { type: Type.INTEGER, description: "Quantidade total de parcelas (1 se for Ã  vista)" }
+      installments: { type: Type.INTEGER, description: "Quantidade total de parcelas (1 se for à vista)" }
     },
     required: ["description", "amount", "category", "type", "date"]
   };
@@ -171,7 +172,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
     const result = JSON.parse(response.text || "{}") as AIParsedTransaction;
 
     // Defaults defensivos - CRITICAL TO AVOID undefined errors in UI
-    if (!result.description) result.description = "Nova TransaÃ§Ã£o";
+    if (!result.description) result.description = "Nova Transação";
     if (result.amount === undefined || result.amount === null) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.type) result.type = "expense";
@@ -195,7 +196,12 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date().toISOString().split('T')[0];
-  const prompt = `Analise o texto para um lembrete de conta. Hoje Ã© ${today}. Texto: "${text}"`;
+  const prompt = `
+    Analise o texto para um lembrete financeiro. Hoje é ${today}. 
+    Texto: "${text}"
+    
+    Identifique se é uma DESPESA (pagar conta) ou RECEITA (receber salário, aluguel).
+  `;
 
   const schema: Schema = {
     type: Type.OBJECT,
@@ -205,9 +211,10 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
       category: { type: Type.STRING },
       dueDate: { type: Type.STRING, description: "YYYY-MM-DD" },
       isRecurring: { type: Type.BOOLEAN },
-      frequency: { type: Type.STRING, enum: ["monthly", "weekly", "yearly"], nullable: true }
+      frequency: { type: Type.STRING, enum: ["monthly", "weekly", "yearly"], nullable: true },
+      type: { type: Type.STRING, enum: ["income", "expense"] }
     },
-    required: ["description", "amount", "category", "dueDate", "isRecurring"]
+    required: ["description", "amount", "category", "dueDate", "isRecurring", "type"]
   };
 
   try {
@@ -222,6 +229,7 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
     if (!result.amount) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.dueDate) result.dueDate = today;
+    if (!result.type) result.type = "expense";
     if (result.isRecurring === undefined) result.isRecurring = false;
 
     return result;
