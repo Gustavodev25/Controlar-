@@ -1,12 +1,14 @@
 ﻿
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
    X, User, Mail, Check, Save, Sparkles, Shield, CreditCard,
    Bell, Download, Trash2, Upload, Smartphone,
-   CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins
+   CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
+   PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
+   Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award
 } from 'lucide-react';
-import { User as UserType, Transaction } from '../types';
+import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
 
@@ -16,6 +18,10 @@ interface SettingsModalProps {
    user: UserType;
    onUpdateUser: (user: UserType) => Promise<void> | void;
    transactions?: Transaction[];
+   familyGoals?: FamilyGoal[];
+   investments?: Investment[];
+   reminders?: Reminder[];
+   connectedAccounts?: ConnectedAccount[];
 }
 
 const AVATAR_GRADIENTS = [
@@ -27,9 +33,21 @@ const AVATAR_GRADIENTS = [
    'bg-gradient-to-br from-indigo-500 to-cyan-500',
 ];
 
+interface BadgeDefinition {
+   id: string;
+   title: string;
+   description: string;
+   category: string;
+   icon: React.ReactNode;
+   image?: string;
+   colorClass: string;
+   unlocked: boolean;
+   requirement: string;
+}
+
 type SettingsTab = 'account' | 'security' | 'plan' | 'notifications' | 'data';
 
-// --- COMPONENTE TWO FACTOR MODAL (ExtraÃ­do para evitar re-renders) ---
+// --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
    isOpen: boolean;
    onClose: () => void;
@@ -250,12 +268,358 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
 
 // --- COMPONENTE PRINCIPAL SETTINGS ---
 
-export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, user, onUpdateUser, transactions = [] }) => {
+export const SettingsModal: React.FC<SettingsModalProps> = ({
+   isOpen,
+   onClose,
+   user,
+   onUpdateUser,
+   transactions = [],
+   familyGoals = [],
+   investments = [],
+   reminders = [],
+   connectedAccounts = []
+}) => {
    const [activeTab, setActiveTab] = useState<SettingsTab>('account');
    const [formData, setFormData] = useState(user);
    const [isVisible, setIsVisible] = useState(false);
    const fileInputRef = useRef<HTMLInputElement>(null);
    const toast = useToasts();
+   const normalizeMonth = (dateStr: string) => dateStr.slice(0, 7);
+
+   // BADGES CALCULATIONS
+   const monthlyBalances = useMemo(() => {
+      const map: Record<string, { income: number; expense: number }> = {};
+      transactions.forEach((t) => {
+         const month = normalizeMonth(t.date);
+         if (!map[month]) map[month] = { income: 0, expense: 0 };
+         if (t.type === 'income') map[month].income += t.amount;
+         else map[month].expense += t.amount;
+      });
+      return map;
+   }, [transactions]);
+
+   const positiveMonths = useMemo(() => Object.entries(monthlyBalances)
+      .filter(([_, v]) => v.income > v.expense)
+      .map(([month]) => month)
+      .sort(), [monthlyBalances]);
+
+   const hasThreePositiveInRow = useMemo(() => {
+      const months = [...positiveMonths].sort();
+      let streak = 0;
+      let last: string | null = null;
+      for (const m of months) {
+         if (last) {
+            const [y, mo] = last.split('-').map(Number);
+            const [ny, nmo] = m.split('-').map(Number);
+            const expectedMonth = mo === 12 ? 1 : mo + 1;
+            const expectedYear = mo === 12 ? y + 1 : y;
+            if (ny === expectedYear && nmo === expectedMonth) {
+               streak += 1;
+            } else {
+               streak = 1;
+            }
+         } else {
+            streak = 1;
+         }
+         last = m;
+         if (streak >= 3) return true;
+      }
+      return false;
+   }, [positiveMonths]);
+
+   const totalInvested = useMemo(
+      () => investments.reduce((sum, inv) => sum + inv.currentAmount, 0),
+      [investments]
+   );
+
+   const hasCompletedFamilyGoal = useMemo(
+      () => familyGoals.some((g) => g.currentAmount >= g.targetAmount),
+      [familyGoals]
+   );
+
+   const hasTeamwork = useMemo(() => {
+      if (!transactions.length || !familyGoals.length) return false;
+      return familyGoals.some((goal) => {
+         const related = transactions.filter((t) => {
+            const text = `${t.description} ${t.category}`.toLowerCase();
+            return text.includes(goal.title.toLowerCase());
+         });
+         const byMonth: Record<string, Set<string>> = {};
+         related.forEach((t) => {
+            if (!t.memberId) return;
+            const m = normalizeMonth(t.date);
+            if (!byMonth[m]) byMonth[m] = new Set();
+            byMonth[m].add(t.memberId);
+         });
+         return Object.values(byMonth).some((s) => s.size >= 2);
+      });
+   }, [transactions, familyGoals]);
+
+   const longestTransactionStreak = useMemo(() => {
+      if (!transactions.length) return 0;
+      const dates = Array.from(new Set(transactions.map((t) => t.date))).sort();
+      let maxStreak = 1;
+      let streak = 1;
+      for (let i = 1; i < dates.length; i++) {
+         const prev = new Date(dates[i - 1]);
+         const cur = new Date(dates[i]);
+         const diff = (cur.getTime() - prev.getTime()) / (1000 * 60 * 60 * 24);
+         if (diff === 1) {
+            streak += 1;
+            maxStreak = Math.max(maxStreak, streak);
+         } else {
+            streak = 1;
+         }
+      }
+      return maxStreak;
+   }, [transactions]);
+
+   const allCategorizedThisMonth = useMemo(() => {
+      if (!transactions.length) return false;
+      const currentMonth = new Date().toISOString().slice(0, 7);
+      const currentTx = transactions.filter((t) => normalizeMonth(t.date) === currentMonth);
+      if (!currentTx.length) return false;
+      return currentTx.every((t) => {
+         const cat = (t.category || '').toLowerCase();
+         return cat && !['outros', 'outro', 'others'].includes(cat);
+      });
+   }, [transactions]);
+
+   const aiUsed = useMemo(
+      () => transactions.some((t) => {
+         const source = (t as any).importSource?.toLowerCase?.() || '';
+         const desc = t.description.toLowerCase();
+         return source.includes('ai') || desc.includes('ia ') || desc.includes(' ia') || desc.includes('consultor');
+      }),
+      [transactions]
+   );
+
+   const voiceUsed = useMemo(
+      () => transactions.some((t) => {
+         const source = (t as any).importSource?.toLowerCase?.() || '';
+         return source.includes('voice') || source.includes('voz');
+      }),
+      [transactions]
+   );
+
+   const hasBankConnection = useMemo(
+      () => connectedAccounts.length > 0 || transactions.some((t) => ((t as any).importSource || '').toLowerCase().includes('pluggy')),
+      [connectedAccounts, transactions]
+   );
+
+   const monthsActive = useMemo(() => {
+      if (!transactions.length) return 0;
+      const dates = transactions.map((t) => new Date(t.date));
+      const first = dates.reduce((a, b) => (a < b ? a : b));
+      const now = new Date();
+      return (now.getFullYear() - first.getFullYear()) * 12 + (now.getMonth() - first.getMonth());
+   }, [transactions]);
+
+   const unlockedBadges: BadgeDefinition[] = useMemo(() => {
+      const badges: BadgeDefinition[] = [
+         {
+            id: 'poupador',
+            title: 'Poupador Iniciante',
+            description: 'Feche um mês no azul.',
+            category: 'Economia',
+            icon: <PiggyBank size={18} className="text-green-400" />,
+            image: 'Poupador Iniciante.png',
+            colorClass: 'bg-green-500/10 border-green-500/30',
+            unlocked: positiveMonths.length >= 1,
+            requirement: 'Primeiro mês com saldo positivo'
+         },
+         {
+            id: 'escudo',
+            title: 'Escudo Financeiro',
+            description: '3 meses seguidos no azul.',
+            category: 'Economia',
+            icon: <ShieldCheck size={18} className="text-blue-400" />,
+            image: 'Escudo Financeiro.png',
+            colorClass: 'bg-blue-500/10 border-blue-500/30',
+            unlocked: hasThreePositiveInRow,
+            requirement: '3 meses consecutivos com saldo positivo'
+         },
+         {
+            id: 'reserva',
+            title: 'Mestre da Reserva',
+            description: 'R$ 1.000 em investimentos/caixinhas.',
+            category: 'Economia',
+            icon: <Lock size={18} className="text-yellow-400" />,
+            image: 'Mestre da Reserva.png',
+            colorClass: 'bg-yellow-500/10 border-yellow-500/30',
+            unlocked: totalInvested >= 1000,
+            requirement: 'Acumule R$ 1.000 em reservas'
+         },
+         {
+            id: 'sonhador',
+            title: 'Sonhador',
+            description: 'Crie sua primeira meta familiar.',
+            category: 'Metas',
+            icon: <Cloud size={18} className="text-purple-400" />,
+            image: 'Sonhador.png',
+            colorClass: 'bg-purple-500/10 border-purple-500/30',
+            unlocked: familyGoals.length >= 1,
+            requirement: 'Pelo menos uma meta criada'
+         },
+         {
+            id: 'conquistador',
+            title: 'Conquistador',
+            description: 'Complete uma meta familiar.',
+            category: 'Metas',
+            icon: <Trophy size={18} className="text-amber-300" />,
+            image: 'Conquistador.png',
+            colorClass: 'bg-amber-500/10 border-amber-500/30',
+            unlocked: hasCompletedFamilyGoal,
+            requirement: 'Bata 100% de uma meta'
+         },
+         {
+            id: 'team',
+            title: 'Trabalho em Equipe',
+            description: 'Dois membros contribuíram na mesma meta no mês.',
+            category: 'Metas',
+            icon: <Users size={18} className="text-orange-400" />,
+            image: 'Trabalho em Equipe.png',
+            colorClass: 'bg-orange-500/10 border-orange-500/30',
+            unlocked: hasTeamwork,
+            requirement: 'Contribuições de 2 membros na mesma meta'
+         },
+         {
+            id: 'ninja',
+            title: 'Data Ninja',
+            description: '7 dias seguidos registrando transações.',
+            category: 'Organização',
+            icon: <Zap size={18} className="text-red-400" />,
+            image: 'Data Ninja.png',
+            colorClass: 'bg-red-500/10 border-red-500/30',
+            unlocked: longestTransactionStreak >= 7,
+            requirement: 'Registrar por 7 dias consecutivos'
+         },
+         {
+            id: 'detetive',
+            title: 'Detetive de Gastos',
+            description: '100% das transações do mês categorizadas.',
+            category: 'Organização',
+            icon: <Search size={18} className="text-indigo-400" />,
+            image: 'Detetive de Gastos.png',
+            colorClass: 'bg-indigo-500/10 border-indigo-500/30',
+            unlocked: allCategorizedThisMonth,
+            requirement: 'Nenhuma transação como "Outros" no mês'
+         },
+         {
+            id: 'prevenido',
+            title: 'Prevenido',
+            description: 'Cadastre 5 lembretes de contas.',
+            category: 'Organização',
+            icon: <Bell size={18} className="text-cyan-400" />,
+            image: 'Prevenido.png',
+            colorClass: 'bg-cyan-500/10 border-cyan-500/30',
+            unlocked: reminders.length >= 5,
+            requirement: '5 lembretes cadastrados'
+         },
+         {
+            id: 'futurista',
+            title: 'Futurista',
+            description: 'Use o Consultor IA.',
+            category: 'Tecnologia',
+            icon: <Bot size={18} className="text-fuchsia-400" />,
+            image: 'Futurista.png',
+            colorClass: 'bg-fuchsia-500/10 border-fuchsia-500/30',
+            unlocked: aiUsed,
+            requirement: 'Primeiro uso do Consultor IA'
+         },
+         {
+            id: 'conectado',
+            title: 'Conectado',
+            description: 'Conecte uma conta bancária.',
+            category: 'Tecnologia',
+            icon: <Link size={18} className="text-lime-400" />,
+            image: 'Conectado.png',
+            colorClass: 'bg-lime-500/10 border-lime-500/30',
+            unlocked: hasBankConnection,
+            requirement: 'Primeira conta conectada'
+         },
+         {
+            id: 'voz',
+            title: 'Mágico da Voz',
+            description: 'Adicione despesa via comando de voz/chat natural.',
+            category: 'Tecnologia',
+            icon: <Wand2 size={18} className="text-purple-300" />,
+            image: 'Mágico da Voz.png',
+            colorClass: 'bg-purple-500/10 border-purple-500/30',
+            unlocked: voiceUsed,
+            requirement: 'Registrar 1 transação por voz'
+         },
+      ];
+
+      const bronze = monthsActive >= 1 && transactions.length >= 10;
+      const silver = monthsActive >= 3 && hasCompletedFamilyGoal;
+      const gold = monthsActive >= 6 && positiveMonths.length >= 6;
+      const diamond = bronze && silver && gold && badges.filter(b => b.unlocked).length >= 10;
+
+      badges.push(
+         {
+            id: 'bronze',
+            title: 'Nível Bronze',
+            description: '1 mês de uso + 10 transações.',
+            category: 'Nível',
+            icon: <Award size={18} className="text-amber-600" />,
+            image: 'Nível Bronze.png',
+            colorClass: 'bg-amber-600/10 border-amber-600/30',
+            unlocked: bronze,
+            requirement: '>=1 mês e 10 transações'
+         },
+         {
+            id: 'prata',
+            title: 'Nível Prata',
+            description: '3 meses de uso + 1 meta concluída.',
+            category: 'Nível',
+            icon: <Award size={18} className="text-slate-200" />,
+            image: 'Nível Prata.png',
+            colorClass: 'bg-slate-200/10 border-slate-200/30',
+            unlocked: silver,
+            requirement: '>=3 meses e 1 meta concluída'
+         },
+         {
+            id: 'ouro',
+            title: 'Nível Ouro',
+            description: '6 meses no azul consistente.',
+            category: 'Nível',
+            icon: <Crown size={18} className="text-yellow-300" />,
+            image: 'Nível Ouro.png',
+            colorClass: 'bg-yellow-400/10 border-yellow-400/30',
+            unlocked: gold,
+            requirement: '>=6 meses e saldo positivo recorrente'
+         },
+         {
+            id: 'diamante',
+            title: 'Nível Diamante',
+            description: 'Guru das finanças.',
+            category: 'Nível',
+            icon: <Award size={18} className="text-blue-200" />,
+            image: 'Nível Platina.png',
+            colorClass: 'bg-blue-300/10 border-blue-300/30',
+            unlocked: diamond,
+            requirement: 'Desbloqueie os principais badges'
+         },
+      );
+
+      return badges;
+   }, [
+      positiveMonths,
+      hasThreePositiveInRow,
+      totalInvested,
+      familyGoals,
+      hasCompletedFamilyGoal,
+      hasTeamwork,
+      longestTransactionStreak,
+      allCategorizedThisMonth,
+      reminders,
+      aiUsed,
+      hasBankConnection,
+      voiceUsed,
+      monthsActive,
+      transactions.length
+   ]);
 
    // 2FA State
    const [isTwoFactorModalOpen, setIsTwoFactorModalOpen] = useState(false);
@@ -354,7 +718,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
          toast.error("Sem dados para exportar.");
          return;
       }
-      const headers = ["Data", "DescriÃ§Ã£o", "Categoria", "Valor", "Tipo", "Status"];
+      const headers = ["Data", "Descrição", "Categoria", "Valor", "Tipo", "Status"];
       const rows = transactions.map(t => [
          t.date, `"${t.description}"`, t.category, t.amount.toFixed(2), t.type, t.status
       ]);
@@ -391,13 +755,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
             {/* Sidebar */}
             <div className="w-64 bg-gray-900 border-r border-gray-800 p-6 flex flex-col hidden md:flex">
                <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2 px-2">
-                  <div className="w-2 h-2 rounded-full bg-[#d97757]"></div> ConfiguraÃ§Ãµes
+                  <div className="w-2 h-2 rounded-full bg-[#d97757]"></div> Configurações
                </h2>
                <div className="space-y-1 flex-1">
                   {renderSidebarItem('account', 'Minha Conta', <User size={18} />)}
-                  {renderSidebarItem('security', 'SeguranÃ§a', <Shield size={18} />)}
+                  {renderSidebarItem('security', 'Segurança', <Shield size={18} />)}
                   {renderSidebarItem('plan', 'Planos e Assinatura', <CreditCard size={18} />)}
-                  {renderSidebarItem('notifications', 'NotificaÃ§Ãµes', <Bell size={18} />)}
+                  {renderSidebarItem('notifications', 'Notificações', <Bell size={18} />)}
                   {renderSidebarItem('data', 'Dados e Privacidade', <Download size={18} />)}
                </div>
             </div>
@@ -406,7 +770,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
             <div className="flex-1 flex flex-col min-w-0 bg-gray-950 relative">
                {/* Mobile Header */}
                <div className="md:hidden p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
-                  <h2 className="font-bold text-white">ConfiguraÃ§Ãµes</h2>
+                  <h2 className="font-bold text-white">Configurações</h2>
                   <button onClick={onClose} className="text-gray-500"><X size={24} /></button>
                </div>
 
@@ -424,7 +788,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                      <div className="space-y-10 animate-fade-in max-w-2xl">
                         <div>
                            <h3 className="text-3xl font-bold text-white mb-2">Minha Conta</h3>
-                           <p className="text-gray-400">Gerencie suas informaÃ§Ãµes pessoais.</p>
+                           <p className="text-gray-400">Gerencie suas informações pessoais.</p>
                         </div>
                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 pb-8 border-b border-gray-800">
                            <div className="relative group shrink-0">
@@ -482,12 +846,64 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                  </div>
                                  <p className="text-xs text-gray-500 ml-1">Este valor será usado como base para cálculo de horas extras</p>
                               </div>
-                              <button
-                                 onClick={handleSave}
-                                 className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
-                              >
-                                 <Save size={16} /> Salvar
-                              </button>
+                             <button
+                                onClick={handleSave}
+                                className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
+                             >
+                                <Save size={16} /> Salvar
+                             </button>
+                           </div>
+                        </div>
+
+                        {/* Badges */}
+                        <div className="space-y-3">
+                           <div className="flex items-center justify-between">
+                              <div>
+                                 <h4 className="text-xl font-bold text-white">Minhas Conquistas</h4>
+                                 <p className="text-sm text-gray-400">Desbloqueie badges ao usar o app.</p>
+                              </div>
+                              <span className="text-xs font-bold text-gray-400 px-3 py-1 rounded-full border border-gray-800">
+                                 {unlockedBadges.filter(b => b.unlocked).length} / {unlockedBadges.length} desbloqueadas
+                              </span>
+                           </div>
+
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                              {unlockedBadges.map((badge) => (
+                                 <div
+                                    key={badge.id}
+                                    className={`relative border rounded-2xl p-4 flex gap-3 items-center transition-all ${badge.unlocked ? `${badge.colorClass} backdrop-blur-sm` : 'bg-gray-900/40 border-gray-800 opacity-80'}`}
+                                 >
+                                    {!badge.unlocked && (
+                                       <div className="absolute inset-0 rounded-2xl bg-black/20 pointer-events-none" />
+                                    )}
+                                    <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center bg-gray-900/70">
+                                       {badge.image ? (
+                                          <img src={`/assets/badges/${badge.image}`} alt={badge.title} className="w-full h-full object-contain" />
+                                       ) : (
+                                          badge.icon
+                                       )}
+                                    </div>
+                                    <div className="flex-1">
+                                       <div className="flex items-center gap-2">
+                                          <p className="text-sm font-bold text-white">{badge.title}</p>
+                                          <span className="text-[10px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-400 uppercase tracking-wide">
+                                             {badge.category}
+                                          </span>
+                                       </div>
+                                       <p className="text-xs text-gray-400">{badge.description}</p>
+                                       {!badge.unlocked && (
+                                          <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                                             <Lock size={12} /> {badge.requirement}
+                                          </p>
+                                       )}
+                                       {badge.unlocked && (
+                                          <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
+                                             <Check size={12} /> Desbloqueado
+                                          </p>
+                                       )}
+                                    </div>
+                                 </div>
+                              ))}
                            </div>
                         </div>
                      </div>
@@ -497,7 +913,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                   {activeTab === 'security' && (
                      <div className="space-y-10 animate-fade-in max-w-2xl">
                         <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">SeguranÃ§a</h3>
+                           <h3 className="text-3xl font-bold text-white mb-2">Segurança</h3>
                            <p className="text-gray-400">Proteja sua conta.</p>
                         </div>
 
@@ -547,7 +963,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                      <div className="space-y-8 animate-fade-in">
                         <div>
                            <h3 className="text-3xl font-bold text-white mb-2">Planos e Assinatura</h3>
-                           <p className="text-gray-400">Todas as contas estÃƒÂ£o no plano gratuito com recursos liberados sem cobranÃƒÂ§as.</p>
+                           <p className="text-gray-400">Todas as contas estão no plano gratuito com recursos liberados sem cobranças.</p>
                         </div>
 
                         <div className="grid md:grid-cols-1 gap-6">
@@ -562,18 +978,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                                  <div>
                                     <p className="text-xs text-[#d97757] font-bold uppercase tracking-wide mb-1">Seu Plano</p>
                                     <h4 className="text-3xl font-bold text-white">Controlar+ Gratuito</h4>
-                                    <p className="text-sm text-gray-300 mt-1">Sem assinatura; todos os recursos essenciais estÃƒÂ£o liberados para qualquer conta.</p>
+                                    <p className="text-sm text-gray-300 mt-1">Sem assinatura; todos os recursos essenciais estão liberados para qualquer conta.</p>
                                  </div>
                               </div>
 
                               <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
                                  <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">CobranÃ§a</p>
+                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Cobrança</p>
                                     <p className="text-white font-medium">Gratuito para todas as contas</p>
                                  </div>
                                  <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">RenovaÃ§Ã£o</p>
-                                    <p className="text-white font-medium">NÃ£o expira nem gera faturas</p>
+                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Renovação</p>
+                                    <p className="text-white font-medium">Não expira nem gera faturas</p>
                                  </div>
                               </div>
                            </div>
@@ -614,13 +1030,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
                   {activeTab === 'notifications' && (
                      <div className="space-y-10 animate-fade-in max-w-2xl">
                         <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">NotificaÃ§Ãµes</h3>
-                           <p className="text-gray-400">Controle o que vocÃª recebe.</p>
+                           <h3 className="text-3xl font-bold text-white mb-2">Notificações</h3>
+                           <p className="text-gray-400">Controle o que você recebe.</p>
                         </div>
                         <div className="space-y-0 divide-y divide-gray-800 border border-gray-800 rounded-2xl bg-gray-900/30 overflow-hidden">
                            {[
-                              { id: 'email', label: 'E-mails de Resumo', desc: 'BalanÃ§o semanal.' },
-                              { id: 'push', label: 'NotificaÃ§Ãµes Push', desc: 'Alertas de contas.' },
+                              { id: 'email', label: 'E-mails de Resumo', desc: 'Balanço semanal.' },
+                              { id: 'push', label: 'Notificações Push', desc: 'Alertas de contas.' },
                            ].map((item) => (
                               <div key={item.id} className="p-6 flex items-center justify-between hover:bg-gray-900/50 transition-colors">
                                  <div className="pr-4">
@@ -736,3 +1152,5 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, u
       </div>
    );
 };
+
+

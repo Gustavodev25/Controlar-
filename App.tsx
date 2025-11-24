@@ -15,9 +15,11 @@ import {
   Tag,
   X,
   RotateCcw,
-  Menu
+  Menu,
+  Target,
+  Building
 } from './components/Icons';
-import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal } from './types';
+import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
 import { AIModal } from './components/AIModal';
@@ -30,6 +32,7 @@ import { Reminders } from './components/Reminders';
 import { SalaryManager } from './components/SalaryManager';
 import { AIAdvisor } from './components/AIAdvisor';
 import { Investments, Investment } from './components/Investments';
+import { Budgets } from './components/Budgets';
 import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { ToastContainer, useToasts } from './components/Toast';
@@ -39,9 +42,12 @@ import { onAuthStateChanged } from "firebase/auth";
 import * as dbService from './services/database';
 import { verifyTOTP } from './services/twoFactor';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
-import { NotificationCenter } from './components/NotificationCenter';
+import { NotificationCenter, SystemNotification } from './components/NotificationCenter';
 import { Logo } from './components/Logo';
 import { AIChatAssistant } from './components/AIChatAssistant';
+import { BankConnect } from './components/BankConnect';
+import { ConnectedAccounts } from './components/ConnectedAccounts';
+import { fetchPluggyAccounts, syncPluggyData } from './services/pluggyService';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -123,7 +129,7 @@ const App: React.FC = () => {
   const toast = useToasts();
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'advisor'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'advisor' | 'budgets' | 'connections'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -142,6 +148,12 @@ const App: React.FC = () => {
   const [investments, setInvestments] = useState<Investment[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [familyGoals, setFamilyGoals] = useState<FamilyGoal[]>([]);
+  const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [pluggyAccounts, setPluggyAccounts] = useState<ConnectedAccount[]>([]);
+  const [pluggyItemIds, setPluggyItemIds] = useState<string[]>([]);
+  const [loadingPluggyAccounts, setLoadingPluggyAccounts] = useState(false);
+  const [pluggyLastSync, setPluggyLastSync] = useState<Record<string, string>>({});
+  const [notifications, setNotifications] = useState<SystemNotification[]>([]);
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -160,9 +172,144 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
 
+  const syncMemberId = useMemo(() => {
+    if (activeMemberId !== 'FAMILY_OVERVIEW') return activeMemberId;
+    return members.find(m => m.role === 'admin')?.id || members[0]?.id;
+  }, [activeMemberId, members]);
+
+  const pluggyStorageKey = (uid: string) => `pluggy_items_${uid}`;
+  const pluggyAccountsKey = (uid: string) => `pluggy_accounts_${uid}`;
+
+  const refreshPluggyAccounts = async (itemIds: string[]) => {
+    if (!itemIds.length) {
+      setPluggyAccounts([]);
+      return;
+    }
+    setLoadingPluggyAccounts(true);
+    try {
+      const results = await Promise.all(itemIds.map(id => fetchPluggyAccounts(id).catch(() => [])));
+      const flattened = results.flat();
+      const seen = new Set<string>();
+      const unique = flattened.filter(acc => {
+        if (seen.has(acc.id)) return false;
+        seen.add(acc.id);
+        return true;
+      });
+      setPluggyAccounts(unique);
+      if (userId) {
+        localStorage.setItem(pluggyAccountsKey(userId), JSON.stringify(unique));
+      }
+    } catch (err) {
+      console.error("Erro ao atualizar contas Pluggy:", err);
+    } finally {
+      setLoadingPluggyAccounts(false);
+    }
+  };
+
+  const handlePluggyItemConnected = (itemId: string) => {
+    if (!userId) return;
+    const next = Array.from(new Set([...pluggyItemIds, itemId]));
+    setPluggyItemIds(next);
+    localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(next));
+    refreshPluggyAccounts(next);
+  };
+
+  const handleImportAccount = async (account: ConnectedAccount) => {
+    if (!userId) {
+      toast.error("Precisa estar logado para salvar lancamentos.");
+      return 0;
+    }
+    try {
+      const count = await syncPluggyData(userId, account.itemId, syncMemberId);
+      if (count === 0) {
+        toast.message({ text: "Nenhuma transacao nova. Ja estava sincronizado." });
+      } else {
+        toast.success(`${count} lancamentos salvos a partir de ${account.name}.`);
+      }
+      setPluggyLastSync(prev => ({ ...prev, [account.id]: new Date().toISOString() }));
+      // Registrar notificacao para revisao (persistente)
+      await dbService.addNotification(userId, {
+        type: 'update',
+        title: 'Revisar lançamentos importados',
+        message: count === 0
+          ? `Nenhum lançamento novo de ${account.name}, já sincronizado.`
+          : `${count} lançamentos importados de ${account.name}. Revise e confirme.`,
+        date: new Date().toISOString().split('T')[0],
+        read: false,
+        archived: false
+      });
+      return count;
+    } catch (err) {
+      console.error("Erro ao importar conta Pluggy:", err);
+      toast.error("Nao foi possivel salvar os lancamentos dessa conta.");
+      return 0;
+    }
+  };
+
+  const handleArchiveNotification = async (id: string) => {
+    if (!userId) return;
+    const note = notifications.find(n => n.id === id);
+    if (!note) return;
+    await dbService.updateNotification(userId, { ...note, archived: true });
+  };
+
+  const handleDeleteNotification = async (id: string) => {
+    if (!userId) return;
+    await dbService.deleteNotification(userId, id);
+  };
+
+  const handleMarkReadNotification = async (id: string) => {
+    if (!userId) return;
+    const note = notifications.find(n => n.id === id);
+    if (!note) return;
+    await dbService.updateNotification(userId, { ...note, read: true });
+  };
+
   useEffect(() => {
     localStorage.setItem('finances_sidebar_open', JSON.stringify(isSidebarOpen));
   }, [isSidebarOpen]);
+
+  useEffect(() => {
+    if (!userId) {
+      setPluggyItemIds([]);
+      setPluggyAccounts([]);
+      return;
+    }
+    try {
+      const storedRaw = localStorage.getItem(pluggyStorageKey(userId));
+      const stored = storedRaw ? JSON.parse(storedRaw) : [];
+      setPluggyItemIds(stored);
+      const cachedAccountsRaw = localStorage.getItem(pluggyAccountsKey(userId));
+      if (cachedAccountsRaw) {
+        try {
+          const cachedParsed = JSON.parse(cachedAccountsRaw);
+          setPluggyAccounts(cachedParsed || []);
+        } catch {
+          setPluggyAccounts([]);
+        }
+      } else {
+        setPluggyAccounts([]);
+      }
+      if (stored.length) {
+        refreshPluggyAccounts(stored);
+      } else {
+        setPluggyAccounts([]);
+      }
+    } catch (err) {
+      console.warn("Nao foi possivel carregar contas Pluggy salvas:", err);
+    }
+  }, [userId]);
+
+  useEffect(() => {
+    if (!userId) {
+      setNotifications([]);
+      return;
+    }
+    const unsub = dbService.listenToNotifications(userId, (items) => {
+      setNotifications(items as SystemNotification[]);
+    });
+    return () => unsub();
+  }, [userId]);
 
   // Authentication Listener
   useEffect(() => {
@@ -225,6 +372,7 @@ const App: React.FC = () => {
         setTransactions([]);
         setReminders([]);
         setMembers([]);
+        setBudgets([]);
       }
       setIsLoadingAuth(false);
     });
@@ -280,6 +428,10 @@ const App: React.FC = () => {
       setInvestments(data);
     });
 
+    const unsubBudgets = dbService.listenToBudgets(userId, (data) => {
+      setBudgets(data);
+    });
+
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
       setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     });
@@ -312,6 +464,7 @@ const App: React.FC = () => {
       unsubProfile();
       unsubMembers();
       unsubGoals();
+      unsubBudgets();
     };
   }, [userId, currentUser?.name]);
 
@@ -411,6 +564,11 @@ const App: React.FC = () => {
     });
   }, [memberFilteredTransactions, dashboardDate, dashboardYear, filterMode, dashboardCategory]);
 
+  // Apenas considera lancamentos que o usuario manteve (concluidos e nao ignorados)
+  const reviewedDashboardTransactions = useMemo(() => {
+    return dashboardFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
+  }, [dashboardFilteredTransactions]);
+
   // 3. Filter Reminders
   const filteredReminders = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return reminders;
@@ -427,15 +585,17 @@ const App: React.FC = () => {
 
   // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
-    const totalIncome = dashboardFilteredTransactions.filter(t => t.type === 'income').reduce((acc, t) => acc + t.amount, 0);
-    const totalExpense = dashboardFilteredTransactions.filter(t => t.type === 'expense').reduce((acc, t) => acc + t.amount, 0);
+    const incomes = reviewedDashboardTransactions.filter(t => t.type === 'income');
+    const expenses = reviewedDashboardTransactions.filter(t => t.type === 'expense');
+    const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
+    const totalExpense = expenses.reduce((acc, t) => acc + t.amount, 0);
     return {
       totalIncome,
       totalExpense,
       totalBalance: totalIncome - totalExpense,
       monthlySavings: totalIncome > 0 ? (totalIncome - totalExpense) : 0
     };
-  }, [dashboardFilteredTransactions]);
+  }, [reviewedDashboardTransactions]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -658,6 +818,8 @@ const App: React.FC = () => {
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
       case 'investments': return { title: 'Investimentos', desc: 'Gerencie sua carteira de investimentos.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
+      case 'budgets': return { title: 'Orçamentos', desc: 'Planejamento e controle de gastos.' };
+      case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
       default: return { title: 'Controlar+', desc: '' };
     }
   };
@@ -798,6 +960,20 @@ const App: React.FC = () => {
                   badge={overdueRemindersCount}
                 />
                 <NavItem
+                  active={activeTab === 'budgets'}
+                  onClick={() => { setActiveTab('budgets'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<Target size={20} />}
+                  label="Orçamentos"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
+                  active={activeTab === 'connections'}
+                  onClick={() => { setActiveTab('connections'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<Building size={20} />}
+                  label="Contas conectadas"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
                   active={activeTab === 'investments'}
                   onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                   icon={<TrendingUp size={20} />}
@@ -813,6 +989,21 @@ const App: React.FC = () => {
                 />
               </>
             )}
+          </div>
+
+          <div className="space-y-1">
+            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Open Finance</p>}
+            <BankConnect
+              userId={userId}
+              memberId={syncMemberId}
+              isSidebar
+              onItemConnected={handlePluggyItemConnected}
+              onSyncComplete={(count) => {
+                if (count > 0) {
+                  setActiveTab('table');
+                }
+              }}
+            />
           </div>
 
           <div className="space-y-1">
@@ -855,6 +1046,7 @@ const App: React.FC = () => {
       )}
 
       {/* Main Content */}
+
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
         <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
           <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
@@ -948,7 +1140,15 @@ const App: React.FC = () => {
             <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
 
             {/* Notification Center added here */}
-            <NotificationCenter reminders={reminders} />
+            <NotificationCenter
+              reminders={reminders}
+              budgets={budgets}
+              transactions={transactions}
+              externalNotifications={notifications}
+              onArchiveNotification={handleArchiveNotification}
+              onDeleteNotification={handleDeleteNotification}
+              onMarkReadNotification={handleMarkReadNotification}
+            />
 
             <UserMenu
               user={currentUser}
@@ -985,7 +1185,7 @@ const App: React.FC = () => {
                   )}
                   <StatsCards stats={stats} isLoading={isLoadingData} />
                   <div className="animate-fade-in space-y-6">
-                    <DashboardCharts transactions={dashboardFilteredTransactions} isLoading={isLoadingData} />
+                    <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
                   </div>
                 </>
               )}
@@ -1031,6 +1231,51 @@ const App: React.FC = () => {
                   <AIAdvisor transactions={memberFilteredTransactions} />
                 </div>
               )}
+
+              {activeTab === 'connections' && (
+                <div className="flex-1 space-y-6 animate-fade-in">
+                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col gap-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Open Finance</p>
+                        <h2 className="text-xl font-bold text-white">Contas conectadas</h2>
+                        <p className="text-sm text-gray-400">Visualize saldos e movimentacoes dos bancos vinculados.</p>
+                      </div>
+                      <BankConnect
+                        userId={userId}
+                        memberId={syncMemberId}
+                        onItemConnected={handlePluggyItemConnected}
+                        onSyncComplete={(count) => {
+                          if (count > 0) setActiveTab('table');
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  <ConnectedAccounts
+                    accounts={pluggyAccounts}
+                    isLoading={loadingPluggyAccounts}
+                    onRefresh={() => refreshPluggyAccounts(pluggyItemIds)}
+                    onImport={handleImportAccount}
+                    lastSynced={pluggyLastSync}
+                    storageKey={userId ? `pluggy_expand_${userId}` : undefined}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'budgets' && userId && (
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
+
+
+                  <Budgets
+                    userId={userId}
+                    transactions={transactions}
+                    members={members}
+                    activeMemberId={activeMemberId}
+                    budgets={budgets}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1055,6 +1300,10 @@ const App: React.FC = () => {
           if (userId) await dbService.updateUserProfile(userId, u);
         }}
         transactions={transactions}
+        familyGoals={familyGoals}
+        investments={investments}
+        reminders={reminders}
+        connectedAccounts={pluggyAccounts}
       />
     </div>
   );

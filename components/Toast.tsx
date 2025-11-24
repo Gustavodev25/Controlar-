@@ -1,82 +1,73 @@
-import { Toast, Toaster, createToaster } from "@ark-ui/react/toast";
-import { Portal } from "@ark-ui/react/portal";
-import { X } from "lucide-react";
-import { useCallback } from "react";
+import React from "react";
+import { Toaster as Sonner, toast } from "sonner";
 
-export const toaster = createToaster({
-  placement: "bottom-end",
-  gap: 16,
-  overlap: true,
-  duration: 3000,
-});
+type ToasterProps = React.ComponentProps<typeof Sonner>;
 
-export const ToastContainer = () => {
+export const Toaster = ({ theme = "system", ...props }: ToasterProps) => {
+  const bg = "#2f302f";
+  const border = "#3a3c3a";
+  const text = "#f4f4f4";
+  const muted = "#cfcfcf";
+  const actionBg = "#e38664";
+  const actionHover = "#c96e50";
+  const cancelBg = "#3a3c3a";
+  const cancelHover = "#303230";
+  const cancelText = "#e1e1e1";
+
   return (
-    <Portal>
-      <Toaster toaster={toaster}>
-        {(toast) => (
-          <Toast.Root className="bg-gray-900/80 backdrop-blur-xl rounded-xl shadow-2xl border border-gray-700 min-w-[420px] p-4 relative overflow-anywhere transition-all duration-300 ease-default will-change-transform h-(--height) opacity-(--opacity) translate-x-(--x) translate-y-(--y) scale-(--scale) z-(--z-index)">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex-1">
-                {toast.title && (
-                  <Toast.Title className="text-gray-100 font-semibold text-sm">
-                    {toast.title}
-                  </Toast.Title>
-                )}
-                {toast.description && (
-                  <Toast.Description className="text-gray-300 text-sm mt-1">
-                    {toast.description}
-                  </Toast.Description>
-                )}
-              </div>
-              <Toast.CloseTrigger className="p-1 hover:bg-gray-800 rounded transition-colors text-gray-400 hover:text-gray-300 flex-shrink-0">
-                <X className="w-4 h-4" />
-              </Toast.CloseTrigger>
-            </div>
-          </Toast.Root>
-        )}
-      </Toaster>
-    </Portal>
+    <Sonner
+      theme={theme as ToasterProps["theme"]}
+      className="toaster group"
+      toastOptions={{
+        style: {
+          background: bg,
+          color: text,
+          border: `1px solid ${border}`,
+        },
+        className: "shadow-2xl",
+        classNames: {
+          toast:
+            "group toast bg-transparent text-inherit border-transparent shadow-none",
+          description: "",
+        },
+        cancelButtonStyle: {
+          background: cancelBg,
+          color: cancelText,
+          border: `1px solid ${border}`,
+        },
+        actionButtonStyle: {
+          background: actionBg,
+          color: "#1f1f1f",
+          border: `1px solid ${border}`,
+        },
+      }}
+      {...props}
+    />
   );
 };
 
+export const ToastContainer = Toaster;
+
 interface Message {
   text: string;
+  description?: string;
   preserve?: boolean;
-  action?: string;
+  actionLabel?: string;
   onAction?: () => void;
-  onUndoAction?: () => void;
 }
 
 export const useToasts = () => {
   return {
-    message: useCallback(({ text, preserve }: Message) => {
-      toaster.create({
-        title: text,
-        type: "info",
+    message: ({ text, description, preserve, actionLabel, onAction }: Message) =>
+      toast(text, {
+        description,
         duration: preserve ? Infinity : 3000,
-      });
-    }, []),
-    success: useCallback((text: string) => {
-      toaster.create({
-        title: text,
-        type: "success",
-        duration: 3000,
-      });
-    }, []),
-    warning: useCallback((text: string) => {
-      toaster.create({
-        title: text,
-        type: "warning",
-        duration: 3000,
-      });
-    }, []),
-    error: useCallback((text: string) => {
-      toaster.create({
-        title: text,
-        type: "error",
-        duration: 3000,
-      });
-    }, [])
+        action: actionLabel && onAction ? { label: actionLabel, onClick: onAction } : undefined,
+      }),
+    success: (text: string, description?: string) => toast.success(text, { description }),
+    warning: (text: string, description?: string) => toast.warning(text, { description }),
+    error: (text: string, description?: string) => toast.error(text, { description }),
+    promise: <T>(p: Promise<T>, opts: { loading: string; success: string; error: string }) =>
+      toast.promise(p, opts),
   };
 };

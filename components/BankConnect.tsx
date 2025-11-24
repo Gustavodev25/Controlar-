@@ -1,89 +1,106 @@
-
-import React, { useState, useEffect } from 'react';
-import { 
-  Landmark, Link, X, Bot, Sparkles, QrCode, Building, Smartphone, ShieldCheck
-} from './Icons';
-import { createPortal } from 'react-dom';
-import { useToasts } from './Toast';
-import { createConnectToken, syncPluggyData } from '../services/pluggyService';
-import { PluggyConnect } from 'react-pluggy-connect';
+import React, { useState, useEffect } from "react";
+import { Link, X, Bot, Building, ShieldCheck } from "./Icons";
+import { createPortal } from "react-dom";
+import { useToasts } from "./Toast";
+import { createConnectToken, syncPluggyData } from "../services/pluggyService";
+import { PluggyConnect } from "react-pluggy-connect";
 
 interface BankConnectProps {
   userId: string | null;
-  onSyncComplete: () => void;
+  memberId?: string | null;
+  onItemConnected?: (itemId: string) => void;
+  onSyncComplete?: (imported: number) => void;
   isSidebar?: boolean;
 }
 
-export const BankConnect: React.FC<BankConnectProps> = ({ userId, onSyncComplete, isSidebar = false }) => {
+export const BankConnect: React.FC<BankConnectProps> = ({
+  userId,
+  memberId,
+  onItemConnected,
+  onSyncComplete,
+  isSidebar = false,
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const [connectToken, setConnectToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  
+
   const toast = useToasts();
 
   // Initialize Token when modal opens
   useEffect(() => {
     if (isOpen && !connectToken) {
-        initSession();
+      initSession();
     }
-  }, [isOpen]);
+  }, [isOpen, connectToken]);
 
   const initSession = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-          const token = await createConnectToken();
-          setConnectToken(token);
-      } catch (err) {
-          console.error(err);
-          setError("Não foi possível iniciar a conexão segura com o Pluggy.");
-      } finally {
-          setIsLoading(false);
-      }
+    if (!userId) {
+      setError("Faca login para conectar seu banco.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = await createConnectToken(userId);
+      setConnectToken(token);
+    } catch (err) {
+      console.error(err);
+      setError("Nao foi possivel iniciar a conexao segura com o Pluggy.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handlePluggySuccess = async (itemData: { item: { id: string } }) => {
-      const itemId = itemData.item.id;
-      setSyncing(true);
-      try {
-          // Immediately sync data (Polling strategy since no webhook backend)
-          const count = await syncPluggyData(userId!, itemId);
-          toast.success(`Conexão realizada! ${count} transações importadas.`);
-          onSyncComplete();
-          handleClose();
-      } catch (err) {
-          toast.error("Conexão feita, mas houve erro ao baixar transações.");
-      } finally {
-          setSyncing(false);
-      }
+    if (!userId) {
+      toast.error("Sessao expirada. Entre novamente.");
+      return;
+    }
+    const itemId = itemData.item.id;
+    setSyncing(true);
+    try {
+      const count = await syncPluggyData(userId, itemId, memberId || undefined);
+      toast.success(`Conexao realizada! ${count} transacoes importadas.`);
+      onItemConnected?.(itemId);
+      onSyncComplete?.(count);
+      handleClose();
+    } catch (err) {
+      console.error("Erro ao sincronizar Pluggy:", err);
+      toast.error("Conexao feita, mas houve erro ao baixar transacoes.");
+    } finally {
+      setSyncing(false);
+    }
   };
 
   const handlePluggyError = (err: any) => {
-      console.error("Pluggy Widget Error", err);
-      // Optional: toast.error("Erro na conexão bancária.");
+    console.error("Pluggy Widget Error", err);
+    toast.error("Nao foi possivel finalizar a conexao.");
   };
 
   const handleClose = () => {
-      setIsOpen(false);
-      setConnectToken(null); // Reset token to ensure fresh session next time
-      setError(null);
-      setSyncing(false);
+    setIsOpen(false);
+    setConnectToken(null); // Reset token to ensure fresh session next time
+    setError(null);
+    setSyncing(false);
   };
 
   const TriggerButton = isSidebar ? (
     <button
-        onClick={() => setIsOpen(true)}
-        className="w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+      onClick={() => setIsOpen(true)}
+      className="w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
     >
-        <span className="text-[#d97757] group-hover:text-[#e68e70] transition-colors">
-            <Building size={20} />
-        </span>
-        <span className="font-medium text-sm truncate animate-fade-in">Conectar Banco</span>
+      <span className="text-[#d97757] group-hover:text-[#e68e70] transition-colors">
+        <Building size={20} />
+      </span>
+      <span className="font-medium text-sm truncate animate-fade-in">
+        Conectar Banco
+      </span>
     </button>
   ) : (
-    <button 
+    <button
       onClick={() => setIsOpen(true)}
       className="flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
     >
@@ -96,72 +113,84 @@ export const BankConnect: React.FC<BankConnectProps> = ({ userId, onSyncComplete
     <>
       {TriggerButton}
 
-      {isOpen && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
+      {isOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-sm p-0 md:p-4 animate-fade-in">
             <div className="bg-white w-full max-w-4xl md:rounded-3xl overflow-hidden flex flex-col relative h-full md:h-[80vh]">
-                
-                {/* Header */}
-                <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white z-10">
-                    <div className="flex items-center gap-3">
-                       <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white">
-                          <Building size={18} />
-                       </div>
-                       <div>
-                          <h3 className="text-lg font-bold text-gray-900">Conectar Conta Bancária</h3>
-                          <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
-                             <ShieldCheck size={12} /> Ambiente Seguro Pluggy
-                          </div>
-                       </div>
+              {/* Header */}
+              <div className="p-4 border-b border-gray-100 flex justify-between items-center bg-white z-10">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 bg-[#d97757] rounded-lg flex items-center justify-center text-white">
+                    <Building size={18} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">
+                      Conectar Conta Bancaria
+                    </h3>
+                    <div className="flex items-center gap-1 text-xs text-green-600 font-medium">
+                      <ShieldCheck size={12} /> Ambiente Seguro Pluggy
                     </div>
-                    <button onClick={handleClose} className="text-gray-400 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100 transition-colors">
-                        <X size={24} />
-                    </button>
+                  </div>
                 </div>
+                <button
+                  onClick={handleClose}
+                  className="text-gray-400 hover:text-gray-900 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                >
+                  <X size={24} />
+                </button>
+              </div>
 
-                {/* Content Area */}
-                <div className="flex-1 relative bg-gray-50">
-                    
-                    {isLoading ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
-                             <div className="w-10 h-10 border-4 border-[#d97757] border-t-transparent rounded-full animate-spin mb-4"></div>
-                             <p className="text-gray-500 font-medium">Iniciando conexão segura...</p>
-                        </div>
-                    ) : error ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
-                             <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
-                                <X size={32} />
-                             </div>
-                             <h4 className="text-xl font-bold text-gray-800 mb-2">Erro de Inicialização</h4>
-                             <p className="text-gray-500 max-w-sm">{error}</p>
-                             <button 
-                               onClick={initSession} 
-                               className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
-                             >
-                               Tentar Novamente
-                             </button>
-                        </div>
-                    ) : syncing ? (
-                        <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-white/90 backdrop-blur-sm">
-                             <div className="w-16 h-16 bg-[#d97757]/10 text-[#d97757] rounded-full flex items-center justify-center mb-4 animate-pulse">
-                                <Bot size={32} />
-                             </div>
-                             <h4 className="text-xl font-bold text-gray-900 mb-2">Sincronizando...</h4>
-                             <p className="text-gray-500">Baixando suas transações e categorizando.</p>
-                        </div>
-                    ) : connectToken ? (
-                        <PluggyConnect
-                            connectToken={connectToken}
-                            includeSandbox={true}
-                            onSuccess={handlePluggySuccess}
-                            onError={handlePluggyError}
-                            onClose={handleClose} // Handles the "X" inside widget
-                        />
-                    ) : null}
-                </div>
+              {/* Content Area */}
+              <div className="flex-1 relative bg-gray-50">
+                {isLoading ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center">
+                    <div className="w-10 h-10 border-4 border-[#d97757] border-t-transparent rounded-full animate-spin mb-4"></div>
+                    <p className="text-gray-500 font-medium">
+                      Iniciando conexao segura...
+                    </p>
+                  </div>
+                ) : error ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center">
+                    <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mb-4">
+                      <X size={32} />
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-800 mb-2">
+                      Erro de Inicializacao
+                    </h4>
+                    <p className="text-gray-500 max-w-sm">{error}</p>
+                    <button
+                      onClick={initSession}
+                      className="mt-6 px-6 py-2 bg-gray-900 text-white rounded-lg hover:bg-gray-800"
+                    >
+                      Tentar Novamente
+                    </button>
+                  </div>
+                ) : syncing ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-white/90 backdrop-blur-sm">
+                    <div className="w-16 h-16 bg-[#d97757]/10 text-[#d97757] rounded-full flex items-center justify-center mb-4 animate-pulse">
+                      <Bot size={32} />
+                    </div>
+                    <h4 className="text-xl font-bold text-gray-900 mb-2">
+                      Sincronizando...
+                    </h4>
+                    <p className="text-gray-500">
+                      Baixando suas transacoes e categorizando.
+                    </p>
+                  </div>
+                ) : connectToken ? (
+                  <PluggyConnect
+                    connectToken={connectToken}
+                    includeSandbox={true}
+                    onSuccess={handlePluggySuccess}
+                    onError={handlePluggyError}
+                    onClose={handleClose} // Handles the "X" inside widget
+                  />
+                ) : null}
+              </div>
             </div>
-        </div>,
-        document.body
-      )}
+          </div>,
+          document.body
+        )}
     </>
   );
 };

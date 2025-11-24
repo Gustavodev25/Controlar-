@@ -56,10 +56,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       const matchesYear = transactionYear === selectedYear;
 
       // FIX: Guard against undefined description/category
-      const matchesSearch = 
+      const matchesSearch =
         (t.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
         (t.category || "").toLowerCase().includes(searchTerm.toLowerCase());
-      
+
       const matchesStartDate = startDate ? t.date >= startDate : true;
       const matchesEndDate = endDate ? t.date <= endDate : true;
 
@@ -75,9 +75,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   const formatDate = (dateStr: string) => {
-     if(!dateStr) return '';
-     const [y, m, d] = dateStr.split('-');
-     return `${d}/${m}/${y}`;
+    if (!dateStr) return '';
+    const [y, m, d] = dateStr.split('-');
+    return `${d}/${m}/${y}`;
   };
 
   // Edit Modal Control
@@ -100,7 +100,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   }, [isEditModalOpen]);
 
   const handleEditClick = (transaction: Transaction) => {
-    setEditTransaction({...transaction});
+    setEditTransaction({ ...transaction });
     setIsEditModalOpen(true);
   };
 
@@ -153,31 +153,31 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
           {/* Start Date - Custom Date Picker Standalone */}
           <div className="w-28 lg:w-36 relative z-20">
-             <CustomDatePicker
-               value={startDate}
-               onChange={setStartDate}
-               placeholder="Início"
-             />
+            <CustomDatePicker
+              value={startDate}
+              onChange={setStartDate}
+              placeholder="Início"
+            />
           </div>
 
           {/* End Date - Custom Date Picker Standalone */}
           <div className="w-28 lg:w-36 relative z-10">
-             <CustomDatePicker
-               value={endDate}
-               onChange={setEndDate}
-               placeholder="Fim"
-             />
+            <CustomDatePicker
+              value={endDate}
+              onChange={setEndDate}
+              placeholder="Fim"
+            />
           </div>
 
           {/* Reset Dates Button */}
           {(startDate || endDate) && (
-             <button
-               onClick={() => { setStartDate(''); setEndDate(''); }}
-               className="h-10 lg:h-11 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700 transition-colors shrink-0"
-               title="Limpar datas"
-             >
-               <X size={14} />
-             </button>
+            <button
+              onClick={() => { setStartDate(''); setEndDate(''); }}
+              className="h-10 lg:h-11 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 border border-gray-700 transition-colors shrink-0"
+              title="Limpar datas"
+            >
+              <X size={14} />
+            </button>
           )}
 
           <div className="relative flex-1 min-w-full sm:min-w-0 lg:w-64 z-0 h-10 lg:h-11">
@@ -226,7 +226,19 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   {formatDate(t.date)}
                 </td>
                 <td className="px-4 py-2 border-r border-gray-800 text-gray-200 font-medium">
-                  {t.description}
+                  <div className="flex items-center gap-2">
+                    <span>{t.description}</span>
+                    {t.importSource === 'pluggy' && t.needsApproval && (
+                      <span className="px-2 py-0.5 text-[10px] uppercase rounded-full bg-amber-900/40 text-amber-300 border border-amber-700/50">
+                        revisar
+                      </span>
+                    )}
+                    {t.ignored && (
+                      <span className="px-2 py-0.5 text-[10px] uppercase rounded-full bg-gray-800 text-gray-400 border border-gray-700">
+                        ignorado
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-2 border-r border-gray-800 text-gray-400">
                   <div className="flex items-center gap-2">
@@ -242,12 +254,26 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
                 </td>
                 <td className="px-4 py-2 border-r border-gray-800 text-center">
-                   <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full font-bold ${t.status === 'completed' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>
-                     {t.status === 'completed' ? 'Pago' : 'Pendente'}
-                   </span>
+                  <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded-full font-bold ${t.status === 'completed' ? 'bg-green-900/30 text-green-400' : 'bg-yellow-900/30 text-yellow-400'}`}>
+                    {t.status === 'completed' ? 'Pago' : 'Pendente'}
+                  </span>
                 </td>
                 <td className="px-4 py-2 text-center">
                   <div className="flex items-center justify-center gap-1">
+                    <button
+                      onClick={() => onUpdate({ ...t, status: 'completed', needsApproval: false, ignored: false })}
+                      className="text-green-400 hover:text-green-300 px-2 py-1 text-[11px] border border-green-600/40 rounded"
+                      title="Incluir na receita"
+                    >
+                      Manter
+                    </button>
+                    <button
+                      onClick={() => onUpdate({ ...t, needsApproval: false, ignored: true })}
+                      className="text-gray-400 hover:text-gray-200 px-2 py-1 text-[11px] border border-gray-700 rounded"
+                      title="Desconsiderar este lançamento"
+                    >
+                      Ignorar
+                    </button>
                     <button
                       onClick={() => handleEditClick(t)}
                       className="text-gray-500 hover:text-blue-400 p-1 rounded hover:bg-blue-900/20 transition-colors"
@@ -381,7 +407,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <input
                   type="text"
                   value={editTransaction.description}
-                  onChange={(e) => setEditTransaction({...editTransaction, description: e.target.value})}
+                  onChange={(e) => setEditTransaction({ ...editTransaction, description: e.target.value })}
                   className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 transition-all"
                   placeholder="Ex: Salário"
                 />
@@ -399,7 +425,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                     onChange={(e) => {
                       const val = e.target.value.replace(',', '.');
                       const parsed = parseFloat(val);
-                      setEditTransaction({...editTransaction, amount: isNaN(parsed) ? 0 : parsed});
+                      setEditTransaction({ ...editTransaction, amount: isNaN(parsed) ? 0 : parsed });
                     }}
                     className="w-full p-3 pl-10 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 text-lg font-bold transition-all"
                     placeholder="0,00"
@@ -413,7 +439,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <input
                   type="date"
                   value={editTransaction.date}
-                  onChange={(e) => setEditTransaction({...editTransaction, date: e.target.value})}
+                  onChange={(e) => setEditTransaction({ ...editTransaction, date: e.target.value })}
                   className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 transition-all"
                 />
               </div>
@@ -423,7 +449,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <label className="text-xs font-medium text-gray-400">Categoria</label>
                 <select
                   value={editTransaction.category}
-                  onChange={(e) => setEditTransaction({...editTransaction, category: e.target.value})}
+                  onChange={(e) => setEditTransaction({ ...editTransaction, category: e.target.value })}
                   className="w-full p-3 bg-gray-900/50 border border-gray-700 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 transition-all"
                 >
                   {CATEGORIES.map(cat => (
@@ -438,14 +464,14 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setEditTransaction({...editTransaction, type: 'income'})}
+                    onClick={() => setEditTransaction({ ...editTransaction, type: 'income' })}
                     className={`p-3 rounded-xl border font-medium text-center transition-all ${editTransaction.type === 'income' ? 'bg-green-600 border-green-600 text-white shadow-lg shadow-green-900/20' : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                   >
                     Receita
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditTransaction({...editTransaction, type: 'expense'})}
+                    onClick={() => setEditTransaction({ ...editTransaction, type: 'expense' })}
                     className={`p-3 rounded-xl border font-medium text-center transition-all ${editTransaction.type === 'expense' ? 'bg-red-600 border-red-600 text-white shadow-lg shadow-red-900/20' : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                   >
                     Despesa
@@ -459,14 +485,14 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     type="button"
-                    onClick={() => setEditTransaction({...editTransaction, status: 'completed'})}
+                    onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
                     className={`p-3 rounded-xl border font-medium text-center transition-all ${editTransaction.status === 'completed' ? 'bg-green-600 border-green-600 text-white shadow-lg shadow-green-900/20' : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                   >
                     Pago
                   </button>
                   <button
                     type="button"
-                    onClick={() => setEditTransaction({...editTransaction, status: 'pending'})}
+                    onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
                     className={`p-3 rounded-xl border font-medium text-center transition-all ${editTransaction.status === 'pending' ? 'bg-yellow-600 border-yellow-600 text-white shadow-lg shadow-yellow-900/20' : 'bg-gray-800/50 border-gray-700 text-gray-400 hover:bg-gray-700 hover:text-white'}`}
                   >
                     Pendente

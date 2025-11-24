@@ -1,0 +1,374 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign, TrendingDown } from './Icons';
+import { Budget, Transaction, Member } from '../types';
+import * as dbService from '../services/database';
+import { useToasts } from './Toast';
+import { ConfirmationCard, CustomAutocomplete } from './UIComponents';
+
+interface BudgetsProps {
+    userId: string;
+    transactions: Transaction[];
+    members: Member[];
+    activeMemberId: string;
+    budgets: Budget[];
+}
+
+export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members, activeMemberId, budgets }) => {
+    // Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [isVisible, setIsVisible] = useState(false);
+    const [isAnimating, setIsAnimating] = useState(false);
+
+    const [editingBudget, setEditingBudget] = useState<Budget | null>(null);
+    const [deleteId, setDeleteId] = useState<string | null>(null);
+    const toast = useToasts();
+
+    // Form State
+    const [category, setCategory] = useState('');
+    const [limitAmount, setLimitAmount] = useState('');
+    const [alertThreshold, setAlertThreshold] = useState('80');
+
+    // Modal Animation Logic
+    useEffect(() => {
+        let timeoutId: ReturnType<typeof setTimeout>;
+        if (isModalOpen) {
+            setIsVisible(true);
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    setIsAnimating(true);
+                });
+            });
+        } else {
+            setIsAnimating(false);
+            timeoutId = setTimeout(() => {
+                setIsVisible(false);
+            }, 300);
+        }
+        return () => clearTimeout(timeoutId);
+    }, [isModalOpen]);
+
+    const handleOpenModal = (budget?: Budget) => {
+        if (budget) {
+            setEditingBudget(budget);
+            setCategory(budget.category);
+            setLimitAmount(budget.limitAmount.toString());
+            setAlertThreshold(budget.alertThreshold.toString());
+        } else {
+            setEditingBudget(null);
+            setCategory('');
+            setLimitAmount('');
+            setAlertThreshold('80');
+        }
+        setIsModalOpen(true);
+    };
+
+    const handleCloseModal = () => {
+        setIsModalOpen(false);
+    };
+
+    const handleSave = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!category || !limitAmount) {
+            toast.error("Preencha todos os campos.");
+            return;
+        }
+
+        const budgetData: Omit<Budget, 'id'> = {
+            category,
+            limitAmount: parseFloat(limitAmount),
+            month: 'recurring', // MVP: Recurring only for now
+            alertThreshold: parseInt(alertThreshold),
+            memberId: activeMemberId === 'FAMILY_OVERVIEW' ? undefined : activeMemberId
+        };
+
+        try {
+            if (editingBudget) {
+                await dbService.updateBudget(userId, { ...budgetData, id: editingBudget.id });
+                toast.success("Orçamento atualizado!");
+            } else {
+                await dbService.addBudget(userId, budgetData);
+                toast.success("Orçamento criado!");
+            }
+            handleCloseModal();
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao salvar orçamento.");
+        }
+    };
+
+    const handleDelete = async () => {
+        if (deleteId) {
+            await dbService.deleteBudget(userId, deleteId);
+            toast.success("Orçamento removido.");
+            setDeleteId(null);
+        }
+    };
+
+    // Calculate Progress
+    const budgetProgress = useMemo(() => {
+        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+
+        return budgets.map(budget => {
+            const relevantTransactions = transactions.filter(t => {
+                const isSameCategory = t.category === budget.category;
+                const isExpense = t.type === 'expense';
+                const isCurrentMonth = t.date.startsWith(currentMonth);
+
+                let isMemberMatch = true;
+                if (activeMemberId !== 'FAMILY_OVERVIEW') {
+                    isMemberMatch = t.memberId === activeMemberId;
+                } else if (budget.memberId) {
+                    isMemberMatch = t.memberId === budget.memberId;
+                }
+
+                return isSameCategory && isExpense && isCurrentMonth && isMemberMatch;
+            });
+
+            const spent = relevantTransactions.reduce((acc, t) => acc + t.amount, 0);
+            const percentage = Math.min((spent / budget.limitAmount) * 100, 100);
+
+            return {
+                ...budget,
+                spent,
+                percentage
+            };
+        });
+    }, [budgets, transactions, activeMemberId]);
+
+    // Filter budgets based on active view
+    const filteredBudgets = useMemo(() => {
+        if (activeMemberId === 'FAMILY_OVERVIEW') return budgetProgress;
+        return budgetProgress.filter(b => !b.memberId || b.memberId === activeMemberId);
+    }, [budgetProgress, activeMemberId]);
+
+    const getProgressBarColor = (percentage: number) => {
+        if (percentage < 70) return 'bg-green-500';
+        if (percentage < 90) return 'bg-yellow-500';
+        return 'bg-red-500';
+    };
+
+    // Extract unique categories from transactions for autocomplete/select
+    const availableCategories = useMemo(() => {
+        const cats = new Set(transactions.map(t => t.category));
+        return Array.from(cats).sort();
+    }, [transactions]);
+
+    return (
+        <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-white">Orçamentos Mensais</h2>
+                    <p className="text-gray-400 text-sm">Acompanhe seus gastos por categoria.</p>
+                </div>
+                <button
+                    onClick={() => handleOpenModal()}
+                    className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-[#d97757]/20"
+                >
+                    <Plus size={18} />
+                    <span className="hidden sm:inline">Novo Orçamento</span>
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredBudgets.map(budget => (
+                    <div key={budget.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-sm hover:border-gray-700 transition-all group relative overflow-hidden">
+                        {/* Background Progress Bar (Subtle) */}
+                        <div
+                            className={`absolute bottom-0 left-0 h-1 transition-all duration-500 ${getProgressBarColor(budget.percentage)}`}
+                            style={{ width: `${budget.percentage}%` }}
+                        ></div>
+
+                        <div className="flex justify-between items-start mb-4">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2.5 bg-gray-800 rounded-xl text-gray-300">
+                                    <Target size={20} />
+                                </div>
+                                <div>
+                                    <h3 className="font-bold text-white">{budget.category}</h3>
+                                    <p className="text-xs text-gray-500">
+                                        {budget.memberId ? members.find(m => m.id === budget.memberId)?.name : 'Geral'}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button
+                                    onClick={() => handleOpenModal(budget)}
+                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                                >
+                                    <Edit2 size={14} />
+                                </button>
+                                <button
+                                    onClick={() => setDeleteId(budget.id)}
+                                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                                >
+                                    <Trash2 size={14} />
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <div className="flex justify-between text-sm">
+                                <span className="text-gray-400">Gasto: <span className="text-white font-medium">R$ {budget.spent.toFixed(2)}</span></span>
+                                <span className="text-gray-400">Limite: <span className="text-white font-medium">R$ {budget.limitAmount.toFixed(2)}</span></span>
+                            </div>
+
+                            <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+                                <div
+                                    className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(budget.percentage)}`}
+                                    style={{ width: `${budget.percentage}%` }}
+                                ></div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-xs mt-1">
+                                <span className={`${budget.percentage > 100 ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
+                                    {budget.percentage.toFixed(0)}% utilizado
+                                </span>
+                                {budget.percentage >= budget.alertThreshold && budget.percentage < 100 && (
+                                    <span className="flex items-center gap-1 text-yellow-500">
+                                        <AlertTriangle size={10} />
+                                        Atenção
+                                    </span>
+                                )}
+                                {budget.percentage >= 100 && (
+                                    <span className="flex items-center gap-1 text-red-500">
+                                        <AlertTriangle size={10} />
+                                        Excedido
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                ))}
+
+                {filteredBudgets.length === 0 && (
+                    <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
+                        <p>Nenhum orçamento definido para este perfil.</p>
+                        <button onClick={() => handleOpenModal()} className="text-[#d97757] hover:underline mt-2 text-sm">Criar o primeiro</button>
+                    </div>
+                )}
+            </div>
+
+            {/* New Modal Implementation */}
+            {isVisible && createPortal(
+                <div
+                    className={`
+                fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
+                ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
+            `}
+                >
+                    <div
+                        className={`
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-visible border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+            `}
+                    >
+                        {/* Background Effects */}
+                        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+                            <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+                        </div>
+
+                        {/* Header */}
+                        <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+                            <div className="flex items-center gap-3">
+                                <div className="p-2 bg-[#d97757]/20 rounded-xl text-[#d97757]">
+                                    <Target size={20} />
+                                </div>
+                                <h3 className="text-lg font-bold text-white">
+                                    {editingBudget ? 'Editar Orçamento' : 'Novo Orçamento'}
+                                </h3>
+                            </div>
+                            <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
+                                <X size={20} />
+                            </button>
+                        </div>
+
+                        {/* Content */}
+                        <div className="p-6 overflow-y-visible custom-scrollbar relative z-10">
+                            <form onSubmit={handleSave} className="space-y-5 animate-fade-in">
+
+                                {/* Category */}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Categoria</label>
+                                    <div className="relative z-20 group">
+                                        <CustomAutocomplete
+                                            value={category}
+                                            onChange={setCategory}
+                                            options={availableCategories}
+                                            icon={<Tag size={16} />}
+                                            placeholder="Ex: Alimentação, Lazer..."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Limit Amount */}
+                                <div>
+                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Limite Mensal (R$)</label>
+                                    <div className="relative group">
+                                        <DollarSign className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                                        <input
+                                            required
+                                            type="number"
+                                            step="0.01"
+                                            value={limitAmount}
+                                            onChange={(e) => setLimitAmount(e.target.value)}
+                                            className="input-primary pl-10 focus:border-[#d97757]"
+                                            placeholder="0.00"
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Alert Threshold */}
+                                <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50 space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-gray-300 font-medium text-sm">
+                                            <AlertTriangle size={16} className="text-yellow-500" />
+                                            Alerta de Consumo
+                                        </div>
+                                        <span className="text-[#d97757] font-bold font-mono">{alertThreshold}%</span>
+                                    </div>
+
+                                    <input
+                                        type="range"
+                                        min="50"
+                                        max="100"
+                                        step="5"
+                                        value={alertThreshold}
+                                        onChange={(e) => setAlertThreshold(e.target.value)}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#d97757]"
+                                    />
+                                    <p className="text-[10px] text-gray-500">
+                                        Você será avisado visualmente quando atingir esta porcentagem do limite.
+                                    </p>
+                                </div>
+
+                                <div className="pt-2">
+                                    <button
+                                        type="submit"
+                                        className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
+                                    >
+                                        <Check size={18} />
+                                        Salvar Orçamento
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>,
+                document.body
+            )}
+
+            <ConfirmationCard
+                isOpen={!!deleteId}
+                onClose={() => setDeleteId(null)}
+                onConfirm={handleDelete}
+                title="Excluir Orçamento"
+                description="Tem certeza? O histórico de gastos não será afetado, apenas o monitoramento."
+                isDestructive={true}
+                confirmText="Excluir"
+            />
+        </div>
+    );
+};

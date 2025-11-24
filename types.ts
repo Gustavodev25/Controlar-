@@ -1,4 +1,3 @@
-
 export type TransactionType = 'income' | 'expense';
 
 export interface User {
@@ -6,14 +5,14 @@ export interface User {
   email: string;
   avatarUrl?: string;
   baseSalary?: number;
-  twoFactorEnabled?: boolean; // Novo campo para status do 2FA
+  twoFactorEnabled?: boolean;
   twoFactorSecret?: string | null;
 }
 
 export interface Member {
   id: string;
   name: string;
-  avatarUrl?: string; // Gradient string
+  avatarUrl?: string;
   role: 'admin' | 'member';
 }
 
@@ -28,13 +27,19 @@ export interface FamilyGoal {
 
 export interface Transaction {
   id: string;
-  memberId?: string; // Link to specific profile
-  date: string; // ISO format YYYY-MM-DD
+  memberId?: string;
+  date: string; // YYYY-MM-DD
   description: string;
   amount: number;
   category: string;
   type: TransactionType;
   status: 'completed' | 'pending';
+  // Optional flags
+  importSource?: string; // e.g. "pluggy"
+  needsApproval?: boolean;
+  ignored?: boolean;
+  pluggyId?: string;
+  pluggyItemId?: string;
 }
 
 export interface Reminder {
@@ -42,9 +47,9 @@ export interface Reminder {
   memberId?: string;
   description: string;
   amount: number;
-  dueDate: string; // ISO format YYYY-MM-DD
+  dueDate: string;
   category: string;
-  type?: TransactionType; // 'income' | 'expense' - Default to 'expense' if missing
+  type?: TransactionType;
   isRecurring: boolean;
   frequency?: 'monthly' | 'weekly' | 'yearly';
 }
@@ -80,7 +85,7 @@ export interface AIParsedTransaction {
   category: string;
   date: string;
   type: TransactionType;
-  installments?: number; // Novo campo: Quantidade de parcelas detectada
+  installments?: number;
 }
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -90,4 +95,50 @@ export interface ToastMessage {
   type: ToastType;
   title: string;
   message?: string;
+}
+
+export interface Budget {
+  id: string;
+  memberId?: string;
+  category: string;
+  limitAmount: number;
+  month: string;
+  alertThreshold: number;
+}
+
+export interface ConnectedTransactionPreview {
+  id: string;
+  description: string;
+  amount: number;
+  date: string;
+  type: TransactionType;
+  category?: string;
+  installments?: {
+    number?: number;
+    total?: number;
+  };
+  currency?: string;
+}
+
+export interface ConnectedAccount {
+  id: string;
+  itemId: string;
+  name: string;
+  type?: string;
+  subtype?: string;
+  institution?: string;
+  balance?: number;
+  currency?: string;
+  lastUpdated?: string;
+  previewTransactions?: ConnectedTransactionPreview[];
+}
+
+export interface AppNotification {
+  id: string;
+  type: 'system' | 'alert' | 'update' | 'budget_warning' | 'budget_danger';
+  title: string;
+  message: string;
+  date: string;
+  read: boolean;
+  archived?: boolean;
 }

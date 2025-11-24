@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { PiggyBank, ArrowUpCircle } from 'lucide-react';
 import { Plus, Edit2, Trash2, X, Check, Target, Calendar, DollarSign, Coins, TrendingUp, Sparkles } from './Icons';
@@ -263,200 +262,175 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
     setDepositInvestment(null);
     setDepositAmount('');
   };
-
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
   const getColorClass = (color: string) => {
     return COLOR_OPTIONS.find(c => c.value === color) || COLOR_OPTIONS[0];
   };
 
+  const getProgressBarColor = (percentage: number) => {
+    if (percentage < 70) return 'bg-green-500';
+    if (percentage < 90) return 'bg-yellow-500';
+    return 'bg-red-500';
+  };
+
   const totalSaved = investments.reduce((sum, inv) => sum + inv.currentAmount, 0);
   const totalTarget = investments.reduce((sum, inv) => sum + inv.targetAmount, 0);
+  const depositProgress = depositInvestment && depositInvestment.targetAmount > 0
+    ? (depositInvestment.currentAmount / depositInvestment.targetAmount) * 100
+    : 0;
 
   return (
-    <div className="flex flex-col h-full animate-fade-in">
-      {/* Header com Stats */}
-      <div className="bg-gray-900 rounded-xl border border-gray-800 p-6 mb-6">
-        <div className="flex justify-between items-start mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-white flex items-center gap-2 mb-1">
-              <PiggyBank size={28} className="text-[#d97757]" />
-              Caixinhas
-            </h2>
-            <p className="text-sm text-gray-400">Organize e alcance seus objetivos financeiros</p>
+    <div className="space-y-6 animate-fade-in pb-20 lg:pb-0 flex flex-col h-full">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Caixinhas</h2>
+          <p className="text-gray-400 text-sm">Visual alinhado ao painel de Orçamentos Mensais.</p>
+        </div>
+        <button
+          onClick={() => handleOpenModal()}
+          className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-[#d97757]/20"
+        >
+          <Plus size={18} />
+          <span className="hidden sm:inline">Nova Caixinha</span>
+        </button>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Coins size={16} className="text-green-400" />
+            <p className="text-xs text-gray-500 font-medium">Total Guardado</p>
           </div>
-          <button
-            onClick={() => handleOpenModal()}
-            className="px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2"
-          >
-            <Plus size={18} />
-            Nova Caixinha
-          </button>
+          <p className="text-2xl font-bold text-white">{formatCurrency(totalSaved)}</p>
         </div>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="bg-gray-950 rounded-xl border border-gray-800 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Coins size={16} className="text-green-400" />
-              <p className="text-xs text-gray-500 font-medium">Total Guardado</p>
-            </div>
-            <p className="text-2xl font-bold text-white">{formatCurrency(totalSaved)}</p>
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center gap-2 mb-2">
+            <Target size={16} className="text-blue-400" />
+            <p className="text-xs text-gray-500 font-medium">Meta Total</p>
           </div>
-
-          <div className="bg-gray-950 rounded-xl border border-gray-800 p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target size={16} className="text-blue-400" />
-              <p className="text-xs text-gray-500 font-medium">Meta Total</p>
-            </div>
-            <p className="text-2xl font-bold text-white">{formatCurrency(totalTarget)}</p>
-          </div>
+          <p className="text-2xl font-bold text-white">{formatCurrency(totalTarget)}</p>
         </div>
       </div>
 
       {/* Lista de Caixinhas */}
       <div className="flex-1 overflow-auto custom-scrollbar">
         {investments.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-full text-gray-500 p-8">
-            <div className="w-24 h-24 bg-gray-800/50 rounded-full flex items-center justify-center mb-4">
-              <PiggyBank size={48} className="opacity-20" />
+          <div className="py-12 text-center text-gray-500 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
+            <div className="w-16 h-16 mx-auto mb-3 bg-gray-800/60 rounded-full flex items-center justify-center">
+              <PiggyBank size={32} className="opacity-50" />
             </div>
-            <p className="text-lg font-medium mb-2">Nenhuma caixinha criada</p>
-            <p className="text-sm text-center mb-6">Comece criando sua primeira caixinha para guardar dinheiro</p>
+            <p className="text-base font-medium">Nenhuma caixinha criada</p>
+            <p className="text-sm text-gray-400">Crie a primeira para monitorar seus objetivos.</p>
             <button
               onClick={() => handleOpenModal()}
-              className="px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2"
+              className="mt-4 px-5 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-colors shadow-lg shadow-[#d97757]/20 flex items-center gap-2 mx-auto"
             >
               <Plus size={18} />
-              Criar Primeira Caixinha
+              Criar Caixinha
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 p-1">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {investments.map((investment) => {
               const progress = investment.targetAmount > 0
                 ? (investment.currentAmount / investment.targetAmount) * 100
                 : 0;
               const colorClass = getColorClass(investment.color);
               const isComplete = progress >= 100;
+              const remainingAmount = Math.max(investment.targetAmount - investment.currentAmount, 0);
 
               return (
                 <div
                   key={investment.id}
-                  className="bg-gradient-to-br from-gray-900 to-gray-950 rounded-2xl border border-gray-800 overflow-hidden hover:border-gray-700 hover:shadow-2xl hover:shadow-gray-900/50 transition-all duration-300 group hover:-translate-y-1"
+                  className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-sm hover:border-gray-700 transition-all group relative overflow-hidden"
                 >
-                  {/* Header with gradient */}
-                  <div className={`bg-gradient-to-br ${colorClass.class} p-5 relative overflow-hidden`}>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent"></div>
-                    <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48ZGVmcz48cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjQwIiBoZWlnaHQ9IjQwIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj48cGF0aCBkPSJNIDQwIDAgTCAwIDAgMCA0MCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLW9wYWNpdHk9IjAuMDUiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjEwMCUiIGhlaWdodD0iMTAwJSIgZmlsbD0idXJsKCNncmlkKSIvPjwvc3ZnPg==')] opacity-20"></div>
-                    <div className="relative z-10 flex justify-between items-start">
-                      <div className="flex items-center gap-3">
-                        <div className="drop-shadow-lg transform group-hover:scale-110 transition-transform duration-300">
-                          {investment.icon.includes('.png') ? (
-                            <img
-                              src={`/assets/${investment.icon}`}
-                              alt={investment.name}
-                              className="w-16 h-16 object-contain"
-                            />
-                          ) : (
-                            <span className="text-5xl">{investment.icon}</span>
-                          )}
-                        </div>
-                        <div>
-                          <h3 className="font-bold text-white text-xl drop-shadow-md">{investment.name}</h3>
-                          {investment.deadline && (
-                            <p className="text-xs text-white/80 flex items-center gap-1 mt-1 font-medium">
-                              <Calendar size={12} />
-                              {new Date(investment.deadline).toLocaleDateString('pt-BR')}
-                            </p>
-                          )}
-                        </div>
-                      </div>
+                  <div
+                    className={`absolute bottom-0 left-0 h-1 transition-all duration-500 ${getProgressBarColor(progress)}`}
+                    style={{ width: `${Math.min(progress, 100)}%` }}
+                  ></div>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => handleOpenModal(investment)}
-                          className="p-2 hover:bg-white/20 rounded-lg transition-all text-white backdrop-blur-sm hover:scale-110"
-                        >
-                          <Edit2 size={15} />
-                        </button>
-                        <button
-                          onClick={() => setDeleteId(investment.id)}
-                          className="p-2 hover:bg-white/20 rounded-lg transition-all text-white backdrop-blur-sm hover:scale-110"
-                        >
-                          <Trash2 size={15} />
-                        </button>
+                  <div className="flex justify-between items-start mb-4">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-3 rounded-xl bg-gray-800/70 ${colorClass.textClass} flex items-center justify-center`}>
+                        {investment.icon.includes('.png') ? (
+                          <img
+                            src={`/assets/${investment.icon}`}
+                            alt={investment.name}
+                            className="w-10 h-10 object-contain"
+                          />
+                        ) : (
+                          <span className="text-3xl">{investment.icon}</span>
+                        )}
                       </div>
+                      <div>
+                        <h3 className="font-bold text-white text-lg">{investment.name}</h3>
+                        {investment.deadline && (
+                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                            <Calendar size={12} />
+                            {new Date(investment.deadline).toLocaleDateString('pt-BR')}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={() => handleOpenModal(investment)}
+                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                      >
+                        <Edit2 size={15} />
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(investment.id)}
+                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={15} />
+                      </button>
                     </div>
                   </div>
 
-                  {/* Body */}
-                  <div className="p-5 space-y-4 bg-gradient-to-b from-transparent to-gray-900/30">
-                    {/* Progress */}
-                    <div>
-                      <div className="flex justify-between text-xs mb-2.5">
-                        <span className="text-gray-400 font-medium">Progresso</span>
-                        <span className={`font-bold text-sm ${isComplete ? 'text-green-400' : colorClass.textClass}`}>
-                          {Math.min(progress, 100).toFixed(1)}%
+                  <div className="space-y-3">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-400">
+                        Guardado: <span className="text-white font-semibold">{formatCurrency(investment.currentAmount)}</span>
+                      </span>
+                      <span className="text-gray-400">
+                        Meta: <span className="text-white font-semibold">{formatCurrency(investment.targetAmount)}</span>
+                      </span>
+                    </div>
+
+                    <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(progress)}`}
+                        style={{ width: `${Math.min(progress, 100)}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex justify-between items-center text-xs mt-1">
+                      <span className={`${isComplete ? 'text-green-400 font-semibold' : 'text-gray-500'}`}>
+                        {Math.min(progress, 100).toFixed(0)}% alcançado
+                      </span>
+                      {isComplete ? (
+                        <span className="flex items-center gap-1 text-green-400 font-semibold">
+                          <Sparkles size={14} />
+                          Meta concluída
                         </span>
-                      </div>
-                      <div className="w-full h-3 bg-gray-800 rounded-full overflow-hidden shadow-inner relative">
-                        <div
-                          className={`h-full bg-gradient-to-r ${colorClass.class} transition-all duration-500 rounded-full shadow-lg relative overflow-hidden`}
-                          style={{ width: `${Math.min(progress, 100)}%` }}
-                        >
-                          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent animate-shimmer"></div>
-                        </div>
-                      </div>
+                      ) : (
+                        <span className={`font-semibold ${colorClass.textClass}`}>
+                          Falta {formatCurrency(remainingAmount)}
+                        </span>
+                      )}
                     </div>
+                  </div>
 
-                    {/* Values */}
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-gray-900/50 rounded-xl p-3 border border-gray-800">
-                        <p className="text-gray-500 text-xs mb-1.5 font-medium flex items-center gap-1">
-                          <Coins size={12} />
-                          Guardado
-                        </p>
-                        <p className="text-white font-bold text-base">{formatCurrency(investment.currentAmount)}</p>
-                      </div>
-                      <div className="bg-gray-900/50 rounded-xl p-3 border border-gray-800">
-                        <p className="text-gray-500 text-xs mb-1.5 font-medium flex items-center gap-1">
-                          <Target size={12} />
-                          Meta
-                        </p>
-                        <p className="text-white font-bold text-base">{formatCurrency(investment.targetAmount)}</p>
-                      </div>
-                    </div>
-
-                    {/* Falta */}
-                    {!isComplete && (
-                      <div className={`${colorClass.bgClass} border ${colorClass.textClass.replace('text-', 'border-').replace('-400', '-900/50')} rounded-xl p-3.5 text-center`}>
-                        <p className="text-xs text-gray-400 mb-1 font-medium">Falta para completar</p>
-                        <p className={`font-bold text-lg ${colorClass.textClass}`}>
-                          {formatCurrency(investment.targetAmount - investment.currentAmount)}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Complete Badge */}
-                    {isComplete && (
-                      <div className="bg-gradient-to-r from-green-900/30 to-emerald-900/30 border border-green-500/30 rounded-xl p-3.5 text-center relative overflow-hidden">
-                        <div className="absolute inset-0 bg-gradient-to-r from-green-400/5 to-emerald-400/5 animate-pulse"></div>
-                        <p className="text-base font-bold text-green-400 flex items-center justify-center gap-2 relative z-10">
-                          <Sparkles size={18} className="animate-pulse" />
-                          Meta Alcançada!
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Actions */}
+                  <div className="mt-4">
                     <button
                       onClick={() => handleOpenDeposit(investment)}
-                      className={`w-full py-3 bg-gradient-to-r ${colorClass.class} text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2 hover:scale-105 active:scale-95 relative overflow-hidden group`}
+                      className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2"
                     >
-                      <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                      <ArrowUpCircle size={18} className="relative z-10" />
-                      <span className="relative z-10">Depositar / Retirar</span>
+                      <ArrowUpCircle size={18} />
+                      Depositar / Retirar
                     </button>
                   </div>
                 </div>
@@ -746,37 +720,67 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
       {/* Deposit/Withdraw Modal */}
       {depositModalOpen && depositInvestment && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in">
-          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md border border-gray-800 overflow-hidden animate-slide-up relative">
-            {/* Background gradient effect */}
-            <div className="absolute inset-0 bg-gradient-to-br from-[#d97757]/5 to-transparent pointer-events-none"></div>
-
-            <div className={`p-6 border-b border-gray-800/50 bg-gradient-to-r ${getColorClass(depositInvestment.color).class} relative overflow-hidden`}>
-              <div className="absolute inset-0 bg-black/40"></div>
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-2">
-                  <div>
-                    {depositInvestment.icon.includes('.png') ? (
-                      <img
-                        src={`/assets/${depositInvestment.icon}`}
-                        alt={depositInvestment.name}
-                        className="w-14 h-14 object-contain"
-                      />
-                    ) : (
-                      <span className="text-4xl">{depositInvestment.icon}</span>
-                    )}
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-white text-xl">{depositInvestment.name}</h3>
-                    <p className="text-sm text-white/80 flex items-center gap-1.5">
-                      <Coins size={14} />
-                      Saldo: {formatCurrency(depositInvestment.currentAmount)}
-                    </p>
-                  </div>
-                </div>
-              </div>
+          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg border border-gray-800 overflow-hidden relative animate-slide-up">
+            {/* Background glow */}
+            <div className="absolute inset-0 pointer-events-none">
+              <div className="absolute top-0 right-0 w-48 h-48 bg-[#d97757]/10 rounded-full blur-3xl -mr-12 -mt-12"></div>
+              <div className="absolute bottom-0 left-0 w-48 h-48 bg-gray-700/10 rounded-full blur-3xl -ml-12 -mb-12"></div>
             </div>
 
+            {/* Header */}
+            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-[#d97757]/15 text-[#d97757] border border-[#d97757]/30">
+                  <ArrowUpCircle size={18} />
+                </div>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Caixinha</p>
+                  <h3 className="text-lg font-bold text-white">{depositInvestment.name}</h3>
+                  <p className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                    <Coins size={12} />
+                    Saldo: {formatCurrency(depositInvestment.currentAmount)}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setDepositModalOpen(false);
+                  setDepositInvestment(null);
+                  setDepositAmount('');
+                }}
+                className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Body */}
             <div className="p-6 space-y-5 relative z-10">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3">
+                  <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Saldo Atual</p>
+                  <p className="text-lg font-bold text-white">{formatCurrency(depositInvestment.currentAmount)}</p>
+                </div>
+                <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3">
+                  <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Meta</p>
+                  <p className="text-lg font-bold text-white">{formatCurrency(depositInvestment.targetAmount)}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3">
+                  <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Progresso</p>
+                  <p className="text-lg font-bold text-white flex items-center gap-2">
+                    {Math.min(depositProgress, 100).toFixed(0)}%
+                    <span className={`w-14 h-1.5 rounded-full block ${getProgressBarColor(depositProgress)}`}></span>
+                  </p>
+                </div>
+                <div className="bg-gray-900/60 border border-gray-800 rounded-2xl p-3">
+                  <p className="text-[11px] text-gray-500 uppercase tracking-wider mb-1">Falta para a meta</p>
+                  <p className="text-lg font-bold text-white">{formatCurrency(Math.max(depositInvestment.targetAmount - depositInvestment.currentAmount, 0))}</p>
+                </div>
+              </div>
+
               <div className="space-y-2">
                 <label className="text-xs font-medium text-gray-400 flex items-center gap-2">
                   <DollarSign size={14} />
@@ -789,7 +793,7 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
                     inputMode="decimal"
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
-                    className="w-full p-4 pl-12 bg-gray-900/70 border border-gray-700 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 text-2xl font-bold transition-all"
+                    className="w-full p-4 pl-12 bg-gray-900/70 border border-gray-700 rounded-2xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-gray-100 text-2xl font-bold transition-all"
                     placeholder="0,00"
                     autoFocus
                   />
@@ -799,19 +803,17 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={handleDeposit}
-                  className="py-3.5 bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 flex items-center justify-center gap-2 relative overflow-hidden group"
+                  className="py-3.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-green-900/30 flex items-center justify-center gap-2"
                 >
-                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                  <ArrowUpCircle size={18} className="relative z-10" />
-                  <span className="relative z-10">Depositar</span>
+                  <ArrowUpCircle size={18} />
+                  Depositar
                 </button>
                 <button
                   onClick={handleWithdraw}
-                  className="py-3.5 bg-gradient-to-r from-red-600 to-red-500 hover:from-red-500 hover:to-red-400 text-white rounded-xl font-bold transition-all shadow-lg hover:shadow-xl hover:scale-105 active:scale-95 flex items-center justify-center gap-2 relative overflow-hidden group"
+                  className="py-3.5 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-900/30 flex items-center justify-center gap-2"
                 >
-                  <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
-                  <TrendingUp size={18} className="rotate-180 relative z-10" />
-                  <span className="relative z-10">Retirar</span>
+                  <TrendingUp size={18} className="rotate-180" />
+                  Retirar
                 </button>
               </div>
 
@@ -821,7 +823,7 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
                   setDepositInvestment(null);
                   setDepositAmount('');
                 }}
-                className="w-full py-3 bg-gray-800/50 hover:bg-gray-700 text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600"
+                className="w-full py-3 bg-gray-800/60 hover:bg-gray-700 text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600"
               >
                 Cancelar
               </button>
@@ -843,7 +845,7 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
           }
         }}
         title="Remover Caixinha?"
-        description="Você está prestes a apagar esta caixinha. Esta ação não pode ser desfeita."
+        description="VocÃª estÃ¡ prestes a apagar esta caixinha. Esta aÃ§Ã£o nÃ£o pode ser desfeita."
         isDestructive={true}
         confirmText="Sim, remover"
         cancelText="Cancelar"
@@ -851,3 +853,7 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
     </div>
   );
 };
+
+
+
+
