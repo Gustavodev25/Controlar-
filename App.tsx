@@ -185,6 +185,7 @@ const App: React.FC = () => {
       setPluggyAccounts([]);
       return;
     }
+    toast.message({ text: "Conectando ao Open Finance...", preserve: true });
     setLoadingPluggyAccounts(true);
     try {
       const results = await Promise.all(itemIds.map(id => fetchPluggyAccounts(id).catch(() => [])));

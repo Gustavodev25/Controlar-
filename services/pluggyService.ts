@@ -1,9 +1,16 @@
 import { Transaction, ConnectedAccount, ConnectedTransactionPreview } from "../types";
 import { addTransaction, transactionExists } from "./database";
 
-// Credenciais fornecidas (em producao, proteger em backend ou variaveis de ambiente)
-const PLUGGY_CLIENT_ID = "d93b0176-0cd8-4563-b9c1-bcb9c6e510bd";
-const PLUGGY_CLIENT_SECRET = "2b45852a-9638-4677-8232-6b2da7c54967";
+// Credenciais: prioriza variáveis de ambiente (fallback para valores locais)
+const PLUGGY_CLIENT_ID =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PLUGGY_CLIENT_ID) ||
+  (typeof process !== "undefined" ? process.env.VITE_PLUGGY_CLIENT_ID : "") ||
+  "d93b0176-0cd8-4563-b9c1-bcb9c6e510bd";
+
+const PLUGGY_CLIENT_SECRET =
+  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_PLUGGY_CLIENT_SECRET) ||
+  (typeof process !== "undefined" ? process.env.VITE_PLUGGY_CLIENT_SECRET : "") ||
+  "2b45852a-9638-4677-8232-6b2da7c54967";
 const API_URL = "https://api.pluggy.ai";
 const DEFAULT_CLIENT_USER_ID = "financas-ai-guest";
 const savedTxMemory = new Map<string, Set<string>>();
