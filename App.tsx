@@ -185,7 +185,6 @@ const App: React.FC = () => {
       setPluggyAccounts([]);
       return;
     }
-    toast.message({ text: "Conectando ao Open Finance...", preserve: true });
     setLoadingPluggyAccounts(true);
     try {
       const results = await Promise.all(itemIds.map(id => fetchPluggyAccounts(id).catch(() => [])));
@@ -209,6 +208,7 @@ const App: React.FC = () => {
 
   const handlePluggyItemConnected = (itemId: string) => {
     if (!userId) return;
+    toast.success("Open Finance conectado! Atualizando contas...");
     const next = Array.from(new Set([...pluggyItemIds, itemId]));
     setPluggyItemIds(next);
     localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(next));
