@@ -1284,6 +1284,8 @@ const App: React.FC = () => {
       <AIChatAssistant
         onAddTransaction={handleAddTransaction}
         transactions={transactions}
+        budgets={budgets}
+        investments={investments}
       />
 
       <AIModal

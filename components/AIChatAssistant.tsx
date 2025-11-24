@@ -15,7 +15,7 @@ import {
     MessageSquare
 } from 'lucide-react';
 import { processAssistantMessage } from '../services/geminiService';
-import { Transaction, AIParsedTransaction } from '../types';
+import { Transaction, AIParsedTransaction, Budget, Investment } from '../types';
 import iaImage from '../assets/IA.png';
 
 // --- Utilitário simples para classes ---
@@ -127,6 +127,8 @@ function TextShimmer({
 interface AIChatAssistantProps {
     onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
     transactions: Transaction[];
+    budgets: Budget[];
+    investments: Investment[];
 }
 
 interface Message {
@@ -146,7 +148,7 @@ interface ChatSession {
     messages: Message[];
 }
 
-export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions }) => {
+export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions, budgets, investments }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
@@ -197,7 +199,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
         setIsThinking(true);
 
         try {
-            const response = await processAssistantMessage(userText, transactions);
+            const response = await processAssistantMessage(userText, transactions, budgets, investments);
             setIsThinking(false);
 
             const aiMsg: Message = {

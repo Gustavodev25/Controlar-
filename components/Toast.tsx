@@ -57,6 +57,9 @@ interface Message {
 }
 
 export const useToasts = () => {
+  const promise = <T,>(p: Promise<T>, opts: { loading: string; success: string; error: string }) =>
+    toast.promise(p, opts);
+
   return {
     message: ({ text, description, preserve, actionLabel, onAction }: Message) =>
       toast(text, {
@@ -67,7 +70,6 @@ export const useToasts = () => {
     success: (text: string, description?: string) => toast.success(text, { description }),
     warning: (text: string, description?: string) => toast.warning(text, { description }),
     error: (text: string, description?: string) => toast.error(text, { description }),
-    promise: <T>(p: Promise<T>, opts: { loading: string; success: string; error: string }) =>
-      toast.promise(p, opts),
+    promise,
   };
 };

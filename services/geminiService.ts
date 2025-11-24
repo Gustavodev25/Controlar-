@@ -1,6 +1,6 @@
 ﻿
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { Transaction, AIParsedTransaction, Reminder } from "../types";
+import { Transaction, AIParsedTransaction, Reminder, Budget, Investment } from "../types";
 
 // API key read from environment (Vercel/Netlify use VITE_ prefix)
 const API_KEY =
@@ -88,20 +88,39 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
     focusInstruction = "Faça uma análise geral: saúde financeira, categorias mais pesadas e um elogio ou alerta.";
   }
 
-  const prompt = `
-    Atue como um Consultor Financeiro Pessoal de Elite. Analise os dados abaixo (BRL).
+    const prompt = `
+    Hoje é: ${todayStr}.
+    Você é um assistente financeiro pessoal inteligente e amigável.
     
-    Objetivo da análise: ${focusInstruction}
+    O usuário enviou: "${text}"
+    
+    Contexto recente (apenas para referência):
+    ${recentTx}
 
-    Instruções de Formatação (RIGOROSO):
-    - Use Markdown.
-    - Use ### para títulos de seções (ex: ### 📊 Resumo Geral).
-    - Use **negrito** para valores e pontos chave.
-    - Use listas com marcadores (- ) para facilitar a leitura.
-    - Seja direto, evite texto genérico.
-    
-    Dados das transações (Amostra das 50 mais recentes):
-    ${transactionSummary}
+    Orçamentos do mês:
+    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+
+    Caixinhas/Investimentos:
+    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
+
+    Sua tarefa é classificar a intenção e responder adequadamente:
+    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
+    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "transaction" | "chat",
+      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
+      "transactionData": { ...dados da transação (se intent=transaction) }
+    }
+
+    Para transactionData, siga as regras:
+    - amount: número positivo
+    - type: 'income' ou 'expense'
+    - category: escolha a melhor categoria
+    - date: YYYY-MM-DD (hoje se não especificado)
+    - description: título curto
+    - installments: 1 se à vista
   `;
 
   try {
@@ -125,28 +144,39 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
   const currentYear = today.getFullYear();
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  const prompt = `
-    Hoje é EXATAMENTE: ${todayStr}.
-    O ANO ATUAL É ${currentYear}. 
-    ATENÇÃO: Se o usuário não especificar o ano, ASSUMA ${currentYear}. NÃO USE 2024.
+    const prompt = `
+    Hoje é: ${todayStr}.
+    Você é um assistente financeiro pessoal inteligente e amigável.
+    
+    O usuário enviou: "${text}"
+    
+    Contexto recente (apenas para referência):
+    ${recentTx}
 
-    Analise o texto do usuário e extraia os dados da transação financeira.
-    Texto: "${text}"
-    
-    Regras Críticas:
-    1. DATA: 
-       - Se o usuário não falar data, use hoje (${today.toISOString().split('T')[0]}).
-       - Se disser "comecei em outubro", a data deve ser outubro DESTE ANO (${currentYear}).
-       - Se disser "ontem", calcule baseado na data de hoje (${todayStr}).
-    
-    2. PARCELAMENTO:
-       - Identifique palavras como "10x", "10 vezes", "parcelado em 5".
-       - Campo 'installments': Número total de parcelas.
-       - Campo 'amount': O valor de UMA parcela. Se o usuário disser o valor total, divida.
-         EXEMPLO 1: "Compra de 1000 reais em 10x". -> amount: 100, installments: 10.
-         EXEMPLO 2: "10x de 50 reais". -> amount: 50, installments: 10.
-    
-    3. CATEGORIA: Escolha entre: Alimentação, Transporte, Moradia, Lazer, Saúde, Salário, Investimentos, Outros.
+    Orçamentos do mês:
+    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+
+    Caixinhas/Investimentos:
+    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
+
+    Sua tarefa é classificar a intenção e responder adequadamente:
+    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
+    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "transaction" | "chat",
+      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
+      "transactionData": { ...dados da transação (se intent=transaction) }
+    }
+
+    Para transactionData, siga as regras:
+    - amount: número positivo
+    - type: 'income' ou 'expense'
+    - category: escolha a melhor categoria
+    - date: YYYY-MM-DD (hoje se não especificado)
+    - description: título curto
+    - installments: 1 se à vista
   `;
 
   const schema: Schema = {
@@ -196,11 +226,39 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date().toISOString().split('T')[0];
-  const prompt = `
-    Analise o texto para um lembrete financeiro. Hoje é ${today}. 
-    Texto: "${text}"
+    const prompt = `
+    Hoje é: ${todayStr}.
+    Você é um assistente financeiro pessoal inteligente e amigável.
     
-    Identifique se é uma DESPESA (pagar conta) ou RECEITA (receber salário, aluguel).
+    O usuário enviou: "${text}"
+    
+    Contexto recente (apenas para referência):
+    ${recentTx}
+
+    Orçamentos do mês:
+    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+
+    Caixinhas/Investimentos:
+    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
+
+    Sua tarefa é classificar a intenção e responder adequadamente:
+    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
+    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "transaction" | "chat",
+      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
+      "transactionData": { ...dados da transação (se intent=transaction) }
+    }
+
+    Para transactionData, siga as regras:
+    - amount: número positivo
+    - type: 'income' ou 'expense'
+    - category: escolha a melhor categoria
+    - date: YYYY-MM-DD (hoje se não especificado)
+    - description: título curto
+    - installments: 1 se à vista
   `;
 
   const schema: Schema = {
@@ -241,17 +299,39 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
 
 export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
-  const prompt = `
-    Analise este documento (extrato bancÃ¡rio) e extraia todas as transaÃ§Ãµes financeiras listadas.
-    Ignore saldos e cabeÃ§alhos irrelevantes.
-    Ano atual de referÃªncia: ${new Date().getFullYear()}.
+    const prompt = `
+    Hoje é: ${todayStr}.
+    Você é um assistente financeiro pessoal inteligente e amigável.
     
-    Para cada transaÃ§Ã£o:
-    - DescriÃ§Ã£o: Nome do estabelecimento.
-    - Valor: Positivo.
-    - Data: YYYY-MM-DD.
-    - Tipo: 'expense' ou 'income'.
-    - Categoria: Sugira uma.
+    O usuário enviou: "${text}"
+    
+    Contexto recente (apenas para referência):
+    ${recentTx}
+
+    Orçamentos do mês:
+    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+
+    Caixinhas/Investimentos:
+    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
+
+    Sua tarefa é classificar a intenção e responder adequadamente:
+    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
+    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "transaction" | "chat",
+      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
+      "transactionData": { ...dados da transação (se intent=transaction) }
+    }
+
+    Para transactionData, siga as regras:
+    - amount: número positivo
+    - type: 'income' ou 'expense'
+    - category: escolha a melhor categoria
+    - date: YYYY-MM-DD (hoje se não especificado)
+    - description: título curto
+    - installments: 1 se à vista
   `;
 
   const schema: Schema = {
@@ -309,18 +389,36 @@ export type AssistantResponse =
   | { type: 'text'; content: string }
   | { type: 'transaction'; data: AIParsedTransaction };
 
-export const processAssistantMessage = async (text: string, contextTransactions: Transaction[] = []): Promise<AssistantResponse> => {
+export const processAssistantMessage = async (
+  text: string,
+  contextTransactions: Transaction[] = [],
+  contextBudgets: Budget[] = [],
+  contextInvestments: Investment[] = []
+): Promise<AssistantResponse> => {
   if (!API_KEY) return { type: 'text', content: "Configure a VITE_GEMINI_API_KEY para usar o assistente." };
 
   const today = new Date();
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  // Contexto simplificado das últimas transações para ajudar na resposta
   const recentTx = contextTransactions.slice(0, 5).map(t =>
     `${t.date}: ${t.description} (${t.amount})`
   ).join("\n");
 
-  const prompt = `
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const budgetsSummary = contextBudgets.slice(0, 5).map(b => {
+    const spent = contextTransactions
+      .filter(t => t.type === 'expense' && t.category === b.category && t.date.startsWith(currentMonth))
+      .reduce((sum, t) => sum + t.amount, 0);
+    const pct = b.limitAmount ? Math.min((spent / b.limitAmount) * 100, 999) : 0;
+    return `${b.category}: gasto R$ ${spent.toFixed(2)} de R$ ${Number(b.limitAmount || 0).toFixed(2)} (${pct.toFixed(1)}%)`;
+  }).join("\n");
+
+  const investmentsSummary = contextInvestments.slice(0, 5).map(inv => {
+    const pct = inv.targetAmount ? Math.min((inv.currentAmount / inv.targetAmount) * 100, 999) : 0;
+    return `${inv.name}: R$ ${Number(inv.currentAmount || 0).toFixed(2)} de meta ${Number(inv.targetAmount || 0).toFixed(2)} (${pct.toFixed(1)}%)`;
+  }).join("\n");
+
+    const prompt = `
     Hoje é: ${todayStr}.
     Você é um assistente financeiro pessoal inteligente e amigável.
     
@@ -328,6 +426,12 @@ export const processAssistantMessage = async (text: string, contextTransactions:
     
     Contexto recente (apenas para referência):
     ${recentTx}
+
+    Orçamentos do mês:
+    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+
+    Caixinhas/Investimentos:
+    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
 
     Sua tarefa é classificar a intenção e responder adequadamente:
     1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
@@ -380,28 +484,21 @@ export const processAssistantMessage = async (text: string, contextTransactions:
     const result = JSON.parse(response.text || "{}");
 
     if (result.intent === 'transaction' && result.transactionData) {
-      // Garantir defaults
-      const td = result.transactionData;
-      return {
-        type: 'transaction',
-        data: {
-          description: td.description || "Nova Transação",
-          amount: td.amount || 0,
-          category: td.category || "Outros",
-          type: td.type || "expense",
-          date: td.date || new Date().toISOString().split('T')[0],
-          installments: td.installments || 1
-        }
-      };
-    } else {
-      return {
-        type: 'text',
-        content: result.chatResponse || "Não entendi, pode repetir?"
-      };
+      const data = result.transactionData as AIParsedTransaction;
+      if (!data.date) data.date = new Date().toISOString().split('T')[0];
+      if (!data.installments || data.installments < 1) data.installments = 1;
+      if (!data.description) data.description = 'Transação';
+      if (!data.category) data.category = 'Outros';
+      if (!data.type) data.type = 'expense';
+      if (!data.amount) data.amount = 0;
+      return { type: 'transaction', data };
     }
 
+    return { type: 'text', content: result.chatResponse || "Posso ajudar com seus gastos, orçamentos e caixinhas." };
   } catch (error) {
-    console.error("Erro no assistente:", error);
-    return { type: 'text', content: "Desculpe, tive um erro ao processar. Tente novamente." };
+    console.error("Erro ao processar mensagem do assistente:", error);
+    return { type: 'text', content: "Desculpe, estou temporariamente indisponível. Tente novamente em instantes." };
   }
 };
+
+
