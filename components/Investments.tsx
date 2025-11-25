@@ -58,7 +58,16 @@ const COLOR_OPTIONS = [
   { value: 'teal', class: 'from-teal-500 to-teal-600', textClass: 'text-teal-400', bgClass: 'bg-teal-900/20' },
 ];
 
-export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, onUpdate, onDelete, onAddTransaction }) => {
+const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+
+export const Investments: React.FC<InvestmentsProps> = ({
+  investments,
+  onAdd,
+  onUpdate,
+  onDelete,
+  onAddTransaction
+}) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -262,8 +271,6 @@ export const Investments: React.FC<InvestmentsProps> = ({ investments, onAdd, on
     setDepositInvestment(null);
     setDepositAmount('');
   };
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
-
   const getColorClass = (color: string) => {
     return COLOR_OPTIONS.find(c => c.value === color) || COLOR_OPTIONS[0];
   };

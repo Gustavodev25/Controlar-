@@ -19,6 +19,7 @@ import {
   Target,
   Building
 } from './components/Icons';
+import { Flame } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -30,6 +31,7 @@ import { SettingsModal } from './components/SettingsModal';
 import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
 import { SalaryManager } from './components/SalaryManager';
+import { FinanceCalendar } from './components/FinanceCalendar';
 import { AIAdvisor } from './components/AIAdvisor';
 import { Investments, Investment } from './components/Investments';
 import { Budgets } from './components/Budgets';
@@ -48,6 +50,7 @@ import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
 import { fetchPluggyAccounts, syncPluggyData } from './services/pluggyService';
+import { FireCalculator } from './components/FireCalculator';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -129,7 +132,7 @@ const App: React.FC = () => {
   const toast = useToasts();
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'advisor' | 'budgets' | 'connections'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -516,6 +519,15 @@ const App: React.FC = () => {
     return transactions.filter(t => t.memberId === activeMemberId);
   }, [transactions, activeMemberId]);
 
+  const memberInvestments = useMemo(() => {
+    if (activeMemberId === 'FAMILY_OVERVIEW') return investments;
+    return investments.filter(inv => inv.memberId === activeMemberId);
+  }, [investments, activeMemberId]);
+
+  const totalMemberInvestments = useMemo(() => {
+    return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
+  }, [memberInvestments]);
+
   // Extract available categories from the filtered transactions
   const availableCategories = useMemo(() => {
     const cats = new Set(memberFilteredTransactions.map(t => t.category));
@@ -569,6 +581,43 @@ const App: React.FC = () => {
   const reviewedDashboardTransactions = useMemo(() => {
     return dashboardFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
   }, [dashboardFilteredTransactions]);
+
+  const reviewedMemberTransactions = useMemo(() => {
+    return memberFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
+  }, [memberFilteredTransactions]);
+
+  const averageMonthlyExpense = useMemo(() => {
+    const expensesByMonth: Record<string, number> = {};
+    reviewedMemberTransactions.forEach(t => {
+      if (t.type !== 'expense') return;
+      const monthKey = t.date.slice(0, 7);
+      expensesByMonth[monthKey] = (expensesByMonth[monthKey] || 0) + t.amount;
+    });
+    const months = Object.keys(expensesByMonth).length;
+    if (!months) return 0;
+    const total = Object.values(expensesByMonth).reduce((sum, val) => sum + val, 0);
+    return total / months;
+  }, [reviewedMemberTransactions]);
+
+  const averageMonthlySavings = useMemo(() => {
+    const monthlyTotals = new Map<string, { income: number; expense: number }>();
+    reviewedMemberTransactions.forEach(t => {
+      const monthKey = t.date.slice(0, 7);
+      const current = monthlyTotals.get(monthKey) || { income: 0, expense: 0 };
+      if (t.type === 'income') current.income += t.amount;
+      if (t.type === 'expense') current.expense += t.amount;
+      monthlyTotals.set(monthKey, current);
+    });
+
+    if (!monthlyTotals.size) return 0;
+
+    let sum = 0;
+    monthlyTotals.forEach(({ income, expense }) => {
+      sum += (income - expense);
+    });
+
+    return sum / monthlyTotals.size;
+  }, [reviewedMemberTransactions]);
 
   // 3. Filter Reminders
   const filteredReminders = useMemo(() => {
@@ -982,6 +1031,13 @@ const App: React.FC = () => {
                   isOpen={isSidebarOpen}
                 />
                 <NavItem
+                  active={activeTab === 'fire'}
+                  onClick={() => { setActiveTab('fire'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<Flame size={20} />}
+                  label="FIRE"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
                   active={activeTab === 'advisor'}
                   onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                   icon={<BrainCircuit size={20} />}
@@ -1186,6 +1242,14 @@ const App: React.FC = () => {
                   )}
                   <StatsCards stats={stats} isLoading={isLoadingData} />
                   <div className="animate-fade-in space-y-6">
+                    {filterMode === 'month' && (
+                      <FinanceCalendar
+                        month={dashboardDate}
+                        transactions={dashboardFilteredTransactions}
+                        reminders={filteredReminders}
+                        isLoading={isLoadingData}
+                      />
+                    )}
                     <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
                   </div>
                 </>
@@ -1215,14 +1279,21 @@ const App: React.FC = () => {
               {activeTab === 'investments' && (
                 <div className="h-[calc(100vh-280px)] animate-fade-in">
                   <Investments
-                    investments={activeMemberId === 'FAMILY_OVERVIEW'
-                      ? investments
-                      : investments.filter(inv => inv.memberId === activeMemberId)
-                    }
+                    investments={memberInvestments}
                     onAdd={handleAddInvestment}
                     onUpdate={handleUpdateInvestment}
                     onDelete={handleDeleteInvestment}
                     onAddTransaction={handleAddTransaction}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'fire' && (
+                <div className="flex-1 space-y-6 animate-fade-in">
+                  <FireCalculator
+                    netWorth={totalMemberInvestments}
+                    averageMonthlySavings={averageMonthlySavings}
+                    averageMonthlyExpense={averageMonthlyExpense}
                   />
                 </div>
               )}
