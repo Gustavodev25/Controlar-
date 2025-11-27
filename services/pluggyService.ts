@@ -274,13 +274,17 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
         if (shouldSkipTx(tx, account)) continue;
 
         // LÓGICA CORRIGIDA:
-        // Se for cartão de crédito: TODOS os valores são despesas (parcelas E pagamentos)
-        // Se for conta comum: valor negativo (<0) é despesa, valor positivo (>0) é receita.
+        // Se for cartão de crédito:
+        // - Valor POSITIVO (> 0) = Compra/Despesa (Aumenta a fatura)
+        // - Valor NEGATIVO (< 0) = Pagamento/Estorno (Diminui a fatura) -> Consideramos Receita/Transferência
+        // Se for conta comum:
+        // - Valor NEGATIVO (< 0) = Saída/Despesa
+        // - Valor POSITIVO (> 0) = Entrada/Receita
         let isExpense;
         if (isCreditCard) {
-          isExpense = true; // Cartão de crédito: tudo é despesa
+          isExpense = tx.amount > 0;
         } else {
-          isExpense = tx.amount < 0; // Conta comum: negativo é despesa
+          isExpense = tx.amount < 0;
         }
 
         const absAmount = Math.abs(tx.amount);
@@ -321,10 +325,10 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
             date: dateStr,
             type: isExpense ? "expense" : "income",
             category: mapCategory(tx.category, tx.description),
-            status: "pending",
+            status: "completed", // Importado como concluído para aparecer no dashboard
             memberId,
             importSource: "pluggy",
-            needsApproval: !isExpense // somente receitas precisam confirmar
+            needsApproval: false
           };
 
           const uniquePluggyId = installmentsCount > 1 && tx.id ? `${tx.id}-inst-${i}` : tx.id;
@@ -424,9 +428,9 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
           // Aplica mesma lógica corrigida no preview
           let isExpense;
           if (isCreditCard) {
-            isExpense = true; // Cartão de crédito: tudo é despesa
+            isExpense = tx.amount > 0; // Cartão: Positivo é despesa (compra)
           } else {
-            isExpense = tx.amount < 0; // Conta comum: negativo é despesa
+            isExpense = tx.amount < 0; // Conta: Negativo é despesa
           }
 
           return {
