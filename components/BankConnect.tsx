@@ -61,15 +61,26 @@ export const BankConnect: React.FC<BankConnectProps> = ({
     }
     const itemId = itemData.item.id;
     setSyncing(true);
+
     try {
-      const count = await syncPluggyData(userId, itemId, memberId || undefined);
-      toast.success(`Conexao realizada! ${count} transacoes importadas.`);
-      onItemConnected?.(itemId);
-      onSyncComplete?.(count);
-      handleClose();
+      await toast.promise(
+        syncPluggyData(userId, itemId, memberId || undefined),
+        {
+          loading: "Conectando a instituição e sincronizando dados...",
+          success: (count) => {
+            onItemConnected?.(itemId);
+            onSyncComplete?.(count);
+            handleClose();
+            return `Conexao realizada! ${count} transacoes importadas.`;
+          },
+          error: (err) => {
+            console.error("Erro ao sincronizar Pluggy:", err);
+            return "Conexao feita, mas houve erro ao baixar transacoes.";
+          },
+        }
+      );
     } catch (err) {
-      console.error("Erro ao sincronizar Pluggy:", err);
-      toast.error("Conexao feita, mas houve erro ao baixar transacoes.");
+      // Error is handled visually by toast.promise
     } finally {
       setSyncing(false);
     }

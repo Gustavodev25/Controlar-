@@ -194,9 +194,22 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
       const txData = await txRes.json();
       const transactions = txData.results || [];
 
+      // Verifica se a conta é do tipo Crédito para inverter a lógica de sinal
+      const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
+
       for (const tx of transactions) {
         if (shouldSkipTx(tx, account)) continue;
-        const isExpense = tx.amount < 0;
+
+        // LÓGICA CORRIGIDA:
+        // Se for cartão de crédito: TODOS os valores são despesas (parcelas E pagamentos)
+        // Se for conta comum: valor negativo (<0) é despesa, valor positivo (>0) é receita.
+        let isExpense;
+        if (isCreditCard) {
+          isExpense = true; // Cartão de crédito: tudo é despesa
+        } else {
+          isExpense = tx.amount < 0; // Conta comum: negativo é despesa
+        }
+
         const absAmount = Math.abs(tx.amount);
         if (absAmount === 0) continue;
 
@@ -316,21 +329,35 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       if (txRes.ok) {
         const txData = await txRes.json();
         const txs = txData.results || [];
-        previewTransactions = txs.slice(0, 5).map((tx: any) => ({
-          id: tx.id || `${account.id}-${tx.date}-${Math.random()}`,
-          description: tx.description || "Transacao",
-          amount: tx.amount,
-          date: (tx.date || new Date().toISOString()).split("T")[0],
-          type: tx.amount >= 0 ? "income" : "expense",
-          category: tx.category,
-          currency: tx.currencyCode || account.currencyCode || "BRL",
-          installments: tx.installment || tx.installments || tx.paymentData?.installments
-            ? {
-              number: tx.installment?.number || tx.installments?.number || tx.paymentData?.installments?.number,
-              total: tx.installment?.total || tx.installments?.total || tx.paymentData?.installments?.total
-            }
-            : undefined
-        }));
+
+        // Verifica tipo para preview também
+        const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
+
+        previewTransactions = txs.slice(0, 5).map((tx: any) => {
+          // Aplica mesma lógica corrigida no preview
+          let isExpense;
+          if (isCreditCard) {
+            isExpense = true; // Cartão de crédito: tudo é despesa
+          } else {
+            isExpense = tx.amount < 0; // Conta comum: negativo é despesa
+          }
+
+          return {
+            id: tx.id || `${account.id}-${tx.date}-${Math.random()}`,
+            description: tx.description || "Transacao",
+            amount: tx.amount,
+            date: (tx.date || new Date().toISOString()).split("T")[0],
+            type: isExpense ? "expense" : "income",
+            category: tx.category,
+            currency: tx.currencyCode || account.currencyCode || "BRL",
+            installments: tx.installment || tx.installments || tx.paymentData?.installments
+              ? {
+                number: tx.installment?.number || tx.installments?.number || tx.paymentData?.installments?.number,
+                total: tx.installment?.total || tx.installments?.total || tx.paymentData?.installments?.total
+              }
+              : undefined
+          };
+        });
       }
     } catch (err) {
       console.warn("Erro ao buscar preview de transacoes Pluggy:", err);
