@@ -100,21 +100,29 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
     setSyncingItems(prev => new Set(prev).add(itemId));
     
+    const syncProcess = async () => {
+       // Passo 1: Acordar o Pluggy e esperar ele terminar (pode levar ate 60s)
+       const success = await triggerItemUpdate(itemId);
+       if (!success) throw new Error("O banco não respondeu a tempo ou houve erro na conexão.");
+
+       // Passo 2: Baixar dados
+       const count = await syncPluggyData(userId, itemId);
+       
+       // Passo 3: Atualizar Saldo na Tela
+       if (onRefresh) {
+         onRefresh();
+       }
+       
+       return count;
+    };
+
     try {
-        // 1. Trigger update at Pluggy
-        toast.message({ text: `Solicitando atualização ao ${institutionName}...`, preserve: false });
-        await triggerItemUpdate(itemId);
-        
-        // 2. Wait a bit and fetch new data
         await toast.promise(
-            syncPluggyData(userId, itemId),
+            syncProcess(),
             {
-                loading: `Baixando novas transações do ${institutionName}...`,
-                success: (count) => {
-                    onRefresh?.(); // Atualiza a UI geral se possível
-                    return `${count} novas transações encontradas!`;
-                },
-                error: "Erro ao sincronizar dados."
+                loading: `Conectando ao ${institutionName}... Aguarde, isso pode levar até 1 minuto.`,
+                success: (count) => `${count} novas transações encontradas e saldos atualizados!`,
+                error: (err) => `Erro: ${err instanceof Error ? err.message : "Falha na sincronização."}`
             }
         );
     } catch (err) {

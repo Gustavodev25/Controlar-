@@ -151,13 +151,54 @@ export const createConnectToken = async (clientUserId?: string): Promise<string>
 };
 
 /**
+ * Helper: Aguarda até que o Item termine a atualização (Status != UPDATING)
+ */
+const waitForItemUpdate = async (itemId: string, apiKey: string): Promise<boolean> => {
+  const MAX_ATTEMPTS = 30; // 30 * 2s = 60 segundos timeout
+  const DELAY_MS = 2000;
+
+  for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    try {
+      const response = await fetch(`${API_URL}/items/${itemId}`, {
+        headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
+      });
+      
+      if (!response.ok) continue;
+      
+      const item = await response.json();
+      const status = item.status;
+      
+      // Se terminou a atualização (Sucesso ou Erro)
+      if (status === "UPDATED" || status === "COMPLETED") {
+        return true;
+      }
+      
+      if (status === "LOGIN_ERROR" || status === "OUTDATED") {
+        console.warn(`Item ${itemId} stopped with status: ${status}`);
+        return false; // Parou com erro
+      }
+
+      // Se ainda está UPDATING ou WAITING_USER_INPUT, continua esperando
+      await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+    } catch (e) {
+      console.error("Polling error:", e);
+      await new Promise(resolve => setTimeout(resolve, DELAY_MS));
+    }
+  }
+  
+  console.warn(`Timeout waiting for item ${itemId} update.`);
+  return false; // Timeout
+};
+
+/**
  * Força a atualização de um Item (Conexão Bancária) no Pluggy.
- * Isso faz com que o Pluggy vá ao banco buscar novos dados imediatamente.
+ * E aguarda o processo finalizar antes de retornar.
  */
 export const triggerItemUpdate = async (itemId: string): Promise<boolean> => {
   try {
     const apiKey = await authenticate();
-    // Pluggy API: PATCH /items/{id} triggers an update
+    
+    // 1. Solicita a atualização
     const response = await fetch(`${API_URL}/items/${itemId}`, {
       method: "PATCH",
       headers: {
@@ -165,23 +206,17 @@ export const triggerItemUpdate = async (itemId: string): Promise<boolean> => {
         "Accept": "application/json",
         "X-API-KEY": apiKey
       },
-      body: JSON.stringify({
-        // Enviar um body vazio ou com parametros específicos de trigger se necessário.
-        // Geralmente PATCH sem body ou com webhookUrl atualiza o status.
-        // Para forçar update, algumas integrações usam apenas o PATCH.
-      }),
+      body: JSON.stringify({}), // Trigger update
     });
 
     if (!response.ok) {
-      // Se der erro (ex: 429 Too Many Requests), a gente avisa, mas não quebra tudo.
-      console.warn(`Trigger update failed for item ${itemId}:`, response.status);
-      return false;
+      console.warn(`Trigger update request failed for item ${itemId}:`, response.status);
+      // Mesmo falhando o trigger explícito, tentamos checar se ele já está rodando
     }
     
-    // Aguarda um pouco para dar tempo do crawler iniciar (opcional, mas bom para UX imediata)
-    await new Promise(resolve => setTimeout(resolve, 2000));
+    // 2. Aguarda o Crawler terminar
+    return await waitForItemUpdate(itemId, apiKey);
     
-    return true;
   } catch (error) {
     console.error("Error triggering item update:", error);
     return false;
