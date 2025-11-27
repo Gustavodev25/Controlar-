@@ -371,6 +371,19 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
 export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAccount[]> => {
   const apiKey = await authenticate();
 
+  // 1. Fetch item details to get the institution name reliably
+  const itemRes = await fetch(`${API_URL}/items/${itemId}`, {
+    headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
+  });
+
+  let itemInstitutionName: string = "Outros";
+  if (itemRes.ok) {
+    const itemData = await itemRes.json();
+    itemInstitutionName = itemData.institution?.name || "Outros";
+  } else {
+    console.warn(`Could not fetch item details for ${itemId}. Using 'Outros' as fallback institution name.`);
+  }
+
   const accountsRes = await fetch(`${API_URL}/accounts?itemId=${itemId}`, {
     headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
   });
@@ -442,7 +455,7 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       name: account.name || account.type || "Conta bancaria",
       type: account.type,
       subtype: account.subtype,
-      institution: account.institution?.name,
+      institution: itemInstitutionName, // Use the reliably fetched institution name
       balance: account.balance,
       currency: account.currencyCode || "BRL",
       lastUpdated: account.lastUpdatedAt || account.lastAccessedAt,
