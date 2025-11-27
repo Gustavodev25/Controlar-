@@ -151,6 +151,44 @@ export const createConnectToken = async (clientUserId?: string): Promise<string>
 };
 
 /**
+ * Força a atualização de um Item (Conexão Bancária) no Pluggy.
+ * Isso faz com que o Pluggy vá ao banco buscar novos dados imediatamente.
+ */
+export const triggerItemUpdate = async (itemId: string): Promise<boolean> => {
+  try {
+    const apiKey = await authenticate();
+    // Pluggy API: PATCH /items/{id} triggers an update
+    const response = await fetch(`${API_URL}/items/${itemId}`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-API-KEY": apiKey
+      },
+      body: JSON.stringify({
+        // Enviar um body vazio ou com parametros específicos de trigger se necessário.
+        // Geralmente PATCH sem body ou com webhookUrl atualiza o status.
+        // Para forçar update, algumas integrações usam apenas o PATCH.
+      }),
+    });
+
+    if (!response.ok) {
+      // Se der erro (ex: 429 Too Many Requests), a gente avisa, mas não quebra tudo.
+      console.warn(`Trigger update failed for item ${itemId}:`, response.status);
+      return false;
+    }
+    
+    // Aguarda um pouco para dar tempo do crawler iniciar (opcional, mas bom para UX imediata)
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    return true;
+  } catch (error) {
+    console.error("Error triggering item update:", error);
+    return false;
+  }
+};
+
+/**
  * Busca contas e transacoes do item conectado e salva no Firestore.
  */
 export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {

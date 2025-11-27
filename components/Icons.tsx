@@ -86,7 +86,8 @@ import {
   CreditCard,
   Download,
   Upload,
-  Copy
+  Copy,
+  RefreshCw
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -194,5 +195,6 @@ export {
   CreditCard,
   Download,
   Upload,
-  Copy
+  Copy,
+  RefreshCw
 };

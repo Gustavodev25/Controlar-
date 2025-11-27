@@ -1306,10 +1306,9 @@ const App: React.FC = () => {
 
               {activeTab === 'connections' && (
                 <div className="flex-1 space-y-6 animate-fade-in">
-                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 flex flex-col gap-3">
+                  <div className="">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Open Finance</p>
                         <h2 className="text-xl font-bold text-white">Contas conectadas</h2>
                         <p className="text-sm text-gray-400">Visualize saldos e movimentacoes dos bancos vinculados.</p>
                       </div>
@@ -1331,6 +1330,7 @@ const App: React.FC = () => {
                     onImport={handleImportAccount}
                     lastSynced={pluggyLastSync}
                     storageKey={userId ? `pluggy_expand_${userId}` : undefined}
+                    userId={userId}
                   />
                 </div>
               )}
