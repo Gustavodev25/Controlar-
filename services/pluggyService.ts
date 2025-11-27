@@ -379,7 +379,8 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
   let itemInstitutionName: string = "Outros";
   if (itemRes.ok) {
     const itemData = await itemRes.json();
-    itemInstitutionName = itemData.institution?.name || "Outros";
+    // O nome do banco geralmente vem dentro de 'connector'
+    itemInstitutionName = itemData.connector?.name || itemData.institution?.name || "Outros";
   } else {
     console.warn(`Could not fetch item details for ${itemId}. Using 'Outros' as fallback institution name.`);
   }
