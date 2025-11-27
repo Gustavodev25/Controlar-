@@ -326,7 +326,7 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
             type: isExpense ? "expense" : "income",
             category: mapCategory(tx.category, tx.description),
             status: "completed", // Importado como concluído para aparecer no dashboard
-            memberId,
+            ...(memberId ? { memberId } : {}),
             importSource: "pluggy",
             needsApproval: false
           };
