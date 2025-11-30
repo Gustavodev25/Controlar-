@@ -1,20 +1,21 @@
-
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users } from './Icons';
 import { useToasts } from './Toast';
 
 interface SalaryManagerProps {
   baseSalary: number;
   currentIncome: number;
-  onUpdateSalary: (newSalary: number) => void;
+  paymentDay?: number;
+  onUpdateSalary: (newSalary: number, paymentDay?: number) => void;
   onAddExtra: (amount: number, description: string) => void;
 }
 
-export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, currentIncome, onUpdateSalary, onAddExtra }) => {
+export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, currentIncome, paymentDay, onUpdateSalary, onAddExtra }) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
   const [tempSalary, setTempSalary] = useState(baseSalary.toString());
+  const [tempPaymentDay, setTempPaymentDay] = useState(paymentDay?.toString() || '5');
   const [salaryError, setSalaryError] = useState<string | null>(null);
   
   // State for Modal
@@ -25,7 +26,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const toast = useToasts();
 
   // Modal Logic State
-  const [activeTab, setActiveTab] = useState<'simple' | 'calculator'>('simple');
+  const [activeTab, setActiveTab] = useState<'simple' | 'calculator' | 'clt'>('simple');
   
   // Simple Mode State
   const [extraAmount, setExtraAmount] = useState('');
@@ -36,6 +37,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const [otQuantity, setOtQuantity] = useState('');
   const [otPercent, setOtPercent] = useState('50');
   const [tempBaseSalary, setTempBaseSalary] = useState('');
+
+  // CLT Mode State
+  const [cltGross, setCltGross] = useState('');
+  const [cltDependents, setCltDependents] = useState('0');
 
   // Validation State
   const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean, tempBaseSalary?: boolean}>({});
@@ -50,20 +55,76 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
       return isNaN(parsed) ? 0 : parsed;
   };
 
-  // 1. Valor da Hora Normal
+  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+  // 1. Hora Extra Logic
   const effectiveBaseSalary = baseSalary > 0 ? baseSalary : parseInput(tempBaseSalary);
   const safeBaseSalary = effectiveBaseSalary || 0;
   const safeMonthlyHours = parseInput(monthlyHours) || 220;
   const hourlyRate = safeMonthlyHours > 0 ? safeBaseSalary / safeMonthlyHours : 0;
 
-  // 2. Valor da Hora com Adicional (Hora + %)
   const safeOtPercent = parseInput(otPercent) || 50;
   const otMultiplier = 1 + (safeOtPercent / 100);
   const otHourlyRate = hourlyRate * otMultiplier;
 
-  // 3. Total Final
   const safeOtQuantity = parseInput(otQuantity) || 0;
   const totalCalculated = otHourlyRate * safeOtQuantity;
+
+  // 2. CLT Logic (2025 Rules)
+  const safeCltGross = parseInput(cltGross);
+  const safeCltDependents = parseInt(cltDependents) || 0;
+
+  const calculateCLT = (gross: number, dependents: number) => {
+      if (gross <= 0) return { inss: 0, irrf: 0, net: 0 };
+
+      // 1. INSS (2025 Progressive)
+      let inss = 0;
+      if (gross <= 1518.00) {
+          inss = gross * 0.075;
+      } else if (gross <= 2793.88) {
+          inss = (gross * 0.09) - 22.77;
+      } else if (gross <= 4190.83) {
+          inss = (gross * 0.12) - 106.59;
+      } else if (gross <= 8157.41) {
+          inss = (gross * 0.14) - 190.40;
+      } else {
+          inss = 951.63; // Teto
+      }
+
+      // 2. IRRF (2025 Rules)
+      // Option A: Legal Deductions (INSS + Dependents)
+      const deductibleDependents = dependents * 189.59;
+      const baseA = gross - inss - deductibleDependents;
+
+      // Option B: Simplified Discount (Replaces Legal Deductions)
+      const simplifiedDiscount = 607.20; // 2025
+      const baseB = gross - simplifiedDiscount;
+
+      // Use the smaller base (beneficial for user)
+      const finalBase = Math.min(baseA, baseB);
+      
+      // IRRF Calculation Function (2025 Table)
+      const calcTax = (base: number) => {
+          if (base <= 2428.80) return 0;
+          if (base <= 2826.65) return (base * 0.075) - 182.16;
+          if (base <= 3751.05) return (base * 0.15) - 394.16;
+          if (base <= 4664.68) return (base * 0.225) - 675.49;
+          return (base * 0.275) - 908.73;
+      };
+
+      const taxA = Math.max(0, calcTax(baseA));
+      const taxB = Math.max(0, calcTax(baseB)); // Note: BaseB here is Gross - 607.20 (NO INSS deduction)
+
+      const irrf = Math.min(taxA, taxB);
+
+      return {
+          inss,
+          irrf,
+          net: gross - inss - irrf
+      };
+  };
+
+  const cltResults = calculateCLT(safeCltGross, safeCltDependents);
 
   // --- Effects for Animation ---
   useEffect(() => {
@@ -87,6 +148,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const handleSaveSalary = () => {
     setSalaryError(null);
     const val = parseInput(tempSalary);
+    const day = parseInt(tempPaymentDay);
     
     if (isNaN(val)) {
       setSalaryError("Insira um número válido");
@@ -98,7 +160,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         return;
     }
 
-    onUpdateSalary(val);
+    if (isNaN(day) || day < 1 || day > 31) {
+        setSalaryError("Dia de pagamento inválido (1-31)");
+        return;
+    }
+
+    onUpdateSalary(val, day);
     setIsEditing(false);
   };
 
@@ -108,6 +175,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     } else if (e.key === 'Escape') {
       setIsEditing(false);
       setTempSalary(baseSalary.toString());
+      setTempPaymentDay(paymentDay?.toString() || '5');
       setSalaryError(null);
     }
   };
@@ -149,6 +217,15 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     }
   };
 
+  const handleAddCLT = () => {
+      if (cltResults.net > 0) {
+          onAddExtra(cltResults.net, "Salário Líquido (CLT)");
+          handleCloseModal();
+      } else {
+          toast.error("Valor inválido.");
+      }
+  };
+
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setTimeout(() => {
@@ -156,13 +233,14 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         setOtQuantity('');
         setTempBaseSalary('');
         setExtraDesc('Freelance');
+        setCltGross('');
+        setCltDependents('0');
         setErrors({});
         setSalaryError(null);
         setActiveTab('simple');
     }, 300);
   };
 
-  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   const progressPercentage = baseSalary > 0 ? Math.min(100, (currentIncome / baseSalary) * 100) : 0;
 
   return (
@@ -182,7 +260,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
             </div>
             {!isEditing && baseSalary > 0 && (
                <button 
-                 onClick={() => { setTempSalary(baseSalary.toString().replace('.', ',')); setIsEditing(true); setSalaryError(null); }} 
+                 onClick={() => { 
+                    setTempSalary(baseSalary.toString().replace('.', ',')); 
+                    setTempPaymentDay(paymentDay?.toString() || '5');
+                    setIsEditing(true); 
+                    setSalaryError(null); 
+                 }} 
                  className="text-gray-500 hover:text-[#d97757] transition-colors text-xs flex items-center gap-1"
                >
                  <Edit2 size={12} /> Editar Meta
@@ -193,24 +276,40 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
           <div className="mt-3 relative group min-h-[48px] flex flex-col justify-center">
             {isEditing ? (
               <div className="space-y-2 animate-fade-in relative z-20">
-                  <div className="flex items-center gap-2 w-full">
-                    <span className="text-gray-400 text-xl font-medium">R$</span>
-                    <input 
-                        type="text"
-                        inputMode="decimal"
-                        value={tempSalary}
-                        onChange={(e) => {
-                            setTempSalary(e.target.value);
-                            if (salaryError) setSalaryError(null);
-                        }}
-                        onKeyDown={handleKeyDown}
-                        className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
-                        autoFocus
-                        placeholder="0,00"
-                    />
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="flex-1 flex items-center gap-2">
+                        <span className="text-gray-400 text-xl font-medium">R$</span>
+                        <input 
+                            type="text"
+                            inputMode="decimal"
+                            value={tempSalary}
+                            onChange={(e) => {
+                                setTempSalary(e.target.value);
+                                if (salaryError) setSalaryError(null);
+                            }}
+                            onKeyDown={handleKeyDown}
+                            className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
+                            autoFocus
+                            placeholder="0,00"
+                        />
+                    </div>
+                    
+                    <div className="w-24">
+                        <label className="text-[10px] text-gray-400 block mb-0.5">Dia Pagto.</label>
+                        <input 
+                            type="number"
+                            min="1"
+                            max="31"
+                            value={tempPaymentDay}
+                            onChange={(e) => setTempPaymentDay(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            className="bg-gray-800 text-white text-sm font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
+                        />
+                    </div>
+
                     <button 
                     onClick={handleSaveSalary}
-                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-lg shadow-green-900/20 shrink-0"
+                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-lg shadow-green-900/20 shrink-0 self-end mb-0.5"
                     title="Salvar (Enter)"
                     >
                     <Check size={18} />
@@ -224,24 +323,48 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
               </div>
             ) : (
               <div 
-                onClick={() => { setTempSalary(baseSalary.toString().replace('.', ',')); setIsEditing(true); setSalaryError(null); }}
+                onClick={() => { 
+                    setTempSalary(baseSalary.toString().replace('.', ',')); 
+                    setTempPaymentDay(paymentDay?.toString() || '5');
+                    setIsEditing(true); 
+                    setSalaryError(null); 
+                }}
                 className="flex items-baseline gap-2 cursor-pointer hover:bg-gray-800/50 p-2 -ml-2 rounded-lg transition-all group w-full"
                 title="Clique para editar seu salário base"
               >
                 {baseSalary > 0 ? (
                    <>
-                      <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
-                        {formatCurrency(baseSalary)}
-                      </span>
-                      <span className="text-sm text-gray-500 font-medium">/mês</span>
+                      <div className="flex flex-col">
+                          <div className="flex items-baseline gap-1">
+                             <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
+                                {formatCurrency(baseSalary)}
+                             </span>
+                             <span className="text-sm text-gray-500 font-medium">/mês</span>
+                          </div>
+                          {paymentDay ? (
+                              <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
+                                 <Clock size={10} /> Recebe dia {paymentDay}
+                              </span>
+                          ) : (
+                              <span className="text-xs text-amber-400 flex items-center gap-1 mt-1 font-medium animate-pulse">
+                                 <AlertCircle size={10} /> Definir dia de pagamento
+                              </span>
+                          )}
+                      </div>
                    </>
                 ) : (
-                   <span className="text-xl font-medium text-gray-400 group-hover:text-white transition-colors flex items-center gap-2">
-                      Definir Meta Salarial
-                   </span>
+                   <div className="flex flex-col gap-1">
+                       <span className="text-xl font-medium text-gray-300 group-hover:text-white transition-colors flex items-center gap-2">
+                          <AlertCircle size={20} className="text-amber-400" />
+                          Definir Renda Mensal
+                       </span>
+                       <span className="text-xs text-gray-500 group-hover:text-amber-400/80 transition-colors ml-7">
+                          Clique para configurar salário e data
+                       </span>
+                   </div>
                 )}
                 
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-gray-300 text-[10px] px-2 py-1 rounded ml-auto">
+                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-gray-300 text-[10px] px-2 py-1 rounded ml-auto self-start mt-2">
                   Editar
                 </div>
               </div>
@@ -280,10 +403,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         </div>
 
         {/* Lado Direito: Botão de Ação */}
-        <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center items-center gap-3 border-t lg:border-t-0 border-gray-800">
-           <div className="text-center">
-             <p className="text-base font-medium text-gray-200">Registrar Renda</p>
-             <p className="text-xs text-gray-500 mt-1">Adicione seu salário mensal ou renda extra rapidamente.</p>
+        <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center gap-3 border-t lg:border-t-0 border-gray-800">
+           <div className="text-center mb-1">
+             <p className="text-base font-medium text-gray-200">Gerenciar Renda</p>
+             <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
            </div>
 
            {baseSalary > 0 && (
@@ -292,7 +415,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                  onAddExtra(baseSalary, "Salário Mensal");
                  toast.success(`Salário de ${formatCurrency(baseSalary)} adicionado!`);
                }}
-               className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 group text-sm"
+               className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 group text-sm mb-1"
              >
                <Coins size={16} />
                Registrar Salário Base
@@ -300,14 +423,29 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
            )}
 
            <button
-             onClick={() => setIsModalOpen(true)}
-             className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-medium transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 group border border-[#d97757]/50"
+             onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
+             className="w-full py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-medium transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 group border border-[#d97757]/50 text-sm"
            >
-             <div className="bg-white/20 p-1 rounded-full group-hover:scale-110 transition-transform">
-               <PlusCircle size={18} />
-             </div>
-             Adicionar Outra Renda
+             <PlusCircle size={16} />
+             Renda Extra Rápida
            </button>
+
+           <div className="grid grid-cols-2 gap-2 mt-1">
+              <button
+                onClick={() => { setActiveTab('clt'); setIsModalOpen(true); }}
+                className="py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+              >
+                <Briefcase size={14} className="text-[#d97757]" />
+                Calc. CLT
+              </button>
+              <button
+                onClick={() => { setActiveTab('calculator'); setIsModalOpen(true); }}
+                className="py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+              >
+                <Clock size={14} className="text-[#d97757]" />
+                Calc. Hora Extra
+              </button>
+           </div>
         </div>
       </div>
 
@@ -334,24 +472,31 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
             {/* Header */}
             <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
               {/* Toggle Tab Style */}
-              <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md">
+              <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md overflow-x-auto no-scrollbar max-w-[80%]">
                 <button 
                   onClick={() => setActiveTab('simple')}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'simple' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'simple' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                 >
                   <Briefcase size={14} />
                   Simples
                 </button>
                 <button 
+                  onClick={() => setActiveTab('clt')}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'clt' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                >
+                  <Coins size={14} />
+                  Líquido CLT
+                </button>
+                <button 
                   onClick={() => setActiveTab('calculator')}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${activeTab === 'calculator' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'calculator' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
                 >
                   <Calculator size={14} />
-                  Calculadora
+                  Hora Extra
                 </button>
               </div>
 
-              <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
+              <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors shrink-0">
                 <X size={20} />
               </button>
             </div>
@@ -412,7 +557,99 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                 </form>
               )}
 
-              {/* ABA: CALCULADORA */}
+              {/* ABA: CLT */}
+              {activeTab === 'clt' && (
+                  <div className="space-y-6 animate-slide-up">
+                      <>
+                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                          <div>
+                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Salário Líquido</h4>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                              Descontos automáticos de INSS e IRRF (Regras 2025).
+                              <br />
+                              <span className="opacity-70">Considera desconto simplificado quando vantajoso.</span>
+                            </p>
+                          </div>
+                       </div>
+
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-5">
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Salário Bruto (R$)
+                                </label>
+                                <div className="relative group">
+                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="Ex: 5000,00"
+                                    value={cltGross}
+                                    onChange={e => setCltGross(e.target.value)}
+                                    className="input-primary pl-10 text-lg font-bold focus:border-[#d97757]"
+                                    autoFocus
+                                  />
+                                </div>
+                             </div>
+
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Nº de Dependentes
+                                </label>
+                                <div className="relative group">
+                                  <Users className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757]" size={16} />
+                                  <input
+                                    type="number"
+                                    min="0"
+                                    value={cltDependents}
+                                    onChange={e => setCltDependents(e.target.value)}
+                                    className="input-primary pl-10 focus:border-[#d97757]"
+                                  />
+                                </div>
+                             </div>
+                          </div>
+
+                          {/* Result Card */}
+                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+                             <div className="space-y-3 relative z-0 mb-4">
+                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Deduções Estimadas</h5>
+                                
+                                <div className="flex justify-between items-center text-xs group">
+                                   <span className="text-gray-400">INSS</span>
+                                   <span className="text-red-400 font-mono">- {formatCurrency(cltResults.inss)}</span>
+                                </div>
+                                
+                                <div className="flex justify-between items-center text-xs group">
+                                   <span className="text-gray-400">IRRF</span>
+                                   <span className="text-red-400 font-mono">- {formatCurrency(cltResults.irrf)}</span>
+                                </div>
+                             </div>
+
+                             <div className="relative z-0">
+                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${cltResults.net > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salário Líquido</p>
+                                   <p className={`text-3xl font-bold ${cltResults.net > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                     {formatCurrency(cltResults.net)}
+                                   </p>
+                                </div>
+                                
+                                <button 
+                                  onClick={handleAddCLT}
+                                  disabled={cltResults.net <= 0}
+                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                >
+                                  <Check size={18} />
+                                  Lançar Líquido
+                                </button>
+                             </div>
+                          </div>
+                       </div>
+                      </>
+                  </div>
+              )}
+
+              {/* ABA: CALCULADORA (HORA EXTRA) */}
               {activeTab === 'calculator' && (
                 <div className="space-y-6 animate-slide-up">
                     <>

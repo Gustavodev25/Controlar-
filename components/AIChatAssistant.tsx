@@ -129,6 +129,7 @@ interface AIChatAssistantProps {
     transactions: Transaction[];
     budgets: Budget[];
     investments: Investment[];
+    userPlan?: 'starter' | 'pro' | 'family';
 }
 
 interface Message {
@@ -148,12 +149,15 @@ interface ChatSession {
     messages: Message[];
 }
 
-export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions, budgets, investments }) => {
+export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions, budgets, investments, userPlan = 'starter' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const [view, setView] = useState<'chat' | 'history'>('chat');
     const [history, setHistory] = useState<ChatSession[]>([]);
+
+    // Limit tracking for Starter plan
+    const [starterMessageCount, setStarterMessageCount] = useState(0);
 
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -185,8 +189,26 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
     const handleSendMessage = async () => {
         if (!inputValue.trim()) return;
 
+        // Check Limit for Starter
+        if (userPlan === 'starter' && starterMessageCount >= 3) {
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'ai',
+                type: 'text',
+                content: '🔒 Você atingiu o limite de mensagens do plano Starter. Faça o upgrade para o plano Plus para ter acesso ilimitado ao Consultor IA.',
+                timestamp: Date.now()
+            }]);
+            setInputValue('');
+            return;
+        }
+
         const userText = inputValue;
         setInputValue('');
+
+        // Increment counter for starter
+        if (userPlan === 'starter') {
+            setStarterMessageCount(prev => prev + 1);
+        }
 
         const userMsg: Message = {
             id: Date.now().toString(),

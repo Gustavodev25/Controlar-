@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign, TrendingDown } from './Icons';
+import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign } from './Icons';
 import { Budget, Transaction, Member } from '../types';
 import * as dbService from '../services/database';
 import { useToasts } from './Toast';
 import { ConfirmationCard, CustomAutocomplete } from './UIComponents';
+import { EmptyState } from './EmptyState';
 
 interface BudgetsProps {
     userId: string;
@@ -12,9 +13,10 @@ interface BudgetsProps {
     members: Member[];
     activeMemberId: string;
     budgets: Budget[];
+    userPlan?: 'starter' | 'pro' | 'family';
 }
 
-export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members, activeMemberId, budgets }) => {
+export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members, activeMemberId, budgets, userPlan = 'starter' }) => {
     // Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isVisible, setIsVisible] = useState(false);
@@ -48,7 +50,14 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
         return () => clearTimeout(timeoutId);
     }, [isModalOpen]);
 
+    const isLimitReached = userPlan === 'starter' && budgets.length >= 2;
+
     const handleOpenModal = (budget?: Budget) => {
+        if (!budget && isLimitReached) {
+            toast.error("Plano Starter limitado a 2 orçamentos. Faça upgrade para criar mais.");
+            return;
+        }
+        
         if (budget) {
             setEditingBudget(budget);
             setCategory(budget.category);
@@ -163,7 +172,14 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 </div>
                 <button
                     onClick={() => handleOpenModal()}
-                    className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors shadow-lg shadow-[#d97757]/20"
+                    disabled={isLimitReached}
+                    className={`
+                        px-4 py-2 rounded-xl flex items-center gap-2 transition-colors shadow-lg
+                        ${isLimitReached 
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed shadow-none' 
+                            : 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-[#d97757]/20'
+                        }
+                    `}
                 >
                     <Plus size={18} />
                     <span className="hidden sm:inline">Novo Orçamento</span>
@@ -242,9 +258,11 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 ))}
 
                 {filteredBudgets.length === 0 && (
-                    <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
-                        <p>Nenhum orçamento definido para este perfil.</p>
-                        <button onClick={() => handleOpenModal()} className="text-[#d97757] hover:underline mt-2 text-sm">Criar o primeiro</button>
+                    <div className="col-span-full">
+                        <EmptyState
+                            title="Nenhum orçamento definido"
+                            description="Crie orçamentos para acompanhar seus gastos por categoria e manter suas finanças organizadas."
+                        />
                     </div>
                 )}
             </div>

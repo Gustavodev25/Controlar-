@@ -11,6 +11,9 @@ interface BankConnectProps {
   onItemConnected?: (itemId: string) => void;
   onSyncComplete?: (imported: number) => void;
   isSidebar?: boolean;
+  isOpen?: boolean;
+  existingAccountsCount?: number;
+  userPlan?: 'starter' | 'pro' | 'family';
 }
 
 export const BankConnect: React.FC<BankConnectProps> = ({
@@ -19,6 +22,9 @@ export const BankConnect: React.FC<BankConnectProps> = ({
   onItemConnected,
   onSyncComplete,
   isSidebar = false,
+  isOpen: isSidebarOpen = true,
+  existingAccountsCount = 0,
+  userPlan = 'starter',
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [connectToken, setConnectToken] = useState<string | null>(null);
@@ -27,6 +33,14 @@ export const BankConnect: React.FC<BankConnectProps> = ({
   const [error, setError] = useState<string | null>(null);
 
   const toast = useToasts();
+
+  const handleOpen = () => {
+      if (userPlan === 'starter' && existingAccountsCount >= 1) {
+          toast.error("Plano Starter limitado a 1 conexão. Faça upgrade para conectar mais bancos.", { duration: 5000 });
+          return;
+      }
+      setIsOpen(true);
+  };
 
   // Initialize Token when modal opens
   useEffect(() => {
@@ -100,19 +114,29 @@ export const BankConnect: React.FC<BankConnectProps> = ({
 
   const TriggerButton = isSidebar ? (
     <button
-      onClick={() => setIsOpen(true)}
-      className="w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group text-gray-400 hover:bg-gray-800/50 hover:text-gray-200"
+      onClick={handleOpen}
+      className={`w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group text-gray-400 hover:bg-gray-800/50 hover:text-gray-200 relative ${!isSidebarOpen ? 'justify-center' : ''}`}
     >
       <span className="text-[#d97757] group-hover:text-[#e68e70] transition-colors">
         <Building size={20} />
       </span>
-      <span className="font-medium text-sm truncate animate-fade-in">
-        Conectar Banco
-      </span>
+      {isSidebarOpen && (
+        <span className="font-medium text-sm truncate animate-fade-in">
+          Conectar Banco
+        </span>
+      )}
+
+      {/* Tooltip (Collapsed Only) */}
+      {!isSidebarOpen && (
+        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left hidden group-hover:block animate-fade-in pointer-events-none">
+          <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
+          <p className="text-sm font-bold text-white whitespace-nowrap">Conectar Banco</p>
+        </div>
+      )}
     </button>
   ) : (
     <button
-      onClick={() => setIsOpen(true)}
+      onClick={handleOpen}
       className="flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
     >
       <Link size={16} />

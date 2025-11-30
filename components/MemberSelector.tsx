@@ -11,6 +11,7 @@ interface MemberSelectorProps {
   onAddMember: (name: string, avatarUrl: string) => void;
   onDeleteMember: (id: string) => void;
   isSidebarOpen: boolean;
+  userPlan?: 'starter' | 'pro' | 'family';
 }
 
 const GRADIENTS = [
@@ -27,12 +28,24 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
   onSelectMember,
   onAddMember,
   onDeleteMember,
-  isSidebarOpen
+  isSidebarOpen,
+  userPlan = 'starter'
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
   const [newName, setNewName] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<Member | null>(null);
+
+  // Limit Logic
+  const canAddMember = () => {
+      const count = members.length;
+      if (userPlan === 'starter' && count >= 1) return false;
+      if (userPlan === 'pro' && count >= 2) return false;
+      if (userPlan === 'family' && count >= 5) return false;
+      return true;
+  };
+
+  const isLimitReached = !canAddMember();
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
@@ -50,24 +63,13 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
     ? { name: 'Família', avatarUrl: 'bg-gradient-to-r from-gray-700 to-gray-800' }
     : members.find(m => m.id === activeMemberId);
 
-  const [isHovered, setIsHovered] = useState(false);
-
   if (!isSidebarOpen) {
     return (
       <button
         onClick={() => onSelectMember('FAMILY_OVERVIEW')}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        className="w-10 h-10 mx-auto rounded-full bg-gray-800 flex items-center justify-center text-[#d97757] hover:bg-gray-700 transition-colors relative"
+        className="w-10 h-10 mx-auto rounded-full bg-gray-800 flex items-center justify-center text-[#d97757] hover:bg-gray-700 transition-colors"
       >
         <Users size={20} />
-
-        {isHovered && (
-          <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left animate-fade-in">
-            <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
-            <p className="text-sm font-bold text-white whitespace-nowrap">Visão Geral</p>
-          </div>
-        )}
       </button>
     );
   }
@@ -180,10 +182,23 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
               </form>
             ) : (
               <button
-                onClick={() => setIsAdding(true)}
-                className="w-full p-3 flex items-center justify-center gap-2 text-xs font-medium text-gray-500 hover:text-white hover:bg-gray-800 border-t border-gray-800 transition-colors"
+                onClick={() => !isLimitReached && setIsAdding(true)}
+                className={`w-full p-3 flex items-center justify-center gap-2 text-xs font-medium border-t border-gray-800 transition-colors ${
+                    isLimitReached 
+                    ? 'text-gray-600 cursor-not-allowed bg-gray-900/50' 
+                    : 'text-gray-500 hover:text-white hover:bg-gray-800'
+                }`}
               >
-                <Plus size={14} /> Adicionar Membro
+                {isLimitReached ? (
+                    <>
+                       <div className="p-1 bg-gray-800 rounded-md"><Users size={12} className="opacity-50" /></div>
+                       <span>Limite do Plano Atingido</span>
+                    </>
+                ) : (
+                    <>
+                       <Plus size={14} /> Adicionar Membro
+                    </>
+                )}
               </button>
             )}
           </div>

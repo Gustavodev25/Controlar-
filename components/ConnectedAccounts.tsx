@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight } from "./Icons";
 import { triggerItemUpdate, syncPluggyData } from "../services/pluggyService";
 import { useToasts } from "./Toast";
+import { EmptyState } from "./EmptyState";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -32,11 +33,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   storageKey,
   userId
 }) => {
-  if (!isLoading && accounts.length === 0) return null;
-
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
+  const [accountPages, setAccountPages] = useState<Record<string, number>>({});
+  const accountsPerPage = 3;
   const toast = useToasts();
 
   const accountIds = useMemo(() => accounts.map((a) => a.id).join(","), [accounts]);
@@ -50,7 +51,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         groups[key] = { accounts: [], itemId: acc.itemId };
       }
       groups[key].accounts.push(acc);
-      // Ensure we have the itemId (all accounts in a group usually share the same itemId if from same institution connection)
       if (!groups[key].itemId && acc.itemId) groups[key].itemId = acc.itemId;
     });
     return groups;
@@ -101,14 +101,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     setSyncingItems(prev => new Set(prev).add(itemId));
     
     const syncProcess = async () => {
-       // Passo 1: Acordar o Pluggy e esperar ele terminar (pode levar ate 60s)
        const success = await triggerItemUpdate(itemId);
        if (!success) throw new Error("O banco não respondeu a tempo ou houve erro na conexão.");
 
-       // Passo 2: Baixar dados
        const count = await syncPluggyData(userId, itemId);
        
-       // Passo 3: Atualizar Saldo na Tela
        if (onRefresh) {
          onRefresh();
        }
@@ -120,8 +117,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         await toast.promise(
             syncProcess(),
             {
-                loading: `Conectando ao ${institutionName}... Aguarde, isso pode levar até 1 minuto.`,
-                success: (count) => `${count} novas transações encontradas e saldos atualizados!`,
+                loading: `Conectando ao ${institutionName}...`,
+                success: (count) => `${count} atualizações encontradas!`,
                 error: (err) => `Erro: ${err instanceof Error ? err.message : "Falha na sincronização."}`
             }
         );
@@ -163,68 +160,79 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   };
 
   return (
-    <div className="w-full space-y-6 animate-fade-in">
-      
-      {/* HEADER REFEITO */}
-      <div className="flex items-end justify-between px-1 pb-2">
-        <div className="flex items-center gap-3">
-          <div className="text-[#d97757] mb-1">
-            <Building size={28} />
-          </div>
-          <div>
-            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Open Finance</p>
-            <h3 className="text-2xl font-bold text-white leading-none">Bancos conectados</h3>
-          </div>
-        </div>
+    <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
 
-        <div className="flex items-center gap-5 pb-1">
+      {/* HEADER PADRONIZADO - só mostra se houver contas */}
+      {accounts.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Bancos Conectados</h2>
+            <p className="text-gray-400 text-sm mt-1">Gerencie suas conexões Open Finance</p>
+          </div>
+
           {onRefresh && (
             <button
               onClick={onRefresh}
-              className="text-sm font-medium text-[#d97757] hover:text-[#d97757]/80 transition-colors flex items-center gap-2"
+              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-gray-800 hover:border-gray-700 shadow-lg"
             >
-              <RotateCcw size={16} /> Atualizar Tela
+              <RotateCcw size={18} className={isLoading ? "animate-spin" : ""} />
+              <span className="hidden sm:inline font-bold text-sm">Atualizar</span>
             </button>
           )}
-          <span className="text-sm text-gray-500 font-medium">
-            {accounts.length} conta{accounts.length === 1 ? "" : "s"}
-          </span>
         </div>
-      </div>
+      )}
 
       {isLoading ? (
-        // Loading Skeleton
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        // Loading Skeleton Estilizado
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {[1, 2, 3].map((i) => (
-            <div key={i} className="bg-gray-950 border border-gray-800 rounded-2xl p-5 space-y-4 animate-pulse">
-              <div className="h-5 bg-gray-800 rounded w-1/3"></div>
-              <div className="h-px bg-gray-800 w-full"></div>
+            <div key={i} className="bg-gray-950 border border-gray-800 rounded-2xl p-6 space-y-4 animate-pulse shadow-xl">
+              <div className="flex items-center gap-3 border-b border-gray-800/50 pb-4">
+                 <div className="w-10 h-10 bg-gray-900 rounded-full"></div>
+                 <div className="h-4 bg-gray-900 rounded w-1/3"></div>
+              </div>
               <div className="space-y-3">
-                 <div className="h-10 bg-gray-800 rounded w-full"></div>
-                 <div className="h-10 bg-gray-800 rounded w-full"></div>
+                 <div className="h-16 bg-gray-900/50 rounded-xl w-full"></div>
+                 <div className="h-16 bg-gray-900/50 rounded-xl w-full"></div>
               </div>
             </div>
           ))}
         </div>
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          title="Nenhuma conta conectada"
+          description="Conecte suas contas bancárias para visualizar seus saldos e transações em um só lugar através do Open Finance."
+        />
       ) : (
-        // Grid de Bancos
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+        <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {Object.entries(groupedAccounts).map(([institution, data]) => {
             const { accounts: institutionAccounts, itemId } = data;
             const isSyncing = syncingItems.has(itemId);
 
+            // Paginação para as contas deste banco
+            const currentPage = accountPages[institution] || 1;
+            const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
+            const startIndex = (currentPage - 1) * accountsPerPage;
+            const endIndex = startIndex + accountsPerPage;
+            const paginatedInstitutionAccounts = institutionAccounts.slice(startIndex, endIndex);
+
             return (
-            <div key={institution} className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col">
+            <div key={institution} className="bg-gray-950 border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative">
+              {/* Glow Effect */}
+              <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757] pointer-events-none transition-opacity group-hover:opacity-10"></div>
               
               {/* Cabeçalho do Card do Banco */}
-              <div className="bg-gray-900/50 p-4 border-b border-gray-800 flex items-center justify-between gap-3">
+              <div className="bg-gray-950/80 backdrop-blur-sm p-5 border-b border-gray-800 flex items-center justify-between gap-3 relative z-10">
                 <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
-                        <Building size={14} />
+                    <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner">
+                        <Building size={20} />
                     </div>
-                    <h4 className="text-sm font-bold text-white uppercase tracking-wide">
-                    {institution}
-                    </h4>
+                    <div>
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
+                        <h4 className="text-base font-bold text-white leading-tight">
+                        {institution}
+                        </h4>
+                    </div>
                 </div>
                 
                 {/* Botão de Sincronizar Instituição Específica */}
@@ -232,83 +240,97 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     onClick={() => handleSyncItem(institution, itemId)}
                     disabled={isSyncing}
                     title="Sincronizar agora com o banco"
-                    className={`p-2 rounded-full transition-all ${isSyncing ? 'bg-gray-800 text-gray-500' : 'hover:bg-gray-800 text-[#d97757] hover:text-[#ff8f6b]'}`}
+                    className={`p-2.5 rounded-xl transition-all border ${isSyncing ? 'bg-gray-900 text-gray-500 border-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-[#d97757]/10 text-gray-400 hover:text-[#d97757] border-gray-800 hover:border-[#d97757]/30'}`}
                 >
-                    <RefreshCw size={16} className={isSyncing ? "animate-spin" : ""} />
+                    <RefreshCw size={18} className={isSyncing ? "animate-spin text-[#d97757]" : ""} />
                 </button>
               </div>
 
               {/* Lista de Contas dentro do Banco */}
-              <div className="p-2 space-y-2">
-                {institutionAccounts.map((acc) => {
+              <div className="p-4 space-y-3 bg-gray-950 relative z-10 flex-1">
+                {paginatedInstitutionAccounts.map((acc) => {
                   const expandedCard = expanded.has(acc.id);
                   const isCredit = isCardFromInstitution(acc);
 
                   return (
-                    <div key={acc.id} className="bg-gray-900/40 border border-gray-800/50 rounded-xl p-3 hover:border-gray-700 transition-colors">
+                    <div key={acc.id} className="bg-gray-900/30 border border-gray-800/60 rounded-xl hover:border-gray-700 transition-colors">
                       {/* Resumo da Conta */}
-                      <div className="flex justify-between items-start mb-3">
-                        <div className="flex gap-3">
-                            <div className={`mt-1 ${isCredit ? "text-amber-500" : "text-[#d97757]"}`}>
-                                {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
+                      <div className="p-4">
+                          <div className="flex justify-between items-start mb-3">
+                            <div className="flex gap-3">
+                                <div className={`mt-0.5 p-2 rounded-lg ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
+                                    {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
+                                </div>
+                                <div>
+                                    <p className="text-sm font-bold text-gray-200">{acc.name}</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mt-0.5">
+                                        {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
+                                    </p>
+                                </div>
                             </div>
-                            <div>
-                                <p className="text-sm font-bold text-gray-200">{acc.name}</p>
-                                <p className="text-[11px] text-gray-500">
-                                    {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
+                            <div className="text-right">
+                                <p className={`text-base font-mono font-bold ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                                    {formatCurrency(acc.balance, acc.currency)}
                                 </p>
+                                {lastSynced[acc.id] && (
+                                    <p className="text-[9px] text-gray-600 mt-0.5 font-medium">
+                                        {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                    </p>
+                                )}
                             </div>
-                        </div>
-                        <div className="text-right">
-                             <p className={`text-base font-bold ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
-                                {formatCurrency(acc.balance, acc.currency)}
-                             </p>
-                             {lastSynced[acc.id] && (
-                                <p className="text-[9px] text-gray-600 mt-0.5">
-                                    Sync: {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR")}
-                                </p>
-                             )}
-                        </div>
-                      </div>
+                          </div>
 
-                      {/* Ações da Conta */}
-                      <div className="flex items-center justify-between pt-2 border-t border-gray-800/50">
-                        <button
-                          onClick={() => toggle(acc.id)}
-                          className="text-[11px] font-semibold text-gray-400 hover:text-white flex items-center gap-1 transition-colors"
-                        >
-                          {expandedCard ? "Ocultar Extrato" : "Ver Extrato"}
-                        </button>
-                        
-                        {onImport && (
+                          {/* Ações da Conta */}
+                          <div className="flex items-center justify-between pt-2">
                             <button
-                            onClick={() => handleImport(acc)}
-                            disabled={importing.has(acc.id)}
-                            className={`text-[10px] uppercase font-bold px-2 py-1 rounded transition-colors ${
-                                importing.has(acc.id)
-                                ? "text-gray-600 bg-gray-800 cursor-wait"
-                                : "text-[#d97757] bg-[#d97757]/10 hover:bg-[#d97757]/20"
-                            }`}
+                              onClick={() => toggle(acc.id)}
+                              className="text-[11px] font-bold uppercase tracking-wider text-gray-500 hover:text-white flex items-center gap-1 transition-colors group/btn"
                             >
-                            {importing.has(acc.id) ? "Salvando..." : "Importar"}
+                              {expandedCard ? (
+                                <>Esconder <ChevronUp size={12} className="group-hover/btn:-translate-y-0.5 transition-transform" /></>
+                              ) : (
+                                <>Ver Extrato <ChevronDown size={12} className="group-hover/btn:translate-y-0.5 transition-transform" /></>
+                              )}
                             </button>
-                        )}
+                            
+                            {onImport && (
+                                <button
+                                onClick={() => handleImport(acc)}
+                                disabled={importing.has(acc.id)}
+                                className={`text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
+                                    importing.has(acc.id)
+                                    ? "text-gray-500 bg-gray-800 cursor-wait"
+                                    : "text-[#d97757] bg-[#d97757]/10 hover:bg-[#d97757]/20 border border-[#d97757]/20 hover:border-[#d97757]/40"
+                                }`}
+                                >
+                                {importing.has(acc.id) ? (
+                                    <RefreshCw size={10} className="animate-spin" />
+                                ) : (
+                                    <Download size={10} />
+                                )}
+                                {importing.has(acc.id) ? "Importando..." : "Importar"}
+                                </button>
+                            )}
+                          </div>
                       </div>
 
                       {/* Área Expandida (Extrato) */}
                       {expandedCard && (
-                        <div className="mt-3 pt-3 border-t border-gray-800/50 animate-fade-in">
-                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-2 flex items-center gap-1">
-                            <Sparkles size={10} /> Movimentações Recentes
+                        <div className="bg-gray-950/50 border-t border-gray-800/50 p-3 animate-slide-down">
+                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-3 flex items-center gap-1.5 pl-1">
+                            <Sparkles size={10} className="text-[#d97757]" /> Últimas movimentações
                           </p>
                           {acc.previewTransactions && acc.previewTransactions.length > 0 ? (
-                            <div className="space-y-1.5">
+                            <div className="space-y-1">
                               {acc.previewTransactions.map((tx) => {
                                 const isExpense = tx.amount < 0;
                                 return (
-                                  <div key={tx.id} className="flex justify-between items-center text-xs p-1.5 rounded bg-gray-900/80">
-                                    <span className="text-gray-300 truncate w-2/3">{tx.description}</span>
-                                    <span className={`font-medium ${isExpense ? "text-red-400" : "text-emerald-400"}`}>
+                                  <div key={tx.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors border border-gray-800/50">
+                                    <div className="flex flex-col w-2/3">
+                                        <span className="text-gray-300 truncate font-medium">{tx.description}</span>
+                                        <span className="text-[9px] text-gray-600">{tx.date ? new Date(tx.date).toLocaleDateString('pt-BR') : 'Data n/a'}</span>
+                                    </div>
+                                    <span className={`font-mono font-bold ${isExpense ? "text-gray-300" : "text-emerald-400"}`}>
                                       {formatCurrency(tx.amount, tx.currency || acc.currency)}
                                     </span>
                                   </div>
@@ -316,17 +338,52 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                               })}
                             </div>
                           ) : (
-                            <p className="text-[11px] text-gray-600 italic">Nenhuma movimentação recente disponível.</p>
+                            <div className="text-center py-4 bg-gray-900/30 rounded-lg border border-dashed border-gray-800">
+                                <p className="text-[11px] text-gray-500 font-medium">Nenhuma movimentação recente.</p>
+                            </div>
                           )}
                         </div>
                       )}
-
                     </div>
                   );
                 })}
+
+                {/* Controles de Paginação dentro do card do banco */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-gray-800/50">
+                    <button
+                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.max(1, currentPage - 1) }))}
+                      disabled={currentPage === 1}
+                      className={`p-2 rounded-lg transition-all border ${
+                        currentPage === 1
+                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                      }`}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    <span className="text-xs text-gray-400 font-medium">
+                      <span className="text-white font-bold">{currentPage}</span> / <span className="text-white font-bold">{totalPages}</span>
+                    </span>
+
+                    <button
+                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.min(totalPages, currentPage + 1) }))}
+                      disabled={currentPage === totalPages}
+                      className={`p-2 rounded-lg transition-all border ${
+                        currentPage === totalPages
+                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                      }`}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
-          )})}
+            );
+          })}
         </div>
       )}
     </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   LayoutDashboard,
@@ -19,7 +18,7 @@ import {
   Target,
   Building
 } from './components/Icons';
-import { Flame } from 'lucide-react';
+import { Flame, Vault, Lock } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -51,6 +50,8 @@ import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
 import { fetchPluggyAccounts, syncPluggyData } from './services/pluggyService';
 import { FireCalculator } from './components/FireCalculator';
+import { SubscriptionPage } from './components/SubscriptionPage';
+import { usePaymentStatus } from './components/PaymentStatus';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -80,7 +81,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
             ? 'text-gray-600 cursor-not-allowed opacity-50'
             : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
         }
-        ${!isOpen && 'justify-center'}
+        ${!isOpen ? 'justify-center' : ''}
       `}
     >
       <span className={`transition-colors ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
@@ -98,7 +99,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
 
       {/* Active Indicator (Collapsed) */}
       {!isOpen && active && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-r-full"></div>
+        <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-full"></div>
       )}
 
       {/* Tooltip Card (Collapsed Only) */}
@@ -131,8 +132,26 @@ const App: React.FC = () => {
   const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
   const toast = useToasts();
 
+  // Handle Stripe Payment Return
+  usePaymentStatus(async (planId) => {
+    if (userId && currentUser) {
+      // Update local state
+      const updatedUser = { 
+          ...currentUser, 
+          subscription: { 
+              plan: planId as any, 
+              status: 'active' as const, 
+              billingCycle: 'monthly' as const, // Simplified assumption or pass via URL
+              nextBillingDate: new Date(Date.now() + 30*24*60*60*1000).toISOString()
+          }
+      };
+      setCurrentUser(updatedUser);
+      await dbService.updateUserProfile(userId, updatedUser);
+    }
+  });
+
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -168,12 +187,24 @@ const App: React.FC = () => {
   const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
 
   // Member Management State
-  const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>('FAMILY_OVERVIEW');
+  const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_active_member_id');
+      return (saved as string | 'FAMILY_OVERVIEW') || 'FAMILY_OVERVIEW';
+    }
+    return 'FAMILY_OVERVIEW';
+  });
 
   // Modals State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isReminderModalOpen, setIsReminderModalOpen] = useState(false);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data'>('profile');
+
+  useEffect(() => {
+    if (activeMemberId) {
+      localStorage.setItem('finances_active_member_id', activeMemberId);
+    }
+  }, [activeMemberId]);
 
   const syncMemberId = useMemo(() => {
     if (activeMemberId !== 'FAMILY_OVERVIEW') return activeMemberId;
@@ -384,6 +415,58 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Auto-Register Monthly Salary
+  useEffect(() => {
+    if (!currentUser || !currentUser.baseSalary || !currentUser.salaryPaymentDay || isLoadingData || !userId) return;
+
+    const checkAndAddSalary = async () => {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth(); // 0-indexed
+      const currentDay = now.getDate();
+
+      // Determine the target day for this month (handle shorter months)
+      const lastDayOfThisMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
+      const targetDay = Math.min(currentUser.salaryPaymentDay!, lastDayOfThisMonth);
+
+      // Only proceed if today is on or after the payment day
+      if (currentDay >= targetDay) {
+         const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+         const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+
+         // Check if exists in loaded transactions
+         // We check for "Salário Mensal" description AND the current month prefix in date
+         const exists = transactions.some(t =>
+            t.type === 'income' &&
+            t.description === "Salário Mensal" &&
+            t.date.startsWith(monthPrefix)
+         );
+
+         if (!exists) {
+            // Add it
+            const newTx: Omit<Transaction, 'id'> = {
+               description: "Salário Mensal",
+               amount: currentUser.baseSalary!,
+               type: 'income',
+               category: 'Trabalho',
+               date: dateString,
+               status: 'completed',
+               memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
+            };
+
+            try {
+               await dbService.addTransaction(userId, newTx);
+               toast.success("Salário mensal registrado automaticamente!");
+            } catch (err) {
+               console.error("Erro ao registrar salario automatico:", err);
+            }
+         }
+      }
+    };
+
+    checkAndAddSalary();
+  }, [currentUser?.baseSalary, currentUser?.salaryPaymentDay, transactions.length, isLoadingData, userId]);
+
   // Auto-close sidebar on mobile, auto-open on desktop (on resize only)
   useEffect(() => {
     let lastWidth = window.innerWidth;
@@ -452,9 +535,12 @@ const App: React.FC = () => {
         });
       } else {
         setMembers(data);
-        if (activeMemberId !== 'FAMILY_OVERVIEW' && !data.find(m => m.id === activeMemberId)) {
-          setActiveMemberId('FAMILY_OVERVIEW');
-        }
+        setActiveMemberId(current => {
+          if (current !== 'FAMILY_OVERVIEW' && !data.find(m => m.id === current)) {
+            return 'FAMILY_OVERVIEW';
+          }
+          return current;
+        });
       }
     });
 
@@ -562,24 +648,25 @@ const App: React.FC = () => {
       }
 
       if (filterMode === 'last3') {
-        const cutoff = new Date(now);
-        cutoff.setMonth(now.getMonth() - 3);
-        return tDate >= cutoff && tDate <= now;
+        // Current month + 2 previous months (Start of month-2 to now)
+        // Actually, "Last 3 months" usually implies "Recent history".
+        // To avoid excluding today/future of current month, we set start date.
+        const cutoff = new Date(now.getFullYear(), now.getMonth() - 2, 1); // 1st day of 2 months ago
+        return tDate >= cutoff; // Up to infinity (includes future of current month)
       }
 
       if (filterMode === 'last6') {
-        const cutoff = new Date(now);
-        cutoff.setMonth(now.getMonth() - 6);
-        return tDate >= cutoff && tDate <= now;
+        const cutoff = new Date(now.getFullYear(), now.getMonth() - 5, 1); // 1st day of 5 months ago
+        return tDate >= cutoff;
       }
 
       return true;
     });
   }, [memberFilteredTransactions, dashboardDate, dashboardYear, filterMode, dashboardCategory]);
 
-  // Apenas considera lancamentos que o usuario manteve (concluidos e nao ignorados)
+  // Apenas considera lancamentos que o usuario manteve (nao ignorados), incluindo pendentes para previsibilidade
   const reviewedDashboardTransactions = useMemo(() => {
-    return dashboardFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
+    return dashboardFilteredTransactions.filter(t => !t.ignored);
   }, [dashboardFilteredTransactions]);
 
   const reviewedMemberTransactions = useMemo(() => {
@@ -658,6 +745,29 @@ const App: React.FC = () => {
 
   const handleAddMember = async (name: string, avatarUrl: string) => {
     if (userId) {
+       const plan = currentUser?.subscription?.plan || 'starter';
+       const currentCount = members.length;
+       
+       // Limits:
+       // Starter: 1 Total (Admin only) -> Cannot add.
+       // Pro: 2 Total (Admin + 1 profile).
+       // Family: 5 Total.
+
+       if (plan === 'starter' && currentCount >= 1) {
+           toast.error("O plano Starter não permite criar perfis adicionais. Faça upgrade para Pro ou Família.", { duration: 5000 });
+           return;
+       }
+
+       if (plan === 'pro' && currentCount >= 2) {
+           toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.", { duration: 5000 });
+           return;
+       }
+       
+       if (plan === 'family' && currentCount >= 5) {
+           toast.error("Limite de 5 perfis atingido no plano Família.");
+           return;
+       }
+
       await dbService.addMember(userId, { name, avatarUrl, role: 'member' });
       toast.success("Membro adicionado!");
     }
@@ -743,10 +853,10 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSalary = async (newSalary: number) => {
+  const handleUpdateSalary = async (newSalary: number, paymentDay?: number) => {
     if (userId) {
-      await dbService.updateUserProfile(userId, { baseSalary: newSalary });
-      toast.success("Meta mensal atualizada.");
+      await dbService.updateUserProfile(userId, { baseSalary: newSalary, salaryPaymentDay: paymentDay });
+      toast.success("Meta mensal e dia de pagamento atualizados.");
     }
   };
 
@@ -866,7 +976,8 @@ const App: React.FC = () => {
       case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
       case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
       case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
-      case 'investments': return { title: 'Investimentos', desc: 'Gerencie sua carteira de investimentos.' };
+      case 'investments': return { title: 'Caixinhas', desc: 'Gerencie suas caixinhas e metas financeiras.' };
+      case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
       case 'budgets': return { title: 'Orçamentos', desc: 'Planejamento e controle de gastos.' };
       case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
@@ -875,6 +986,19 @@ const App: React.FC = () => {
   };
 
   const headerInfo = getHeaderInfo();
+
+  const isLimitReached = useMemo(() => {
+    const plan = currentUser?.subscription?.plan || 'starter';
+    if (plan !== 'starter') return false;
+
+    if (activeTab === 'budgets') {
+      return budgets.length >= 2;
+    }
+    if (activeTab === 'investments') {
+      return investments.length >= 2;
+    }
+    return false;
+  }, [currentUser, activeTab, budgets, investments]);
 
   const sidebarClasses = `
     fixed inset-y-0 left-0 z-50
@@ -971,9 +1095,11 @@ const App: React.FC = () => {
           onAddMember={handleAddMember}
           onDeleteMember={handleDeleteMember}
           isSidebarOpen={isSidebarOpen}
+          userPlan={currentUser?.subscription?.plan || 'starter'}
         />
 
-        <div className={`flex-1 px-3 space-y-6 custom-scrollbar ${isSidebarOpen ? 'overflow-y-auto' : 'overflow-visible'}`}>
+        {/* Adjusted Container Padding based on Sidebar State */}
+        <div className={`flex-1 space-y-6 custom-scrollbar ${isSidebarOpen ? 'px-3 overflow-y-auto' : 'px-2 overflow-visible'}`}>
           <div className="space-y-1">
             {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Menu</p>}
 
@@ -1026,8 +1152,8 @@ const App: React.FC = () => {
                 <NavItem
                   active={activeTab === 'investments'}
                   onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<TrendingUp size={20} />}
-                  label="Investimentos"
+                  icon={<Vault size={20} />}
+                  label="Caixinhas"
                   isOpen={isSidebarOpen}
                 />
                 <NavItem
@@ -1054,12 +1180,15 @@ const App: React.FC = () => {
               userId={userId}
               memberId={syncMemberId}
               isSidebar
+              isOpen={isSidebarOpen} // Passado a propriedade para controlar a visibilidade do texto
               onItemConnected={handlePluggyItemConnected}
               onSyncComplete={(count) => {
                 if (count > 0) {
                   setActiveTab('table');
                 }
               }}
+              existingAccountsCount={pluggyAccounts.length}
+              userPlan={currentUser?.subscription?.plan || 'starter'}
             />
           </div>
 
@@ -1116,9 +1245,17 @@ const App: React.FC = () => {
             </button>
 
             <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
-              <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
-                {headerInfo.title}
-              </h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
+                  {headerInfo.title}
+                </h1>
+                {isLimitReached && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 animate-fade-in">
+                    <Lock size={14} />
+                    <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Limite Atingido</span>
+                  </div>
+                )}
+              </div>
               <p className="text-[11px] lg:text-xs text-gray-400 font-medium truncate leading-tight mt-0.5">
                 {headerInfo.desc}
               </p>
@@ -1184,16 +1321,6 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'reminders' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-              <button
-                onClick={() => setIsReminderModalOpen(true)}
-                className="flex items-center gap-2 px-3 lg:px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-lg font-medium text-sm transition-all shadow-lg shadow-[#d97757]/20"
-              >
-                <Plus size={18} />
-                <span className="hidden sm:inline">Novo Lembrete</span>
-              </button>
-            )}
-
             <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
 
             {/* Notification Center added here */}
@@ -1217,138 +1344,160 @@ const App: React.FC = () => {
 
         <div className="p-3 lg:p-6 max-w-7xl mx-auto">
 
-          {activeMemberId === 'FAMILY_OVERVIEW' ? (
-            <FamilyDashboard
-              transactions={transactions}
-              members={members}
-              goals={familyGoals}
-              onAddGoal={handleAddGoal}
-              onUpdateGoal={handleUpdateGoal}
-              onDeleteGoal={handleDeleteGoal}
-              onAddTransaction={handleAddTransaction}
-            />
+          {/* Subscription Page - High Priority Render */}
+          {activeTab === 'subscription' && currentUser ? (
+              <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
+                  <SubscriptionPage 
+                      user={currentUser}
+                      onBack={() => setActiveTab('dashboard')}
+                      onUpdateUser={async (u) => {
+                          if (userId) await dbService.updateUserProfile(userId, u);
+                      }}
+                  />
+              </div>
           ) : (
-            <>
-              {activeTab === 'dashboard' && (
-                <>
-                  {/* Only show Salary Manager in Monthly mode where it makes sense */}
-                  {filterMode === 'month' && !dashboardCategory && (
-                    <SalaryManager
-                      baseSalary={currentUser.baseSalary || 0}
-                      currentIncome={stats.totalIncome}
-                      onUpdateSalary={handleUpdateSalary}
-                      onAddExtra={handleAddExtraIncome}
-                    />
-                  )}
-                  <StatsCards stats={stats} isLoading={isLoadingData} />
-                  <div className="animate-fade-in space-y-6">
-                    {filterMode === 'month' && (
-                      <FinanceCalendar
-                        month={dashboardDate}
-                        transactions={dashboardFilteredTransactions}
-                        reminders={filteredReminders}
-                        isLoading={isLoadingData}
+            /* Normal Dashboard Content */
+            activeMemberId === 'FAMILY_OVERVIEW' ? (
+              <FamilyDashboard
+                transactions={transactions}
+                members={members}
+                goals={familyGoals}
+                onAddGoal={handleAddGoal}
+                onUpdateGoal={handleUpdateGoal}
+                onDeleteGoal={handleDeleteGoal}
+                onAddTransaction={handleAddTransaction}
+              />
+            ) : (
+              <>
+                {activeTab === 'dashboard' && (
+                  <>
+                    {/* Only show Salary Manager in Monthly mode where it makes sense */}
+                    {filterMode === 'month' && !dashboardCategory && (
+                      <SalaryManager
+                        baseSalary={currentUser.baseSalary || 0}
+                        currentIncome={stats.totalIncome}
+                        paymentDay={currentUser.salaryPaymentDay}
+                        onUpdateSalary={handleUpdateSalary}
+                        onAddExtra={handleAddExtraIncome}
                       />
                     )}
-                    <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
-                  </div>
-                </>
-              )}
-
-              {activeTab === 'table' && (
-                <div className="h-[calc(100vh-280px)] animate-fade-in">
-                  <ExcelTable
-                    transactions={memberFilteredTransactions}
-                    onDelete={handleDeleteTransaction}
-                    onUpdate={handleUpdateTransaction}
-                  />
-                </div>
-              )}
-
-              {activeTab === 'reminders' && (
-                <Reminders
-                  reminders={filteredReminders}
-                  onAddReminder={handleAddReminder}
-                  onDeleteReminder={handleDeleteReminder}
-                  onPayReminder={handlePayReminder}
-                  isModalOpen={isReminderModalOpen}
-                  onCloseModal={() => setIsReminderModalOpen(false)}
-                />
-              )}
-
-              {activeTab === 'investments' && (
-                <div className="h-[calc(100vh-280px)] animate-fade-in">
-                  <Investments
-                    investments={memberInvestments}
-                    onAdd={handleAddInvestment}
-                    onUpdate={handleUpdateInvestment}
-                    onDelete={handleDeleteInvestment}
-                    onAddTransaction={handleAddTransaction}
-                  />
-                </div>
-              )}
-
-              {activeTab === 'fire' && (
-                <div className="flex-1 space-y-6 animate-fade-in">
-                  <FireCalculator
-                    netWorth={totalMemberInvestments}
-                    averageMonthlySavings={averageMonthlySavings}
-                    averageMonthlyExpense={averageMonthlyExpense}
-                  />
-                </div>
-              )}
-
-              {activeTab === 'advisor' && (
-                <div className="h-[calc(100vh-140px)]">
-                  <AIAdvisor transactions={memberFilteredTransactions} />
-                </div>
-              )}
-
-              {activeTab === 'connections' && (
-                <div className="flex-1 space-y-6 animate-fade-in">
-                  <div className="">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <h2 className="text-xl font-bold text-white">Contas conectadas</h2>
-                        <p className="text-sm text-gray-400">Visualize saldos e movimentacoes dos bancos vinculados.</p>
-                      </div>
-                      <BankConnect
-                        userId={userId}
-                        memberId={syncMemberId}
-                        onItemConnected={handlePluggyItemConnected}
-                        onSyncComplete={(count) => {
-                          if (count > 0) setActiveTab('table');
-                        }}
-                      />
+                    <StatsCards stats={stats} isLoading={isLoadingData} />
+                    <div className="animate-fade-in space-y-6">
+                      <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
+                      {filterMode === 'month' && (
+                        <FinanceCalendar
+                          month={dashboardDate}
+                          transactions={dashboardFilteredTransactions}
+                          reminders={filteredReminders}
+                          isLoading={isLoadingData}
+                        />
+                      )}
                     </div>
+                  </>
+                )}
+
+                {activeTab === 'table' && (
+                  <div className="h-[calc(100vh-280px)] animate-fade-in">
+                    <ExcelTable
+                      transactions={memberFilteredTransactions}
+                      onDelete={handleDeleteTransaction}
+                      onUpdate={handleUpdateTransaction}
+                    />
                   </div>
+                )}
 
-                  <ConnectedAccounts
-                    accounts={pluggyAccounts}
-                    isLoading={loadingPluggyAccounts}
-                    onRefresh={() => refreshPluggyAccounts(pluggyItemIds)}
-                    onImport={handleImportAccount}
-                    lastSynced={pluggyLastSync}
-                    storageKey={userId ? `pluggy_expand_${userId}` : undefined}
-                    userId={userId}
+                {activeTab === 'reminders' && (
+                  <Reminders
+                    reminders={filteredReminders}
+                    onAddReminder={handleAddReminder}
+                    onDeleteReminder={handleDeleteReminder}
+                    onPayReminder={handlePayReminder}
                   />
-                </div>
-              )}
+                )}
 
-              {activeTab === 'budgets' && userId && (
-                <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
+                {activeTab === 'investments' && (
+                  <div className="h-[calc(100vh-280px)] animate-fade-in">
+                    <Investments
+                      investments={memberInvestments}
+                      onAdd={handleAddInvestment}
+                      onUpdate={handleUpdateInvestment}
+                      onDelete={handleDeleteInvestment}
+                      onAddTransaction={handleAddTransaction}
+                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'fire' && (
+                  <div className="flex-1 space-y-6 animate-fade-in">
+                    <FireCalculator
+                      netWorth={totalMemberInvestments}
+                      averageMonthlySavings={averageMonthlySavings}
+                      averageMonthlyExpense={averageMonthlyExpense}
+                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                      onUpgradeClick={() => {
+                        setSettingsInitialTab('plan');
+                        setIsSettingsOpen(true);
+                      }}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'advisor' && (
+                  <div className="h-[calc(100vh-140px)]">
+                    <AIAdvisor transactions={memberFilteredTransactions} />
+                  </div>
+                )}
+
+                {activeTab === 'connections' && (
+                  <div className="flex-1 space-y-6 animate-fade-in">
+                    <div className="">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <h2 className="text-xl font-bold text-white">Contas conectadas</h2>
+                          <p className="text-sm text-gray-400">Visualize saldos e movimentacoes dos bancos vinculados.</p>
+                        </div>
+                        <BankConnect
+                          userId={userId}
+                          memberId={syncMemberId}
+                          onItemConnected={handlePluggyItemConnected}
+                          onSyncComplete={(count) => {
+                            if (count > 0) setActiveTab('table');
+                          }}
+                          existingAccountsCount={pluggyAccounts.length}
+                          userPlan={currentUser?.subscription?.plan || 'starter'}
+                        />
+                      </div>
+                    </div>
+
+                    <ConnectedAccounts
+                      accounts={pluggyAccounts}
+                      isLoading={loadingPluggyAccounts}
+                      onRefresh={() => refreshPluggyAccounts(pluggyItemIds)}
+                      onImport={handleImportAccount}
+                      lastSynced={pluggyLastSync}
+                      storageKey={userId ? `pluggy_expand_${userId}` : undefined}
+                      userId={userId}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'budgets' && userId && (
+                  <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
 
 
-                  <Budgets
-                    userId={userId}
-                    transactions={transactions}
-                    members={members}
-                    activeMemberId={activeMemberId}
-                    budgets={budgets}
-                  />
-                </div>
-              )}
-            </>
+                    <Budgets
+                      userId={userId}
+                      transactions={transactions}
+                      members={members}
+                      activeMemberId={activeMemberId}
+                      budgets={budgets}
+                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                    />
+                  </div>
+                )}
+              </>
+            )
           )}
         </div>
       </main>
@@ -1358,6 +1507,7 @@ const App: React.FC = () => {
         transactions={transactions}
         budgets={budgets}
         investments={investments}
+        userPlan={currentUser?.subscription?.plan || 'starter'}
       />
 
       <AIModal
@@ -1368,7 +1518,10 @@ const App: React.FC = () => {
 
       <SettingsModal
         isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
+        onClose={() => {
+          setIsSettingsOpen(false);
+          setSettingsInitialTab('profile');
+        }}
         user={currentUser}
         onUpdateUser={async (u) => {
           if (userId) await dbService.updateUserProfile(userId, u);
@@ -1378,6 +1531,11 @@ const App: React.FC = () => {
         investments={investments}
         reminders={reminders}
         connectedAccounts={pluggyAccounts}
+        onNavigateToSubscription={() => {
+            setIsSettingsOpen(false);
+            setActiveTab('subscription');
+        }}
+        initialTab={settingsInitialTab}
       />
     </div>
   );

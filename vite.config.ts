@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        proxy: {
+          '/api/asaas': {
+            target: 'https://sandbox.asaas.com/api/v3',
+            changeOrigin: true,
+            rewrite: (path) => path.replace(/^\/api\/asaas/, ''),
+            secure: false
+          }
+        }
       },
       plugins: [react()],
       define: {

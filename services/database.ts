@@ -22,8 +22,17 @@ import { AppNotification } from "../types";
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
   if (!db) return;
   const userRef = doc(db, "users", userId);
+  
+  // Sanitize data: remove keys with undefined values
+  const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+    if (value !== undefined) {
+      acc[key as keyof User] = value;
+    }
+    return acc;
+  }, {} as Partial<User>);
+
   // Merge true para não sobrescrever outros campos
-  await setDoc(userRef, { profile: data }, { merge: true });
+  await setDoc(userRef, { profile: cleanData }, { merge: true });
 };
 
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {

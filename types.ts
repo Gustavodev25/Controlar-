@@ -5,8 +5,17 @@ export interface User {
   email: string;
   avatarUrl?: string;
   baseSalary?: number;
+  salaryPaymentDay?: number;
+  salaryAdvanceDay?: number;
+  salaryAdvancePercent?: number;
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string | null;
+  subscription?: {
+    plan: 'starter' | 'pro' | 'family';
+    status: 'active' | 'canceled' | 'past_due';
+    billingCycle: 'monthly' | 'annual';
+    nextBillingDate?: string;
+  };
 }
 
 export interface Member {

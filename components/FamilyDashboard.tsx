@@ -223,6 +223,8 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
             })}
          </div>
 
+
+
          {/* Contribute Modal */}
          {contributeGoalId && (
             <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/90 backdrop-blur-sm p-3 lg:p-4">

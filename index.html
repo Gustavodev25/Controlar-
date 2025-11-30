@@ -72,6 +72,7 @@
               'emit': 'emit 1.5s linear infinite',
               'draw': 'draw 2s ease-out forwards',
               'draw-delayed': 'draw 2s ease-out 1s forwards',
+              'shimmer': 'shimmer 2s linear infinite',
             },
             keyframes: {
               float: {
@@ -117,6 +118,10 @@
               draw: {
                 '0%': { strokeDashoffset: '1000' },
                 '100%': { strokeDashoffset: '0' }
+              },
+              shimmer: {
+                '0%': { transform: 'translateX(-100%)' },
+                '100%': { transform: 'translateX(100%)' }
               }
             }
           }

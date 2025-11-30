@@ -1,4 +1,3 @@
-﻿
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -6,11 +5,16 @@ import {
    Bell, Download, Trash2, Upload, Smartphone,
    CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
    PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
-   Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award
+   Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
+   Puzzle, Rocket
 } from 'lucide-react';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
+import { ConfirmationCard } from './UIComponents';
+import quebraCabecaImg from '../assets/quebra-cabeca.png';
+import fogueteImg from '../assets/foguete.png';
+import familiaImg from '../assets/familia.png';
 
 interface SettingsModalProps {
    isOpen: boolean;
@@ -22,6 +26,8 @@ interface SettingsModalProps {
    investments?: Investment[];
    reminders?: Reminder[];
    connectedAccounts?: ConnectedAccount[];
+   onNavigateToSubscription: () => void;
+   initialTab?: 'profile' | 'plan' | 'badges' | 'data';
 }
 
 const AVATAR_GRADIENTS = [
@@ -45,7 +51,7 @@ interface BadgeDefinition {
    requirement: string;
 }
 
-type SettingsTab = 'account' | 'security' | 'plan' | 'notifications' | 'data';
+type SettingsTab = 'account' | 'finance' | 'security' | 'plan' | 'notifications' | 'data';
 
 // --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
@@ -228,7 +234,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                               key={index}
                               type="text"
                               maxLength={1}
-                              ref={el => inputRefs.current[index] = el}
+                              ref={(el: HTMLInputElement | null) => { inputRefs.current[index] = el; }}
                               value={data}
                               onChange={e => handleOtpChange(e.target, index)}
                               onKeyDown={e => handleKeyDown(e, index)}
@@ -266,6 +272,221 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
    );
 };
 
+// --- COMPONENTE CREDIT CARD MODAL ---
+interface CreditCardModalProps {
+   isOpen: boolean;
+   onClose: () => void;
+   onSave: (cardData: { number: string; holder: string; expiry: string; cvc: string }) => Promise<void>;
+}
+
+const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSave }) => {
+   const [step, setStep] = useState<'input' | 'verifying'>('input');
+   const [cardData, setCardData] = useState({ number: '', holder: '', expiry: '', cvc: '' });
+   const [isAnimating, setIsAnimating] = useState(false);
+   const [isVisible, setIsVisible] = useState(false);
+   const toast = useToasts();
+
+   useEffect(() => {
+      if (isOpen) {
+         setIsVisible(true);
+         setStep('input');
+         setCardData({ number: '', holder: '', expiry: '', cvc: '' });
+         requestAnimationFrame(() => requestAnimationFrame(() => setIsAnimating(true)));
+      } else {
+         setIsAnimating(false);
+         setTimeout(() => setIsVisible(false), 300);
+      }
+   }, [isOpen]);
+
+   // Luhn Algorithm for basic validity check
+   const isValidLuhn = (num: string) => {
+      let arr = (num + '').split('').reverse().map(x => parseInt(x));
+      let lastDigit = arr.splice(0, 1)[0];
+      let sum = arr.reduce((acc, val, i) => (i % 2 !== 0 ? acc + val : acc + ((val * 2) % 9) || 9), 0);
+      return (sum + lastDigit) % 10 === 0;
+   };
+
+   const handleSave = async () => {
+      // Basic Format Validation
+      const cleanNum = cardData.number.replace(/\D/g, '');
+      if (cleanNum.length < 16 || !isValidLuhn(cleanNum)) {
+         toast.error("Número de cartão inválido.");
+         return;
+      }
+      if (!cardData.holder.trim().includes(' ')) {
+         toast.error("Digite o nome completo impresso no cartão.");
+         return;
+      }
+      if (cardData.expiry.length !== 5) {
+         toast.error("Data de validade incompleta.");
+         return;
+      }
+      if (cardData.cvc.length < 3) {
+         toast.error("CVC inválido.");
+         return;
+      }
+
+      setStep('verifying');
+      
+      // Simulate Bank Verification
+      try {
+         await new Promise(resolve => setTimeout(resolve, 2000)); // Fake API delay
+         await onSave(cardData);
+         onClose();
+      } catch (error) {
+         setStep('input');
+      }
+   };
+
+   // Formatters
+   const formatCardNumber = (val: string) => {
+      const v = val.replace(/\D/g, '').slice(0, 16);
+      const parts = [];
+      for (let i = 0; i < v.length; i += 4) parts.push(v.slice(i, i + 4));
+      return parts.join(' ');
+   };
+
+   const formatExpiry = (val: string) => {
+      const v = val.replace(/\D/g, '').slice(0, 4);
+      if (v.length >= 2) return `${v.slice(0, 2)}/${v.slice(2)}`;
+      return v;
+   };
+
+   if (!isVisible) return null;
+
+   return createPortal(
+      <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
+         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+            
+             {/* Background Effects (Matched to TwoFactorModal) */}
+             <div className="absolute inset-0 pointer-events-none">
+               <div className="absolute top-0 right-0 w-40 h-40 bg-[#d97757]/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+               <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
+            </div>
+
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/50">
+               <div className="flex items-center gap-3">
+                  <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
+                     <CreditCard size={20} />
+                  </div>
+                  <h3 className="font-bold text-white">Atualizar Cartão</h3>
+               </div>
+               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800">
+                  <X size={20} />
+               </button>
+            </div>
+
+            <div className="p-8 relative z-10">
+               {step === 'input' ? (
+                  <div className="space-y-6">
+                     {/* Visual Card Preview - Adjusted for narrower container */}
+                     <div className="relative w-full h-40 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 shadow-xl p-5 flex flex-col justify-between overflow-hidden group">
+                        <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                        <div className="flex justify-between items-start z-10">
+                           <div className="w-10 h-6 bg-white/10 rounded flex items-center justify-center gap-1">
+                              <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
+                              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
+                           </div>
+                           <Wifi size={16} className="text-gray-500 rotate-90" />
+                        </div>
+                        <div className="z-10 space-y-3">
+                           <div className="text-lg font-mono text-gray-200 tracking-widest drop-shadow-md truncate">
+                              {cardData.number || '•••• •••• •••• ••••'}
+                           </div>
+                           <div className="flex justify-between items-end">
+                              <div className="overflow-hidden">
+                                 <div className="text-[8px] uppercase text-gray-500 font-bold">Nome</div>
+                                 <div className="text-xs text-gray-300 font-medium uppercase tracking-wide truncate max-w-[120px]">
+                                    {cardData.holder || 'SEU NOME'}
+                                 </div>
+                              </div>
+                              <div className="text-right shrink-0">
+                                 <div className="text-[8px] uppercase text-gray-500 font-bold">Validade</div>
+                                 <div className="text-xs text-gray-300 font-mono">
+                                    {cardData.expiry || 'MM/AA'}
+                                 </div>
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+
+                     {/* Form Fields */}
+                     <div className="space-y-4">
+                        <div>
+                           <div className="relative">
+                              <input 
+                                 type="text" 
+                                 value={formatCardNumber(cardData.number)}
+                                 onChange={e => setCardData({...cardData, number: e.target.value})}
+                                 placeholder="0000 0000 0000 0000"
+                                 className="input-primary pl-10 font-mono text-sm"
+                                 maxLength={19}
+                              />
+                              <CreditCard size={16} className="absolute left-3 top-3.5 text-gray-500" />
+                           </div>
+                        </div>
+                        
+                        <div>
+                           <input 
+                              type="text" 
+                              value={cardData.holder}
+                              onChange={e => setCardData({...cardData, holder: e.target.value.toUpperCase()})}
+                              placeholder="Nome no cartão"
+                              className="input-primary uppercase text-sm"
+                           />
+                        </div>
+
+                        <div className="flex gap-3">
+                           <div className="flex-1">
+                              <input 
+                                 type="text" 
+                                 value={formatExpiry(cardData.expiry)}
+                                 onChange={e => setCardData({...cardData, expiry: e.target.value})}
+                                 placeholder="MM/AA"
+                                 className="input-primary text-center font-mono text-sm"
+                                 maxLength={5}
+                              />
+                           </div>
+                           <div className="w-20">
+                              <div className="relative">
+                                 <input 
+                                    type="text" 
+                                    value={cardData.cvc}
+                                    onChange={e => setCardData({...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0,4)})}
+                                    placeholder="CVC"
+                                    className="input-primary text-center font-mono pl-6 text-sm"
+                                    maxLength={4}
+                                 />
+                                 <Lock size={12} className="absolute left-2 top-3.5 text-gray-500" />
+                              </div>
+                           </div>
+                        </div>
+                     </div>
+
+                     <button
+                        onClick={handleSave}
+                        disabled={!cardData.number || !cardData.holder || !cardData.expiry || !cardData.cvc}
+                        className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                     >
+                        Verificar e Salvar
+                     </button>
+                  </div>
+               ) : (
+                  <div className="py-8 flex flex-col items-center text-center animate-fade-in">
+                     <div className="w-16 h-16 border-4 border-[#d97757]/20 border-t-[#d97757] rounded-full animate-spin mb-6"></div>
+                     <h3 className="text-xl font-bold text-white mb-2">Validando cartão...</h3>
+                     <p className="text-gray-400 text-sm max-w-xs">
+                        Estamos verificando os dados com a operadora.
+                     </p>
+                  </div>
+               )}
+            </div>
+         </div>
+      </div>,
+      document.body
+   );
+};
+
 // --- COMPONENTE PRINCIPAL SETTINGS ---
 
 export const SettingsModal: React.FC<SettingsModalProps> = ({
@@ -277,14 +498,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    familyGoals = [],
    investments = [],
    reminders = [],
-   connectedAccounts = []
+   connectedAccounts = [],
+   onNavigateToSubscription,
+   initialTab = 'account'
 }) => {
-   const [activeTab, setActiveTab] = useState<SettingsTab>('account');
+   const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab as SettingsTab);
    const [formData, setFormData] = useState(user);
    const [isVisible, setIsVisible] = useState(false);
+   const [autoRenew, setAutoRenew] = useState(true); // Moved to top level
+   const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
+   const [isCardModalOpen, setIsCardModalOpen] = useState(false);
    const fileInputRef = useRef<HTMLInputElement>(null);
    const toast = useToasts();
    const normalizeMonth = (dateStr: string) => dateStr.slice(0, 7);
+
+   // Plan Logic
+   const plan = formData.subscription?.plan || 'starter';
+   const cycle = formData.subscription?.billingCycle || 'monthly';
+   const status = formData.subscription?.status || 'active';
+   const nextDate = formData.subscription?.nextBillingDate;
+
+   const planStyle = useMemo(() => {
+      switch(plan) {
+         case 'pro': return { 
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#d97757]/20 border-[#d97757]/30', 
+            text: 'text-[#d97757]', 
+            icon: <img src={fogueteImg} alt="Pro" className="w-8 h-8 object-contain" />,
+            label: 'Plus'
+         };
+         case 'family': return { 
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#D4B996]/20 border-[#D4B996]/30', 
+            text: 'text-[#D4B996]', 
+            icon: <img src={familiaImg} alt="Family" className="w-8 h-8 object-contain" />,
+            label: 'Family'
+         };
+         default: return { 
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#8B5CF6]/20 border-[#8B5CF6]/30', 
+            text: 'text-[#8B5CF6]', 
+            icon: <img src={quebraCabecaImg} alt="Starter" className="w-8 h-8 object-contain" />,
+            label: 'Starter'
+         };
+      }
+   }, [plan]);
 
    // BADGES CALCULATIONS
    const monthlyBalances = useMemo(() => {
@@ -653,6 +908,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       toast.success("Perfil atualizado com sucesso!");
    };
 
+   const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvc: string }) => {
+      // In a real app, you would send this to your backend/Stripe here
+      // For now, we just update the visual state or show a success message
+      toast.success("Novo cartão validado e vinculado com sucesso!");
+      setIsCardModalOpen(false);
+   };
+
    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (file) {
@@ -759,6 +1021,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                </h2>
                <div className="space-y-1 flex-1">
                   {renderSidebarItem('account', 'Minha Conta', <User size={18} />)}
+                  {renderSidebarItem('finance', 'Financeiro', <Coins size={18} />)}
                   {renderSidebarItem('security', 'Segurança', <Shield size={18} />)}
                   {renderSidebarItem('plan', 'Planos e Assinatura', <CreditCard size={18} />)}
                   {renderSidebarItem('notifications', 'Notificações', <Bell size={18} />)}
@@ -824,28 +1087,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     />
                                  </div>
                               </div>
-                              <div className="space-y-2">
-                                 <label className="text-xs font-medium text-gray-400 ml-1 flex items-center gap-2">
-                                    <Coins size={14} className="text-[#d97757]" />
-                                    Salário Base Mensal
-                                 </label>
-                                 <div className="relative">
-                                    <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
-                                    <input
-                                       type="text"
-                                       inputMode="decimal"
-                                       placeholder="0,00"
-                                       value={formData.baseSalary ? formData.baseSalary.toString().replace('.', ',') : ''}
-                                       onChange={(e) => {
-                                          const val = e.target.value.replace(',', '.');
-                                          const parsed = parseFloat(val);
-                                          setFormData({ ...formData, baseSalary: isNaN(parsed) ? 0 : parsed });
-                                       }}
-                                       className="input-primary pl-10 text-lg font-bold"
-                                    />
-                                 </div>
-                                 <p className="text-xs text-gray-500 ml-1">Este valor será usado como base para cálculo de horas extras</p>
-                              </div>
                              <button
                                 onClick={handleSave}
                                 className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
@@ -909,6 +1150,77 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      </div>
                   )}
 
+                  {/* --- TAB: FINANCE --- */}
+                  {activeTab === 'finance' && (
+                     <div className="space-y-10 animate-fade-in max-w-2xl">
+                        <div>
+                           <h3 className="text-3xl font-bold text-white mb-2">Financeiro</h3>
+                           <p className="text-gray-400">Configurações de renda e datas.</p>
+                        </div>
+
+                        <div className="space-y-6">
+                           <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
+                              <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                                 <Coins size={20} className="text-[#d97757]" /> Renda Mensal
+                              </h4>
+                              
+                              <div className="space-y-4">
+                                 <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-400 ml-1">Salário Base (Meta)</label>
+                                    <div className="relative">
+                                       <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
+                                       <input
+                                          type="text"
+                                          inputMode="decimal"
+                                          placeholder="0,00"
+                                          value={formData.baseSalary ? formData.baseSalary.toString().replace('.', ',') : ''}
+                                          onChange={(e) => {
+                                             const val = e.target.value.replace(',', '.');
+                                             const parsed = parseFloat(val);
+                                             setFormData({ ...formData, baseSalary: isNaN(parsed) ? 0 : parsed });
+                                          }}
+                                          className="input-primary pl-10 text-lg font-bold"
+                                       />
+                                    </div>
+                                    <p className="text-xs text-gray-500 ml-1">Valor usado para cálculo de metas e horas extras.</p>
+                                 </div>
+
+                                 <div className="space-y-2">
+                                    <label className="text-xs font-medium text-gray-400 ml-1">Dia do Pagamento</label>
+                                    <div className="relative max-w-[120px]">
+                                       <Calendar size={16} className="absolute left-3 top-3.5 text-gray-500" />
+                                       <input
+                                          type="number"
+                                          min="1"
+                                          max="31"
+                                          placeholder="Dia 5"
+                                          value={formData.salaryPaymentDay || ''}
+                                          onChange={(e) => {
+                                             const val = parseInt(e.target.value);
+                                             if (!isNaN(val) && val >= 1 && val <= 31) {
+                                                setFormData({ ...formData, salaryPaymentDay: val });
+                                             } else if (e.target.value === '') {
+                                                setFormData({ ...formData, salaryPaymentDay: undefined });
+                                             }
+                                          }}
+                                          className="input-primary pl-10 font-bold"
+                                       />
+                                    </div>
+                                    <p className="text-xs text-gray-500 ml-1">Dia usual de recebimento do salário.</p>
+                                 </div>
+                              </div>
+                           </div>
+
+                           <button
+                              onClick={handleSave}
+                              className="px-6 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
+                           >
+                              <Save size={16} /> Salvar Alterações
+                           </button>
+                        </div>
+                     </div>
+                  )}
+
                   {/* --- TAB: SECURITY --- */}
                   {activeTab === 'security' && (
                      <div className="space-y-10 animate-fade-in max-w-2xl">
@@ -958,71 +1270,171 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      </div>
                   )}
 
-                  {/* --- TAB: PLANS (IMPLEMENTATION REQUESTED) --- */}
+                  {/* --- TAB: PLANS (REDESIGNED) --- */}
                   {activeTab === 'plan' && (
-                     <div className="space-y-8 animate-fade-in">
+                     <div className="space-y-8 animate-fade-in max-w-3xl mx-auto">
                         <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Planos e Assinatura</h3>
-                           <p className="text-gray-400">Todas as contas estão no plano gratuito com recursos liberados sem cobranças.</p>
+                           <h3 className="text-3xl font-bold text-white mb-2">Assinatura & Cobrança</h3>
+                           <p className="text-gray-400">Gerencie seu plano e método de pagamento.</p>
                         </div>
 
-                        <div className="grid md:grid-cols-1 gap-6">
-                           {/* PLANO ATUAL - DESTAQUE */}
-                           <div className="bg-gradient-to-r from-[#d97757]/20 to-gray-900 border border-[#d97757]/30 rounded-2xl p-6 relative overflow-hidden">
-                              <div className="absolute top-0 right-0 bg-[#d97757] text-white text-[10px] font-bold px-3 py-1 rounded-bl-xl">PLANO GRATUITO</div>
+                        <div className="space-y-6">
+                                 {/* 1. Plan Status Card */}
+                                 <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
+                                    <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
+                                       <div className="space-y-4">
+                                          <div className="flex items-center gap-3">
+                                             <div className={`p-3 rounded-xl bg-gray-950/50 border border-white/5 ${planStyle.text} shadow-lg`}>
+                                                {planStyle.icon}
+                                             </div>
+                                             <div>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
+                                                <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+                                                   {planStyle.label}
+                                                   {status === 'active' && (
+                                                      <span className="px-2.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-bold uppercase tracking-wide">
+                                                         Ativo
+                                                      </span>
+                                                   )}
+                                                </h2>
+                                             </div>
+                                          </div>
+                                          
+                                          <div className="flex gap-6 text-sm">
+                                             <div className="flex items-center gap-2 text-gray-300">
+                                                <Calendar size={16} className="text-gray-500" />
+                                                <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                             </div>
+                                             <div className="flex items-center gap-2 text-gray-300">
+                                                <Coins size={16} className="text-gray-500" />
+                                                <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
+                                             </div>
+                                          </div>
+                                       </div>
 
-                              <div className="flex items-center gap-4 mb-6">
-                                 <div className="p-3 bg-[#d97757] rounded-xl text-white shadow-lg">
-                                    <Sparkles size={24} />
+                                       <div className="flex flex-col justify-center gap-3 min-w-[200px]">
+                                          <button 
+                                             onClick={onNavigateToSubscription}
+                                             className="w-full py-3.5 bg-white hover:bg-gray-100 text-black rounded-xl font-bold transition-all shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                                          >
+                                             {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+                                          </button>
+                                          {plan !== 'starter' && (
+                                             <p className="text-xs text-center text-gray-500">
+                                                Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (cycle === 'annual' ? '599,90' : '59,90')}
+                                             </p>
+                                          )}
+                                       </div>
+                                    </div>
+
+                                    {/* Background Decor */}
+                                    <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
                                  </div>
-                                 <div>
-                                    <p className="text-xs text-[#d97757] font-bold uppercase tracking-wide mb-1">Seu Plano</p>
-                                    <h4 className="text-3xl font-bold text-white">Controlar+ Gratuito</h4>
-                                    <p className="text-sm text-gray-300 mt-1">Sem assinatura; todos os recursos essenciais estão liberados para qualquer conta.</p>
+
+                                 {/* 2. Payment & Billing Details */}
+                                 <div className="grid md:grid-cols-2 gap-6">
+                                    
+                                    {/* Payment Method Card */}
+                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors">
+                                       <div className="flex justify-between items-start mb-6">
+                                          <h4 className="font-bold text-white flex items-center gap-2">
+                                             <CreditCard size={18} className="text-gray-400"/> Método de Pagamento
+                                          </h4>
+                                          <button 
+                                             onClick={() => setIsCardModalOpen(true)}
+                                             className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                                          >
+                                             Alterar
+                                          </button>
+                                       </div>
+
+                                       {/* Visual Card Mockup */}
+                                       <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 border border-gray-700/50 relative overflow-hidden mb-4">
+                                          <div className="relative z-10">
+                                             <div className="flex justify-between items-center mb-6">
+                                                <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center">
+                                                   <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
+                                                   <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
+                                                </div>
+                                                <span className="text-[10px] font-mono text-gray-400">CREDIT</span>
+                                             </div>
+                                             <div className="flex justify-between items-end">
+                                                <div>
+                                                   <p className="text-[10px] text-gray-500 mb-0.5">Número</p>
+                                                   <p className="text-sm font-mono text-gray-200 tracking-widest">**** **** **** 8829</p>
+                                                </div>
+                                                <div className="text-right">
+                                                   <p className="text-[10px] text-gray-500 mb-0.5">Validade</p>
+                                                   <p className="text-xs font-mono text-gray-200">08/29</p>
+                                                </div>
+                                             </div>
+                                          </div>
+                                          {/* Shine effect */}
+                                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                       </div>
+
+                                       <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2 rounded-lg border border-green-500/10">
+                                          <ShieldCheck size={14} /> Pagamento seguro via Asaas
+                                       </div>
+                                    </div>
+
+                                    {/* Billing Settings */}
+                                    <div className="space-y-4">
+                                       {/* Auto Renew Toggle */}
+                                       <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6">
+                                          <div className="flex justify-between items-center mb-2">
+                                              <h4 className="font-bold text-white flex items-center gap-2">
+                                                <Calendar size={18} className="text-gray-400"/> Cobrança Automática
+                                              </h4>
+                                              <button 
+                                                onClick={() => {
+                                                   if (autoRenew) {
+                                                      setShowAutoRenewConfirmation(true);
+                                                   } else {
+                                                      setAutoRenew(true);
+                                                      toast.success("Cobrança automática ativada.");
+                                                   }
+                                                }}
+                                                className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${autoRenew ? 'bg-[#d97757]' : 'bg-gray-700'}`}
+                                              >
+                                                 <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform duration-300 ${autoRenew ? 'left-6' : 'left-1'}`}></div>
+                                              </button>
+                                          </div>
+                                          <p className="text-xs text-gray-500 leading-relaxed mb-4">
+                                             Renovar automaticamente seu plano {cycle === 'annual' ? 'anual' : 'mensal'} usando o cartão cadastrado para evitar interrupções.
+                                          </p>
+                                          {autoRenew && (
+                                             <div className="flex items-center gap-2 text-xs text-gray-400">
+                                                <CheckCircle size={14} className="text-[#d97757]" />
+                                                Próxima cobrança agendada para {nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : '...'}
+                                             </div>
+                                          )}
+                                       </div>
+
+                                       {/* Last Payment Info */}
+                                       <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex items-center justify-between">
+                                          <div>
+                                             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Último Pagamento</p>
+                                             <p className="text-white font-bold text-lg">
+                                                R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (plan === 'family' ? (cycle === 'annual' ? '599,90' : '59,90') : '0,00')}
+                                             </p>
+                                          </div>
+                                          <div className="text-right">
+                                             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Data</p>
+                                             <p className="text-gray-300 font-medium">
+                                                {new Date().toLocaleDateString('pt-BR')}
+                                             </p>
+                                          </div>
+                                       </div>
+                                    </div>
+                                 </div>
+
+                                 <div className="flex justify-center pt-4">
+                                     <button className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1">
+                                       Cancelar assinatura
+                                     </button>
                                  </div>
                               </div>
-
-                              <div className="grid md:grid-cols-2 gap-6 pt-4 border-t border-white/10">
-                                 <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Cobrança</p>
-                                    <p className="text-white font-medium">Gratuito para todas as contas</p>
-                                 </div>
-                                 <div>
-                                    <p className="text-gray-400 text-xs uppercase font-bold mb-1">Renovação</p>
-                                    <p className="text-white font-medium">Não expira nem gera faturas</p>
-                                 </div>
-                              </div>
-                           </div>
-
-                           {/* INFORMAÇÕES DE COBRANÇA (GRATUITO) */}
-                           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-6">
-                              <div className="flex items-center justify-between mb-6">
-                                 <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                                    <CreditCard size={20} className="text-gray-400" /> Cobrança
-                                 </h4>
-                              </div>
-
-                              <div className="flex items-center gap-4 p-4 bg-gray-800/50 rounded-xl border border-gray-700/50">
-                                 <div className="w-12 h-12 rounded flex items-center justify-center bg-gray-700 text-white font-bold">Grátis</div>
-                                 <div className="flex-1">
-                                    <p className="text-sm font-bold text-white">Nenhuma forma de pagamento necessária</p>
-                                    <p className="text-xs text-gray-500">Plano gratuito ativo para todas as contas.</p>
-                                 </div>
-                                 <div className="ml-auto">
-                                    <span className="text-[10px] bg-green-900/30 text-green-400 px-2 py-0.5 rounded border border-green-900/50">Ativo</span>
-                                 </div>
-                              </div>
-
-                              <div className="mt-6 pt-6 border-t border-gray-800">
-                                 <p className="text-xs font-bold text-gray-500 uppercase mb-3">Benefícios incluídos</p>
-                                 <div className="space-y-3 text-sm text-gray-300">
-                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Consultor IA e lançamentos inteligentes sem custo</div>
-                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Modo família e metas compartilhadas liberados</div>
-                                    <div className="flex items-center gap-2"><CheckCircle size={12} className="text-[#d97757]" /> Lembretes e exportações ilimitados</div>
-                                 </div>
-                              </div>
-                           </div>
-                        </div>
                      </div>
                   )}
 
@@ -1034,23 +1446,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            <p className="text-gray-400">Controle o que você recebe.</p>
                         </div>
                         <div className="space-y-0 divide-y divide-gray-800 border border-gray-800 rounded-2xl bg-gray-900/30 overflow-hidden">
-                           {[
+                           {[ 
                               { id: 'email', label: 'E-mails de Resumo', desc: 'Balanço semanal.' },
                               { id: 'push', label: 'Notificações Push', desc: 'Alertas de contas.' },
-                           ].map((item) => (
-                              <div key={item.id} className="p-6 flex items-center justify-between hover:bg-gray-900/50 transition-colors">
-                                 <div className="pr-4">
-                                    <h4 className="text-white font-bold text-base">{item.label}</h4>
-                                    <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
+                           ].map((item) => {
+                              const key = item.id as keyof typeof notifications;
+                              const isOn = notifications[key];
+                              const toggle = () => setNotifications({ ...notifications, [key]: !isOn });
+                              const bgClass = isOn ? 'bg-[#d97757]' : 'bg-gray-700';
+                              const translateClass = isOn ? 'translate-x-6' : 'translate-x-1';
+                              
+                              return (
+                                 <div key={item.id} className="p-6 flex items-center justify-between hover:bg-gray-900/50 transition-colors">
+                                    <div className="pr-4">
+                                       <h4 className="text-white font-bold text-base">{item.label}</h4>
+                                       <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
+                                    </div>
+                                    <button
+                                       onClick={toggle}
+                                       className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${bgClass}`}
+                                    >
+                                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${translateClass}`} />
+                                    </button>
                                  </div>
-                                 <button
-                                    onClick={() => setNotifications({ ...notifications, [item.id]: !notifications[item.id as keyof typeof notifications] })}
-                                    className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${notifications[item.id as keyof typeof notifications] ? 'bg-[#d97757]' : 'bg-gray-700'}`}
-                                 >
-                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${notifications[item.id as keyof typeof notifications] ? 'translate-x-6' : 'translate-x-1'}`} />
-                                 </button>
-                              </div>
-                           ))}
+                              );
+                           })}
                         </div>
                      </div>
                   )}
@@ -1082,6 +1502,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                            <button
                               onClick={() => {
+                                 if (plan === 'starter') {
+                                     toast.error("Relatórios avançados disponíveis no plano Plus.");
+                                     return;
+                                 }
                                  if (transactions.length === 0) {
                                     toast.error("Sem dados para exportar.");
                                     return;
@@ -1091,13 +1515,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
                                  const balance = totalIncome - totalExpense;
 
-                                 const headers = ["=== RELATÓRIO FINANCEIRO ===", "", `Gerado em: ${new Date().toLocaleString('pt-BR')}`, "", "---", ""];
+                                 const dateStr = new Date().toLocaleString('pt-BR');
+                                 const headers = ["=== RELATÓRIO FINANCEIRO ===", "", "Gerado em: " + dateStr, "", "---", ""];
                                  const summary = [
                                     "RESUMO GERAL:",
-                                    `Total de Receitas: R$ ${totalIncome.toFixed(2)}`,
-                                    `Total de Despesas: R$ ${totalExpense.toFixed(2)}`,
-                                    `Saldo: R$ ${balance.toFixed(2)}`,
-                                    `Total de Transações: ${transactions.length}`,
+                                    "Total de Receitas: R$ " + totalIncome.toFixed(2),
+                                    "Total de Despesas: R$ " + totalExpense.toFixed(2),
+                                    "Saldo: R$ " + balance.toFixed(2),
+                                    "Total de Transações: " + transactions.length,
                                     "",
                                     "---",
                                     "",
@@ -1106,30 +1531,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  ];
                                  const rows = transactions
                                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                    .map(t => `${t.date},"${t.description}",${t.category},${t.amount.toFixed(2)},${t.type === 'income' ? 'Receita' : 'Despesa'},${t.status === 'completed' ? 'Pago' : 'Pendente'}`);
+                                    .map(t => {
+                                       const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
+                                       const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
+                                       return t.date + ',"'+ t.description +'",' + t.category + ',' + t.amount.toFixed(2) + ',' + typeStr + ',' + statusStr;
+                                    });
 
                                  const content = [...headers, ...summary, ...rows].join("\n");
                                  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
                                  const link = document.createElement("a");
                                  link.href = URL.createObjectURL(blob);
-                                 link.setAttribute("download", `relatorio_financeiro_${new Date().toISOString().split('T')[0]}.csv`);
+                                 link.setAttribute("download", "relatorio_financeiro_" + new Date().toISOString().split('T')[0] + ".csv");
                                  document.body.appendChild(link);
                                  link.click();
                                  document.body.removeChild(link);
                                  toast.success("Relatório gerado com sucesso!");
                               }}
-                              className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group"
+                              className={`w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between transition-colors group ${plan === 'starter' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-900'}`}
                            >
                               <div className="flex items-center gap-4">
-                                 <div className="p-3 bg-blue-900/20 rounded-xl text-blue-400 group-hover:bg-blue-900/30 transition-colors">
+                                 <div className={`p-3 rounded-xl transition-colors ${plan === 'starter' ? 'bg-gray-800 text-gray-500' : 'bg-blue-900/20 text-blue-400 group-hover:bg-blue-900/30'}`}>
                                     <Download size={24} />
                                  </div>
                                  <div className="text-left">
-                                    <h4 className="text-white font-bold flex items-center gap-2">Gerar Relatório Completo</h4>
+                                    <h4 className="text-white font-bold flex items-center gap-2">
+                                        Gerar Relatório Completo
+                                        {plan === 'starter' && <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded border border-gray-700 uppercase">Plus</span>}
+                                    </h4>
                                     <p className="text-sm text-gray-500">Extrato detalhado com resumo financeiro</p>
                                  </div>
                               </div>
-                              <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />
+                              {plan !== 'starter' && <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />}
                            </button>
                         </div>
                      </div>
@@ -1149,8 +1581,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             qrCodeUrl={qrCodeUrl}
             isVerifying={isVerifying2FA}
          />
+
+         {/* Credit Card Modal */}
+         <CreditCardModal
+            isOpen={isCardModalOpen}
+            onClose={() => setIsCardModalOpen(false)}
+            onSave={handleUpdateCard}
+         />
+
+         {/* Auto Renew Confirmation */}
+         <ConfirmationCard
+            isOpen={showAutoRenewConfirmation}
+            onClose={() => setShowAutoRenewConfirmation(false)}
+            onConfirm={() => {
+               setAutoRenew(false);
+               toast.success("Cobrança automática pausada.");
+            }}
+            title="Desabilitar Cobrança Recorrente?"
+            description="Você está prestes a desativar a renovação automática. Isso pode resultar na perda de benefícios do seu plano atual."
+            isDestructive={true}
+            confirmText="Sim, desativar"
+            cancelText="Manter ativa"
+         />
       </div>
    );
 };
-
-

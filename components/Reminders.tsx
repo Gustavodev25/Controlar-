@@ -1,17 +1,16 @@
 ﻿import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Reminder } from '../types';
-import { Bell, CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Clock, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown } from './Icons';
+import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle } from './Icons';
 import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete } from './UIComponents';
 import { parseReminderFromText, AIParsedReminder } from '../services/geminiService';
+import { EmptyState } from './EmptyState';
 
 interface RemindersProps {
   reminders: Reminder[];
   onAddReminder: (reminder: Omit<Reminder, 'id'>) => void;
   onDeleteReminder: (id: string) => void;
   onPayReminder: (reminder: Reminder) => void;
-  isModalOpen: boolean;
-  onCloseModal: () => void;
 }
 
 type ViewMode = 'list' | 'grouped';
@@ -34,7 +33,7 @@ const formatDate = (dateStr: string) => {
   return `${d}/${m}/${y}`;
 };
 
-// Shared Card Component
+// --- COMPONENTE DO CARD DE LEMBRETE (Visual Atualizado) ---
 interface ReminderCardProps {
   item: Reminder;
   onPayReminder: (reminder: Reminder) => void;
@@ -46,119 +45,121 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 
   // Configuração visual baseada no status
   let statusConfig = {
-    borderColor: "border-gray-800",
-    barColor: "bg-gray-700",
-    iconColor: "text-gray-500",
+    barColor: "bg-gray-600",
+    iconBg: "bg-gray-800 text-gray-400",
     statusText: "No Prazo",
-    textColor: "text-gray-400"
+    textColor: "text-gray-400",
+    glowColor: "bg-gray-500" // Cor para o efeito de fundo
   };
 
   if (daysDiff < 0) {
     statusConfig = {
-      borderColor: "border-red-900/30",
       barColor: "bg-red-500",
-      iconColor: "text-red-500",
+      iconBg: "bg-red-500/10 text-red-500",
       statusText: `Venceu há ${Math.abs(daysDiff)} dias`,
-      textColor: "text-red-400"
+      textColor: "text-red-400",
+      glowColor: "bg-red-500"
     };
   } else if (daysDiff === 0) {
     statusConfig = {
-      borderColor: "border-yellow-900/30",
-      barColor: "bg-yellow-500",
-      iconColor: "text-yellow-500",
+      barColor: "bg-amber-500",
+      iconBg: "bg-amber-500/10 text-amber-500",
       statusText: "Vence Hoje",
-      textColor: "text-yellow-400"
+      textColor: "text-amber-400",
+      glowColor: "bg-amber-500"
     };
   } else if (daysDiff <= 3) {
     statusConfig = {
-      borderColor: "border-[#d97757]/30",
       barColor: "bg-[#d97757]",
-      iconColor: "text-[#d97757]",
+      iconBg: "bg-[#d97757]/10 text-[#d97757]",
       statusText: `Vence em ${daysDiff} dias`,
-      textColor: "text-[#d97757]"
+      textColor: "text-[#d97757]",
+      glowColor: "bg-[#d97757]"
     };
   }
 
   // Override for Income
   if (item.type === 'income') {
-    statusConfig.barColor = "bg-green-500";
-    if (daysDiff >= 0) {
-      statusConfig.borderColor = "border-green-900/30";
-      statusConfig.iconColor = "text-green-500";
-      statusConfig.textColor = "text-green-400";
-    }
+    statusConfig = {
+        barColor: "bg-emerald-500",
+        iconBg: "bg-emerald-500/10 text-emerald-500",
+        statusText: daysDiff < 0 ? "Recebimento Atrasado" : "A Receber",
+        textColor: "text-emerald-400",
+        glowColor: "bg-emerald-500"
+    };
   }
 
   return (
-    <div className={`relative bg-gray-900 rounded-xl border ${statusConfig.borderColor} p-4 mb-3 flex flex-col sm:flex-row items-center gap-4 overflow-hidden hover:scale-[1.005] transition-transform duration-200`}>
-      {/* Barra Lateral de Status */}
-      <div className={`absolute left-0 top-0 bottom-0 w-1 ${statusConfig.barColor}`}></div>
+    <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20">
+      {/* Luz de fundo decorativa suave */}
+      <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${statusConfig.glowColor}`}></div>
+      
+      {/* Barra lateral colorida sutil */}
+      <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${statusConfig.barColor}`} />
 
-      {/* Ícone */}
-      <div className="pl-2 hidden sm:block">
-        <div className={`w-10 h-10 rounded-lg bg-gray-950 border border-gray-800 flex items-center justify-center ${statusConfig.iconColor}`}>
-          {item.type === 'income' ? <TrendingUp size={18} /> : (daysDiff < 0 ? <AlertCircle size={18} /> : <CalendarClock size={18} />)}
-        </div>
-      </div>
-
-      {/* Conteúdo Principal */}
-      <div className="flex-1 w-full sm:w-auto min-w-0">
-        <div className="flex items-center gap-2 mb-1">
-          <h4 className="font-bold text-gray-200 text-base truncate">{item.description}</h4>
-          {item.isRecurring && (
-            <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded border border-gray-700 uppercase tracking-wider font-semibold">
-              Recorrente
-            </span>
-          )}
+      <div className="flex flex-col sm:flex-row items-center gap-4 pl-3 relative z-10">
+        {/* Ícone */}
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/5 shadow-inner ${statusConfig.iconBg}`}>
+          {item.type === 'income' ? <TrendingUp size={20} /> : (daysDiff < 0 ? <AlertCircle size={20} /> : <CalendarClock size={20} />)}
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500">
-          <span className="flex items-center gap-1.5">
-            {getCategoryIcon(item.category, 14)}
-            <span>{item.category}</span>
-          </span>
-          <span className="hidden sm:inline">•</span>
-          <span className="flex items-center gap-1.5">
-            <Calendar size={14} />
-            <span className="font-mono">{formatDate(item.dueDate)}</span>
-          </span>
-        </div>
-      </div>
-
-      {/* Lado Direito: Valores e Ações */}
-      <div className="flex items-center justify-between w-full sm:w-auto gap-6 border-t border-gray-800 pt-3 sm:pt-0 sm:border-t-0">
-        <div className="text-right">
-          <p className={`font-mono font-bold text-lg ${item.type === 'income' ? 'text-green-400' : 'text-gray-200'}`}>
-            {item.type === 'income' ? '+' : '-'} {formatCurrency(item.amount)}
-          </p>
-          <p className={`text-[10px] font-bold uppercase tracking-wide ${statusConfig.textColor}`}>
-            {statusConfig.statusText}
-          </p>
+        {/* Conteúdo */}
+        <div className="flex-1 w-full min-w-0 text-center sm:text-left">
+           <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
+              <h4 className="font-bold text-gray-100 text-base truncate">{item.description}</h4>
+              {item.isRecurring && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-gray-900 text-gray-500 rounded border border-gray-800 uppercase tracking-wider font-bold flex items-center gap-1">
+                  <RefreshCw size={8} /> Auto
+                </span>
+              )}
+           </div>
+           
+           <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-1.5 bg-gray-900/50 px-2 py-1 rounded-md border border-gray-800/50">
+                  {getCategoryIcon(item.category, 12)} {item.category}
+              </span>
+              <span className="flex items-center gap-1.5 font-mono text-gray-400">
+                  <Calendar size={12} /> {formatDate(item.dueDate)}
+              </span>
+           </div>
         </div>
 
-        <div className="flex items-center gap-2 pl-4 sm:border-l border-gray-800">
-          <button
-            onClick={() => onPayReminder(item)}
-            className="group flex items-center justify-center w-9 h-9 rounded-lg bg-gray-800 hover:bg-green-600 text-gray-400 hover:text-white border border-gray-700 hover:border-green-500 transition-all"
-            title={item.type === 'income' ? "Confirmar Recebimento" : "Marcar como Pago"}
-          >
-            <Check size={16} />
-          </button>
-          <button
-            onClick={() => onConfirmDelete(item.id)}
-            className="flex items-center justify-center w-9 h-9 rounded-lg hover:bg-red-900/20 text-gray-500 hover:text-red-400 border border-transparent hover:border-red-900/30 transition-all"
-            title="Excluir"
-          >
-            <Trash2 size={16} />
-          </button>
+        {/* Valores e Ações */}
+        <div className="flex items-center justify-between w-full sm:w-auto gap-6 border-t border-gray-800/50 pt-3 sm:pt-0 sm:border-t-0">
+           <div className="text-right flex-1 sm:flex-auto">
+              <p className={`font-mono font-bold text-lg ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
+                  {item.type === 'income' ? '+' : '-'} {formatCurrency(item.amount)}
+              </p>
+              <p className={`text-[10px] font-bold uppercase tracking-wide ${statusConfig.textColor}`}>
+                  {statusConfig.statusText}
+              </p>
+           </div>
+
+           <div className="flex items-center gap-2">
+              <button
+                onClick={() => onPayReminder(item)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-emerald-500/10 text-gray-500 hover:text-emerald-400 border border-gray-800 hover:border-emerald-500/30 transition-all shadow-sm"
+                title={item.type === 'income' ? "Confirmar Recebimento" : "Pagar"}
+              >
+                <Check size={16} strokeWidth={2.5} />
+              </button>
+              <button
+                onClick={() => onConfirmDelete(item.id)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all shadow-sm"
+                title="Excluir"
+              >
+                <Trash2 size={16} strokeWidth={2.5} />
+              </button>
+           </div>
         </div>
       </div>
     </div>
   );
 };
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, isModalOpen, onCloseModal }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
+  const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Modal Animation & State
   const [isVisible, setIsVisible] = useState(false);
@@ -259,7 +260,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   };
 
   const handleClose = () => {
-    onCloseModal();
+    setIsModalOpen(false);
     setTimeout(() => {
       setNewReminder({
         description: '',
@@ -290,84 +291,104 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   }, [reminders]);
 
   return (
-    <div className="space-y-6 animate-fade-in">
+    <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
 
-      {/* Quick Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-sm flex items-center justify-between relative overflow-hidden group">
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-red-500/10 rounded-lg text-red-500">
-                <TrendingDown size={16} />
-              </div>
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">A Pagar (Mês)</span>
-            </div>
-            <h3 className="text-3xl font-bold text-[#faf9f5]">
-              {formatCurrency(reminders.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0))}
-            </h3>
-            <p className="text-sm text-gray-400">Despesas Previstas</p>
-          </div>
-          <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-red-500/5 to-transparent"></div>
+      {/* HEADER PADRONIZADO */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-white tracking-tight">Contas & Previsões</h2>
+          <p className="text-gray-400 text-sm mt-1">Organize seus pagamentos futuros</p>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-xl border border-gray-800 shadow-sm flex items-center justify-between relative overflow-hidden group">
-          <div className="relative z-10">
-            <div className="flex items-center gap-2 mb-2">
-              <div className="p-1.5 bg-green-500/10 rounded-lg text-green-500">
-                <TrendingUp size={16} />
-              </div>
-              <span className="text-xs font-bold text-gray-500 uppercase tracking-wide">A Receber (Mês)</span>
-            </div>
-            <h3 className="text-3xl font-bold text-[#faf9f5]">
-              {formatCurrency(reminders.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0))}
-            </h3>
-            <p className="text-sm text-gray-400">Receitas Previstas</p>
-          </div>
-          <div className="absolute right-0 top-0 h-full w-24 bg-gradient-to-l from-green-500/5 to-transparent"></div>
+        <div className="flex items-center gap-3">
+            <button
+                onClick={() => setIsModalOpen(true)}
+                className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
+            >
+                <Plus size={20} strokeWidth={2.5} />
+                <span className="hidden sm:inline font-bold text-sm">Novo</span>
+            </button>
         </div>
       </div>
 
-      {/* Reminders List Header & Controls */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between border-b border-gray-800 pb-4 gap-4">
-        <h3 className="text-lg font-bold text-gray-200 px-1 flex items-center gap-2">
-          <CalendarClock className="text-[#d97757]" size={20} />
-          Agenda Financeira
-        </h3>
+      {/* QUICK STATS CARDS - VISUAL IGUAL CONFIRMATION CARD */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        {/* Card Despesas */}
+        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
+           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-red-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
+           
+           <div className="flex justify-between items-start mb-4 relative z-10">
+               <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-red-500 shadow-sm">
+                        <TrendingDown size={20} />
+                    </div>
+                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Pagar (Mês)</span>
+               </div>
+           </div>
+           <div className="relative z-10">
+              <p className="text-3xl font-bold text-white tracking-tight">
+                {formatCurrency(reminders.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0))}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Total de despesas agendadas</p>
+           </div>
+        </div>
 
-        {/* View Toggles */}
-        {reminders.length > 0 && (
-          <div className="flex bg-gray-900 p-1 rounded-lg border border-gray-800">
-            <button
-              onClick={() => setViewMode('list')}
-              className={`p-2 rounded-md transition-all ${viewMode === 'list' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Visualizar em Lista"
-            >
-              <Table2 size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode('grouped')}
-              className={`p-2 rounded-md transition-all ${viewMode === 'grouped' ? 'bg-gray-800 text-white shadow' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Agrupar por Categoria"
-            >
-              <LayoutDashboard size={16} />
-            </button>
-          </div>
-        )}
+        {/* Card Receitas */}
+        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
+           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-emerald-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
+           
+           <div className="flex justify-between items-start mb-4 relative z-10">
+               <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500 shadow-sm">
+                        <TrendingUp size={20} />
+                    </div>
+                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Receber (Mês)</span>
+               </div>
+           </div>
+           <div className="relative z-10">
+              <p className="text-3xl font-bold text-white tracking-tight">
+                {formatCurrency(reminders.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0))}
+              </p>
+              <p className="text-xs text-gray-500 mt-1">Total de receitas agendadas</p>
+           </div>
+        </div>
       </div>
 
-      {/* Reminders Content */}
+      {/* VIEW TOGGLE */}
+      {reminders.length > 0 && (
+        <div className="flex justify-between items-end border-b border-gray-800 pb-4">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Calendar size={18} className="text-[#d97757]" /> Próximos Itens
+            </h3>
+            <div className="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
+                <button
+                    onClick={() => setViewMode('list')}
+                    className={`p-2 rounded-lg transition-all ${viewMode === 'list' ? 'bg-gray-800 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
+                    title="Lista"
+                >
+                    <Table2 size={18} />
+                </button>
+                <button
+                    onClick={() => setViewMode('grouped')}
+                    className={`p-2 rounded-lg transition-all ${viewMode === 'grouped' ? 'bg-gray-800 text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}
+                    title="Agrupar"
+                >
+                    <LayoutDashboard size={18} />
+                </button>
+            </div>
+        </div>
+      )}
+
+      {/* LISTA DE CONTEÚDO */}
       {sortedReminders.length === 0 ? (
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-12 text-center flex flex-col items-center justify-center h-64 animate-fade-in">
-          <div className="w-20 h-20 bg-gray-800/50 rounded-full flex items-center justify-center mb-6 text-[#d97757] shadow-inner border border-gray-700/50">
-            <Bell size={32} />
-          </div>
-          <h4 className="text-white font-bold text-lg mb-2">Tudo em dia!</h4>
-          <p className="text-gray-500 text-sm max-w-xs">Você não tem nenhum item agendado.</p>
-        </div>
+        <EmptyState
+          title="Tudo limpo!"
+          description="Nenhum pagamento ou recebimento pendente."
+        />
       ) : (
-        <div className="animate-fade-in overflow-visible">
+        <div className="animate-fade-in">
           {viewMode === 'list' ? (
-            <div className="space-y-2">
+            <div className="space-y-3">
               {sortedReminders.map(item => (
                 <ReminderCard
                   key={item.id}
@@ -378,17 +399,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
               ))}
             </div>
           ) : (
-            <div className="space-y-8">
+            <div className="space-y-6">
               {Object.entries(groupedReminders).map(([category, items]: [string, Reminder[]]) => (
-                <div key={category} className="bg-gray-900/30 rounded-2xl p-4 border border-gray-800/50">
-                  <div className="flex items-center gap-2 mb-4 px-2">
-                    <div className="p-1.5 bg-gray-800 rounded text-gray-400">
-                      {getCategoryIcon(category, 16)}
-                    </div>
-                    <h4 className="font-bold text-gray-300">{category}</h4>
-                    <span className="text-xs bg-gray-800 px-2 py-0.5 rounded-full text-gray-500">{items.length}</span>
-                  </div>
-                  <div className="space-y-2">
+                <div key={category} className="bg-gray-950/50 border border-gray-800/50 rounded-2xl overflow-hidden">
+                   <div className="bg-gray-900/80 p-4 border-b border-gray-800 flex items-center gap-3">
+                      <div className="p-1.5 rounded-lg bg-gray-800 text-gray-400 border border-gray-700">
+                        {getCategoryIcon(category, 16)}
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-200 uppercase tracking-wide">{category}</h4>
+                      <span className="text-[10px] bg-gray-800 border border-gray-700 text-gray-400 px-2 py-0.5 rounded-full ml-auto font-mono">{items.length}</span>
+                   </div>
+                   <div className="p-3 space-y-3">
                     {items.map(item => (
                       <ReminderCard
                         key={item.id}
@@ -405,73 +426,72 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         </div>
       )}
 
-      {/* Redesigned Modal matching AIModal aesthetics with high Z-index and dark background */}
+      {/* --- MODAL REFORMULADA (Visual igual ConfirmationCard) --- */}
       {isVisible && createPortal(
-        <div
-          className={`
-                fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
-                ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
-            `}
-        >
-          <div
-            className={`
-                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-visible border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+        <div className={`
+            fixed inset-0 z-[9999] flex items-center justify-center p-4 
+            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+            ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
+        `}>
+          <div className={`
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 
+                flex flex-col max-h-[90vh] relative 
+                transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
                 ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-            `}
-          >
-            {/* Background Effects */}
-            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-              <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-            </div>
+          `}>
+            
+            {/* Background Glow igual ao ConfirmationCard */}
+            <div className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 ${modalMode === 'ai' ? 'bg-[#d97757]' : 'bg-gray-600'}`} />
 
-            {/* Header - Tabbed Switcher matching AIModal */}
-            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-              <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md">
+            {/* Header Modal */}
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/80 backdrop-blur-sm">
+              <div className="flex gap-1 bg-gray-900 p-1.5 rounded-xl border border-gray-800 shadow-inner">
                 <button
                   onClick={() => setModalMode('ai')}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${modalMode === 'ai' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'ai' ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 ring-1 ring-[#d97757]/50' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
                 >
                   <Sparkles size={14} />
-                  Inteligência
+                  IA Magic
                 </button>
                 <button
                   onClick={() => setModalMode('manual')}
-                  className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${modalMode === 'manual' ? 'bg-gray-700 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'manual' ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
                 >
                   <Plus size={14} />
                   Manual
                 </button>
               </div>
-              <button onClick={handleClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
+              <button onClick={handleClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-xl border border-transparent hover:border-gray-700 transition-all">
                 <X size={20} />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-visible custom-scrollbar relative z-10">
+            {/* Content Modal */}
+            <div className="p-6 overflow-y-auto custom-scrollbar relative z-10">
 
               {/* --- AI MODE --- */}
               {modalMode === 'ai' && (
                 <div className="space-y-6 animate-fade-in">
                   {!parsedReminder ? (
                     <>
-                      <div className="text-center space-y-3 py-2">
-                        <div className={`w-14 h-14 mx-auto rounded-2xl bg-gradient-to-br from-[#d97757] to-[#e68e70] flex items-center justify-center shadow-xl shadow-[#d97757]/30 ${isProcessing ? 'animate-pulse' : ''}`}>
-                          <Bot size={28} className="text-white" />
+                      <div className="text-center space-y-4 py-2">
+                        <div className={`w-16 h-16 mx-auto rounded-2xl bg-[#d97757]/10 flex items-center justify-center ring-1 ring-[#d97757]/20 shadow-lg shadow-[#d97757]/10 ${isProcessing ? 'animate-pulse' : ''}`}>
+                          <Bot size={32} className="text-[#d97757]" />
                         </div>
-                        <h3 className="text-lg font-bold text-white">Novo Lembrete Inteligente</h3>
-                        <p className="text-sm text-gray-400 max-w-xs mx-auto">
-                          Ex: <span className="text-[#d97757]">"Pagar conta de internet 120 reais dia 15"</span>
-                        </p>
+                        <div>
+                            <h3 className="text-lg font-bold text-white">Criar com Inteligência</h3>
+                            <p className="text-sm text-gray-500 max-w-xs mx-auto mt-1 leading-relaxed">
+                            Digite algo como: <br/><span className="text-gray-300 font-medium">"Internet 120 reais dia 15"</span>
+                            </p>
+                        </div>
                       </div>
 
                       <div className="relative group">
                         <textarea
                           value={aiInput}
                           onChange={(e) => setAiInput(e.target.value)}
-                          placeholder="Digite aqui..."
-                          className="w-full h-28 p-4 bg-gray-900/50 border border-gray-700 rounded-2xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] resize-none text-gray-100 placeholder-gray-600 transition-all text-base"
+                          placeholder="Descreva seu lembrete aqui..."
+                          className="w-full h-36 p-5 bg-gray-900/50 border border-gray-800 rounded-2xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] outline-none resize-none text-white placeholder-gray-600 transition-all text-base shadow-inner"
                           autoFocus
                           onKeyDown={(e) => {
                             if (e.key === 'Enter' && !e.shiftKey) {
@@ -480,103 +500,87 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                             }
                           }}
                         />
-                        <div className="absolute bottom-3 right-3">
-                          <span className="text-[10px] text-gray-600 bg-gray-900 px-2 py-1 rounded border border-gray-800">Enter para enviar</span>
+                        <div className="absolute bottom-4 right-4 text-[10px] text-gray-600 uppercase font-bold tracking-wider bg-gray-900 px-2 py-1 rounded border border-gray-800">
+                            Enter ↵
                         </div>
                       </div>
 
                       {aiError && (
-                        <div className="flex items-center gap-2 text-red-400 text-xs bg-red-900/10 p-3 rounded-xl border border-red-900/30 animate-shake">
-                          <div className="w-1.5 h-1.5 rounded-full bg-red-500"></div>
-                          {aiError}
+                        <div className="flex items-center gap-3 text-red-400 text-sm bg-red-500/10 p-4 rounded-2xl border border-red-500/20">
+                          <AlertCircle size={18} className="shrink-0" /> {aiError}
                         </div>
                       )}
 
                       <button
                         onClick={handleAiAnalyze}
                         disabled={isProcessing || !aiInput.trim()}
-                        className="w-full py-4 bg-white text-black hover:bg-gray-200 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-white/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="w-full py-4 bg-white text-black hover:bg-gray-200 rounded-xl font-bold transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-white/5"
                       >
                         {isProcessing ? (
-                          <span className="flex items-center gap-2">
-                            <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin"></div>
-                            Processando...
-                          </span>
+                          <>Processando...</>
                         ) : (
-                          <>
-                            Processar
-                            <ArrowRight size={18} />
-                          </>
+                          <>Processar <ArrowRight size={18} /></>
                         )}
                       </button>
                     </>
                   ) : (
                     <div className="space-y-6 animate-slide-up">
-                      {/* Parsed Result Ticket */}
-                      <div className="bg-gradient-to-b from-gray-800 to-gray-900 rounded-2xl p-1 border border-gray-700 shadow-2xl">
-                        <div className="bg-gray-950/50 rounded-t-xl p-3 flex justify-between items-center border-b border-gray-700 border-dashed">
-                          <div className="flex items-center gap-2">
-                            <Sparkles size={14} className="text-[#d97757]" />
-                            <span className="text-xs font-bold text-[#d97757] uppercase tracking-wider">Lembrete Entendido</span>
-                          </div>
-                        </div>
+                      {/* Ticket Resultado IA */}
+                      <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden relative shadow-2xl">
+                          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#d97757] to-amber-500"></div>
+                          
+                          {/* Glow interno no ticket */}
+                          <div className="absolute top-0 right-0 w-24 h-24 bg-[#d97757]/10 blur-2xl rounded-full pointer-events-none"></div>
 
-                        <div className="p-5 space-y-4">
-                          <div className="flex items-start justify-between">
-                            <div>
-                              <div className="flex items-center gap-2 mb-1">
-                                <p className="text-xs text-gray-400">Descrição</p>
-                                <span className={`text-[10px] px-1.5 py-0.5 rounded border font-bold uppercase tracking-wider ${parsedReminder.type === 'income' ? 'bg-green-500/10 text-green-500 border-green-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
-                                  {parsedReminder.type === 'income' ? 'Receita' : 'Despesa'}
-                                </span>
-                              </div>
-                              <p className="text-lg font-bold text-white">{parsedReminder.description}</p>
-                            </div>
-                            <div className="text-right">
-                              <p className="text-xs text-gray-400 mb-1">Valor</p>
-                              <p className={`text-2xl font-bold ${parsedReminder.type === 'income' ? 'text-green-400' : 'text-white'}`}>
-                                {parsedReminder.type === 'income' ? '+' : ''} R$ {parsedReminder.amount.toFixed(2)}
-                              </p>
-                            </div>
+                          <div className="p-6 relative z-10">
+                             <div className="flex justify-between items-start mb-6">
+                                 <div>
+                                     <span className={`text-[10px] px-2 py-1 rounded-lg border uppercase tracking-wider font-bold ${parsedReminder.type === 'income' ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' : 'bg-red-500/10 text-red-500 border-red-500/20'}`}>
+                                       {parsedReminder.type === 'income' ? 'Receita Identificada' : 'Despesa Identificada'}
+                                     </span>
+                                     <h3 className="text-2xl font-bold text-white mt-3 leading-tight">{parsedReminder.description}</h3>
+                                 </div>
+                                 <div className="text-right bg-gray-950 p-3 rounded-xl border border-gray-800">
+                                     <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Valor</p>
+                                     <p className={`text-xl font-mono font-bold ${parsedReminder.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
+                                        {formatCurrency(parsedReminder.amount)}
+                                     </p>
+                                 </div>
+                             </div>
+                             
+                             <div className="grid grid-cols-2 gap-4">
+                                 <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 flex flex-col gap-1">
+                                    <div className="flex items-center gap-2 text-gray-400">
+                                       <Calendar size={14} /> <span className="text-[10px] uppercase font-bold">Data</span>
+                                    </div>
+                                    <p className="text-base font-bold text-white">{formatDate(parsedReminder.dueDate)}</p>
+                                 </div>
+                                 <div className="bg-gray-950 p-4 rounded-xl border border-gray-800 flex flex-col gap-1">
+                                    <div className="flex items-center gap-2 text-gray-400">
+                                       <RefreshCw size={14} /> <span className="text-[10px] uppercase font-bold">Repetição</span>
+                                    </div>
+                                    <p className="text-base font-bold text-white">
+                                       {parsedReminder.isRecurring 
+                                         ? (parsedReminder.frequency === 'monthly' ? 'Mensal' : parsedReminder.frequency === 'weekly' ? 'Semanal' : 'Anual') 
+                                         : 'Único'}
+                                    </p>
+                                 </div>
+                             </div>
                           </div>
-
-                          <div className="grid grid-cols-2 gap-4 pt-2">
-                            <div className="bg-gray-950/50 p-3 rounded-xl border border-gray-700/50">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Vencimento</p>
-                              <div className="flex items-center gap-2">
-                                <Calendar size={14} className="text-gray-400" />
-                                <span className="text-sm font-medium text-gray-200">{formatDate(parsedReminder.dueDate)}</span>
-                              </div>
-                            </div>
-                            <div className="bg-gray-950/50 p-3 rounded-xl border border-gray-700/50">
-                              <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Recorrência</p>
-                              <div className="flex items-center gap-2">
-                                <Clock size={14} className="text-gray-400" />
-                                <span className="text-sm font-medium text-gray-200">
-                                  {parsedReminder.isRecurring
-                                    ? (parsedReminder.frequency === 'monthly' ? 'Mensal' : parsedReminder.frequency === 'weekly' ? 'Semanal' : 'Anual')
-                                    : 'Único'
-                                  }
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
                       </div>
 
-                      <div className="flex gap-3">
+                      <div className="flex gap-3 pt-2">
                         <button
                           onClick={() => setParsedReminder(null)}
-                          className="flex-1 py-3.5 bg-gray-800 text-gray-300 hover:text-white hover:bg-gray-700 rounded-xl font-medium transition-all border border-gray-700"
+                          className="flex-1 py-3.5 bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl font-bold transition-all border border-gray-800 hover:border-gray-700"
                         >
-                          Editar
+                          Corrigir
                         </button>
                         <button
                           onClick={handleConfirmAi}
-                          className="flex-[2] py-3.5 bg-green-600 text-white hover:bg-green-500 rounded-xl font-bold transition-all shadow-lg shadow-green-900/40 flex items-center justify-center gap-2"
+                          className="flex-[2] py-3.5 bg-[#d97757] text-white hover:bg-[#c56a4d] rounded-xl font-bold transition-all flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50"
                         >
-                          <Check size={18} />
-                          Confirmar
+                          <Check size={18} strokeWidth={3} /> Confirmar
                         </button>
                       </div>
                     </div>
@@ -586,136 +590,126 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
               {/* --- MANUAL MODE --- */}
               {modalMode === 'manual' && (
-                <form onSubmit={handleManualSubmit} className="space-y-5 animate-fade-in">
-
-                  {/* Type Selector */}
-                  <div className="grid grid-cols-2 gap-3 p-1 bg-gray-900/50 rounded-xl border border-gray-800">
+                <form onSubmit={handleManualSubmit} className="space-y-6 animate-fade-in">
+                  
+                  {/* Tipo */}
+                  <div className="grid grid-cols-2 gap-4 p-1.5 bg-gray-900 rounded-2xl border border-gray-800">
                     <button
                       type="button"
                       onClick={() => setNewReminder({ ...newReminder, type: 'expense' })}
-                      className={`flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${newReminder.type === 'expense' ? 'bg-red-500 text-white shadow-lg shadow-red-900/20' : 'text-gray-400 hover:text-white'}`}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${newReminder.type === 'expense' ? 'bg-red-500 text-white shadow-lg shadow-red-500/20' : 'text-gray-500 hover:text-white'}`}
                     >
-                      <TrendingDown size={16} />
-                      Despesa
+                      <TrendingDown size={16} /> Despesa
                     </button>
                     <button
                       type="button"
                       onClick={() => setNewReminder({ ...newReminder, type: 'income' })}
-                      className={`flex items-center justify-center gap-2 py-2 rounded-lg text-sm font-bold transition-all ${newReminder.type === 'income' ? 'bg-green-600 text-white shadow-lg shadow-green-900/20' : 'text-gray-400 hover:text-white'}`}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-bold uppercase tracking-wider transition-all ${newReminder.type === 'income' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/20' : 'text-gray-500 hover:text-white'}`}
                     >
-                      <TrendingUp size={16} />
-                      Receita
+                      <TrendingUp size={16} /> Receita
                     </button>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Descrição</label>
-                    <div className="relative group">
-                      <FileText className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                      <input
-                        required
-                        type="text"
-                        value={newReminder.description}
-                        onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
-                        className="input-primary pl-10 focus:border-[#d97757]"
-                        placeholder={newReminder.type === 'income' ? "Ex: Salário Mensal" : "Ex: Conta de Internet"}
-                        autoFocus
-                      />
-                    </div>
+                  {/* Inputs */}
+                  <div className="space-y-5">
+                      <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Descrição</label>
+                        <div className="relative group">
+                            <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                            <input
+                                required
+                                type="text"
+                                value={newReminder.description}
+                                onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
+                                className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                                placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Internet"}
+                            />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Valor (R$)</label>
+                            <div className="relative group">
+                                <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                                <input
+                                    required
+                                    type="number"
+                                    step="0.01"
+                                    value={newReminder.amount}
+                                    onChange={e => setNewReminder({ ...newReminder, amount: e.target.value })}
+                                    className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                                    placeholder="0,00"
+                                />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Data</label>
+                            <CustomDatePicker
+                                value={newReminder.dueDate}
+                                onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
+                            />
+                          </div>
+                      </div>
+
+                      <div>
+                          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Categoria</label>
+                          <CustomAutocomplete
+                                value={newReminder.category}
+                                onChange={(val) => setNewReminder({ ...newReminder, category: val })}
+                                options={categories}
+                                icon={<Tag size={18} />}
+                          />
+                      </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Valor (R$)</label>
-                      <div className="relative group">
-                        <DollarSign className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                        <input
-                          required
-                          type="number"
-                          step="0.01"
-                          value={newReminder.amount}
-                          onChange={e => setNewReminder({ ...newReminder, amount: e.target.value })}
-                          className="input-primary pl-10 focus:border-[#d97757]"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
-
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5">
-                        {newReminder.type === 'income' ? 'Data Prevista' : 'Vencimento'}
-                      </label>
-                      <div className="z-30 relative group">
-                        <CustomDatePicker
-                          value={newReminder.dueDate}
-                          onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-4">
-                    <div>
-                      <label className="block text-xs font-medium text-gray-400 mb-1.5">Categoria</label>
-                      <div className="relative z-20 group">
-                        <CustomAutocomplete
-                          value={newReminder.category}
-                          onChange={(val) => setNewReminder({ ...newReminder, category: val })}
-                          options={categories}
-                          icon={<Tag size={16} />}
-                        />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Recurrence Section styled like a card */}
-                  <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50 space-y-3">
-                    <label className="flex items-center justify-between cursor-pointer select-none group">
-                      <div className="flex items-center gap-3">
-                        <div className={`p-1.5 rounded-lg transition-colors ${newReminder.isRecurring ? 'bg-[#d97757]/20 text-[#d97757]' : 'bg-gray-800 text-gray-500'}`}>
-                          <Clock size={16} />
+                  {/* Recorrência */}
+                  <div className="bg-gray-900/30 p-5 rounded-2xl border border-gray-800/80 hover:border-gray-700 transition-colors">
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div className="flex items-center gap-4">
+                        <div className={`p-2.5 rounded-xl transition-all duration-300 ${newReminder.isRecurring ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 text-gray-500'}`}>
+                          <RefreshCw size={18} />
                         </div>
                         <div>
-                          <span className="block text-sm font-medium text-gray-200 group-hover:text-white transition-colors">
-                            {newReminder.type === 'income' ? 'Recebimento Recorrente' : 'Pagamento Recorrente'}
-                          </span>
-                          <span className="block text-[10px] text-gray-500">
-                            {newReminder.type === 'income' ? 'Repetir este ganho automaticamente' : 'Repetir este lembrete automaticamente'}
-                          </span>
+                          <span className="block text-sm font-bold text-gray-200 group-hover:text-white transition-colors">Recorrência</span>
+                          <span className="block text-[10px] text-gray-500">Repetir automaticamente</span>
                         </div>
+                      </div>
+                      <div className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${newReminder.isRecurring ? 'bg-[#d97757]' : 'bg-gray-800'}`}>
+                         <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-300 ${newReminder.isRecurring ? 'translate-x-6' : 'translate-x-0'}`} />
                       </div>
                       <input
                         type="checkbox"
                         checked={newReminder.isRecurring}
                         onChange={e => setNewReminder({ ...newReminder, isRecurring: e.target.checked })}
-                        className="checkbox-primary w-5 h-5"
+                        className="hidden"
                       />
                     </label>
 
                     {newReminder.isRecurring && (
-                      <div className="pt-2 animate-slide-up">
-                        <label className="block text-[10px] font-bold text-gray-500 uppercase mb-1.5 tracking-wider">Frequência</label>
-                        <div className="relative z-10">
-                          <CustomSelect
+                      <div className="pt-4 mt-4 border-t border-gray-800 animate-fade-in">
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Frequência</label>
+                        <CustomSelect
                             value={newReminder.frequency}
                             onChange={(val) => setNewReminder({ ...newReminder, frequency: val as any })}
                             options={frequencies}
-                            className="text-sm"
-                          />
-                        </div>
+                            className="text-sm bg-gray-950 border-gray-800"
+                        />
                       </div>
                     )}
                   </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
-                    >
-                      <Check size={18} />
-                      {newReminder.type === 'income' ? 'Salvar Receita' : 'Salvar Lembrete'}
-                    </button>
-                  </div>
+                  <button
+                    type="submit"
+                    className={`w-full py-4 rounded-xl font-bold transition-all shadow-lg flex items-center justify-center gap-2 border ${
+                        newReminder.type === 'income' 
+                        ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-600/20 border-emerald-500/50' 
+                        : 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-[#d97757]/20 border-[#d97757]/50'
+                    }`}
+                  >
+                    <Check size={20} strokeWidth={3} />
+                    {newReminder.type === 'income' ? 'Confirmar Receita' : 'Confirmar Despesa'}
+                  </button>
                 </form>
               )}
             </div>
@@ -724,16 +718,16 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         document.body
       )}
 
-      {/* Delete Confirmation Card */}
+      {/* Delete Confirmation (Mantendo seu card original) */}
       <ConfirmationCard
         isOpen={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && onDeleteReminder(deleteId)}
         title="Excluir Item?"
-        description="Você vai parar de receber notificações para este item."
+        description="Esta ação removerá o item da sua agenda permanentemente."
         isDestructive={true}
         confirmText="Sim, excluir"
-        cancelText="Manter"
+        cancelText="Cancelar"
       />
     </div>
   );
