@@ -1,16 +1,20 @@
 ﻿import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Reminder } from '../types';
-import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle } from './Icons';
+import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2 } from './Icons';
 import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete } from './UIComponents';
 import { parseReminderFromText, AIParsedReminder } from '../services/geminiService';
 import { EmptyState } from './EmptyState';
+import coinzinhaImg from '../assets/coinzinha.png';
+import { CoinzinhaGreeting } from './CoinzinhaGreeting';
+import NumberFlow from '@number-flow/react';
 
 interface RemindersProps {
   reminders: Reminder[];
   onAddReminder: (reminder: Omit<Reminder, 'id'>) => void;
   onDeleteReminder: (id: string) => void;
   onPayReminder: (reminder: Reminder) => void;
+  onUpdateReminder: (reminder: Reminder) => void;
 }
 
 type ViewMode = 'list' | 'grouped';
@@ -38,9 +42,10 @@ interface ReminderCardProps {
   item: Reminder;
   onPayReminder: (reminder: Reminder) => void;
   onConfirmDelete: (id: string) => void;
+  onEdit: (reminder: Reminder) => void;
 }
 
-const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete }) => {
+const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete, onEdit }) => {
   const daysDiff = getDaysDiff(item.dueDate);
 
   // Configuração visual baseada no status
@@ -128,7 +133,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
         <div className="flex items-center justify-between w-full sm:w-auto gap-6 border-t border-gray-800/50 pt-3 sm:pt-0 sm:border-t-0">
            <div className="text-right flex-1 sm:flex-auto">
               <p className={`font-mono font-bold text-lg ${item.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
-                  {item.type === 'income' ? '+' : '-'} {formatCurrency(item.amount)}
+                  {item.type === 'income' ? '+' : '-'} <NumberFlow value={item.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
               </p>
               <p className={`text-[10px] font-bold uppercase tracking-wide ${statusConfig.textColor}`}>
                   {statusConfig.statusText}
@@ -144,6 +149,13 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
                 <Check size={16} strokeWidth={2.5} />
               </button>
               <button
+                onClick={() => onEdit(item)}
+                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-[#d97757]/10 text-gray-500 hover:text-[#d97757] border border-gray-800 hover:border-[#d97757]/30 transition-all shadow-sm"
+                title="Editar"
+              >
+                <Edit2 size={16} strokeWidth={2.5} />
+              </button>
+              <button
                 onClick={() => onConfirmDelete(item.id)}
                 className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all shadow-sm"
                 title="Excluir"
@@ -157,7 +169,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
   );
 };
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('list');
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -165,6 +177,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('ai');
+  const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   // AI State
   const [aiInput, setAiInput] = useState('');
@@ -210,6 +223,21 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     return () => clearTimeout(timeoutId);
   }, [isModalOpen]);
 
+  const handleEditClick = (reminder: Reminder) => {
+    setEditingReminder(reminder);
+    setNewReminder({
+      description: reminder.description,
+      amount: reminder.amount.toString(),
+      dueDate: reminder.dueDate,
+      category: reminder.category,
+      type: reminder.type || 'expense',
+      isRecurring: reminder.isRecurring,
+      frequency: reminder.frequency || 'monthly'
+    });
+    setModalMode('manual');
+    setIsModalOpen(true);
+  };
+
   const handleAiAnalyze = async () => {
     if (!aiInput.trim()) return;
     setIsProcessing(true);
@@ -247,7 +275,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
   const handleManualSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onAddReminder({
+    const reminderData = {
       description: newReminder.description,
       amount: parseFloat(newReminder.amount),
       dueDate: newReminder.dueDate,
@@ -255,7 +283,13 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       type: newReminder.type,
       isRecurring: newReminder.isRecurring,
       frequency: newReminder.frequency
-    });
+    };
+
+    if (editingReminder) {
+      onUpdateReminder({ ...editingReminder, ...reminderData });
+    } else {
+      onAddReminder(reminderData);
+    }
     handleClose();
   };
 
@@ -271,6 +305,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         isRecurring: true,
         frequency: 'monthly'
       });
+      setEditingReminder(null);
       setModalMode('ai');
       setAiInput('');
       setParsedReminder(null);
@@ -295,9 +330,23 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
       {/* HEADER PADRONIZADO */}
       <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Contas & Previsões</h2>
-          <p className="text-gray-400 text-sm mt-1">Organize seus pagamentos futuros</p>
+        <div className="flex items-center gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Contas & Previsões</h2>
+            <p className="text-gray-400 text-sm mt-1">Organize seus pagamentos futuros</p>
+          </div>
+
+          {/* Balloon Hint */}
+          <div className="hidden md:block animate-fade-in ml-2">
+            <div className="relative bg-blue-500/10 border border-blue-500/20 rounded-lg py-2 px-3 shadow-sm">
+               {/* Arrow */}
+               <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 w-2.5 h-2.5 bg-gray-950 border-l border-b border-blue-500/20 rotate-45"></div>
+               
+               <p className="text-[11px] text-blue-200 leading-snug relative z-10">
+                 <span className="font-bold text-blue-400">Dica:</span> Veja o impacto no saldo clicando em <strong>"Previsão dos lembretes"</strong>.
+               </p>
+            </div>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
@@ -327,7 +376,11 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
            </div>
            <div className="relative z-10">
               <p className="text-3xl font-bold text-white tracking-tight">
-                {formatCurrency(reminders.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0))}
+                <NumberFlow 
+                    value={reminders.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0)}
+                    format={{ style: 'currency', currency: 'BRL' }}
+                    locales="pt-BR"
+                />
               </p>
               <p className="text-xs text-gray-500 mt-1">Total de despesas agendadas</p>
            </div>
@@ -347,7 +400,11 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
            </div>
            <div className="relative z-10">
               <p className="text-3xl font-bold text-white tracking-tight">
-                {formatCurrency(reminders.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0))}
+                <NumberFlow 
+                    value={reminders.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0)}
+                    format={{ style: 'currency', currency: 'BRL' }}
+                    locales="pt-BR"
+                />
               </p>
               <p className="text-xs text-gray-500 mt-1">Total de receitas agendadas</p>
            </div>
@@ -395,6 +452,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   item={item}
                   onPayReminder={onPayReminder}
                   onConfirmDelete={setDeleteId}
+                  onEdit={handleEditClick}
                 />
               ))}
             </div>
@@ -416,6 +474,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                         item={item}
                         onPayReminder={onPayReminder}
                         onConfirmDelete={setDeleteId}
+                        onEdit={handleEditClick}
                       />
                     ))}
                   </div>
@@ -445,22 +504,29 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
             {/* Header Modal */}
             <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/80 backdrop-blur-sm">
-              <div className="flex gap-1 bg-gray-900 p-1.5 rounded-xl border border-gray-800 shadow-inner">
-                <button
-                  onClick={() => setModalMode('ai')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'ai' ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 ring-1 ring-[#d97757]/50' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
-                >
-                  <Sparkles size={14} />
-                  IA Magic
-                </button>
-                <button
-                  onClick={() => setModalMode('manual')}
-                  className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'manual' ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
-                >
-                  <Plus size={14} />
-                  Manual
-                </button>
-              </div>
+              {!editingReminder ? (
+                  <div className="flex gap-1 bg-gray-900 p-1.5 rounded-xl border border-gray-800 shadow-inner">
+                    <button
+                      onClick={() => setModalMode('ai')}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'ai' ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 ring-1 ring-[#d97757]/50' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
+                    >
+                      <img src={coinzinhaImg} className="w-4 h-4 rounded-full object-cover" alt="Coinzinha" />
+                      Coinzinha
+                    </button>
+                    <button
+                      onClick={() => setModalMode('manual')}
+                      className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all flex items-center gap-2 ${modalMode === 'manual' ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
+                    >
+                      <Plus size={14} />
+                      Manual
+                    </button>
+                  </div>
+              ) : (
+                  <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Edit2 size={18} className="text-[#d97757]" />
+                      Editar Lembrete
+                  </h3>
+              )}
               <button onClick={handleClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-xl border border-transparent hover:border-gray-700 transition-all">
                 <X size={20} />
               </button>
@@ -474,9 +540,10 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                 <div className="space-y-6 animate-fade-in">
                   {!parsedReminder ? (
                     <>
-                      <div className="text-center space-y-4 py-2">
-                        <div className={`w-16 h-16 mx-auto rounded-2xl bg-[#d97757]/10 flex items-center justify-center ring-1 ring-[#d97757]/20 shadow-lg shadow-[#d97757]/10 ${isProcessing ? 'animate-pulse' : ''}`}>
-                          <Bot size={32} className="text-[#d97757]" />
+                      <div className="text-center space-y-4 py-2 flex flex-col items-center">
+                        <CoinzinhaGreeting />
+                        <div className={`w-16 h-16 mx-auto rounded-2xl bg-[#d97757]/10 p-0.5 ring-1 ring-[#d97757]/20 shadow-lg shadow-[#d97757]/10 ${isProcessing ? 'animate-pulse' : ''}`}>
+                          <img src={coinzinhaImg} className="w-full h-full object-cover rounded-2xl" alt="Coinzinha" />
                         </div>
                         <div>
                             <h3 className="text-lg font-bold text-white">Criar com Inteligência</h3>
@@ -543,7 +610,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                                  <div className="text-right bg-gray-950 p-3 rounded-xl border border-gray-800">
                                      <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Valor</p>
                                      <p className={`text-xl font-mono font-bold ${parsedReminder.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
-                                        {formatCurrency(parsedReminder.amount)}
+                                        <NumberFlow value={parsedReminder.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
                                      </p>
                                  </div>
                              </div>
@@ -707,8 +774,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                         : 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-[#d97757]/20 border-[#d97757]/50'
                     }`}
                   >
-                    <Check size={20} strokeWidth={3} />
-                    {newReminder.type === 'income' ? 'Confirmar Receita' : 'Confirmar Despesa'}
+                    {editingReminder ? (
+                        <>
+                            <Check size={20} strokeWidth={3} />
+                            Atualizar {newReminder.type === 'income' ? 'Receita' : 'Despesa'}
+                        </>
+                    ) : (
+                        <>
+                            <Check size={20} strokeWidth={3} />
+                            {newReminder.type === 'income' ? 'Confirmar Receita' : 'Confirmar Despesa'}
+                        </>
+                    )}
                   </button>
                 </form>
               )}

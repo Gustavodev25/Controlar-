@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Flame, TrendingUp, Target, Calendar, DollarSign, Percent, Wallet, Info, HelpCircle, Sparkles, Lock } from 'lucide-react';
 import { Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+import NumberFlow from '@number-flow/react';
 
 interface FireCalculatorProps {
   netWorth: number;
@@ -311,7 +312,7 @@ export const FireCalculator: React.FC<FireCalculatorProps> = ({
                  <div>
                      <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Regra dos 4%</p>
                      <p className="text-xs text-gray-400 leading-relaxed">
-                        Para cobrir <span className="text-white font-bold">{formatCurrency(monthlyExpense)}</span> mensais sem consumir o principal, sua meta FIRE é acumular <span className="text-[#d97757] font-bold font-mono">{formatCurrency(fireTarget)}</span>.
+                        Para cobrir <span className="text-white font-bold"><NumberFlow value={monthlyExpense} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" /></span> mensais sem consumir o principal, sua meta FIRE é acumular <span className="text-[#d97757] font-bold font-mono"><NumberFlow value={fireTarget} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" /></span>.
                      </p>
                  </div>
             </div>
@@ -335,7 +336,9 @@ export const FireCalculator: React.FC<FireCalculatorProps> = ({
                           </div>
                       </div>
                       <div className="relative z-10">
-                         <p className="text-3xl font-mono font-bold text-white tracking-tight">{formatCurrency(fireTarget)}</p>
+                         <p className="text-3xl font-mono font-bold text-white tracking-tight">
+                             <NumberFlow value={fireTarget} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                         </p>
                          <p className="text-xs text-gray-500 mt-1">Patrimônio necessário</p>
                       </div>
                  </div>

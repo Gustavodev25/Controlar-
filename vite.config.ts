@@ -8,6 +8,7 @@ export default defineConfig(({ mode }) => {
       server: {
         port: 3000,
         host: '0.0.0.0',
+        allowedHosts: ['burseraceous-adalynn-academically.ngrok-free.dev'],
         proxy: {
           '/api/asaas': {
             target: 'https://sandbox.asaas.com/api/v3',

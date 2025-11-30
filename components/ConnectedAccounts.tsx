@@ -217,7 +217,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             const paginatedInstitutionAccounts = institutionAccounts.slice(startIndex, endIndex);
 
             return (
-            <div key={institution} className="bg-gray-950 border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative">
+            <div key={institution} className="bg-gray-950 border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden">
               {/* Glow Effect */}
               <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757] pointer-events-none transition-opacity group-hover:opacity-10"></div>
               

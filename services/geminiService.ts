@@ -2,15 +2,15 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, AIParsedTransaction, Reminder, Budget, Investment } from "../types";
 
-// API key read from environment (Vercel/Netlify use VITE_ prefix)
+// API key read from environment or fallback to provided key
 const API_KEY =
   (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
   (typeof process !== "undefined" ? process.env.VITE_GEMINI_API_KEY : "") ||
-  "";
+  "AIzaSyB0fUWsdsOzAuS5Cw9gnB_JYoXc3Uv-coA";
 
 export const hasGeminiKey = !!API_KEY;
 
-// Initialize client only when key is set to avoid build failures when config.ts is not present
+// Initialize client
 const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
 
 const ensureClient = () => {
@@ -19,8 +19,9 @@ const ensureClient = () => {
   }
   return ai;
 };
-// Usando Flash pois Ã© rÃ¡pido e excelente com documentos/imagens longos
-const MODEL_NAME = "gemini-2.5-flash";
+
+// Modelo atualizado
+const MODEL_NAME = "gemini-2.5-pro";
 
 export interface AIParsedReminder {
   description: string;
@@ -33,13 +34,22 @@ export interface AIParsedReminder {
 }
 
 // Helper function to handle 503 Overloaded errors with exponential backoff
-async function generateWithRetry(params: any, retries = 5) {
+async function generateWithRetry(params: any, retries = 3) {
   const client = ensureClient();
   for (let i = 0; i < retries; i++) {
     try {
-      return await client.models.generateContent(params);
+      // Adicionando thinkingConfig se o modelo suportar (2.5-pro geralmente suporta)
+      // Nota: @google/genai pode passar configs adicionais no objeto config
+      const config = {
+          ...params.config,
+          // thinkingConfig: { thinkingBudget: 1024 }, // Opcional, removido por segurança se a lib não tipar
+      };
+      
+      return await client.models.generateContent({
+          ...params,
+          config
+      });
     } catch (error: any) {
-      // Check for various 503 error structures (Standard, Axios, Nested JSON)
       let statusCode = error.status || error.response?.status;
       if (!statusCode && error.error?.code) {
         statusCode = error.error.code;
@@ -55,7 +65,6 @@ async function generateWithRetry(params: any, retries = 5) {
 
       if (isOverloaded) {
         if (i < retries - 1) {
-          // Backoff: 2s, 4s, 8s, 16s, 32s
           const delay = 2000 * Math.pow(2, i);
           console.warn(`Gemini overloaded (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`);
           await new Promise(resolve => setTimeout(resolve, delay));
@@ -75,7 +84,10 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
   if (!transactions.length) return { analysis: "Adicione transações para receber uma análise da IA." };
   if (!API_KEY) return { analysis: "Configure a VITE_GEMINI_API_KEY para usar o consultor IA." };
 
-  const transactionSummary = transactions.slice(0, 50).map(t =>
+  const today = new Date();
+  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
+  const recentTx = transactions.slice(0, 50).map(t =>
     `${t.date}: ${t.description} (${t.category}) - R$ ${t.amount} [${t.type}]`
   ).join("\n");
 
@@ -88,39 +100,16 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
     focusInstruction = "Faça uma análise geral: saúde financeira, categorias mais pesadas e um elogio ou alerta.";
   }
 
-    const prompt = `
+  const prompt = `
     Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente e amigável.
+    Você é um consultor financeiro pessoal.
     
-    O usuário enviou: "${text}"
-    
-    Contexto recente (apenas para referência):
+    Analise as seguintes transações recentes do usuário:
     ${recentTx}
 
-    Orçamentos do mês:
-    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+    Instrução Específica: ${focusInstruction}
 
-    Caixinhas/Investimentos:
-    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
-
-    Sua tarefa é classificar a intenção e responder adequadamente:
-    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
-    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
-
-    Retorne APENAS um JSON neste formato:
-    {
-      "intent": "transaction" | "chat",
-      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
-      "transactionData": { ...dados da transação (se intent=transaction) }
-    }
-
-    Para transactionData, siga as regras:
-    - amount: número positivo
-    - type: 'income' ou 'expense'
-    - category: escolha a melhor categoria
-    - date: YYYY-MM-DD (hoje se não especificado)
-    - description: título curto
-    - installments: 1 se à vista
+    Responda com um texto curto, direto e útil (máx 3 parágrafos). Use Markdown.
   `;
 
   try {
@@ -131,7 +120,7 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
     return { analysis: response.text || "Não foi possível gerar análise no momento." };
   } catch (error: any) {
     console.error("Erro ao analisar finanças:", error);
-    return { analysis: "O consultor IA está temporariamente indisponível (sobrecarga). Tente novamente em alguns segundos." };
+    return { analysis: "O consultor IA está indisponível no momento. Tente novamente." };
   }
 };
 
@@ -141,53 +130,31 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
 export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date();
-  const currentYear = today.getFullYear();
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-    const prompt = `
+  const prompt = `
     Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente e amigável.
+    Você é um assistente que extrai dados de transações financeiras a partir de texto natural.
     
-    O usuário enviou: "${text}"
+    Texto do usuário: "${text}"
     
-    Contexto recente (apenas para referência):
-    ${recentTx}
-
-    Orçamentos do mês:
-    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
-
-    Caixinhas/Investimentos:
-    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
-
-    Sua tarefa é classificar a intenção e responder adequadamente:
-    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
-    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
-
-    Retorne APENAS um JSON neste formato:
-    {
-      "intent": "transaction" | "chat",
-      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
-      "transactionData": { ...dados da transação (se intent=transaction) }
-    }
-
-    Para transactionData, siga as regras:
-    - amount: número positivo
-    - type: 'income' ou 'expense'
-    - category: escolha a melhor categoria
-    - date: YYYY-MM-DD (hoje se não especificado)
-    - description: título curto
-    - installments: 1 se à vista
+    Identifique se é uma DESPESA (expense) ou RECEITA (income).
+    Extraia: descrição, valor, categoria, data (YYYY-MM-DD), parcelas e se é uma assinatura (isSubscription).
+    Se a data não for informada, use a data de hoje.
+    
+    Retorne APENAS JSON seguindo o schema.
   `;
 
   const schema: Schema = {
     type: Type.OBJECT,
     properties: {
       description: { type: Type.STRING },
-      amount: { type: Type.NUMBER, description: "Valor da parcela mensal individual" },
+      amount: { type: Type.NUMBER, description: "Valor total ou da parcela" },
       category: { type: Type.STRING },
-      date: { type: Type.STRING, description: "YYYY-MM-DD (Data da compra ou da PRIMEIRA parcela)" },
+      date: { type: Type.STRING, description: "YYYY-MM-DD" },
       type: { type: Type.STRING, enum: ["income", "expense"] },
-      installments: { type: Type.INTEGER, description: "Quantidade total de parcelas (1 se for à vista)" }
+      installments: { type: Type.INTEGER, description: "Quantidade de parcelas (1 se à vista)" },
+      isSubscription: { type: Type.BOOLEAN, description: "True se for assinatura/serviço recorrente" }
     },
     required: ["description", "amount", "category", "type", "date"]
   };
@@ -201,17 +168,12 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
 
     const result = JSON.parse(response.text || "{}") as AIParsedTransaction;
 
-    // Defaults defensivos - CRITICAL TO AVOID undefined errors in UI
     if (!result.description) result.description = "Nova Transação";
     if (result.amount === undefined || result.amount === null) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.type) result.type = "expense";
     if (!result.date) result.date = new Date().toISOString().split('T')[0];
-
-    // Garantir fallback de parcelas
-    if (!result.installments || result.installments < 1) {
-      result.installments = 1;
-    }
+    if (!result.installments || result.installments < 1) result.installments = 1;
 
     return result;
   } catch (error) {
@@ -226,39 +188,15 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date().toISOString().split('T')[0];
-    const prompt = `
-    Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente e amigável.
+  
+  const prompt = `
+    Hoje é: ${today}.
+    Extraia dados de um lembrete financeiro (conta a pagar ou receber) do texto abaixo.
     
-    O usuário enviou: "${text}"
+    Texto: "${text}"
     
-    Contexto recente (apenas para referência):
-    ${recentTx}
-
-    Orçamentos do mês:
-    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
-
-    Caixinhas/Investimentos:
-    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
-
-    Sua tarefa é classificar a intenção e responder adequadamente:
-    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
-    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
-
-    Retorne APENAS um JSON neste formato:
-    {
-      "intent": "transaction" | "chat",
-      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
-      "transactionData": { ...dados da transação (se intent=transaction) }
-    }
-
-    Para transactionData, siga as regras:
-    - amount: número positivo
-    - type: 'income' ou 'expense'
-    - category: escolha a melhor categoria
-    - date: YYYY-MM-DD (hoje se não especificado)
-    - description: título curto
-    - installments: 1 se à vista
+    Identifique: Descrição, Valor, Data de Vencimento (YYYY-MM-DD), Categoria, Recorrência.
+    Retorne JSON.
   `;
 
   const schema: Schema = {
@@ -297,41 +235,66 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
   }
 };
 
+/**
+ * Parses natural language text into a Subscription object.
+ */
+export const parseSubscriptionFromText = async (text: string): Promise<{ name: string, amount: number, billingCycle: 'monthly' | 'yearly', category: string } | null> => {
+  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
+  
+  const prompt = `
+    Extraia dados de uma assinatura/serviço recorrente do texto: "${text}"
+    
+    Identifique:
+    - Nome do Serviço (ex: Netflix, Spotify)
+    - Valor (amount)
+    - Ciclo de Cobrança (billingCycle): 'monthly' (mensal) ou 'yearly' (anual). Se não especificado, assuma 'monthly'.
+    - Categoria (ex: Lazer, Trabalho, Educação)
+
+    Retorne JSON.
+  `;
+
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      name: { type: Type.STRING },
+      amount: { type: Type.NUMBER },
+      billingCycle: { type: Type.STRING, enum: ["monthly", "yearly"] },
+      category: { type: Type.STRING }
+    },
+    required: ["name", "amount", "billingCycle", "category"]
+  };
+
+  try {
+    const response = await generateWithRetry({
+      model: MODEL_NAME,
+      contents: prompt,
+      config: { responseMimeType: "application/json", responseSchema: schema }
+    });
+    const result = JSON.parse(response.text || "{}");
+
+    if (!result.name) result.name = "Assinatura";
+    if (!result.amount) result.amount = 0;
+    if (!result.billingCycle) result.billingCycle = 'monthly';
+    if (!result.category) result.category = 'Outros';
+
+    return result;
+  } catch (error) {
+    console.error("Erro ao interpretar assinatura:", error);
+    return null;
+  }
+};
+
 export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
-    const prompt = `
-    Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente e amigável.
-    
-    O usuário enviou: "${text}"
-    
-    Contexto recente (apenas para referência):
-    ${recentTx}
+  const todayStr = new Date().toISOString().split('T')[0];
 
-    Orçamentos do mês:
-    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
-
-    Caixinhas/Investimentos:
-    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
-
-    Sua tarefa é classificar a intenção e responder adequadamente:
-    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
-    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
-
-    Retorne APENAS um JSON neste formato:
-    {
-      "intent": "transaction" | "chat",
-      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
-      "transactionData": { ...dados da transação (se intent=transaction) }
-    }
-
-    Para transactionData, siga as regras:
-    - amount: número positivo
-    - type: 'income' ou 'expense'
-    - category: escolha a melhor categoria
-    - date: YYYY-MM-DD (hoje se não especificado)
-    - description: título curto
-    - installments: 1 se à vista
+  const prompt = `
+    Analise este documento (extrato bancário/fatura).
+    Extraia todas as transações financeiras encontradas.
+    Hoje é ${todayStr}. Se o ano não estiver explícito, assuma o ano atual ou recente.
+    Ignore saldos acumulados, foque em movimentações individuais.
+    Retorne um array JSON.
+    - isSubscription: true se for assinatura
   `;
 
   const schema: Schema = {
@@ -343,7 +306,8 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
         amount: { type: Type.NUMBER },
         category: { type: Type.STRING },
         date: { type: Type.STRING, description: "YYYY-MM-DD" },
-        type: { type: Type.STRING, enum: ["income", "expense"] }
+        type: { type: Type.STRING, enum: ["income", "expense"] },
+        isSubscription: { type: Type.BOOLEAN }
       },
       required: ["description", "amount", "category", "type", "date"]
     }
@@ -372,11 +336,11 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
     const results = JSON.parse(response.text || "[]") as AIParsedTransaction[];
     return results.map(r => ({
       ...r,
-      description: r.description || "TransaÃ§Ã£o",
+      description: r.description || "Transação",
       amount: r.amount || 0,
       category: r.category || "Outros",
       type: r.type || "expense",
-      date: r.date || new Date().toISOString().split('T')[0]
+      date: r.date || todayStr
     }));
   } catch (error) {
     console.error("Erro ao processar extrato:", error);
@@ -400,7 +364,7 @@ export const processAssistantMessage = async (
   const today = new Date();
   const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
-  const recentTx = contextTransactions.slice(0, 5).map(t =>
+  const recentTx = contextTransactions.slice(0, 15).map(t =>
     `${t.date}: ${t.description} (${t.amount})`
   ).join("\n");
 
@@ -409,41 +373,35 @@ export const processAssistantMessage = async (
     const spent = contextTransactions
       .filter(t => t.type === 'expense' && t.category === b.category && t.date.startsWith(currentMonth))
       .reduce((sum, t) => sum + t.amount, 0);
-    const pct = b.limitAmount ? Math.min((spent / b.limitAmount) * 100, 999) : 0;
-    return `${b.category}: gasto R$ ${spent.toFixed(2)} de R$ ${Number(b.limitAmount || 0).toFixed(2)} (${pct.toFixed(1)}%)`;
+    return `${b.category}: gasto R$ ${spent.toFixed(2)} de R$ ${Number(b.limitAmount || 0).toFixed(2)}`;
   }).join("\n");
 
   const investmentsSummary = contextInvestments.slice(0, 5).map(inv => {
-    const pct = inv.targetAmount ? Math.min((inv.currentAmount / inv.targetAmount) * 100, 999) : 0;
-    return `${inv.name}: R$ ${Number(inv.currentAmount || 0).toFixed(2)} de meta ${Number(inv.targetAmount || 0).toFixed(2)} (${pct.toFixed(1)}%)`;
+    return `${inv.name}: R$ ${Number(inv.currentAmount || 0).toFixed(2)}`;
   }).join("\n");
 
-    const prompt = `
+  const prompt = `
     Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente e amigável.
+    Você é um assistente financeiro pessoal inteligente.
     
     O usuário enviou: "${text}"
     
-    Contexto recente (apenas para referência):
+    Contexto recente (Resumo):
+    Transações:
     ${recentTx}
 
-    Orçamentos do mês:
-    ${budgetsSummary || 'Sem orçamentos cadastrados.'}
+    Orçamentos:
+    ${budgetsSummary || 'Nenhum.'}
 
-    Caixinhas/Investimentos:
-    ${investmentsSummary || 'Sem caixinhas cadastradas.'}
+    Investimentos:
+    ${investmentsSummary || 'Nenhum.'}
 
-    Sua tarefa é classificar a intenção e responder adequadamente:
-    1. Se for um LANÇAMENTO de gasto ou ganho (ex: "gastei 50 no almoço", "recebi 1000"), extraia os dados.
-    2. Se for uma PERGUNTA ou CONVERSA (ex: "como economizar?", "oi", "analise meus gastos"), responda com texto útil e formatado em Markdown.
+    Tarefa:
+    1. Se for um LANÇAMENTO (ex: "gastei 50"), extraia os dados.
+    2. Se for uma PERGUNTA/CONVERSA, responda de forma útil.
 
-    Retorne APENAS um JSON neste formato:
-    {
-      "intent": "transaction" | "chat",
-      "chatResponse": "Sua resposta em texto aqui (se intent=chat)",
-      "transactionData": { ...dados da transação (se intent=transaction) }
-    }
-
+    Retorne JSON.
+    
     Para transactionData, siga as regras:
     - amount: número positivo
     - type: 'income' ou 'expense'
@@ -451,6 +409,7 @@ export const processAssistantMessage = async (
     - date: YYYY-MM-DD (hoje se não especificado)
     - description: título curto
     - installments: 1 se à vista
+    - isSubscription: true se for assinatura
   `;
 
   const schema: Schema = {
@@ -466,7 +425,8 @@ export const processAssistantMessage = async (
           category: { type: Type.STRING },
           date: { type: Type.STRING },
           type: { type: Type.STRING, enum: ["income", "expense"] },
-          installments: { type: Type.INTEGER }
+          installments: { type: Type.INTEGER },
+          isSubscription: { type: Type.BOOLEAN }
         },
         nullable: true
       }
@@ -494,11 +454,9 @@ export const processAssistantMessage = async (
       return { type: 'transaction', data };
     }
 
-    return { type: 'text', content: result.chatResponse || "Posso ajudar com seus gastos, orçamentos e caixinhas." };
+    return { type: 'text', content: result.chatResponse || "Entendido." };
   } catch (error) {
     console.error("Erro ao processar mensagem do assistente:", error);
-    return { type: 'text', content: "Desculpe, estou temporariamente indisponível. Tente novamente em instantes." };
+    return { type: 'text', content: "Estou com dificuldades técnicas no momento. Tente novamente." };
   }
 };
-
-

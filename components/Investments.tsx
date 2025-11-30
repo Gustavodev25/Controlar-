@@ -4,8 +4,9 @@ import { PiggyBank, ArrowUpCircle, X } from 'lucide-react';
 import { Plus, Edit2, Trash2, Check, Target, Calendar, DollarSign, Coins, TrendingUp, Sparkles, TrendingDown, ChevronLeft, ChevronRight } from './Icons';
 import { useToasts } from './Toast';
 import { ConfirmationCard } from './UIComponents';
-import { Transaction } from '../types';
+import { Transaction, ConnectedAccount } from '../types';
 import { EmptyState } from './EmptyState';
+import NumberFlow from '@number-flow/react';
 
 export interface Investment {
   id: string;
@@ -17,10 +18,13 @@ export interface Investment {
   currentAmount: number;
   createdAt: string;
   deadline?: string;
+  isConnected?: boolean;
+  institution?: string;
 }
 
 interface InvestmentsProps {
   investments: Investment[];
+  connectedSavingsAccounts?: ConnectedAccount[];
   onAdd: (investment: Omit<Investment, 'id'>) => void;
   onUpdate: (investment: Investment) => void;
   onDelete: (id: string) => void;
@@ -55,6 +59,7 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 
 export const Investments: React.FC<InvestmentsProps> = ({
   investments,
+  connectedSavingsAccounts = [],
   onAdd,
   onUpdate,
   onDelete,
@@ -71,6 +76,21 @@ export const Investments: React.FC<InvestmentsProps> = ({
   // Paginação
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 3;
+
+  // Merge connected accounts
+  const connectedInvestments: Investment[] = connectedSavingsAccounts.map(acc => ({
+    id: acc.id,
+    name: acc.name,
+    icon: 'reserva.png', // Default icon
+    color: 'green',
+    targetAmount: 0, // Connected accounts don't have explicit targets here usually
+    currentAmount: acc.balance || 0,
+    createdAt: acc.lastUpdated || new Date().toISOString(),
+    isConnected: true,
+    institution: acc.institution
+  }));
+
+  const allInvestments = [...connectedInvestments, ...investments];
 
   // Deposit modal
   const [depositModalOpen, setDepositModalOpen] = useState(false);
@@ -92,7 +112,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
   // Reset para página 1 quando as caixinhas mudarem
   useEffect(() => {
     setCurrentPage(1);
-  }, [investments.length]);
+  }, [allInvestments.length]);
 
   // Animation Control (Igual ao Reminders)
   useEffect(() => {
@@ -117,6 +137,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
   const isLimitReached = userPlan === 'starter' && investments.length >= 2;
 
   const handleOpenModal = (investment?: Investment) => {
+    if (investment?.isConnected) return; // Cannot edit connected accounts
+
     if (!investment && isLimitReached) {
         if (toast && toast.error) {
             toast.error("Plano Starter limitado a 2 caixinhas. Faça upgrade para criar mais.");
@@ -199,6 +221,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
   };
 
   const handleOpenDeposit = (investment: Investment) => {
+    if (investment.isConnected) return; // Disable manual deposit for connected accounts
     setDepositInvestment(investment);
     setDepositAmount('');
     setDepositModalOpen(true);
@@ -225,7 +248,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
       category: `Caixinha - ${depositInvestment.name}`,
       type: 'expense',
       status: 'completed',
-      memberId: depositInvestment.memberId
+      memberId: depositInvestment.memberId,
+      isInvestment: true
     });
 
     toast.success(`R$ ${amount.toFixed(2)} depositado!`);
@@ -260,7 +284,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
       category: `Caixinha - ${depositInvestment.name}`,
       type: 'income',
       status: 'completed',
-      memberId: depositInvestment.memberId
+      memberId: depositInvestment.memberId,
+      isInvestment: true
     });
 
     toast.success(`R$ ${amount.toFixed(2)} retirado!`);
@@ -279,8 +304,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
     return 'bg-red-500'; // Ou verde escuro, dependendo da lógica visual
   };
 
-  const totalSaved = investments.reduce((sum, inv) => sum + inv.currentAmount, 0);
-  const totalTarget = investments.reduce((sum, inv) => sum + inv.targetAmount, 0);
+  const totalSaved = allInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
+  const totalTarget = allInvestments.reduce((sum, inv) => sum + inv.targetAmount, 0);
   
   // Variáveis para o modal de depósito
   const depositProgress = depositInvestment && depositInvestment.targetAmount > 0
@@ -328,7 +353,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
            </div>
            <div className="relative z-10">
               <p className="text-3xl font-bold text-white tracking-tight">
-                {formatCurrency(totalSaved)}
+                <NumberFlow value={totalSaved} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
               </p>
               <p className="text-xs text-gray-500 mt-1">Saldo acumulado em todas as metas</p>
            </div>
@@ -348,7 +373,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
            </div>
            <div className="relative z-10">
               <p className="text-3xl font-bold text-white tracking-tight">
-                {formatCurrency(totalTarget)}
+                <NumberFlow value={totalTarget} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
               </p>
               <p className="text-xs text-gray-500 mt-1">Objetivo financeiro global</p>
            </div>
@@ -357,7 +382,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
 
       {/* Lista de Caixinhas */}
       <div className="flex-1">
-        {investments.length === 0 ? (
+        {allInvestments.length === 0 ? (
           <EmptyState
             title="Nenhuma caixinha criada"
             description="Crie caixinhas para organizar e acompanhar seus objetivos financeiros de forma visual e prática."
@@ -366,17 +391,17 @@ export const Investments: React.FC<InvestmentsProps> = ({
           <>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
               {(() => {
-                const totalPages = Math.ceil(investments.length / itemsPerPage);
+                const totalPages = Math.ceil(allInvestments.length / itemsPerPage);
                 const startIndex = (currentPage - 1) * itemsPerPage;
                 const endIndex = startIndex + itemsPerPage;
-                const paginatedInvestments = investments.slice(startIndex, endIndex);
+                const paginatedInvestments = allInvestments.slice(startIndex, endIndex);
 
                 return paginatedInvestments.map((investment) => {
               const progress = investment.targetAmount > 0
                 ? (investment.currentAmount / investment.targetAmount) * 100
                 : 0;
               const colorClass = getColorClass(investment.color);
-              const isComplete = progress >= 100;
+              const isComplete = progress >= 100 && investment.targetAmount > 0;
               const remainingAmount = Math.max(investment.targetAmount - investment.currentAmount, 0);
 
               return (
@@ -387,13 +412,21 @@ export const Investments: React.FC<InvestmentsProps> = ({
                   {/* Luz de fundo decorativa suave */}
                   <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${colorClass.bgClass.replace('/20', '')}`}></div>
 
-                  {/* Complete badge */}
-                  {isComplete && (
-                    <div className="absolute -top-0 -right-0 bg-emerald-500/10 border-l border-b border-emerald-500/20 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide">
-                      <Sparkles size={10} />
-                      Completo
-                    </div>
-                  )}
+                  {/* Connected/Complete badge */}
+                  <div className="absolute -top-0 -right-0 flex flex-col items-end">
+                      {investment.isConnected && (
+                        <div className="bg-blue-500/10 border-l border-b border-blue-500/20 text-blue-400 text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide mb-1">
+                          <Sparkles size={10} />
+                          Conectado
+                        </div>
+                      )}
+                      {isComplete && !investment.isConnected && (
+                        <div className="bg-emerald-500/10 border-l border-b border-emerald-500/20 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide">
+                          <Sparkles size={10} />
+                          Completo
+                        </div>
+                      )}
+                  </div>
 
                   <div className="flex justify-between items-start mb-5 relative z-10">
                     <div className="flex items-center gap-4">
@@ -409,33 +442,41 @@ export const Investments: React.FC<InvestmentsProps> = ({
                         )}
                       </div>
                       <div>
-                        <h3 className="font-bold text-gray-100 text-lg leading-tight">{investment.name}</h3>
-                        {investment.deadline && (
-                          <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono">
-                            <Calendar size={12} />
-                            {new Date(investment.deadline).toLocaleDateString('pt-BR')}
-                          </p>
+                        <h3 className="font-bold text-gray-100 text-lg leading-tight truncate max-w-[150px]">{investment.name}</h3>
+                        {investment.isConnected ? (
+                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono">
+                                {investment.institution}
+                             </p>
+                        ) : (
+                            investment.deadline && (
+                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono">
+                                <Calendar size={12} />
+                                {new Date(investment.deadline).toLocaleDateString('pt-BR')}
+                            </p>
+                            )
                         )}
                       </div>
                     </div>
                     
                     {/* Actions (Style from Reminders) */}
-                    <div className="flex gap-1">
-                      <button
-                        onClick={() => handleOpenModal(investment)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
-                        title="Editar"
-                      >
-                        <Edit2 size={14} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(investment.id)}
-                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
-                        title="Excluir"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
+                    {!investment.isConnected && (
+                        <div className="flex gap-1">
+                        <button
+                            onClick={() => handleOpenModal(investment)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
+                            title="Editar"
+                        >
+                            <Edit2 size={14} />
+                        </button>
+                        <button
+                            onClick={() => setDeleteId(investment.id)}
+                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
+                            title="Excluir"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                        </div>
+                    )}
                   </div>
 
                   <div className="space-y-4 relative z-10">
@@ -443,39 +484,55 @@ export const Investments: React.FC<InvestmentsProps> = ({
                       <div>
                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Guardado</p>
                         <p className={`text-xl font-mono font-bold ${isComplete ? 'text-emerald-400' : 'text-white'}`}>
-                            {formatCurrency(investment.currentAmount)}
+                            <NumberFlow value={investment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
                         </p>
                       </div>
-                      <div className="text-right">
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Meta</p>
-                        <p className="text-sm font-mono text-gray-400">{formatCurrency(investment.targetAmount)}</p>
-                      </div>
-                    </div>
-
-                    <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800/50">
-                      <div
-                        className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-[#d97757]'}`}
-                        style={{ width: `${Math.min(progress, 100)}%` }}
-                      ></div>
-                    </div>
-
-                    <div className="flex justify-between items-center text-xs">
-                      <span className={`${isComplete ? 'text-emerald-400 font-bold' : 'text-gray-500'}`}>
-                        {Math.min(progress, 100).toFixed(0)}% alcançado
-                      </span>
-                      {!isComplete && (
-                        <span className="font-mono text-gray-400">
-                          Falta {formatCurrency(remainingAmount)}
-                        </span>
+                      {!investment.isConnected && (
+                        <div className="text-right">
+                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Meta</p>
+                            <p className="text-sm font-mono text-gray-400">
+                                <NumberFlow value={investment.targetAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                            </p>
+                        </div>
                       )}
                     </div>
 
+                    {!investment.isConnected && (
+                        <>
+                            <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800/50">
+                            <div
+                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-[#d97757]'}`}
+                                style={{ width: `${Math.min(progress, 100)}%` }}
+                            ></div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-xs">
+                            <span className={`${isComplete ? 'text-emerald-400 font-bold' : 'text-gray-500'}`}>
+                                <NumberFlow value={Math.min(progress, 100)} format={{ maximumFractionDigits: 0 }} />% alcançado
+                            </span>
+                            {!isComplete && (
+                                <span className="font-mono text-gray-400">
+                                Falta <NumberFlow value={remainingAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                                </span>
+                            )}
+                            </div>
+                        </>
+                    )}
+
                     <button
                       onClick={() => handleOpenDeposit(investment)}
-                      className="w-full py-3 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-800 hover:border-gray-700 flex items-center justify-center gap-2 group/btn"
+                      disabled={investment.isConnected}
+                      className={`w-full py-3 rounded-xl font-medium transition-all border flex items-center justify-center gap-2 group/btn
+                        ${investment.isConnected 
+                             ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-default' 
+                             : 'bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white border-gray-800 hover:border-gray-700'
+                        }
+                      `}
                     >
-                      <ArrowUpCircle size={16} className="text-[#d97757] group-hover/btn:text-white transition-colors" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Depositar / Retirar</span>
+                      <ArrowUpCircle size={16} className={investment.isConnected ? 'text-gray-600' : 'text-[#d97757] group-hover/btn:text-white transition-colors'} />
+                      <span className="text-xs font-bold uppercase tracking-wider">
+                          {investment.isConnected ? 'Saldo Sincronizado' : 'Depositar / Retirar'}
+                      </span>
                     </button>
                   </div>
                 </div>
@@ -486,7 +543,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
 
             {/* Controles de Paginação */}
             {(() => {
-              const totalPages = Math.ceil(investments.length / itemsPerPage);
+              const totalPages = Math.ceil(allInvestments.length / itemsPerPage);
 
               if (totalPages <= 1) return null;
 
@@ -527,6 +584,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
       </div>
 
       {/* Create/Edit Modal - VISUAL IGUAL REMINDERS */}
+
       {isVisible && isModalOpen && createPortal(
         <div className={`
             fixed inset-0 z-[9999] flex items-center justify-center p-4 
@@ -591,7 +649,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
                                 {template.name}
                               </p>
                               <p className="text-xs font-mono text-gray-500 mt-1">
-                                Meta: {formatCurrency(template.suggestedAmount)}
+                                Meta: <NumberFlow value={template.suggestedAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
                               </p>
                             </div>
                           </div>
@@ -743,11 +801,15 @@ export const Investments: React.FC<InvestmentsProps> = ({
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 shadow-sm">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Saldo Atual</p>
-                  <p className="text-lg font-mono font-bold text-white">{formatCurrency(depositInvestment.currentAmount)}</p>
+                  <p className="text-lg font-mono font-bold text-white">
+                    <NumberFlow value={depositInvestment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                  </p>
                 </div>
                 <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 shadow-sm">
                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Meta</p>
-                  <p className="text-lg font-mono font-bold text-gray-400">{formatCurrency(depositInvestment.targetAmount)}</p>
+                  <p className="text-lg font-mono font-bold text-gray-400">
+                    <NumberFlow value={depositInvestment.targetAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                  </p>
                 </div>
               </div>
 
@@ -755,7 +817,9 @@ export const Investments: React.FC<InvestmentsProps> = ({
               <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs text-gray-400 font-medium">Progresso</span>
-                    <span className="text-xs text-white font-bold">{Math.min(depositProgress, 100).toFixed(0)}%</span>
+                    <span className="text-xs text-white font-bold">
+                        <NumberFlow value={Math.min(depositProgress, 100)} format={{ maximumFractionDigits: 0 }} />%
+                    </span>
                   </div>
                   <div className="h-2 bg-gray-950 rounded-full overflow-hidden border border-gray-800/50">
                     <div

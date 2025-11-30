@@ -48,10 +48,16 @@ import { Logo } from './components/Logo';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
-import { fetchPluggyAccounts, syncPluggyData } from './services/pluggyService';
+import { fetchPluggyAccounts, syncPluggyData, fetchPluggyTransactionsForImport, markTransactionsAsImported } from './services/pluggyService';
 import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
+import { ImportReviewModal } from './components/ImportReviewModal';
+
+import { Subscriptions } from './components/Subscriptions';
+import * as subscriptionService from './services/subscriptionService';
+import { Subscription } from './types';
+import { detectSubscriptionService } from './utils/subscriptionDetector';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -154,7 +160,7 @@ const App: React.FC = () => {
   });
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription' | 'subscriptions'>('dashboard');
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -174,11 +180,18 @@ const App: React.FC = () => {
   const [members, setMembers] = useState<Member[]>([]);
   const [familyGoals, setFamilyGoals] = useState<FamilyGoal[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [pluggyAccounts, setPluggyAccounts] = useState<ConnectedAccount[]>([]);
   const [pluggyItemIds, setPluggyItemIds] = useState<string[]>([]);
   const [loadingPluggyAccounts, setLoadingPluggyAccounts] = useState(false);
   const [pluggyLastSync, setPluggyLastSync] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  
+  // Import Review State
+  const [isImportReviewOpen, setIsImportReviewOpen] = useState(false);
+  const [importReviewTransactions, setImportReviewTransactions] = useState<Omit<Transaction, 'id'>[]>([]);
+  const [importReviewAccountName, setImportReviewAccountName] = useState('');
+  const [importReviewItemId, setImportReviewItemId] = useState('');
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -188,6 +201,32 @@ const App: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
+  const [showProjections, setShowProjections] = useState(false);
+  
+  // Stats Toggles
+  const [includeCheckingInStats, setIncludeCheckingInStats] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_include_checking');
+      return saved !== null ? JSON.parse(saved) : true;
+    }
+    return true;
+  });
+
+  const [includeCreditCardInStats, setIncludeCreditCardInStats] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_include_credit');
+      return saved !== null ? JSON.parse(saved) : true;
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('finances_include_checking', JSON.stringify(includeCheckingInStats));
+  }, [includeCheckingInStats]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_include_credit', JSON.stringify(includeCreditCardInStats));
+  }, [includeCreditCardInStats]);
 
   // Member Management State
   const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
@@ -258,29 +297,99 @@ const App: React.FC = () => {
       return 0;
     }
     try {
-      const count = await syncPluggyData(userId, account.itemId, syncMemberId);
-      if (count === 0) {
-        toast.message({ text: "Nenhuma transacao nova. Ja estava sincronizado." });
-      } else {
-        toast.success(`${count} lancamentos salvos a partir de ${account.name}.`);
+      // 1. Fetch candidates instead of auto-saving
+      const candidates = await fetchPluggyTransactionsForImport(userId, account.itemId, account.id);
+
+      // Filter out transactions that already exist
+      const newCandidates = [];
+      for (const tx of candidates) {
+          const exists = await dbService.transactionExists(userId, tx);
+          if (!exists) {
+              newCandidates.push(tx);
+          }
       }
-      setPluggyLastSync(prev => ({ ...prev, [account.id]: new Date().toISOString() }));
-      // Registrar notificacao para revisao (persistente)
-      await dbService.addNotification(userId, {
-        type: 'update',
-        title: 'Revisar lançamentos importados',
-        message: count === 0
-          ? `Nenhum lançamento novo de ${account.name}, já sincronizado.`
-          : `${count} lançamentos importados de ${account.name}. Revise e confirme.`,
-        date: new Date().toISOString().split('T')[0],
-        read: false,
-        archived: false
-      });
-      return count;
+
+      if (newCandidates.length === 0) {
+        toast.message({ text: "Nenhuma transação nova para importar." });
+        setPluggyLastSync(prev => ({ ...prev, [account.id]: new Date().toISOString() }));
+        return 0;
+      }
+
+      // 2. Open Modal
+      setImportReviewTransactions(newCandidates);
+      setImportReviewAccountName(account.name);
+      setImportReviewItemId(account.itemId);
+      setIsImportReviewOpen(true);
+      
+      return newCandidates.length; // Return count found (not necessarily saved yet)
     } catch (err) {
-      console.error("Erro ao importar conta Pluggy:", err);
-      toast.error("Nao foi possivel salvar os lancamentos dessa conta.");
+      console.error("Erro ao buscar transacoes Pluggy:", err);
+      toast.error("Nao foi possivel buscar os lancamentos.");
       return 0;
+    }
+  };
+
+  const handleConfirmImport = async (selectedTransactions: Omit<Transaction, 'id'>[]) => {
+    if (!userId || !importReviewItemId) return;
+    setIsImportReviewOpen(false);
+
+    try {
+       let count = 0;
+       for (const tx of selectedTransactions) {
+          // Add memberId context
+          const txWithMember = { ...tx, memberId: syncMemberId };
+          
+          // Ensure deterministic ID for consistency and sanitize
+          const safePluggyId = tx.pluggyId ? tx.pluggyId.replace(/\//g, '_') : undefined;
+          const firestoreId = safePluggyId ? `pluggy_${safePluggyId}` : undefined;
+          
+          // Save
+          await dbService.addTransaction(userId, txWithMember, firestoreId);
+          count++;
+
+          // Check/Add Subscription Logic (Moved from old handleImport)
+          if (tx.type === 'expense') {
+              if (tx.isSubscription) {
+                 const exists = await subscriptionService.checkSubscriptionExists(userId, tx.description);
+                 if (!exists) {
+                     await subscriptionService.addSubscription(userId, {
+                         userId,
+                         name: tx.description,
+                         amount: tx.amount,
+                         category: tx.category,
+                         billingCycle: 'monthly',
+                         status: 'active'
+                     });
+                 }
+              } else {
+                 const detection = detectSubscriptionService(tx.description);
+                 if (detection.isSubscription) {
+                     const exists = await subscriptionService.checkSubscriptionExists(userId, detection.name || tx.description);
+                     if (!exists) {
+                         await subscriptionService.addSubscription(userId, {
+                             userId,
+                             name: detection.name || tx.description,
+                             amount: tx.amount,
+                             category: detection.category || tx.category,
+                             billingCycle: 'monthly',
+                             status: 'active'
+                         });
+                     }
+                 }
+              }
+          }
+       }
+
+       // Mark as imported in local cache to prevent re-appearing
+       markTransactionsAsImported(userId, importReviewItemId, selectedTransactions);
+
+       toast.success(`${count} lançamentos importados com sucesso!`);
+       
+       // Update last sync visual
+       // (Find account ID if possible or just refresh state)
+    } catch (e) {
+       console.error("Erro ao salvar importacao:", e);
+       toast.error("Erro ao salvar transações selecionadas.");
     }
   };
 
@@ -522,6 +631,10 @@ const App: React.FC = () => {
       setBudgets(data);
     });
 
+    const unsubSubs = subscriptionService.listenToSubscriptions(userId, (data) => {
+      setSubscriptions(data);
+    });
+
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
       setCurrentUser(prev => prev ? { ...prev, ...data } : null);
     });
@@ -558,6 +671,7 @@ const App: React.FC = () => {
       unsubMembers();
       unsubGoals();
       unsubBudgets();
+      unsubSubs();
     };
   }, [userId, currentUser?.name]);
 
@@ -584,6 +698,7 @@ const App: React.FC = () => {
         twoFactorSecret: pendingTwoFactor.profile.twoFactorSecret
       });
       setPendingTwoFactor(null);
+      toast.success("Identidade confirmada. Bem-vindo de volta!");
     } catch (err) {
       console.error("Erro ao validar 2FA:", err);
       toast.error("Erro ao validar o código. Tente novamente.");
@@ -594,9 +709,9 @@ const App: React.FC = () => {
 
   const handleCancelTwoFactor = async () => {
     setPendingTwoFactor(null);
-    if (auth) {
-      await auth.signOut();
-    }
+    if (auth) await auth.signOut();
+    setUserId(null);
+    setCurrentUser(null);
     setShowLanding(true);
   };
 
@@ -616,6 +731,35 @@ const App: React.FC = () => {
   const totalMemberInvestments = useMemo(() => {
     return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
   }, [memberInvestments]);
+
+  // NEW: Calculate Account Balances
+  const accountBalances = useMemo(() => {
+    const checking = pluggyAccounts
+        .filter(a => a.type === 'BANK' || a.subtype === 'CHECKING_ACCOUNT')
+        .reduce((sum, a) => sum + (a.balance || 0), 0);
+    
+    const credit = pluggyAccounts
+        .filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD')
+        .reduce((acc, a) => ({
+            used: acc.used + (a.balance || 0),
+            available: acc.available + (a.availableCreditLimit || 0),
+            limit: acc.limit + (a.creditLimit || 0)
+        }), { used: 0, available: 0, limit: 0 });
+        
+    return { checking, credit };
+  }, [pluggyAccounts]);
+
+  // NEW: Filter Savings Accounts
+  const connectedSavingsAccounts = useMemo(() => {
+    return pluggyAccounts.filter(a => a.subtype === 'SAVINGS_ACCOUNT');
+  }, [pluggyAccounts]);
+
+  // NEW: Account Map for Lookups
+  const accountMap = useMemo(() => {
+      const map = new Map<string, ConnectedAccount>();
+      pluggyAccounts.forEach(a => map.set(a.id, a));
+      return map;
+  }, [pluggyAccounts]);
 
   // Extract available categories from the filtered transactions
   const availableCategories = useMemo(() => {
@@ -669,8 +813,28 @@ const App: React.FC = () => {
 
   // Apenas considera lancamentos que o usuario manteve (nao ignorados), incluindo pendentes para previsibilidade
   const reviewedDashboardTransactions = useMemo(() => {
-    return dashboardFilteredTransactions.filter(t => !t.ignored);
-  }, [dashboardFilteredTransactions]);
+    return dashboardFilteredTransactions.filter(t => {
+      if (t.ignored) return false;
+
+      // Account Type Filtering
+      let type = t.accountType;
+      if (!type && t.accountId) {
+         const acc = accountMap.get(t.accountId);
+         type = acc?.subtype || acc?.type;
+      }
+
+      const typeUpper = (type || "").toUpperCase();
+
+      // Normalize types for check
+      const isChecking = typeUpper === 'CHECKING_ACCOUNT' || typeUpper === 'BANK';
+      const isCredit = typeUpper === 'CREDIT_CARD' || typeUpper === 'CREDIT';
+
+      if (isChecking && !includeCheckingInStats) return false;
+      if (isCredit && !includeCreditCardInStats) return false;
+
+      return true;
+    });
+  }, [dashboardFilteredTransactions, includeCheckingInStats, includeCreditCardInStats, accountMap]);
 
   const reviewedMemberTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
@@ -725,17 +889,79 @@ const App: React.FC = () => {
 
   // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
-    const incomes = reviewedDashboardTransactions.filter(t => t.type === 'income');
-    const expenses = reviewedDashboardTransactions.filter(t => t.type === 'expense');
-    const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
-    const totalExpense = expenses.reduce((acc, t) => acc + t.amount, 0);
+    const incomes = reviewedDashboardTransactions.filter(t => 
+        t.type === 'income' && 
+        !t.isInvestment && 
+        !t.category.startsWith('Caixinha') // Fallback for older txs
+    );
+    const expenses = reviewedDashboardTransactions.filter(t => 
+        t.type === 'expense' && 
+        !t.isInvestment && 
+        !t.category.startsWith('Caixinha') // Fallback for older txs
+    );
+    
+    let totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
+    let totalExpense = expenses.reduce((acc, t) => acc + t.amount, 0);
+    
+    // Calculate pure flow for "Resultado do Período" (Monthly Savings)
+    const periodIncome = totalIncome;
+    const periodExpense = totalExpense;
+    
+    // Apply Toggles for "Saldo Total", "Receitas", "Despesas"
+    if (includeCheckingInStats) {
+       totalIncome += accountBalances.checking;
+    }
+    
+    if (includeCreditCardInStats) {
+       totalExpense += accountBalances.credit.used;
+    }
+
+    // Add Projections (Reminders + Subscriptions) if enabled
+    if (showProjections && filterMode === 'month') {
+      // 1. Reminders
+      const projectedReminders = filteredReminders.filter(r => {
+        if (!r.dueDate.startsWith(dashboardDate)) return false;
+        if (dashboardCategory && r.category !== dashboardCategory) return false;
+        return true;
+      });
+
+      projectedReminders.forEach(r => {
+        if (r.type === 'income') {
+          totalIncome += r.amount;
+        } else {
+          totalExpense += r.amount;
+        }
+      });
+
+      // 2. Subscriptions (Active & Monthly)
+      const activeSubscriptions = subscriptions.filter(s => 
+          s.status === 'active' && 
+          s.billingCycle === 'monthly' && // Only include monthly for monthly view
+          (!dashboardCategory || s.category === dashboardCategory)
+      );
+
+      activeSubscriptions.forEach(s => {
+         // Avoid double counting if a transaction for this subscription already exists this month
+         // We check if there is an expense with same amount and similar name in current month
+         const alreadyPaid = reviewedDashboardTransactions.some(t => 
+             t.type === 'expense' && 
+             t.amount === s.amount && 
+             t.description.toLowerCase().includes(s.name.toLowerCase())
+         );
+
+         if (!alreadyPaid) {
+             totalExpense += s.amount;
+         }
+      });
+    }
+
     return {
       totalIncome,
       totalExpense,
       totalBalance: totalIncome - totalExpense,
-      monthlySavings: totalIncome > 0 ? (totalIncome - totalExpense) : 0
+      monthlySavings: periodIncome > 0 ? (periodIncome - periodExpense) : (periodIncome - periodExpense)
     };
-  }, [reviewedDashboardTransactions]);
+  }, [reviewedDashboardTransactions, showProjections, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, accountBalances, dashboardCategory]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -823,6 +1049,44 @@ const App: React.FC = () => {
 
     try {
       await dbService.addTransaction(userId, { ...data, memberId: finalMemberId });
+      
+      // Auto-detect subscription
+      if (data.type === 'expense') {
+          // 1. Check explicit flag from AI
+          if (data.isSubscription) {
+             const exists = await subscriptionService.checkSubscriptionExists(userId, data.description);
+             if (!exists) {
+                 await subscriptionService.addSubscription(userId, {
+                     userId,
+                     name: data.description,
+                     amount: data.amount,
+                     category: data.category,
+                     billingCycle: 'monthly',
+                     status: 'active'
+                 });
+                 toast.success(`Assinatura "${data.description}" detectada e criada!`);
+             }
+          } 
+          // 2. Check by keyword/regex
+          else {
+             const detection = detectSubscriptionService(data.description);
+             if (detection.isSubscription) {
+                 const exists = await subscriptionService.checkSubscriptionExists(userId, detection.name || data.description);
+                 if (!exists) {
+                     await subscriptionService.addSubscription(userId, {
+                         userId,
+                         name: detection.name || data.description,
+                         amount: data.amount,
+                         category: detection.category || data.category,
+                         billingCycle: 'monthly',
+                         status: 'active'
+                     });
+                     toast.success(`Assinatura "${detection.name}" identificada!`);
+                 }
+             }
+          }
+      }
+
       toast.success("Transação Adicionada!");
     } catch (e) {
       toast.error("Erro ao salvar.");
@@ -896,6 +1160,16 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUpdateReminder = async (reminder: Reminder) => {
+    if (!userId) return;
+    try {
+      await dbService.updateReminder(userId, reminder);
+      toast.success("Lembrete atualizado.");
+    } catch (e) {
+      toast.error("Erro ao atualizar lembrete.");
+    }
+  };
+
   const handleDeleteReminder = async (id: string) => {
     if (!userId) return;
     await dbService.deleteReminder(userId, id);
@@ -966,6 +1240,24 @@ const App: React.FC = () => {
     toast.success("Investimento removido!");
   };
 
+  const handleAddSubscription = async (sub: Omit<Subscription, 'id'>) => {
+    if (!userId) return;
+    await subscriptionService.addSubscription(userId, { ...sub, userId });
+    toast.success("Assinatura adicionada!");
+  };
+
+  const handleUpdateSubscription = async (sub: Subscription) => {
+    if (!userId) return;
+    await subscriptionService.updateSubscription(userId, sub);
+    toast.success("Assinatura atualizada!");
+  };
+
+  const handleDeleteSubscription = async (id: string) => {
+    if (!userId) return;
+    await subscriptionService.deleteSubscription(userId, id);
+    toast.success("Assinatura removida!");
+  };
+
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW'
       ? 'Família'
@@ -983,6 +1275,7 @@ const App: React.FC = () => {
       case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
       case 'budgets': return { title: 'Orçamentos', desc: 'Planejamento e controle de gastos.' };
+      case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
       case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
       default: return { title: 'Controlar+', desc: '' };
     }
@@ -1018,24 +1311,9 @@ const App: React.FC = () => {
     </div>
   }
 
-  if (pendingTwoFactor) {
-    return (
-      <div className="min-h-screen bg-gray-950 text-[#faf9f5]">
-        <ToastContainer />
-        <TwoFactorPrompt
-          isOpen={true}
-          email={pendingTwoFactor.email}
-          onConfirm={handleVerifyTwoFactor}
-          onCancel={handleCancelTwoFactor}
-          isVerifying={isVerifyingTwoFactor}
-        />
-      </div>
-    );
-  }
-
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
-    if (showLanding) {
+    if (showLanding && !pendingTwoFactor) {
       return (
         <>
           <ToastContainer />
@@ -1046,7 +1324,13 @@ const App: React.FC = () => {
     return (
       <>
         <ToastContainer />
-        <AuthModal onLogin={() => { }} onBack={() => setShowLanding(true)} />
+        <AuthModal 
+            onLogin={() => { }} 
+            onBack={pendingTwoFactor ? undefined : () => setShowLanding(true)}
+            isTwoFactorPending={!!pendingTwoFactor}
+            onVerifyTwoFactor={handleVerifyTwoFactor}
+            onCancelTwoFactor={handleCancelTwoFactor}
+        />
       </>
     );
   }
@@ -1137,6 +1421,13 @@ const App: React.FC = () => {
                   label="Lembretes"
                   isOpen={isSidebarOpen}
                   badge={overdueRemindersCount}
+                />
+                <NavItem
+                  active={activeTab === 'subscriptions'}
+                  onClick={() => { setActiveTab('subscriptions'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<RotateCcw size={20} />}
+                  label="Assinaturas"
+                  isOpen={isSidebarOpen}
                 />
                 <NavItem
                   active={activeTab === 'budgets'}
@@ -1238,7 +1529,6 @@ const App: React.FC = () => {
 
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
         <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
-          <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
             {/* Mobile Menu Button */}
             <button
               onClick={() => setSidebarOpen(!isSidebarOpen)}
@@ -1247,6 +1537,7 @@ const App: React.FC = () => {
               <Menu size={20} />
             </button>
 
+          <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
             <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
               <div className="flex items-center gap-2">
                 <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
@@ -1268,7 +1559,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-4">
             {/* Dashboard Advanced Filters */}
             {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-              <div className="flex items-center gap-1 lg:gap-2 flex-wrap">
+              <div className="hidden lg:flex items-center gap-2 flex-wrap">
                 {/* Filter Mode Selector */}
                 <div className="w-28 lg:w-36 hidden sm:block">
                   <CustomSelect
@@ -1294,6 +1585,24 @@ const App: React.FC = () => {
                       onChange={setDashboardDate}
                     />
                   </div>
+                )}
+
+                {/* Forecast Toggle */}
+                {filterMode === 'month' && (
+                  <button
+                    onClick={() => setShowProjections(!showProjections)}
+                    className={`
+                      h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap
+                      ${showProjections 
+                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border border-[#d97757]' 
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
+                      }
+                    `}
+                    title="Simular saldo com lembretes e assinaturas do mês"
+                  >
+                    <Calendar size={16} className={showProjections ? "animate-pulse" : ""} />
+                    Previsão
+                  </button>
                 )}
 
                 {filterMode === 'year' && (
@@ -1345,6 +1654,80 @@ const App: React.FC = () => {
           </div>
         </header>
 
+        {/* Mobile Dashboard Filters */}
+        {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
+          <div className="lg:hidden bg-gray-950/50 backdrop-blur-sm border-b border-gray-800 px-3 py-3 flex items-center gap-3 overflow-x-auto no-scrollbar snap-x">
+            {/* Filter Mode */}
+            <div className="shrink-0 w-32 snap-start">
+              <CustomSelect
+                value={filterMode}
+                onChange={(v) => setFilterMode(v as any)}
+                options={[
+                  { value: 'month', label: 'Mensal' },
+                  { value: 'year', label: 'Anual' },
+                  { value: 'last3', label: '3 Meses' },
+                  { value: 'last6', label: '6 Meses' },
+                  { value: 'all', label: 'Tudo' }
+                ]}
+                icon={<Filter size={14} />}
+                className="text-xs h-10"
+              />
+            </div>
+
+            {/* Dynamic Date Picker */}
+            {filterMode === 'month' && (
+              <div className="shrink-0 w-40 snap-start">
+                <CustomMonthPicker
+                  value={dashboardDate}
+                  onChange={setDashboardDate}
+                />
+              </div>
+            )}
+
+            {filterMode === 'year' && (
+              <div className="shrink-0 w-24 snap-start">
+                 <CustomSelect
+                    value={dashboardYear}
+                    onChange={(v) => setDashboardYear(Number(v))}
+                    options={Array.from({ length: 5 }, (_, i) => {
+                      const y = new Date().getFullYear() - i;
+                      return { value: y, label: String(y) };
+                    })}
+                    icon={<Calendar size={14} />}
+                    className="text-xs h-10"
+                 />
+              </div>
+            )}
+
+            {/* Forecast Toggle */}
+            {filterMode === 'month' && (
+               <button
+                  onClick={() => setShowProjections(!showProjections)}
+                  className={`
+                    h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap shrink-0 snap-start
+                    ${showProjections 
+                      ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border border-[#d97757]' 
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
+                    }
+                  `}
+               >
+                  <Calendar size={14} className={showProjections ? "animate-pulse" : ""} />
+                  Previsão
+               </button>
+            )}
+
+            {/* Clear Filters */}
+            {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
+                <button
+                  onClick={handleResetFilters}
+                  className="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0 snap-start"
+                >
+                  <RotateCcw size={14} />
+                </button>
+            )}
+          </div>
+        )}
+
         <div className="p-3 lg:p-6 max-w-7xl mx-auto">
 
           {/* Subscription Page - High Priority Render */}
@@ -1384,7 +1767,17 @@ const App: React.FC = () => {
                         onAddExtra={handleAddExtraIncome}
                       />
                     )}
-                    <StatsCards stats={stats} isLoading={isLoadingData} />
+                    <StatsCards 
+                      stats={stats} 
+                      isLoading={isLoadingData} 
+                      accountBalances={accountBalances}
+                      toggles={{
+                        includeChecking: includeCheckingInStats,
+                        setIncludeChecking: setIncludeCheckingInStats,
+                        includeCredit: includeCreditCardInStats,
+                        setIncludeCredit: setIncludeCreditCardInStats
+                      }}
+                    />
                     <div className="animate-fade-in space-y-6">
                       <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
                       {filterMode === 'month' && (
@@ -1415,6 +1808,17 @@ const App: React.FC = () => {
                     onAddReminder={handleAddReminder}
                     onDeleteReminder={handleDeleteReminder}
                     onPayReminder={handlePayReminder}
+                    onUpdateReminder={handleUpdateReminder}
+                  />
+                )}
+
+                {activeTab === 'subscriptions' && (
+                  <Subscriptions
+                    subscriptions={subscriptions}
+                    transactions={memberFilteredTransactions}
+                    onAddSubscription={handleAddSubscription}
+                    onUpdateSubscription={handleUpdateSubscription}
+                    onDeleteSubscription={handleDeleteSubscription}
                   />
                 )}
 
@@ -1422,6 +1826,7 @@ const App: React.FC = () => {
                   <div className="h-[calc(100vh-280px)] animate-fade-in">
                     <Investments
                       investments={memberInvestments}
+                      connectedSavingsAccounts={connectedSavingsAccounts}
                       onAdd={handleAddInvestment}
                       onUpdate={handleUpdateInvestment}
                       onDelete={handleDeleteInvestment}
@@ -1511,12 +1916,21 @@ const App: React.FC = () => {
         budgets={budgets}
         investments={investments}
         userPlan={currentUser?.subscription?.plan || 'starter'}
+        userName={currentUser?.name}
       />
 
       <AIModal
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
         onConfirm={handleAddTransaction}
+      />
+
+      <ImportReviewModal
+        isOpen={isImportReviewOpen}
+        onClose={() => setIsImportReviewOpen(false)}
+        onConfirm={handleConfirmImport}
+        transactions={importReviewTransactions}
+        accountName={importReviewAccountName}
       />
 
       <SettingsModal

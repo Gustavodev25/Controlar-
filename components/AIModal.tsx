@@ -4,6 +4,8 @@ import { X, Sparkles, Bot, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Che
 import { parseTransactionFromText } from '../services/geminiService';
 import { AIParsedTransaction, Transaction } from '../types';
 import { CustomAutocomplete, CustomDatePicker } from './UIComponents';
+import coinzinhaImg from '../assets/coinzinha.png';
+import { CoinzinhaGreeting } from './CoinzinhaGreeting';
 
 interface AIModalProps {
   isOpen: boolean;
@@ -199,8 +201,8 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
               onClick={() => setMode('ai')}
               className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${mode === 'ai' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
             >
-              <Sparkles size={14} />
-              Inteligência
+              <img src={coinzinhaImg} className="w-4 h-4 rounded-full object-cover" alt="Coinzinha" />
+              Coinzinha
             </button>
             <button 
               onClick={() => setMode('manual')}
@@ -223,15 +225,18 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
             <div className="space-y-6 animate-fade-in">
               {!parsedResult ? (
                 <>
-                  <div className="text-center space-y-3 py-4">
-                     <div className={`w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#d97757] to-[#e68e70] flex items-center justify-center shadow-xl shadow-[#d97757]/30 ${isLoading ? 'animate-pulse' : ''}`}>
-                        <Bot size={32} className="text-white" />
+                  <div className="text-center space-y-3 py-4 flex flex-col items-center">
+                     <CoinzinhaGreeting />
+                     <div className={`w-16 h-16 mx-auto rounded-2xl bg-gradient-to-br from-[#d97757] to-[#e68e70] p-0.5 shadow-xl shadow-[#d97757]/30 ${isLoading ? 'animate-pulse' : ''}`}>
+                        <img src={coinzinhaImg} className="w-full h-full object-cover rounded-2xl" alt="Coinzinha" />
                      </div>
-                     <h3 className="text-lg font-bold text-white">Como posso ajudar?</h3>
-                     <p className="text-sm text-gray-400 max-w-xs mx-auto">
-                       Fale a data e parcelas se necessário.<br/> 
-                       <span className="text-[#d97757]">"Notebook 3000 em 10x começando mês que vem"</span>
-                     </p>
+                     <div>
+                        <h3 className="text-lg font-bold text-white">Como posso ajudar?</h3>
+                        <p className="text-sm text-gray-400 max-w-xs mx-auto mt-1">
+                        Fale a data e parcelas se necessário.<br/> 
+                        <span className="text-[#d97757]">"Notebook 3000 em 10x começando mês que vem"</span>
+                        </p>
+                     </div>
                   </div>
 
                   <div className="relative group">

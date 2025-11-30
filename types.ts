@@ -8,6 +8,8 @@ export interface User {
   salaryPaymentDay?: number;
   salaryAdvanceDay?: number;
   salaryAdvancePercent?: number;
+  valeDeductions?: { id: string; name: string; value: string; type: '%' | 'R$' }[];
+  valeExemptFromDiscounts?: boolean;
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string | null;
   subscription?: {
@@ -15,6 +17,12 @@ export interface User {
     status: 'active' | 'canceled' | 'past_due';
     billingCycle: 'monthly' | 'annual';
     nextBillingDate?: string;
+  };
+  paymentMethodDetails?: {
+    last4: string;
+    holder: string;
+    expiry: string;
+    brand?: string;
   };
 }
 
@@ -34,6 +42,18 @@ export interface FamilyGoal {
   icon?: string;
 }
 
+export interface Subscription {
+  id: string;
+  userId: string;
+  name: string;
+  amount: number;
+  billingCycle: 'monthly' | 'yearly';
+  status: 'active' | 'canceled';
+  lastPaymentDate?: string;
+  category: string;
+  provider?: string;
+}
+
 export interface Transaction {
   id: string;
   memberId?: string;
@@ -47,8 +67,12 @@ export interface Transaction {
   importSource?: string; // e.g. "pluggy"
   needsApproval?: boolean;
   ignored?: boolean;
+  isSubscription?: boolean;
   pluggyId?: string;
   pluggyItemId?: string;
+  accountId?: string;
+  accountType?: string; // 'CHECKING_ACCOUNT', 'CREDIT_CARD', 'SAVINGS_ACCOUNT'
+  isInvestment?: boolean;
 }
 
 export interface Reminder {
@@ -140,6 +164,8 @@ export interface ConnectedAccount {
   currency?: string;
   lastUpdated?: string;
   previewTransactions?: ConnectedTransactionPreview[];
+  creditLimit?: number;
+  availableCreditLimit?: number;
 }
 
 export interface AppNotification {

@@ -224,14 +224,13 @@ export const triggerItemUpdate = async (itemId: string): Promise<boolean> => {
 };
 
 /**
- * Busca contas e transacoes do item conectado e salva no Firestore.
+ * Busca transacoes do Pluggy e retorna objetos Transaction prontos para importação, sem salvar no banco.
  */
-export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
+export const fetchPluggyTransactionsForImport = async (userId: string, itemId: string, targetAccountId?: string): Promise<Omit<Transaction, "id">[]> => {
   try {
     const apiKey = await authenticate();
-    let importedCount = 0;
-    const savedIds = loadSavedTxIds(userId, itemId);
-    const insertedKeys = new Set<string>();
+    const resultTransactions: Omit<Transaction, "id">[] = [];
+
     const shouldSkipTx = (tx: any, account: any) => {
       const descLower = (tx.description || "").toLowerCase();
       if (descLower.includes("saldo") || descLower.includes("balance") || descLower.includes("limite disponivel")) return true;
@@ -240,6 +239,7 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
       return false;
     };
 
+    // 1. Get Accounts
     const accountsRes = await fetch(`${API_URL}/accounts?itemId=${itemId}`, {
       headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
     });
@@ -250,14 +250,20 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
       throw new Error("Erro ao buscar contas");
     }
     const accountsData = await accountsRes.json();
-    const accounts = accountsData.results || [];
-    if (accounts.length === 0) return 0;
+    let accounts = accountsData.results || [];
+    if (accounts.length === 0) return [];
+
+    // Filter if specific account requested
+    if (targetAccountId) {
+      accounts = accounts.filter((a: any) => a.id === targetAccountId);
+    }
 
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
     const fromDate = thirtyDaysAgo.toISOString().split("T")[0];
 
+    // 2. Iterate accounts
     for (const account of accounts) {
       const txRes = await fetch(`${API_URL}/transactions?accountId=${account.id}&from=${fromDate}`, {
         headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
@@ -267,19 +273,11 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
       const txData = await txRes.json();
       const transactions = txData.results || [];
 
-      // Verifica se a conta é do tipo Crédito para inverter a lógica de sinal
       const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
 
       for (const tx of transactions) {
         if (shouldSkipTx(tx, account)) continue;
 
-        // LÓGICA CORRIGIDA:
-        // Se for cartão de crédito:
-        // - Valor POSITIVO (> 0) = Compra/Despesa (Aumenta a fatura)
-        // - Valor NEGATIVO (< 0) = Pagamento/Estorno (Diminui a fatura) -> Consideramos Receita/Transferência
-        // Se for conta comum:
-        // - Valor NEGATIVO (< 0) = Saída/Despesa
-        // - Valor POSITIVO (> 0) = Entrada/Receita
         let isExpense;
         if (isCreditCard) {
           isExpense = tx.amount > 0;
@@ -290,7 +288,6 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
         const absAmount = Math.abs(tx.amount);
         if (absAmount === 0) continue;
 
-        // Ignorar movimentos de saldo ou ajustes que podem inflar receita
         const descLower = (tx.description || "").toLowerCase();
         if (descLower.includes("saldo")) continue;
 
@@ -309,7 +306,6 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
         const installmentsCount = Number(totalInstallments) > 1 ? Number(totalInstallments) : 1;
 
         for (let i = 1; i <= installmentsCount; i++) {
-          // If we know which installment is current, align start
           const installmentIndex = currentInstallment && currentInstallment > 0 ? i - currentInstallment : i - 1;
           const dateObj = new Date(baseDate);
           dateObj.setMonth(baseDate.getMonth() + installmentIndex);
@@ -325,40 +321,65 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
             date: dateStr,
             type: isExpense ? "expense" : "income",
             category: mapCategory(tx.category, tx.description),
-            status: "completed", // Importado como concluído para aparecer no dashboard
-            ...(memberId ? { memberId } : {}),
+            status: "completed",
             importSource: "pluggy",
-            needsApproval: false
+            needsApproval: false,
+            accountId: account.id,
+            accountType: account.subtype || account.type
           };
 
           const uniquePluggyId = installmentsCount > 1 && tx.id ? `${tx.id}-inst-${i}` : tx.id;
-          const txKey = uniquePluggyId || `${newTx.description}|${newTx.date}|${newTx.amount}|${newTx.type}|${memberId || ""}`;
+          const txKey = uniquePluggyId || `${newTx.description}|${newTx.date}|${newTx.amount}|${newTx.type}`;
           newTx.pluggyId = uniquePluggyId || txKey;
           newTx.pluggyItemId = itemId;
 
-          // Skip if we already saved this transaction and it still exists in Firestore
-          if (savedIds.has(txKey)) {
-            const stillExists = await transactionExists(userId, newTx);
-            if (stillExists) continue;
-            // Allow reimport if the user removed it manually
-            savedIds.delete(txKey);
-          }
-
-          if (insertedKeys.has(txKey)) continue;
-          insertedKeys.add(txKey);
-
-          // Use deterministic ID to prevent duplicates at Firestore level
-          const firestoreId = `pluggy_${uniquePluggyId}`;
-
-          // Double check existence (though addTransaction handles it safely now)
-          const exists = await transactionExists(userId, newTx);
-          if (exists) continue;
-
-          await addTransaction(userId, newTx, firestoreId);
-          importedCount++;
-          savedIds.add(txKey);
+          resultTransactions.push(newTx);
         }
       }
+    }
+
+    return resultTransactions;
+  } catch (error) {
+    console.error("Error fetching Pluggy transactions:", error);
+    throw error;
+  }
+};
+
+/**
+ * Busca contas e transacoes do item conectado e salva no Firestore.
+ */
+export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
+  try {
+    const candidates = await fetchPluggyTransactionsForImport(userId, itemId);
+    
+    let importedCount = 0;
+    const savedIds = loadSavedTxIds(userId, itemId);
+    const insertedKeys = new Set<string>();
+
+    for (const newTx of candidates) {
+       // Add memberId if provided (fetch doesn't know about it)
+       if (memberId) newTx.memberId = memberId;
+
+       const txKey = newTx.pluggyId!; 
+
+       // Skip if we already saved this transaction
+       if (savedIds.has(txKey)) {
+         const stillExists = await transactionExists(userId, newTx);
+         if (stillExists) continue;
+         savedIds.delete(txKey);
+       }
+
+       if (insertedKeys.has(txKey)) continue;
+       insertedKeys.add(txKey);
+
+       const firestoreId = `pluggy_${txKey}`;
+
+       const exists = await transactionExists(userId, newTx);
+       if (exists) continue;
+
+       await addTransaction(userId, newTx, firestoreId);
+       importedCount++;
+       savedIds.add(txKey);
     }
 
     persistSavedTxIds(userId, itemId, savedIds);
@@ -367,6 +388,14 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
     console.error("Error syncing Pluggy data:", error);
     throw error;
   }
+};
+
+export const markTransactionsAsImported = (userId: string, itemId: string, transactions: Omit<Transaction, "id">[]) => {
+  const savedIds = loadSavedTxIds(userId, itemId);
+  transactions.forEach(tx => {
+    if (tx.pluggyId) savedIds.add(tx.pluggyId);
+  });
+  persistSavedTxIds(userId, itemId, savedIds);
 };
 
 /**
@@ -464,6 +493,8 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       balance: account.balance,
       currency: account.currencyCode || "BRL",
       lastUpdated: account.lastUpdatedAt || account.lastAccessedAt,
+      creditLimit: account.creditData?.creditLimit,
+      availableCreditLimit: account.creditData?.availableCreditLimit,
       previewTransactions
     });
   }

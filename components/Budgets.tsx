@@ -6,6 +6,7 @@ import * as dbService from '../services/database';
 import { useToasts } from './Toast';
 import { ConfirmationCard, CustomAutocomplete } from './UIComponents';
 import { EmptyState } from './EmptyState';
+import NumberFlow from '@number-flow/react';
 
 interface BudgetsProps {
     userId: string;
@@ -225,8 +226,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
                         <div className="space-y-2">
                             <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">Gasto: <span className="text-white font-medium">R$ {budget.spent.toFixed(2)}</span></span>
-                                <span className="text-gray-400">Limite: <span className="text-white font-medium">R$ {budget.limitAmount.toFixed(2)}</span></span>
+                                <span className="text-gray-400">Gasto: <span className="text-white font-medium"><NumberFlow value={budget.spent} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" /></span></span>
+                                <span className="text-gray-400">Limite: <span className="text-white font-medium"><NumberFlow value={budget.limitAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" /></span></span>
                             </div>
 
                             <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
@@ -238,7 +239,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
                             <div className="flex justify-between items-center text-xs mt-1">
                                 <span className={`${budget.percentage > 100 ? 'text-red-400 font-bold' : 'text-gray-500'}`}>
-                                    {budget.percentage.toFixed(0)}% utilizado
+                                    <NumberFlow value={budget.percentage} format={{ maximumFractionDigits: 0 }} />% utilizado
                                 </span>
                                 {budget.percentage >= budget.alertThreshold && budget.percentage < 100 && (
                                     <span className="flex items-center gap-1 text-yellow-500">

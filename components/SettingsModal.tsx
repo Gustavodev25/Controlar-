@@ -6,7 +6,7 @@ import {
    CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
    PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
    Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
-   Puzzle, Rocket
+   Puzzle, Rocket, Wallet, Plus
 } from 'lucide-react';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount } from '../types';
 import { useToasts } from './Toast';
@@ -512,6 +512,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const toast = useToasts();
    const normalizeMonth = (dateStr: string) => dateStr.slice(0, 7);
 
+   const tabs = [
+      { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
+      { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
+      { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
+      { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
+      { id: 'notifications', label: 'Notificações', icon: <Bell size={18} /> },
+      { id: 'data', label: 'Dados', icon: <Download size={18} /> },
+   ];
+
    // Plan Logic
    const plan = formData.subscription?.plan || 'starter';
    const cycle = formData.subscription?.billingCycle || 'monthly';
@@ -909,8 +918,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    };
 
    const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvc: string }) => {
-      // In a real app, you would send this to your backend/Stripe here
-      // For now, we just update the visual state or show a success message
+      const updatedUser: UserType = {
+          ...formData,
+          paymentMethodDetails: {
+              last4: cardData.number.slice(-4),
+              holder: cardData.holder,
+              expiry: cardData.expiry,
+              brand: 'mastercard' // Em um app real, detectaríamos a bandeira
+          }
+      };
+      
+      setFormData(updatedUser);
+      await persistUser(updatedUser);
       toast.success("Novo cartão validado e vinculado com sucesso!");
       setIsCardModalOpen(false);
    };
@@ -1037,6 +1056,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <button onClick={onClose} className="text-gray-500"><X size={24} /></button>
                </div>
 
+               {/* Mobile Navigation */}
+               <div className="md:hidden flex overflow-x-auto no-scrollbar border-b border-gray-800 bg-gray-900/50">
+                  {tabs.map(tab => (
+                     <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as SettingsTab)}
+                        className={`
+                           flex-shrink-0 px-4 py-3 flex items-center gap-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap
+                           ${activeTab === tab.id ? 'border-[#d97757] text-[#d97757]' : 'border-transparent text-gray-400'}
+                        `}
+                     >
+                        {tab.icon}
+                        {tab.label}
+                     </button>
+                  ))}
+               </div>
+
                {/* Desktop Close */}
                <div className="hidden md:flex justify-end p-6 absolute top-0 right-0 z-10">
                   <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-800 transition-colors">
@@ -1044,7 +1080,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   </button>
                </div>
 
-               <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-10 lg:p-12">
+               <div className="flex-1 overflow-y-auto no-scrollbar p-6 md:p-10 lg:p-12">
 
                   {/* --- TAB: ACCOUNT --- */}
                   {activeTab === 'account' && (
@@ -1055,7 +1091,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 pb-8 border-b border-gray-800">
                            <div className="relative group shrink-0">
-                              <div className={`w-32 h-32 rounded-full ${formData.avatarUrl || AVATAR_GRADIENTS[0]} flex items-center justify-center text-4xl font-bold text-white shadow-2xl ring-4 ring-gray-900 overflow-hidden`}>
+                              <div className={`w-32 h-32 rounded-full ${formData.avatarUrl?.includes('url') ? formData.avatarUrl : 'bg-[#363735] border border-[#3A3B39]'} flex items-center justify-center text-4xl font-bold text-white shadow-2xl overflow-hidden`}>
                                  {!formData.avatarUrl?.includes('url') && getInitials(formData.name)}
                               </div>
                               <button
@@ -1211,6 +1247,219 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               </div>
                            </div>
 
+                           {/* Vale (Adiantamento) Configuration */}
+                           <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
+                              <div className="flex items-center justify-between mb-4">
+                                 <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                                    <Wallet size={20} className="text-[#d97757]" /> Adiantamento Salarial (Vale)
+                                 </h4>
+                                 <div className="bg-[#d97757]/10 text-[#d97757] text-xs px-2 py-1 rounded-lg border border-[#d97757]/20 font-medium">
+                                     Simulador Ativo
+                                 </div>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                 <div className="space-y-4">
+                                    <div className="grid grid-cols-2 gap-4">
+                                       <div className="space-y-2">
+                                          <label className="text-xs font-medium text-gray-400 ml-1">% do Vale</label>
+                                          <div className="relative">
+                                             <input
+                                                type="number"
+                                                value={formData.salaryAdvancePercent || ''}
+                                                onChange={(e) => setFormData({ ...formData, salaryAdvancePercent: parseFloat(e.target.value) })}
+                                                placeholder="40"
+                                                className="input-primary pr-8 font-bold"
+                                             />
+                                             <span className="absolute right-3 top-3.5 text-gray-500 font-bold">%</span>
+                                          </div>
+                                       </div>
+                                       <div className="space-y-2">
+                                          <label className="text-xs font-medium text-gray-400 ml-1">Dia do Vale</label>
+                                          <input
+                                             type="number"
+                                             min="1"
+                                             max="31"
+                                             value={formData.salaryAdvanceDay || ''}
+                                             onChange={(e) => setFormData({ ...formData, salaryAdvanceDay: parseInt(e.target.value) })}
+                                             placeholder="15"
+                                             className="input-primary font-bold"
+                                          />
+                                       </div>
+                                    </div>
+
+                                    <div className="space-y-2 border-t border-gray-800 pt-4">
+                                       <div className="flex justify-between items-center">
+                                          <label className="text-xs font-medium text-gray-400">Outros Descontos (Simulação)</label>
+                                          <button
+                                             onClick={() => setFormData({
+                                                ...formData,
+                                                valeDeductions: [...(formData.valeDeductions || []), { id: Date.now().toString(), name: '', value: '', type: 'R$' }]
+                                             })}
+                                             className="text-[10px] bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-gray-300 transition-colors flex items-center gap-1"
+                                          >
+                                             <Plus size={12} /> Adicionar
+                                          </button>
+                                       </div>
+                                       
+                                       <div 
+                                           className="flex items-center gap-2 mb-3 cursor-pointer group"
+                                           onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
+                                       >
+                                           <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                               <Check size={12} strokeWidth={4} />
+                                           </div>
+                                           <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
+                                              Isento de descontos (INSS/IRRF zerados)
+                                           </span>
+                                       </div>
+                                       
+                                       {(formData.valeDeductions || []).map((deduction, index) => (
+                                          <div key={deduction.id} className="flex gap-2 animate-fade-in">
+                                             <input
+                                                type="text"
+                                                placeholder="Nome"
+                                                value={deduction.name}
+                                                onChange={e => {
+                                                   const newArr = [...(formData.valeDeductions || [])];
+                                                   newArr[index].name = e.target.value;
+                                                   setFormData({ ...formData, valeDeductions: newArr });
+                                                }}
+                                                className="input-primary text-xs py-1.5 flex-1 min-w-0"
+                                             />
+                                             <div className="flex gap-1 w-24 shrink-0">
+                                                <input
+                                                   type="text"
+                                                   placeholder="Valor"
+                                                   value={deduction.value}
+                                                   onChange={e => {
+                                                      const newArr = [...(formData.valeDeductions || [])];
+                                                      newArr[index].value = e.target.value;
+                                                      setFormData({ ...formData, valeDeductions: newArr });
+                                                   }}
+                                                   className="input-primary text-xs py-1.5 w-full text-right"
+                                                />
+                                             </div>
+                                              <button 
+                                                onClick={() => {
+                                                   const newArr = [...(formData.valeDeductions || [])];
+                                                   newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
+                                                   setFormData({ ...formData, valeDeductions: newArr });
+                                                }}
+                                                className="bg-gray-800 text-gray-400 text-[10px] px-1.5 rounded border border-gray-700 shrink-0 w-8"
+                                              >
+                                                {deduction.type}
+                                              </button>
+                                             <button
+                                                onClick={() => setFormData({
+                                                   ...formData,
+                                                   valeDeductions: (formData.valeDeductions || []).filter(d => d.id !== deduction.id)
+                                                })}
+                                                className="text-red-400 hover:bg-red-900/20 p-1.5 rounded transition-colors"
+                                             >
+                                                <Trash2 size={14} />
+                                             </button>
+                                          </div>
+                                       ))}
+                                       {(formData.valeDeductions || []).length === 0 && (
+                                          <p className="text-[10px] text-gray-600 italic">Nenhum desconto extra cadastrado.</p>
+                                       )}
+                                    </div>
+                                 </div>
+
+                                 {/* Preview Card */}
+                                 <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
+                                    <div>
+                                       <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2 mb-3">Previsão de Fechamento</h5>
+                                       {(() => {
+                                          const base = formData.baseSalary || 0;
+                                          const dependents = 0; // Could add input for this later or fetch from profile
+                                          const isExempt = formData.valeExemptFromDiscounts || false;
+                                          
+                                          // CLT Logic (Same as SalaryManager)
+                                          let inss = 0;
+                                          if (!isExempt) {
+                                              if (base <= 1518.00) inss = base * 0.075;
+                                              else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
+                                              else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
+                                              else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
+                                              else inss = 951.63;
+                                          }
+
+                                          const deductibleDependents = dependents * 189.59;
+                                          const baseA = base - inss - deductibleDependents;
+                                          const simplifiedDiscount = 607.20;
+                                          const baseB = base - simplifiedDiscount;
+                                          const finalBase = Math.min(baseA, baseB);
+
+                                          const calcTax = (b: number) => {
+                                             if (b <= 2428.80) return 0;
+                                             if (b <= 2826.65) return (b * 0.075) - 182.16;
+                                             if (b <= 3751.05) return (b * 0.15) - 394.16;
+                                             if (b <= 4664.68) return (b * 0.225) - 675.49;
+                                             return (b * 0.275) - 908.73;
+                                          };
+                                          
+                                          // Correct IRRF calculation logic
+                                          let irrf = 0;
+                                          if (!isExempt) {
+                                              const taxA = Math.max(0, calcTax(baseA));
+                                              const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
+                                              irrf = Math.min(taxA, taxB);
+                                          }
+
+                                          const valePercent = formData.salaryAdvancePercent || 40;
+                                          const valeAmount = base * (valePercent / 100);
+
+                                          const totalCustom = (formData.valeDeductions || []).reduce((acc, curr) => {
+                                             const val = parseFloat(curr.value.replace(',', '.'));
+                                             if (isNaN(val)) return acc;
+                                             if (curr.type === '%') return acc + (base * (val / 100));
+                                             return acc + val;
+                                          }, 0);
+
+                                          const net = base - inss - irrf - valeAmount - totalCustom;
+                                          
+                                          const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+                                          return (
+                                             <div className="space-y-2 text-xs">
+                                                <div className="flex justify-between">
+                                                   <span className="text-gray-400">Salário Bruto</span>
+                                                   <span className="text-gray-300 font-medium">{format(base)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                   <span className="text-gray-400">INSS (Estimado)</span>
+                                                   <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(inss)}</span>
+                                                </div>
+                                                <div className="flex justify-between">
+                                                   <span className="text-gray-400">IRRF (Estimado)</span>
+                                                   <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(irrf)}</span>
+                                                </div>
+                                                <div className="flex justify-between py-1 border-y border-gray-800/50 my-1">
+                                                   <span className="text-[#d97757]">Vale ({valePercent}%)</span>
+                                                   <span className="text-[#d97757] font-bold">- {format(valeAmount)}</span>
+                                                </div>
+                                                {totalCustom > 0 && (
+                                                   <div className="flex justify-between">
+                                                      <span className="text-gray-400">Outros</span>
+                                                      <span className="text-red-400">- {format(totalCustom)}</span>
+                                                   </div>
+                                                )}
+                                                <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
+                                                   <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
+                                                   <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                                      {format(net)}
+                                                   </span>
+                                                </div>
+                                             </div>
+                                          );
+                                       })()}
+                                    </div>
+                                 </div>
+                              </div>
+                           </div>
+
                            <button
                               onClick={handleSave}
                               className="px-6 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
@@ -1332,10 +1581,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  </div>
 
                                  {/* 2. Payment & Billing Details */}
-                                 <div className="grid md:grid-cols-2 gap-6">
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     
                                     {/* Payment Method Card */}
-                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors">
+                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors h-full">
                                        <div className="flex justify-between items-start mb-6">
                                           <h4 className="font-bold text-white flex items-center gap-2">
                                              <CreditCard size={18} className="text-gray-400"/> Método de Pagamento
@@ -1344,38 +1593,72 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                              onClick={() => setIsCardModalOpen(true)}
                                              className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
                                           >
-                                             Alterar
+                                             {formData.paymentMethodDetails ? 'Alterar' : 'Adicionar'}
                                           </button>
                                        </div>
 
-                                       {/* Visual Card Mockup */}
-                                       <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-4 border border-gray-700/50 relative overflow-hidden mb-4">
-                                          <div className="relative z-10">
-                                             <div className="flex justify-between items-center mb-6">
-                                                <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center">
-                                                   <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
-                                                   <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
-                                                </div>
-                                                <span className="text-[10px] font-mono text-gray-400">CREDIT</span>
-                                             </div>
-                                             <div className="flex justify-between items-end">
-                                                <div>
-                                                   <p className="text-[10px] text-gray-500 mb-0.5">Número</p>
-                                                   <p className="text-sm font-mono text-gray-200 tracking-widest">**** **** **** 8829</p>
-                                                </div>
-                                                <div className="text-right">
-                                                   <p className="text-[10px] text-gray-500 mb-0.5">Validade</p>
-                                                   <p className="text-xs font-mono text-gray-200">08/29</p>
-                                                </div>
-                                             </div>
-                                          </div>
-                                          {/* Shine effect */}
-                                          <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                                       </div>
+                                       {formData.paymentMethodDetails ? (
+                                           <>
+                                               {/* Visual Card Mockup - Active */}
+                                               <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700/50 relative overflow-hidden mb-4 shadow-lg">
+                                                  <div className="relative z-10">
+                                                     <div className="flex justify-between items-center mb-8">
+                                                        <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center backdrop-blur-md">
+                                                           <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
+                                                           <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
+                                                        </div>
+                                                        <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
+                                                            {formData.paymentMethodDetails.brand || 'Card'}
+                                                        </span>
+                                                     </div>
+                                                     <div className="space-y-4">
+                                                        <div>
+                                                           <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Número</p>
+                                                           <p className="text-sm font-mono text-gray-200 tracking-widest flex items-center gap-2">
+                                                               <span className="text-gray-600">•••• •••• ••••</span> 
+                                                               {formData.paymentMethodDetails.last4}
+                                                           </p>
+                                                        </div>
+                                                        <div className="flex justify-between items-end">
+                                                           <div>
+                                                              <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Titular</p>
+                                                              <p className="text-xs font-medium text-gray-200 uppercase tracking-wide truncate max-w-[120px]">
+                                                                  {formData.paymentMethodDetails.holder}
+                                                              </p>
+                                                           </div>
+                                                           <div className="text-right">
+                                                              <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Validade</p>
+                                                              <p className="text-xs font-mono text-gray-200">{formData.paymentMethodDetails.expiry}</p>
+                                                           </div>
+                                                        </div>
+                                                     </div>
+                                                  </div>
+                                                  {/* Shine effect */}
+                                                  <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                               </div>
 
-                                       <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2 rounded-lg border border-green-500/10">
-                                          <ShieldCheck size={14} /> Pagamento seguro via Asaas
-                                       </div>
+                                               <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2.5 rounded-xl border border-green-500/10">
+                                                  <ShieldCheck size={14} /> Pagamento seguro via Asaas
+                                               </div>
+                                           </>
+                                       ) : (
+                                           <>
+                                               {/* Empty State */}
+                                               <div className="flex-1 border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
+                                                   <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 text-gray-600">
+                                                       <CreditCard size={20} />
+                                                   </div>
+                                                   <p className="text-sm text-gray-400 font-medium mb-1">Nenhum cartão vinculado</p>
+                                                   <p className="text-xs text-gray-600 max-w-[180px]">Adicione um método de pagamento para ativar a renovação.</p>
+                                               </div>
+                                               <button 
+                                                 onClick={() => setIsCardModalOpen(true)}
+                                                 className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-700"
+                                               >
+                                                  Adicionar Cartão
+                                               </button>
+                                           </>
+                                       )}
                                     </div>
 
                                     {/* Billing Settings */}

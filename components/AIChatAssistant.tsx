@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { processAssistantMessage } from '../services/geminiService';
 import { Transaction, AIParsedTransaction, Budget, Investment } from '../types';
-import iaImage from '../assets/IA.png';
+import coinzinhaImg from '../assets/coinzinha.png';
 
 // --- Utilitário simples para classes ---
 function cn(...classes: (string | undefined | null | false)[]) {
@@ -130,6 +130,7 @@ interface AIChatAssistantProps {
     budgets: Budget[];
     investments: Investment[];
     userPlan?: 'starter' | 'pro' | 'family';
+    userName?: string;
 }
 
 interface Message {
@@ -149,12 +150,14 @@ interface ChatSession {
     messages: Message[];
 }
 
-export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions, budgets, investments, userPlan = 'starter' }) => {
+export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransaction, transactions, budgets, investments, userPlan = 'starter', userName = 'Você' }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState('');
     const [isThinking, setIsThinking] = useState(false);
     const [view, setView] = useState<'chat' | 'history'>('chat');
     const [history, setHistory] = useState<ChatSession[]>([]);
+
+    const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
     // Limit tracking for Starter plan
     const [starterMessageCount, setStarterMessageCount] = useState(0);
@@ -343,11 +346,11 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
                 {/* Header */}
                 <div className="h-14 bg-gray-950/80 backdrop-blur-md border-b border-gray-800 flex items-center justify-between px-4 select-none">
                     <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-[#262624] border border-[#d97757]/30 shadow-lg shadow-[#d97757]/10 overflow-hidden flex items-center justify-center">
-                            <img src={iaImage} alt="IA" className="w-full h-full object-cover" />
+                        <div className="w-8 h-8 rounded-full bg-[#363735] border border-[#3A3B39] shadow-lg overflow-hidden flex items-center justify-center">
+                            <img src={coinzinhaImg} alt="IA" className="w-full h-full object-cover" />
                         </div>
                         <div>
-                            <h3 className="font-bold text-white text-sm leading-tight">Aurora IA</h3>
+                            <h3 className="font-bold text-white text-sm leading-tight">Coinzinha</h3>
                             <div className="flex items-center gap-1.5">
                                 <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
                                 <span className="text-[10px] text-gray-400 font-medium">Online</span>
@@ -395,11 +398,11 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
                                     className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up w-full`}
                                 >
                                     <div className={`flex items-start gap-3 max-w-full ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                                        <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center border ${msg.role === 'user' ? 'bg-gray-800 border-gray-700 text-white' : 'bg-[#262624] border-[#d97757]/40 shadow-lg shadow-[#d97757]/10 overflow-hidden'}`}>
+                                        <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center border bg-[#363735] border-[#3A3B39] text-white shadow-sm overflow-hidden text-xs font-bold">
                                             {msg.role === 'user' ? (
-                                                <span className="text-xs font-bold">VC</span>
+                                                <span>{getInitials(userName)}</span>
                                             ) : (
-                                                <img src={iaImage} alt="IA" className="w-full h-full object-cover" />
+                                                <img src={coinzinhaImg} alt="IA" className="w-full h-full object-cover" />
                                             )}
                                         </div>
 
@@ -593,16 +596,16 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
             <button
                 onClick={() => setIsOpen(true)}
                 className={`
-                  bg-[#262624] border border-[#d97757]/30
-                  shadow-2xl shadow-[#d97757]/10
+                  bg-[#363735] border border-[#3A3B39]
+                  shadow-2xl
                   w-14 h-14 rounded-2xl flex items-center justify-center
                   transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-                  hover:border-[#d97757]/60 hover:-translate-y-1
+                  hover:border-gray-500 hover:-translate-y-1
                   ${isOpen ? 'translate-y-20 opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'}
                 `}
             >
                 <div className="w-8 h-8 rounded-full overflow-hidden">
-                    <img src={iaImage} alt="IA" className="w-full h-full object-cover" />
+                    <img src={coinzinhaImg} alt="IA" className="w-full h-full object-cover" />
                 </div>
             </button>
         </div>

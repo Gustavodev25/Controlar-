@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2 } from './Icons';
 import { useToasts } from './Toast';
 
 interface SalaryManagerProps {
@@ -409,38 +409,31 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
              <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
            </div>
 
-           {baseSalary > 0 && (
-             <button
-               onClick={() => {
-                 onAddExtra(baseSalary, "Salário Mensal");
-                 toast.success(`Salário de ${formatCurrency(baseSalary)} adicionado!`);
-               }}
-               className="w-full py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-xl font-medium transition-all shadow-lg shadow-green-900/20 flex items-center justify-center gap-2 group text-sm mb-1"
-             >
-               <Coins size={16} />
-               Registrar Salário Base
-             </button>
+           {baseSalary <= 0 && (
+             <div className="w-full py-2.5 px-3 bg-gray-800/50 border border-gray-700 border-dashed rounded-xl flex items-center justify-center gap-2 text-gray-500 mb-1">
+               <AlertCircle size={14} />
+               <span className="text-xs font-medium text-center">Defina seu salário nas Configurações do Perfil</span>
+             </div>
            )}
 
-           <button
-             onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
-             className="w-full py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-medium transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 group border border-[#d97757]/50 text-sm"
-           >
-             <PlusCircle size={16} />
-             Renda Extra Rápida
-           </button>
-
-           <div className="grid grid-cols-2 gap-2 mt-1">
+           <div className="grid grid-cols-2 gap-2 mt-1 w-full">
+              <button
+                onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
+                className="col-span-2 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2 text-xs"
+              >
+                <PlusCircle size={14} className="text-[#d97757]" />
+                Lançar Extra
+              </button>
               <button
                 onClick={() => { setActiveTab('clt'); setIsModalOpen(true); }}
-                className="py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
               >
                 <Briefcase size={14} className="text-[#d97757]" />
                 Calc. CLT
               </button>
               <button
                 onClick={() => { setActiveTab('calculator'); setIsModalOpen(true); }}
-                className="py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
               >
                 <Clock size={14} className="text-[#d97757]" />
                 Calc. Hora Extra
@@ -454,7 +447,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         <div 
             className={`
                 fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
-                ${isAnimating ? 'bg-gray-950/90 backdrop-blur-sm' : 'bg-gray-950/0 backdrop-blur-0'}
+                ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
             `}
         >
           <div 
@@ -648,7 +641,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                       </>
                   </div>
               )}
-
+              
               {/* ABA: CALCULADORA (HORA EXTRA) */}
               {activeTab === 'calculator' && (
                 <div className="space-y-6 animate-slide-up">

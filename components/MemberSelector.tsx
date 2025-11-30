@@ -60,14 +60,14 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
 
   // Get Active Member Display Info
   const activeMember = activeMemberId === 'FAMILY_OVERVIEW'
-    ? { name: 'Família', avatarUrl: 'bg-gradient-to-r from-gray-700 to-gray-800' }
+    ? { name: 'Família', avatarUrl: 'bg-[#363735] border border-[#3A3B39]' }
     : members.find(m => m.id === activeMemberId);
 
   if (!isSidebarOpen) {
     return (
       <button
         onClick={() => onSelectMember('FAMILY_OVERVIEW')}
-        className="w-10 h-10 mx-auto rounded-full bg-gray-800 flex items-center justify-center text-[#d97757] hover:bg-gray-700 transition-colors"
+        className="w-10 h-10 mx-auto rounded-full bg-[#363735] border border-[#3A3B39] flex items-center justify-center text-[#d97757] hover:bg-gray-700 transition-colors"
       >
         <Users size={20} />
       </button>
@@ -81,7 +81,7 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
         onClick={() => setIsOpen(!isOpen)}
         className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2 flex items-center gap-3 hover:border-gray-700 transition-all group"
       >
-        <div className={`w-10 h-10 rounded-full ${activeMember?.avatarUrl || 'bg-gray-700'} flex items-center justify-center shadow-inner text-white font-bold text-sm`}>
+        <div className={`w-10 h-10 rounded-full ${activeMember?.avatarUrl?.includes('url') ? activeMember.avatarUrl : 'bg-[#363735] border border-[#3A3B39]'} flex items-center justify-center shadow-inner text-white font-bold text-sm`}>
           {activeMemberId === 'FAMILY_OVERVIEW' ? <Users size={18} /> : activeMember?.name.substring(0, 2).toUpperCase()}
         </div>
         <div className="flex-1 text-left overflow-hidden">

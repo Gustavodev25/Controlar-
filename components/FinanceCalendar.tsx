@@ -1,4 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, X, Bell, TrendingUp } from './Icons';
 import { Reminder, Transaction } from '../types';
 
@@ -192,7 +193,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
         <div className="grid grid-cols-7 gap-2 sm:gap-3">{dayCells}</div>
       )}
 
-      {isModalVisible && (
+      {isModalVisible && createPortal(
         <div
           className={`fixed inset-0 z-[120] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${
             isModalAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'
@@ -312,7 +313,8 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
               </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

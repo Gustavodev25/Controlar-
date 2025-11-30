@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Check, ChevronLeft, Sparkles, CheckCircle } from 'lucide-react';
 import { User } from '../types';
 import { CheckoutForm } from './CheckoutForm';
-import { createCheckoutSession } from '../services/subscriptionService';
 import { useToasts } from './Toast';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
@@ -34,9 +33,9 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
       image: quebraCabecaImg,
       description: 'Para quem está começando a se organizar.',
       features: [
-        'Controle de Despesas e Receitas',
-        'Dashboard Básico',
-        '1 Carteira de Investimentos',
+        'Lançamentos Manuais',
+        'Dashboards Básicos',
+        '1 Usuário',
         'Sem contas conectadas'
       ],
       popular: false
@@ -47,13 +46,13 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
       price: 19.90,
       annualPrice: 199.90,
       image: fogueteImg,
-      description: 'Recursos avançados para quem quer ir além.',
+      description: 'Todos os recursos avançados agora gratuitos.',
       features: [
-        'Tudo do Starter',
-        'Contas Bancárias Ilimitadas',
-        'Assistente IA Ilimitado',
-        'Planejamento de Metas Avançado',
-        'Simulador FIRE Completo'
+        'IA Integrada ilimitada',
+        'Lançamentos por Texto',
+        'Consultor Financeiro IA',
+        'Metas e Lembretes',
+        'Contas Bancárias Ilimitadas'
       ],
       popular: true
     },
@@ -63,13 +62,12 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
       price: 59.90,
       annualPrice: 599.90,
       image: familiaImg,
-      description: 'Gestão financeira completa para toda a família.',
+      description: 'Gestão completa para toda a casa, sem custo.',
       features: [
-        'Tudo do Pro',
-        'Até 5 membros da família',
-        'Visão unificada de gastos',
-        'Metas compartilhadas',
-        'Controle de permissões'
+        'Tudo incluso no plano gratuito',
+        'Até 5 Membros',
+        'Metas Compartilhadas',
+        'Relatórios Unificados'
       ],
       popular: false
     }
@@ -92,15 +90,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
       setIsLoading(true);
       try {
-          await createCheckoutSession(
-              user.email, 
-              planToBuy, 
-              cycleToBuy, 
-              undefined, 
-              user.name, 
-              cardData, 
-              holderInfo
-          );
+          // Mock Checkout
+          await new Promise(resolve => setTimeout(resolve, 2000));
 
           const newSubscription = {
             plan: planToBuy,
@@ -112,7 +103,15 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
           const updatedUser = {
              ...user,
-             subscription: newSubscription as any
+             subscription: newSubscription as any,
+             ...(cardData?.number ? {
+                 paymentMethodDetails: {
+                     last4: cardData.number.replace(/\s/g, '').slice(-4),
+                     holder: cardData.holder || user.name,
+                     expiry: cardData.expiry || '',
+                     brand: 'mastercard'
+                 }
+             } : {})
           };
 
           // Sanitize to remove undefined values which Firestore rejects
@@ -195,14 +194,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                             const isPro = plan.popular;
 
                             const containerClasses = isPro
-                                ? "bg-gradient-to-br from-[#3d3835] to-[#363735] border-2 border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/20 lg:transform lg:scale-105 hover:shadow-[#d97757]/30 transition-all duration-300"
-                                : "bg-gradient-to-br from-[#3A3B39] to-[#363735] border border-[#3A3B39] rounded-3xl p-8 flex flex-col relative hover:border-[#d97757]/40 hover:shadow-xl hover:shadow-[#d97757]/10 transition-all duration-300";
-
-                            const checkIcon = <div className={`${(isPro || plan.id === 'family') ? 'bg-[#d97757]/10 border border-[#d97757]/30' : 'bg-gray-800/50 border border-gray-700/50'} rounded-full p-1`}>
-                                <Check size={14} className={`${(isPro || plan.id === 'family') ? 'text-[#d97757]' : 'text-gray-500'}`}/>
-                            </div>;
-
-                            const textColor = "text-gray-300";
+                                ? "bg-gray-900 border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-4"
+                                : "bg-gray-900 border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors";
 
                             return (
                                 <motion.div
@@ -211,83 +204,80 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ duration: 0.4, delay: plans.indexOf(plan) * 0.1 }}
-                                    whileHover={{ y: -8 }}
                                 >
                                     {isPro && (
-                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-[#d97757] to-[#e88864] text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg shadow-[#d97757]/30 flex items-center gap-1.5">
-                                            <Sparkles size={12} />
+                                        <div className="absolute top-0 right-0 bg-[#d97757] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
                                             MAIS POPULAR
                                         </div>
                                     )}
 
-                                    {isCurrent && (
-                                        <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-green-500 to-emerald-500 text-white text-xs font-bold px-4 py-1.5 rounded-full shadow-lg shadow-green-500/30 flex items-center gap-1.5">
-                                            <CheckCircle size={12} />
-                                            PLANO ATIVO
+                                    {isCurrent && !isPro && (
+                                        <div className="absolute top-0 right-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
+                                            ATUAL
                                         </div>
                                     )}
 
-                                    <div className={`flex justify-center mb-6 ${isPro ? 'mt-4' : ''} ${isCurrent ? 'mt-4' : ''}`}>
-                                        <div className={`${isPro ? 'bg-[#d97757]/10 border-2 border-[#d97757]/20' : 'bg-gray-800/30 border border-gray-700/30'} rounded-2xl p-4 backdrop-blur-sm`}>
-                                            <img src={plan.image} alt={plan.name} className="w-16 h-16 object-contain" />
+                                    {isCurrent && isPro && (
+                                        <div className="absolute top-0 left-0 bg-green-500 text-white text-xs font-bold px-3 py-1 rounded-br-xl rounded-tl-2xl">
+                                            PLANO ATUAL
                                         </div>
+                                    )}
+
+                                    <div className="flex justify-center mb-4">
+                                        <img src={plan.image} alt={plan.name} className="w-16 h-16 object-contain" />
                                     </div>
 
-                                    <h3 className="text-2xl font-bold text-white mb-2 flex items-center gap-2 justify-center">
-                                        {plan.name}
+                                    <h3 className={`text-xl font-bold text-white mb-2 flex items-center gap-2 ${!isPro ? 'justify-center' : ''}`}>
+                                        {plan.name} {isPro && <Sparkles size={16} className="text-[#d97757]" />}
                                     </h3>
 
-                                    <p className="text-sm mb-6 text-center text-gray-400 min-h-[40px]">
+                                    <p className={`text-gray-400 text-sm mb-6 ${!isPro ? 'text-center' : ''} min-h-[40px]`}>
                                         {plan.description}
                                     </p>
 
-                                    <div className="mb-8 text-center">
-                                        <div className={`${isPro ? 'bg-[#d97757]/5 border border-[#d97757]/10' : 'bg-gray-800/30 border border-gray-700/30'} rounded-2xl py-4 px-6 inline-block`}>
-                                            <span className={`text-5xl font-bold ${isPro ? 'bg-gradient-to-r from-[#d97757] to-[#e88864] bg-clip-text text-transparent' : 'text-white'}`}>
-                                              <NumberFlow
+                                    <div className="mb-6 text-center">
+                                        <span className="text-4xl font-bold text-white">
+                                            <NumberFlow
                                                 value={price}
                                                 format={{ style: 'currency', currency: 'BRL' }}
                                                 locales="pt-BR"
-                                              />
+                                            />
+                                        </span>
+                                        <span className="text-gray-500">/mês</span>
+                                        {billingCycle === 'annual' && plan.annualPrice && (
+                                            <span className="text-xs text-gray-500 block mt-1">
+                                                cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
                                             </span>
-                                            <span className="text-gray-500 text-sm block mt-1">/mês</span>
-                                            {billingCycle === 'annual' && plan.annualPrice && (
-                                                <span className="text-xs text-gray-600 block mt-2">
-                                                    ou R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
-                                                </span>
-                                            )}
-                                        </div>
+                                        )}
                                     </div>
 
-                                    <div className={`${isPro ? 'bg-[#d97757]/5 border border-[#d97757]/10' : 'bg-gray-800/20 border border-gray-700/20'} rounded-2xl p-4 mb-6 flex-1`}>
-                                        <ul className="space-y-3">
-                                            {plan.features.map((feature, idx) => (
-                                                <li key={idx} className={`flex items-start gap-3 text-sm ${textColor}`}>
-                                                    {checkIcon}
-                                                    <span className="flex-1 leading-relaxed">{feature}</span>
-                                                </li>
-                                            ))}
-                                        </ul>
-                                    </div>
+                                    <ul className="space-y-4 mb-8 flex-1">
+                                        {plan.features.map((feature, idx) => (
+                                            <li key={idx} className={`flex items-center gap-3 text-sm ${isPro ? 'text-white' : 'text-gray-300'}`}>
+                                                {isPro ? (
+                                                    <CheckCircle size={16} className="text-[#d97757]" />
+                                                ) : (
+                                                    <Check size={16} className={plan.id === 'family' ? "text-[#d97757]" : "text-gray-500"} />
+                                                )}
+                                                <span className={isPro && idx === 0 ? 'font-bold' : ''}>{feature}</span>
+                                            </li>
+                                        ))}
+                                    </ul>
 
                                     <button
                                         onClick={() => handleSelectClick(plan.id as any, plan.name, billingCycle === 'monthly' ? plan.price : (plan.annualPrice || 0))}
                                         disabled={isCurrent}
                                         className={`
-                                            w-full py-4 rounded-xl font-bold transition-all duration-300 relative overflow-hidden group
+                                            w-full py-3 rounded-xl font-bold transition-colors
                                             ${isCurrent
-                                                ? 'bg-gray-800/50 text-gray-500 cursor-default border border-gray-700/50'
+                                                ? 'bg-gray-800 text-gray-500 cursor-default border border-gray-700'
                                                 : isPro
-                                                    ? 'bg-gradient-to-r from-[#d97757] to-[#e88864] hover:from-[#c56a4d] hover:to-[#d97757] text-white shadow-lg shadow-[#d97757]/25 hover:shadow-[#d97757]/40 hover:scale-[1.02]'
-                                                    : 'border-2 border-[#d97757]/30 text-white hover:bg-[#d97757]/10 hover:border-[#d97757]/50 hover:scale-[1.02]'}
+                                                    ? 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/25'
+                                                    : 'border border-gray-700 text-white hover:bg-gray-800'
+                                            }
                                         `}
                                     >
-                                        <span className="relative z-10">
-                                            {isCurrent ? 'Plano Atual' : (plan.price === 0 ? 'Começar Grátis' : (billingCycle === 'annual' ? `Assinar por R$ ${plan.annualPrice?.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : 'Assinar Agora'))}
-                                        </span>
-                                        {!isCurrent && isPro && (
-                                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700"></div>
-                                        )}
+                                        {isCurrent ? 'Plano Atual' : (plan.price === 0 ? 'Começar Grátis' : (billingCycle === 'annual' ? `Assinar Anual` : 'Assinar Agora'))}
                                     </button>
                                 </motion.div>
                             );
