@@ -74,17 +74,20 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       className={`
-        w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group relative
+        flex items-center transition-all duration-200 group relative rounded-lg
+        ${isOpen 
+          ? 'w-full gap-3 p-2.5 justify-start' // Expandido: alinhado à esquerda
+          : 'w-full py-3 justify-center'       // Colapsado: largura total, centralizado (removido w-10/h-10 rounded-full)
+        }
         ${active
           ? 'bg-gray-800 text-white shadow-sm'
           : disabled
             ? 'text-gray-600 cursor-not-allowed opacity-50'
             : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
         }
-        ${!isOpen ? 'justify-center' : ''}
       `}
     >
-      <span className={`transition-colors ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
+      <span className={`transition-colors relative z-10 ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
         {icon}
       </span>
 
@@ -92,14 +95,14 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
 
       {/* Badge */}
       {(badge || 0) > 0 && (
-        <span className={`absolute ${isOpen ? 'right-2 top-1/2 -translate-y-1/2' : 'top-1 right-1'} flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white`}>
+        <span className={`absolute ${isOpen ? 'right-2 top-1/2 -translate-y-1/2' : 'top-1 right-1'} flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white`}>
           {badge && badge > 9 ? '9+' : badge}
         </span>
       )}
 
-      {/* Active Indicator (Collapsed) */}
+      {/* Active Indicator (Collapsed - Barra lateral sutil) */}
       {!isOpen && active && (
-        <div className="absolute left-1 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-full"></div>
+        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-r-md"></div>
       )}
 
       {/* Tooltip Card (Collapsed Only) */}
@@ -437,29 +440,29 @@ const App: React.FC = () => {
          // Check if exists in loaded transactions
          // We check for "Salário Mensal" description AND the current month prefix in date
          const exists = transactions.some(t =>
-            t.type === 'income' &&
-            t.description === "Salário Mensal" &&
-            t.date.startsWith(monthPrefix)
+           t.type === 'income' &&
+           t.description === "Salário Mensal" &&
+           t.date.startsWith(monthPrefix)
          );
 
          if (!exists) {
-            // Add it
-            const newTx: Omit<Transaction, 'id'> = {
-               description: "Salário Mensal",
-               amount: currentUser.baseSalary!,
-               type: 'income',
-               category: 'Trabalho',
-               date: dateString,
-               status: 'completed',
-               memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
-            };
+           // Add it
+           const newTx: Omit<Transaction, 'id'> = {
+              description: "Salário Mensal",
+              amount: currentUser.baseSalary!,
+              type: 'income',
+              category: 'Trabalho',
+              date: dateString,
+              status: 'completed',
+              memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
+           };
 
-            try {
-               await dbService.addTransaction(userId, newTx);
-               toast.success("Salário mensal registrado automaticamente!");
-            } catch (err) {
-               console.error("Erro ao registrar salario automatico:", err);
-            }
+           try {
+              await dbService.addTransaction(userId, newTx);
+              toast.success("Salário mensal registrado automaticamente!");
+           } catch (err) {
+              console.error("Erro ao registrar salario automatico:", err);
+           }
          }
       }
     };
@@ -1199,12 +1202,12 @@ const App: React.FC = () => {
               onClick={() => setIsAIModalOpen(true)}
               disabled={activeMemberId === 'FAMILY_OVERVIEW'}
               className={`
-                  w-full flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group shadow-lg relative
+                  flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group shadow-lg relative
                   ${activeMemberId === 'FAMILY_OVERVIEW'
-                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed shadow-none'
+                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed shadow-none w-full justify-start'
                   : isSidebarOpen
-                    ? 'bg-[#d97757] text-[#faf9f5] hover:bg-[#c56a4d] shadow-[#d97757]/20'
-                    : 'justify-center bg-transparent text-[#d97757] hover:bg-gray-800 shadow-none'
+                    ? 'w-full justify-start bg-[#d97757] text-[#faf9f5] hover:bg-[#c56a4d] shadow-[#d97757]/20'
+                    : 'w-full justify-center bg-transparent text-[#d97757] hover:bg-gray-800 shadow-none'
                 }
                 `}
             >

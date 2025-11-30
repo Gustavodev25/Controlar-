@@ -1,0 +1,348 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Flame, TrendingUp, Target, Calendar, DollarSign, Percent, Wallet, Info, HelpCircle, Sparkles, ChevronDown, ChevronUp } from 'lucide-react';
+import { Line, LineChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, ReferenceLine } from 'recharts';
+
+interface FireCalculatorProps {
+  netWorth: number;
+  averageMonthlyExpense: number;
+  averageMonthlySavings: number;
+}
+
+const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+
+export const FireCalculator: React.FC<FireCalculatorProps> = ({
+  netWorth,
+  averageMonthlyExpense,
+  averageMonthlySavings
+}) => {
+  const [currentNetWorth, setCurrentNetWorth] = useState(Math.max(netWorth, 0));
+  const [monthlyContribution, setMonthlyContribution] = useState(Math.max(averageMonthlySavings, 0));
+  const [monthlyExpense, setMonthlyExpense] = useState(Math.max(averageMonthlyExpense, 0));
+  const [annualRate, setAnnualRate] = useState(8); 
+  const [showGuide, setShowGuide] = useState(false);
+
+  useEffect(() => setCurrentNetWorth(Math.max(netWorth, 0)), [netWorth]);
+  useEffect(() => setMonthlyContribution(Math.max(averageMonthlySavings, 0)), [averageMonthlySavings]);
+  useEffect(() => setMonthlyExpense(Math.max(averageMonthlyExpense, 0)), [averageMonthlyExpense]);
+
+  const fireTarget = useMemo(() => Math.max(monthlyExpense, 0) * 12 * 25, [monthlyExpense]);
+
+  const projection = useMemo(() => {
+    const monthlyRate = Math.max(annualRate, 0) / 100 / 12;
+    const data: { label: string; patrimony: number; target: number }[] = [];
+    let balance = Math.max(currentNetWorth, 0);
+    const start = new Date();
+    const formatLabel = (d: Date) => d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
+    const target = fireTarget;
+    let reachedAt: number | null = target === 0 || balance >= target ? 0 : null;
+
+    data.push({ label: formatLabel(start), patrimony: balance, target });
+
+    const maxMonths = 50 * 12; 
+    for (let i = 1; i <= maxMonths; i++) {
+      balance = balance * (1 + monthlyRate) + monthlyContribution;
+      const pointDate = new Date(start.getFullYear(), start.getMonth() + i, 1);
+      data.push({ label: formatLabel(pointDate), patrimony: balance, target });
+
+      if (reachedAt === null && balance >= target) {
+        reachedAt = i;
+      }
+      if (reachedAt !== null && i > reachedAt + 12) {
+        break;
+      }
+    }
+    return { data, reachedAt };
+  }, [annualRate, currentNetWorth, fireTarget, monthlyContribution]);
+
+  const freedomDate = useMemo(() => {
+    if (projection.reachedAt === null) return null;
+    const d = new Date();
+    d.setMonth(d.getMonth() + projection.reachedAt);
+    return d;
+  }, [projection.reachedAt]);
+
+  const timelineMonths = projection.reachedAt ?? Math.max(projection.data.length - 1, 0);
+  const years = Math.floor(timelineMonths / 12);
+  const months = timelineMonths % 12;
+  const formattedFreedomDate = freedomDate
+    ? freedomDate.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' })
+    : null;
+
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (!active || !payload || !payload.length) return null;
+    return (
+      <div className="bg-gray-900/90 border border-gray-700 rounded-xl p-3 shadow-xl backdrop-blur-sm">
+        <p className="text-[10px] text-gray-400 uppercase tracking-wider font-bold mb-2">{label}</p>
+        {payload.map((entry: any) => (
+          <div key={entry.name} className="flex items-center gap-2 mb-1 last:mb-0">
+            <div className={`w-1.5 h-1.5 rounded-full ${entry.name === 'Patrimônio' ? 'bg-[#d97757]' : 'bg-gray-500'}`} />
+            <p className="text-xs text-gray-300">
+              {entry.name}: <span className="font-bold text-white ml-1">{formatCurrency(entry.value)}</span>
+            </p>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
+  const handleNumberChange = (value: string, setter: (val: number) => void) => {
+    const parsed = parseFloat(value.replace(',', '.'));
+    setter(isNaN(parsed) ? 0 : Math.max(parsed, 0));
+  };
+
+  return (
+    <div className="w-full space-y-6 animate-fade-in font-sans">
+      
+      {/* HEADER IGUAL AO DO CÓDIGO FORNECIDO */}
+      <div className="flex items-end justify-between px-1 pb-2">
+        <div className="flex items-center gap-3">
+          <div className="text-[#d97757] mb-1">
+            <Flame size={28} />
+          </div>
+          <div>
+            <p className="text-[10px] text-gray-500 uppercase tracking-widest font-bold mb-0.5">Independência Financeira</p>
+            <h3 className="text-2xl font-bold text-white leading-none">Simulador FIRE</h3>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-5 pb-1">
+          <button
+            onClick={() => setShowGuide(!showGuide)}
+            className="text-sm font-medium text-[#d97757] hover:text-[#d97757]/80 transition-colors flex items-center gap-2"
+          >
+            <HelpCircle size={16} /> {showGuide ? 'Ocultar Ajuda' : 'Como usar?'}
+          </button>
+        </div>
+      </div>
+
+      {/* ÁREA DE CONTEÚDO */}
+      <div className="grid gap-5 md:grid-cols-12">
+        
+        {/* COLUNA ESQUERDA: PARÂMETROS (Estilo Card do Banco) */}
+        <div className="md:col-span-4 space-y-5">
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col">
+                <div className="bg-gray-900/50 p-4 border-b border-gray-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
+                            <DollarSign size={14} />
+                        </div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wide">Parâmetros</h4>
+                    </div>
+                </div>
+
+                <div className="p-4 space-y-4">
+                     {/* Input: Net Worth */}
+                    <div className="bg-gray-900/40 border border-gray-800/50 rounded-xl p-3 hover:border-gray-700 transition-colors group">
+                        <div className="flex justify-between items-start mb-1">
+                             <div className="flex items-center gap-2 text-[#d97757]">
+                                <Wallet size={16} />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-gray-300 transition-colors">Patrimônio Atual</span>
+                             </div>
+                             <div className="group/tooltip relative">
+                                <Info size={12} className="text-gray-600 cursor-help" />
+                                <div className="absolute right-0 bottom-full mb-2 w-48 bg-gray-900 border border-gray-700 text-gray-300 text-[10px] p-2 rounded shadow-xl hidden group-hover/tooltip:block z-20">
+                                   Seu saldo total acumulado hoje.
+                                </div>
+                            </div>
+                        </div>
+                        <input
+                            type="number"
+                            value={currentNetWorth}
+                            onChange={(e) => handleNumberChange(e.target.value, setCurrentNetWorth)}
+                            className="w-full bg-transparent text-lg font-bold text-white border-b border-gray-800 focus:border-[#d97757] outline-none py-1 transition-colors placeholder-gray-700"
+                        />
+                    </div>
+
+                    {/* Input: Expenses */}
+                    <div className="bg-gray-900/40 border border-gray-800/50 rounded-xl p-3 hover:border-gray-700 transition-colors group">
+                        <div className="flex justify-between items-start mb-1">
+                             <div className="flex items-center gap-2 text-[#d97757]">
+                                <Target size={16} />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-gray-300 transition-colors">Gasto Mensal</span>
+                             </div>
+                        </div>
+                        <input
+                            type="number"
+                            value={monthlyExpense}
+                            onChange={(e) => handleNumberChange(e.target.value, setMonthlyExpense)}
+                            className="w-full bg-transparent text-lg font-bold text-white border-b border-gray-800 focus:border-[#d97757] outline-none py-1 transition-colors placeholder-gray-700"
+                        />
+                    </div>
+
+                    {/* Input: Savings */}
+                    <div className="bg-gray-900/40 border border-gray-800/50 rounded-xl p-3 hover:border-gray-700 transition-colors group">
+                        <div className="flex justify-between items-start mb-1">
+                             <div className="flex items-center gap-2 text-[#d97757]">
+                                <TrendingUp size={16} />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest group-hover:text-gray-300 transition-colors">Aporte Mensal</span>
+                             </div>
+                        </div>
+                        <input
+                            type="number"
+                            value={monthlyContribution}
+                            onChange={(e) => handleNumberChange(e.target.value, setMonthlyContribution)}
+                            className="w-full bg-transparent text-lg font-bold text-white border-b border-gray-800 focus:border-[#d97757] outline-none py-1 transition-colors placeholder-gray-700"
+                        />
+                    </div>
+
+                    {/* Input: Rate */}
+                    <div className="bg-gray-900/40 border border-gray-800/50 rounded-xl p-3 hover:border-gray-700 transition-colors">
+                        <div className="flex justify-between items-center mb-3">
+                             <div className="flex items-center gap-2 text-[#d97757]">
+                                <Percent size={16} />
+                                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Rentabilidade (a.a.)</span>
+                             </div>
+                             <span className="text-xs font-bold text-white bg-gray-800 px-2 py-0.5 rounded">{annualRate}%</span>
+                        </div>
+                        <input
+                            type="range"
+                            min={2}
+                            max={15}
+                            step={0.5}
+                            value={annualRate}
+                            onChange={(e) => setAnnualRate(parseFloat(e.target.value))}
+                            className="w-full h-1 bg-gray-800 rounded-lg appearance-none cursor-pointer accent-[#d97757]"
+                        />
+                        <div className="flex justify-between text-[9px] text-gray-600 mt-2 uppercase font-bold">
+                            <span>Conservador</span>
+                            <span>Agressivo</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Informações Extras (Lógica) */}
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 flex items-start gap-3">
+                 <div className="mt-0.5 text-[#d97757]">
+                     <Sparkles size={16} />
+                 </div>
+                 <div>
+                     <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">A Regra dos 4%</p>
+                     <p className="text-xs text-gray-400 leading-relaxed">
+                        Para cobrir <span className="text-white font-bold">{formatCurrency(monthlyExpense)}</span> mensais, sua meta é acumular <span className="text-white font-bold">{formatCurrency(fireTarget)}</span>.
+                     </p>
+                 </div>
+            </div>
+        </div>
+
+        {/* COLUNA DIREITA: RESULTADOS E GRÁFICO */}
+        <div className="md:col-span-8 space-y-5">
+            
+            {/* Cards de Métricas (Grid superior) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                 <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 flex flex-col justify-between">
+                     <div className="flex justify-between items-start mb-2">
+                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Meta Final FIRE</span>
+                         <Target size={16} className="text-[#d97757]" />
+                     </div>
+                     <div>
+                        <p className="text-2xl font-bold text-white">{formatCurrency(fireTarget)}</p>
+                        <p className="text-[10px] text-gray-600 mt-1">Baseado no gasto x 300</p>
+                     </div>
+                 </div>
+
+                 <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 flex flex-col justify-between">
+                     <div className="flex justify-between items-start mb-2">
+                         <span className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Tempo Estimado</span>
+                         <Calendar size={16} className="text-[#d97757]" />
+                     </div>
+                     <div>
+                        <p className="text-2xl font-bold text-white">{projection.reachedAt === null ? '---' : `${years}a ${months}m`}</p>
+                        <p className="text-[10px] text-gray-600 mt-1">{formattedFreedomDate || 'Continue aportando'}</p>
+                     </div>
+                 </div>
+            </div>
+
+            {/* Guia de Ajuda (Expansível) */}
+            {showGuide && (
+                <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 animate-fade-in">
+                    <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-800">
+                        <HelpCircle size={14} className="text-[#d97757]" />
+                        <span className="text-xs font-bold text-white uppercase tracking-wide">Como interpretar</span>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="bg-gray-900/50 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-[#d97757] mb-1">1. DADOS</p>
+                            <p className="text-[11px] text-gray-400">Preencha sua realidade financeira atual na coluna da esquerda.</p>
+                        </div>
+                        <div className="bg-gray-900/50 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-[#d97757] mb-1">2. GRÁFICO</p>
+                            <p className="text-[11px] text-gray-400">A linha sólida é seu dinheiro crescendo. A pontilhada é sua meta.</p>
+                        </div>
+                        <div className="bg-gray-900/50 rounded-lg p-3">
+                            <p className="text-[10px] font-bold text-[#d97757] mb-1">3. LIBERDADE</p>
+                            <p className="text-[11px] text-gray-400">Quando as linhas se cruzam, você atingiu a independência!</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Gráfico Principal */}
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden shadow-lg flex flex-col h-[400px]">
+                <div className="bg-gray-900/50 p-4 border-b border-gray-800 flex items-center justify-between">
+                     <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
+                            <TrendingUp size={14} />
+                        </div>
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wide">Projeção Patrimonial</h4>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-[#d97757]"></div>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Patrimônio</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <div className="w-2 h-2 rounded-full bg-gray-600"></div>
+                            <span className="text-[10px] font-bold text-gray-500 uppercase">Meta</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="flex-1 p-4 w-full">
+                     <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={projection.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
+                          <XAxis 
+                            dataKey="label" 
+                            tick={{ fill: '#6b7280', fontSize: 10, fontWeight: 600 }} 
+                            axisLine={false} 
+                            tickLine={false}
+                            minTickGap={30}
+                            dy={10}
+                          />
+                          <YAxis 
+                            tick={{ fill: '#6b7280', fontSize: 10, fontWeight: 600 }} 
+                            axisLine={false}
+                            tickLine={false}
+                            tickFormatter={(v) => `R$ ${(v / 1000000).toFixed(1)}M`} 
+                            width={45}
+                          />
+                          <Tooltip content={<CustomTooltip />} cursor={{ stroke: '#374151', strokeWidth: 1 }} />
+                          <ReferenceLine y={fireTarget} stroke="#4b5563" strokeDasharray="3 3" />
+                          <Line 
+                            type="monotone" 
+                            dataKey="patrimony" 
+                            stroke="#d97757" 
+                            strokeWidth={2} 
+                            dot={false} 
+                            activeDot={{ r: 4, fill: '#d97757', stroke: '#111827', strokeWidth: 2 }}
+                            name="Patrimônio" 
+                          />
+                          <Line 
+                            type="linear" 
+                            dataKey="target" 
+                            stroke="#4b5563" 
+                            strokeWidth={1} 
+                            strokeDasharray="4 4"
+                            dot={false} 
+                            name="Meta" 
+                          />
+                        </LineChart>
+                     </ResponsiveContainer>
+                </div>
+            </div>
+        </div>
+      </div>
+    </div>
+  );
+};
