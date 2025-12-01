@@ -16,6 +16,7 @@ import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
+import NumberFlow from '@number-flow/react';
 
 interface SettingsModalProps {
    isOpen: boolean;
@@ -1208,7 +1209,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               
                               <div className="space-y-4">
                                  <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-400 ml-1">Salário Base (Meta)</label>
+                                    <label className="text-xs font-medium text-gray-400 ml-1">Salário Base</label>
                                     <div className="relative">
                                        <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
                                        <input
@@ -1224,7 +1225,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                           className="input-primary pl-10 text-lg font-bold"
                                        />
                                     </div>
-                                    <p className="text-xs text-gray-500 ml-1">Valor usado para cálculo de metas e horas extras.</p>
+                                    <p className="text-xs text-gray-500 ml-1">Valor usado para cálculo de horas extras.</p>
                                  </div>
 
                                  <div className="space-y-2">
@@ -1455,7 +1456,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
                                                    <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
                                                    <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                                      {format(net)}
+                                                      <NumberFlow 
+                                                        value={net} 
+                                                        format={{ style: 'currency', currency: 'BRL' }}
+                                                        locales="pt-BR"
+                                                      />
                                                    </span>
                                                 </div>
                                              </div>

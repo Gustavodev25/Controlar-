@@ -5,6 +5,7 @@ import {
   Bot,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Bell,
   TrendingUp,
   BrainCircuit,
@@ -134,26 +135,60 @@ interface PendingTwoFactor {
 }
 
 const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
-  if (!isOpen) return null;
+  const [isVisible, setIsVisible] = useState(false);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    if (isOpen) {
+      setIsVisible(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsAnimating(true);
+        });
+      });
+    } else {
+      setIsAnimating(false);
+      timeoutId = setTimeout(() => {
+        setIsVisible(false);
+      }, 300);
+    }
+    return () => clearTimeout(timeoutId);
+  }, [isOpen]);
+
+  if (!isVisible) return null;
   
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
-       <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl animate-scale-in">
-          <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+    <div 
+      className={`
+        fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
+        ${isAnimating ? 'bg-black/60 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
+      `}
+    >
+       <div 
+         className={`
+            bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+            ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+         `}
+       >
+          <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors z-10">
              <X size={20} />
           </button>
 
-          <div className="p-6 flex flex-col items-center text-center">
-             <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mb-4 text-[#25D366] ring-1 ring-[#25D366]/20">
+          <div className="p-6 flex flex-col items-center text-center relative">
+             {/* Background Glow */}
+             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-[#25D366]/10 rounded-full blur-3xl pointer-events-none"></div>
+
+             <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mb-4 text-[#25D366] ring-1 ring-[#25D366]/20 relative z-10">
                 <MessageCircle size={32} />
              </div>
              
-             <h2 className="text-xl font-bold text-white mb-2">Coinzinha no WhatsApp</h2>
-             <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+             <h2 className="text-xl font-bold text-white mb-2 relative z-10">Coinzinha no WhatsApp</h2>
+             <p className="text-gray-400 text-sm mb-6 leading-relaxed relative z-10">
                Converse com sua IA financeira diretamente pelo WhatsApp. Envie áudios de gastos, fotos de notas fiscais ou peça conselhos.
              </p>
 
-             <div className="bg-gray-800/50 rounded-xl p-4 w-full mb-6 border border-gray-800 text-left">
+             <div className="bg-gray-800/50 rounded-xl p-4 w-full mb-6 border border-gray-800 text-left relative z-10">
                 <p className="text-xs text-gray-500 font-bold uppercase mb-2">Como funciona:</p>
                 <ul className="text-sm text-gray-300 space-y-2">
                    <li className="flex gap-2 items-start">
@@ -175,7 +210,7 @@ const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
                href="https://wa.me/14155238886?text=join%20stomach-event" 
                target="_blank" 
                rel="noreferrer"
-               className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,211,102,0.3)]"
+               className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,211,102,0.3)] relative z-10"
              >
                <MessageCircle size={20} />
                Abrir WhatsApp
@@ -256,7 +291,20 @@ const App: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
-  const [showProjections, setShowProjections] = useState(false);
+  
+  // Projections State
+  const [showProjectionMenu, setShowProjectionMenu] = useState(false);
+  const [projectionSettings, setProjectionSettings] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_projection_settings');
+      return saved !== null ? JSON.parse(saved) : { reminders: false, subscriptions: false, salary: false };
+    }
+    return { reminders: false, subscriptions: false, salary: false };
+  });
+
+  useEffect(() => {
+    localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
+  }, [projectionSettings]);
   
   // Stats Toggles
   const [includeCheckingInStats, setIncludeCheckingInStats] = useState(() => {
@@ -874,28 +922,8 @@ const App: React.FC = () => {
 
   // Apenas considera lancamentos que o usuario manteve (nao ignorados), incluindo pendentes para previsibilidade
   const reviewedDashboardTransactions = useMemo(() => {
-    return dashboardFilteredTransactions.filter(t => {
-      if (t.ignored) return false;
-
-      // Account Type Filtering
-      let type = t.accountType;
-      if (!type && t.accountId) {
-         const acc = accountMap.get(t.accountId);
-         type = acc?.subtype || acc?.type;
-      }
-
-      const typeUpper = (type || "").toUpperCase();
-
-      // Normalize types for check
-      const isChecking = typeUpper === 'CHECKING_ACCOUNT' || typeUpper === 'BANK';
-      const isCredit = typeUpper === 'CREDIT_CARD' || typeUpper === 'CREDIT';
-
-      if (isChecking && !includeCheckingInStats) return false;
-      if (isCredit && !includeCreditCardInStats) return false;
-
-      return true;
-    });
-  }, [dashboardFilteredTransactions, includeCheckingInStats, includeCreditCardInStats, accountMap]);
+    return dashboardFilteredTransactions.filter(t => !t.ignored);
+  }, [dashboardFilteredTransactions]);
 
   const reviewedMemberTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
@@ -965,64 +993,122 @@ const App: React.FC = () => {
     let totalExpense = expenses.reduce((acc, t) => acc + t.amount, 0);
     
     // Calculate pure flow for "Resultado do Período" (Monthly Savings)
-    const periodIncome = totalIncome;
-    const periodExpense = totalExpense;
+    let periodIncome = totalIncome;
+    let periodExpense = totalExpense; // Start with Accrual Expense (Sum of all txs)
     
-    // Apply Toggles for "Saldo Total", "Receitas", "Despesas"
+    // Calculate Total Balance (Snapshot Base)
+    let calculatedBalance = 0;
+
+    // 1. Checking Account & Salary Logic
     if (includeCheckingInStats) {
-       totalIncome += accountBalances.checking;
+       calculatedBalance += accountBalances.checking;
+
+       // User Request: "Considerar o salario + o Saldo em Conta Corrente quando o considerar do Saldo em Conta Corrente estiver ativo"
+       // We automatically include the projected salary if it hasn't been paid yet.
+       if (currentUser?.baseSalary) {
+           const salaryPaid = reviewedDashboardTransactions.some(t => 
+              t.type === 'income' && 
+              t.description === "Salário Mensal"
+           );
+
+           if (!salaryPaid) {
+               const salaryAmount = currentUser.baseSalary;
+               calculatedBalance += salaryAmount;
+               // Update Income Card to reflect this expected inflow
+               totalIncome += salaryAmount;
+           }
+       }
     }
     
+    // 2. Credit Card Logic
     if (includeCreditCardInStats) {
-       totalExpense += accountBalances.credit.used;
-    }
+       // Logic: Cash Flow View (Visão de Caixa)
+       
+       // A. Identify CC transactions in the current view (Swipes)
+       const ccSpendingInView = reviewedDashboardTransactions
+          .filter(t => t.type === 'expense' && (t.accountType === 'CREDIT_CARD' || t.accountType === 'CREDIT'))
+          .reduce((acc, t) => acc + t.amount, 0);
 
-    // Add Projections (Reminders + Subscriptions) if enabled
-    if (showProjections && filterMode === 'month') {
-      // 1. Reminders
-      const projectedReminders = filteredReminders.filter(r => {
-        if (!r.dueDate.startsWith(dashboardDate)) return false;
-        if (dashboardCategory && r.category !== dashboardCategory) return false;
-        return true;
-      });
+       // B. Identify CC Bills due in this view (Pluggy Data)
+       let ccBillsInView = 0;
+       accountMap.forEach((acc) => {
+          const type = (acc.subtype || acc.type || "").toUpperCase();
+          const isCredit = type === 'CREDIT_CARD' || type === 'CREDIT';
+          
+          if (isCredit) {
+              // Check if bill is due in the selected month
+              if (acc.balanceDueDate && acc.balanceDueDate.startsWith(dashboardDate)) {
+                  ccBillsInView += (acc.balance || 0);
+              }
+          }
+       });
 
-      projectedReminders.forEach(r => {
-        if (r.type === 'income') {
-          totalIncome += r.amount;
-        } else {
-          totalExpense += r.amount;
-        }
-      });
+       // C. Adjust Total Expense for Display (Red Card)
+       // Use Bill Amount if available, otherwise fallback to Swipes (Accrual)
+       const displayedCCExpense = ccBillsInView > 0 ? ccBillsInView : ccSpendingInView;
+       totalExpense = totalExpense - ccSpendingInView + displayedCCExpense;
+       
+       // D. Adjust Balance
+       // Subtract the actual Bill Amount (Liability) from the Cash
+       calculatedBalance -= ccBillsInView;
+       
+       // Update Period Expense for "Resultado"
+       periodExpense = totalExpense;
+    } 
 
-      // 2. Subscriptions (Active & Monthly)
-      const activeSubscriptions = subscriptions.filter(s => 
-          s.status === 'active' && 
-          s.billingCycle === 'monthly' && // Only include monthly for monthly view
-          (!dashboardCategory || s.category === dashboardCategory)
-      );
+    // 3. Projections (Reminders + Subscriptions)
+    if (filterMode === 'month') {
+      // Reminders
+      if (projectionSettings.reminders) {
+        const projectedReminders = filteredReminders.filter(r => {
+          if (!r.dueDate.startsWith(dashboardDate)) return false;
+          if (dashboardCategory && r.category !== dashboardCategory) return false;
+          return true;
+        });
 
-      activeSubscriptions.forEach(s => {
-         // Avoid double counting if a transaction for this subscription already exists this month
-         // We check if there is an expense with same amount and similar name in current month
-         const alreadyPaid = reviewedDashboardTransactions.some(t => 
-             t.type === 'expense' && 
-             t.amount === s.amount && 
-             t.description.toLowerCase().includes(s.name.toLowerCase())
-         );
+        projectedReminders.forEach(r => {
+          if (r.type === 'income') {
+            totalIncome += r.amount;
+            calculatedBalance += r.amount;
+          } else {
+            totalExpense += r.amount;
+            calculatedBalance -= r.amount;
+          }
+        });
+      }
 
-         if (!alreadyPaid) {
-             totalExpense += s.amount;
-         }
-      });
+      // Subscriptions
+      if (projectionSettings.subscriptions) {
+        const activeSubscriptions = subscriptions.filter(s => 
+            s.status === 'active' && 
+            s.billingCycle === 'monthly' && 
+            (!dashboardCategory || s.category === dashboardCategory)
+        );
+
+        activeSubscriptions.forEach(s => {
+           const alreadyPaid = reviewedDashboardTransactions.some(t => 
+               t.type === 'expense' && 
+               t.amount === s.amount && 
+               t.description.toLowerCase().includes(s.name.toLowerCase())
+           );
+
+           if (!alreadyPaid) {
+               totalExpense += s.amount;
+               calculatedBalance -= s.amount;
+           }
+        });
+      }
+      
+      // Note: Salary projection is now handled in Step 1 (Checking Logic)
     }
 
     return {
       totalIncome,
       totalExpense,
-      totalBalance: totalIncome - totalExpense,
+      totalBalance: calculatedBalance,
       monthlySavings: periodIncome > 0 ? (periodIncome - periodExpense) : (periodIncome - periodExpense)
     };
-  }, [reviewedDashboardTransactions, showProjections, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, accountBalances, dashboardCategory]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, accountBalances, dashboardCategory]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -1184,11 +1270,11 @@ const App: React.FC = () => {
   const handleUpdateSalary = async (newSalary: number, paymentDay?: number) => {
     if (userId) {
       await dbService.updateUserProfile(userId, { baseSalary: newSalary, salaryPaymentDay: paymentDay });
-      toast.success("Meta mensal e dia de pagamento atualizados.");
+      toast.success("Salário base e dia de pagamento atualizados.");
     }
   };
 
-  const handleAddExtraIncome = async (amount: number, description: string) => {
+  const handleAddExtraIncome = async (amount: number, description: string, status: 'completed' | 'pending' = 'completed', date?: string) => {
     const admin = members.find(m => m.role === 'admin') || members[0];
     if (!admin) return;
 
@@ -1197,8 +1283,8 @@ const App: React.FC = () => {
       amount: amount,
       category: 'Trabalho',
       type: 'income',
-      date: toLocalISODate(),
-      status: 'completed',
+      date: date || toLocalISODate(),
+      status: status,
       memberId: activeMemberId === 'FAMILY_OVERVIEW' ? admin.id : activeMemberId
     };
     await handleAddTransaction(extraIncome);
@@ -1670,22 +1756,79 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {/* Forecast Toggle */}
+                {/* Forecast Dropdown */}
                 {filterMode === 'month' && (
-                  <button
-                    onClick={() => setShowProjections(!showProjections)}
-                    className={`
-                      h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap
-                      ${showProjections 
-                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border border-[#d97757]' 
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
-                      }
-                    `}
-                    title="Simular saldo com lembretes e assinaturas do mês"
-                  >
-                    <Calendar size={16} className={showProjections ? "animate-pulse" : ""} />
-                    Previsão
-                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowProjectionMenu(!showProjectionMenu)}
+                      className={`
+                        h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border
+                        ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
+                          ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]' 
+                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
+                        }
+                      `}
+                      title="Simular saldo futuro"
+                    >
+                      <Calendar size={16} className={(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary) ? "animate-pulse" : ""} />
+                      Previsão
+                      <ChevronDown size={14} className={`transition-transform duration-200 ${showProjectionMenu ? 'rotate-180' : ''}`} />
+                    </button>
+
+                    {/* Dropdown Menu */}
+                    {showProjectionMenu && (
+                      <>
+                        <div className="fixed inset-0 z-40" onClick={() => setShowProjectionMenu(false)}></div>
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-2 animate-slide-down">
+                           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1.5 mb-1">
+                              Incluir na Previsão
+                           </div>
+                           
+                           {/* Toggle Lembretes */}
+                           <div 
+                              onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
+                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                           >
+                              <div className="flex items-center gap-2">
+                                 <Bell size={14} className="text-gray-400 group-hover:text-white" />
+                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
+                              </div>
+                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.reminders ? 'translate-x-4' : ''}`}></div>
+                              </div>
+                           </div>
+
+                           {/* Toggle Assinaturas */}
+                           <div 
+                              onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
+                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                           >
+                              <div className="flex items-center gap-2">
+                                 <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
+                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
+                              </div>
+                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.subscriptions ? 'translate-x-4' : ''}`}></div>
+                              </div>
+                           </div>
+
+                           {/* Toggle Salário */}
+                           <div 
+                              onClick={() => setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
+                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                           >
+                              <div className="flex items-center gap-2">
+                                 <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
+                              </div>
+                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.salary ? 'translate-x-4' : ''}`}></div>
+                              </div>
+                           </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
                 )}
 
                 {filterMode === 'year' && (
@@ -1784,19 +1927,21 @@ const App: React.FC = () => {
 
             {/* Forecast Toggle */}
             {filterMode === 'month' && (
-               <button
-                  onClick={() => setShowProjections(!showProjections)}
-                  className={`
-                    h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap shrink-0 snap-start
-                    ${showProjections 
-                      ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border border-[#d97757]' 
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border border-gray-700'
-                    }
-                  `}
-               >
-                  <Calendar size={14} className={showProjections ? "animate-pulse" : ""} />
-                  Previsão
-               </button>
+               <div className="relative shrink-0 snap-start">
+                 <button
+                    onClick={() => setShowProjectionMenu(!showProjectionMenu)}
+                    className={`
+                      h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border
+                      ${(projectionSettings.reminders || projectionSettings.subscriptions) 
+                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]' 
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
+                      }
+                    `}
+                 >
+                    <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions) ? "animate-pulse" : ""} />
+                    Previsão
+                 </button>
+               </div>
             )}
 
             {/* Clear Filters */}

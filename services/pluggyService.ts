@@ -263,7 +263,16 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
 
     const shouldSkipTx = (tx: any, account: any) => {
       const descLower = (tx.description || "").toLowerCase();
-      if (descLower.includes("saldo") || descLower.includes("balance") || descLower.includes("limite disponivel")) return true;
+      // More specific filtering to avoid skipping legitimate transactions
+      if (descLower.includes("saldo anterior") || 
+          descLower.includes("sdo ant") || 
+          descLower.includes("saldo do dia") || 
+          descLower.includes("saldo bloqueado") ||
+          descLower.includes("limite disponivel") ||
+          descLower.includes("balance carried") ||
+          descLower === "saldo"
+      ) return true;
+      
       const txType = (tx.type || "").toLowerCase();
       if (txType.includes("balance")) return true;
       return false;
@@ -295,31 +304,55 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
 
     // 2. Iterate accounts
     for (const account of accounts) {
-      const txRes = await fetch(`${API_URL}/transactions?accountId=${account.id}&from=${fromDate}`, {
-        headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
-      });
+      let transactions = [];
+      try {
+        const txRes = await fetch(`${API_URL}/transactions?accountId=${account.id}&from=${fromDate}`, {
+          headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
+        });
 
-      if (!txRes.ok) continue;
-      const txData = await txRes.json();
-      const transactions = txData.results || [];
+        if (!txRes.ok) {
+          console.error(`Erro ao buscar transacoes da conta ${account.name} (${account.id}): ${txRes.status}`);
+          continue;
+        }
+        
+        const txData = await txRes.json();
+        transactions = txData.results || [];
+      } catch (err) {
+        console.error(`Excecao ao buscar transacoes da conta ${account.name}:`, err);
+        continue;
+      }
 
       const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
 
       for (const tx of transactions) {
         if (shouldSkipTx(tx, account)) continue;
 
+        const category = mapCategory(tx.category, tx.description);
         let isExpense;
-        if (isCreditCard) {
-          isExpense = tx.amount > 0;
+        
+        // Lógica híbrida: Prioriza a categoria se for claramente despesa/receita,
+        // senão usa o sinal do valor (padrão Pluggy).
+        const expenseCategories = ['Alimentacao', 'Transporte', 'Lazer', 'Saude', 'Moradia'];
+        
+        if (category === 'Salario') {
+           isExpense = false;
+        } else if (category === 'Investimentos') {
+           // Investimentos podem ser entrada (resgate) ou saída (aplicação).
+           // Vamos manter a lógica do sinal para investimentos por enquanto.
+           isExpense = isCreditCard ? tx.amount > 0 : tx.amount < 0;
+        } else if (expenseCategories.includes(category)) {
+           isExpense = true;
         } else {
-          isExpense = tx.amount < 0;
+           // Fallback para sinal
+            if (isCreditCard) {
+              isExpense = tx.amount > 0;
+            } else {
+              isExpense = tx.amount < 0;
+            }
         }
 
         const absAmount = Math.abs(tx.amount);
         if (absAmount === 0) continue;
-
-        const descLower = (tx.description || "").toLowerCase();
-        if (descLower.includes("saldo")) continue;
 
         const baseDesc = tx.description || account.name || "Transacao bancaria";
         const baseDateStr = tx.date ? tx.date.split("T")[0] : toLocalISODate();
@@ -350,7 +383,7 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
             amount: absAmount,
             date: dateStr,
             type: isExpense ? "expense" : "income",
-            category: mapCategory(tx.category, tx.description),
+            category: category,
             status: "completed",
             importSource: "pluggy",
             needsApproval: false,
@@ -380,6 +413,11 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
  */
 export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
   try {
+    /* 
+    // AUTOMATIC SYNC DISABLED BY USER REQUEST
+    // We intentionally do not save transactions automatically anymore.
+    // Users must manually click "Import" to review and add transactions.
+    
     const candidates = await fetchPluggyTransactionsForImport(userId, itemId);
     
     let importedCount = 0;
@@ -414,6 +452,9 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
 
     persistSavedTxIds(userId, itemId, savedIds);
     return importedCount;
+    */
+    
+    return 0;
   } catch (error) {
     console.error("Error syncing Pluggy data:", error);
     throw error;
@@ -525,6 +566,10 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       lastUpdated: account.lastUpdatedAt || account.lastAccessedAt,
       creditLimit: account.creditData?.creditLimit,
       availableCreditLimit: account.creditData?.availableCreditLimit,
+      brand: account.creditData?.brand,
+      balanceCloseDate: account.creditData?.balanceCloseDate,
+      balanceDueDate: account.creditData?.balanceDueDate,
+      minimumPayment: account.creditData?.minimumPayment,
       previewTransactions
     });
   }

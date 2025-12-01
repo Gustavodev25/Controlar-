@@ -166,6 +166,10 @@ export interface ConnectedAccount {
   previewTransactions?: ConnectedTransactionPreview[];
   creditLimit?: number;
   availableCreditLimit?: number;
+  brand?: string;
+  balanceCloseDate?: string;
+  balanceDueDate?: string;
+  minimumPayment?: number;
 }
 
 export interface AppNotification {

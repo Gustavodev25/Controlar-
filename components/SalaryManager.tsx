@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2 } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar } from './Icons';
 import { useToasts } from './Toast';
+import NumberFlow from '@number-flow/react';
 
 interface SalaryManagerProps {
   baseSalary: number;
   currentIncome: number;
   paymentDay?: number;
   onUpdateSalary: (newSalary: number, paymentDay?: number) => void;
-  onAddExtra: (amount: number, description: string) => void;
+  onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
 }
 
 export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, currentIncome, paymentDay, onUpdateSalary, onAddExtra }) => {
@@ -31,12 +32,14 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   // Simple Mode State
   const [extraAmount, setExtraAmount] = useState('');
   const [extraDesc, setExtraDesc] = useState('Freelance');
+  const [simpleDeductTaxes, setSimpleDeductTaxes] = useState(false);
 
   // Calculator Mode State
   const [monthlyHours, setMonthlyHours] = useState('220');
   const [otQuantity, setOtQuantity] = useState('');
   const [otPercent, setOtPercent] = useState('50');
   const [tempBaseSalary, setTempBaseSalary] = useState('');
+  const [deductTaxes, setDeductTaxes] = useState(false);
 
   // CLT Mode State
   const [cltGross, setCltGross] = useState('');
@@ -128,6 +131,19 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
       };
   };
 
+  // Calculate Marginal Tax for Overtime
+  const taxesOnBase = calculateCLT(effectiveBaseSalary, 0);
+  const taxesOnTotal = calculateCLT(effectiveBaseSalary + totalCalculated, 0);
+  const marginalDiscount = (taxesOnTotal.inss + taxesOnTotal.irrf) - (taxesOnBase.inss + taxesOnBase.irrf);
+  const finalOtValue = deductTaxes ? Math.max(0, totalCalculated - marginalDiscount) : totalCalculated;
+
+  // Calculate Marginal Tax for Simple Mode
+  const simpleAmountVal = parseInput(extraAmount);
+  const simpleTaxesOnBase = calculateCLT(baseSalary > 0 ? baseSalary : 0, 0);
+  const simpleTaxesOnTotal = calculateCLT((baseSalary > 0 ? baseSalary : 0) + simpleAmountVal, 0);
+  const simpleMarginalDiscount = (simpleTaxesOnTotal.inss + simpleTaxesOnTotal.irrf) - (simpleTaxesOnBase.inss + simpleTaxesOnBase.irrf);
+  const finalSimpleValue = simpleDeductTaxes ? Math.max(0, simpleAmountVal - simpleMarginalDiscount) : simpleAmountVal;
+
   const cltResults = calculateCLT(safeCltGross, safeCltDependents);
   const finalCltNet = Math.max(0, cltResults.net - safeCltOtherDiscounts + safeCltBenefits);
 
@@ -187,10 +203,11 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
 
   const handleAddSimple = (e: React.FormEvent) => {
     e.preventDefault();
-    const val = parseInput(extraAmount);
-    if (!isNaN(val) && val > 0) {
-      onAddExtra(val, extraDesc);
-      handleCloseModal();
+    
+    if (finalSimpleValue > 0) {
+       const desc = `${extraDesc}${simpleDeductTaxes ? ' - Líq.' : ''}`;
+       onAddExtra(finalSimpleValue, desc);
+       handleCloseModal();
     } else {
       toast.error("Por favor, insira um valor válido.");
     }
@@ -209,11 +226,11 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
       return;
     }
 
-    if (totalCalculated > 0) {
+    if (finalOtValue > 0) {
       // Generate description with calculation details
-      const desc = `Hora Extra (${safeOtQuantity.toString().replace('.', ',')}h à ${safeOtPercent}%)`;
+      const desc = `Hora Extra (${safeOtQuantity.toString().replace('.', ',')}h à ${safeOtPercent}%)${deductTaxes ? ' - Líq.' : ''}`;
       // Arredondamos para 2 casas decimais para o registro
-      const finalAmount = Math.round((totalCalculated + Number.EPSILON) * 100) / 100;
+      const finalAmount = Math.round((finalOtValue + Number.EPSILON) * 100) / 100;
       
       onAddExtra(finalAmount, desc);
       handleCloseModal();
@@ -244,11 +261,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         setCltBenefits('');
         setErrors({});
         setSalaryError(null);
+        setDeductTaxes(false);
+        setSimpleDeductTaxes(false);
         setActiveTab('simple');
     }, 300);
   };
 
-  const progressPercentage = baseSalary > 0 ? Math.min(100, (currentIncome / baseSalary) * 100) : 0;
 
   return (
     <>
@@ -263,7 +281,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
            <div className="flex justify-between items-start mb-2 relative z-10">
             <div className="flex items-center gap-2">
               <Coins size={18} className="text-[#d97757]" />
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Salário Base & Metas</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Salário Base</h3>
             </div>
             {!isEditing && baseSalary > 0 && (
                <button 
@@ -275,7 +293,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                  }} 
                  className="text-gray-500 hover:text-[#d97757] transition-colors text-xs flex items-center gap-1"
                >
-                 <Edit2 size={12} /> Editar Meta
+                 <Edit2 size={12} /> Editar
                </button>
             )}
           </div>
@@ -378,35 +396,50 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
             )}
           </div>
 
-          {/* Barra de Progresso */}
-          <div className="mt-6">
-             <div className="flex justify-between text-xs mb-2">
-                <span className="text-gray-400 font-medium">Progresso da Meta Mensal</span>
-                {baseSalary > 0 && (
-                    <span className={currentIncome >= baseSalary ? 'text-green-400 font-bold' : 'text-[#d97757] font-bold'}>
-                    {Math.round(progressPercentage)}%
-                    </span>
-                )}
-             </div>
-             <div className="w-full h-3 bg-gray-800/50 rounded-full overflow-hidden border border-gray-800">
-                <div 
-                  className={`h-full transition-all duration-1000 ease-out relative ${currentIncome > baseSalary ? 'bg-gradient-to-r from-green-500 to-emerald-400' : 'bg-gradient-to-r from-[#d97757] to-[#e08a6e]'}`}
-                  style={{ width: `${progressPercentage}%` }}
-                >
-                  {progressPercentage > 0 && <div className="absolute inset-0 bg-white/20 animate-pulse"></div>}
-                </div>
-             </div>
-             <div className="flex justify-between mt-2 text-xs">
-               <div className="flex items-center gap-1.5">
-                 <div className="w-2 h-2 rounded-full bg-gray-700"></div>
-                 <span className="text-gray-500">Meta: {formatCurrency(baseSalary)}</span>
+          {/* Salary Insights Grid */}
+          {baseSalary > 0 && (
+            <div className="mt-6 grid grid-cols-2 gap-2 animate-fade-in">
+               {/* Hourly Rate Card */}
+               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
+                  <div className="flex items-center gap-1.5 mb-1">
+                     <Clock size={12} className="text-gray-500" />
+                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Valor Hora</span>
+                  </div>
+                  <p className="text-gray-300 font-mono font-bold text-sm">
+                    {formatCurrency(baseSalary / 220)}
+                  </p>
                </div>
-               <div className="flex items-center gap-1.5">
-                  <div className={`w-2 h-2 rounded-full ${currentIncome > baseSalary ? 'bg-green-500' : 'bg-[#d97757]'}`}></div>
-                  <span className="text-gray-300">Realizado: {formatCurrency(currentIncome)}</span>
+
+               {/* Payment Countdown */}
+               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
+                   <div className="flex items-center gap-1.5 mb-1">
+                      <Calendar size={12} className="text-gray-500" />
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Próx. Pagto</span>
+                   </div>
+                   <p className="text-gray-300 font-mono font-bold text-sm">
+                     {(() => {
+                        if (!paymentDay) return <span className="text-gray-600 text-xs font-sans">Definir dia</span>;
+                        
+                        const today = new Date();
+                        const currentDay = today.getDate();
+                        let days = 0;
+
+                        if (currentDay === paymentDay) return <span className="text-green-400">Hoje!</span>;
+                        
+                        if (paymentDay > currentDay) {
+                            days = paymentDay - currentDay;
+                        } else {
+                            // Get days in current month to find exact days until next month's date
+                            const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                            days = (daysInMonth - currentDay) + paymentDay;
+                        }
+                        
+                        return <span className={days <= 5 ? 'text-[#d97757]' : ''}>{days} dias</span>;
+                     })()}
+                   </p>
                </div>
-             </div>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* Lado Direito: Botão de Ação */}
@@ -424,6 +457,39 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
            )}
 
            <div className="grid grid-cols-2 gap-2 mt-1 w-full">
+              <button
+                onClick={() => {
+                    if (baseSalary <= 0) {
+                        toast.error("Defina um salário base primeiro.");
+                        return;
+                    }
+                    
+                    const today = new Date();
+                    const currentDay = today.getDate();
+                    const pDay = paymentDay || 5;
+                    
+                    // Determine if the salary is for this month or next
+                    // Heuristic: If we are past the payment day + 5 days, assume next month
+                    // Or simpler: Always prompt? No, "Lançar Salário" implies quick action.
+                    // Let's default to the *next* occurrence of the payment day.
+                    
+                    let targetDate = new Date(today.getFullYear(), today.getMonth(), pDay);
+                    if (currentDay > pDay) {
+                        targetDate.setMonth(targetDate.getMonth() + 1);
+                    }
+                    
+                    // Format YYYY-MM-DD
+                    const dateStr = targetDate.toISOString().split('T')[0];
+                    
+                    onAddExtra(baseSalary, "Salário Mensal", "pending", dateStr);
+                    toast.success(`Previsão de salário lançada para ${targetDate.toLocaleDateString('pt-BR')}!`);
+                }}
+                className="col-span-2 py-3 bg-[#d97757]/10 hover:bg-[#d97757]/20 text-[#d97757] hover:text-white rounded-xl font-bold transition-all border border-[#d97757]/20 hover:border-[#d97757] flex items-center justify-center gap-2 text-xs mb-1"
+              >
+                <Calendar size={14} />
+                Lançar Salário
+              </button>
+
               <button
                 onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
                 className="col-span-2 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2 text-xs"
@@ -506,54 +572,119 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
               
               {/* ABA: SIMPLES */}
               {activeTab === 'simple' && (
-                <form onSubmit={handleAddSimple} className="space-y-6 animate-fade-in py-2">
-                   <div className="text-center space-y-2 mb-8">
-                      <div className="w-16 h-16 bg-gradient-to-br from-[#d97757] to-[#e68e70] rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-xl shadow-[#d97757]/30">
-                        <Coins size={32} className="text-white" />
-                      </div>
-                      <h4 className="text-white font-bold text-lg">Lançamento Rápido</h4>
-                      <p className="text-sm text-gray-400 max-w-xs mx-auto">Para vendas ocasionais, freelances ou bônus de valor fixo.</p>
-                   </div>
+                <form onSubmit={handleAddSimple} className="space-y-6 animate-slide-up">
+                    <>
+                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                          <div>
+                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Lançamento Rápido</h4>
+                            <p className="text-xs text-gray-400 leading-relaxed">
+                              Registre entradas avulsas de forma simples.
+                              <br />
+                              <span className="opacity-70">Ideal para vendas ocasionais, freelances ou bônus de valor fixo.</span>
+                            </p>
+                          </div>
+                       </div>
 
-                   <div className="space-y-5">
-                      <div>
-                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">Descrição</label>
-                        <div className="relative group">
-                            <Briefcase className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                            <input 
-                            type="text" 
-                            required
-                            placeholder="Ex: Venda de item usado"
-                            value={extraDesc}
-                            onChange={e => setExtraDesc(e.target.value)}
-                            className="input-primary pl-10 focus:border-[#d97757]"
-                            />
-                        </div>
-                      </div>
-                      
-                      <div>
-                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">Valor Recebido (R$)</label>
-                        <div className="relative group">
-                            <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                            <input 
-                            type="text"
-                            inputMode="decimal"
-                            required
-                            placeholder="0,00"
-                            value={extraAmount}
-                            onChange={e => setExtraAmount(e.target.value)}
-                            className="input-primary pl-10 text-xl font-bold text-white focus:border-[#d97757]"
-                            />
-                        </div>
-                      </div>
-                   </div>
+                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          <div className="space-y-5">
+                              <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Descrição</label>
+                                <div className="relative group">
+                                    <Briefcase className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                                    <input 
+                                    type="text" 
+                                    required
+                                    placeholder="Ex: Venda de item usado"
+                                    value={extraDesc}
+                                    onChange={e => setExtraDesc(e.target.value)}
+                                    className="input-primary pl-10 focus:border-[#d97757]"
+                                    autoFocus
+                                    />
+                                </div>
+                              </div>
+                              
+                              <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Valor Recebido (R$)</label>
+                                <div className="relative group">
+                                    <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                                    <input 
+                                    type="text"
+                                    inputMode="decimal"
+                                    required
+                                    placeholder="0,00"
+                                    value={extraAmount}
+                                    onChange={e => setExtraAmount(e.target.value)}
+                                    className="input-primary pl-10 text-xl font-bold text-white focus:border-[#d97757]"
+                                    />
+                                </div>
+                              </div>
+                              
+                             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+                                <label className="relative inline-flex items-center cursor-pointer group">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={simpleDeductTaxes} 
+                                        onChange={(e) => setSimpleDeductTaxes(e.target.checked)}
+                                        className="sr-only peer" 
+                                    />
+                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
+                                </label>
+                                <div>
+                                   <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
+                                   <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
+                                </div>
+                             </div>
+                          </div>
 
-                   <div className="pt-4">
-                        <button type="submit" className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/30 transition-all flex items-center justify-center gap-2">
-                            <Check size={18} />
-                            Confirmar Lançamento
-                        </button>
-                   </div>
+                          {/* Result Card (Summary) */}
+                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+                             
+                             <div className="space-y-3 relative z-0 mb-4">
+                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Resumo do Lançamento</h5>
+                                
+                                <div className="flex justify-between items-center text-xs group">
+                                   <span className="text-gray-400">Tipo</span>
+                                   <span className="text-gray-300 font-medium">{extraDesc || '...'}</span>
+                                </div>
+
+                                {simpleDeductTaxes && simpleAmountVal > 0 && (
+                                    <>
+                                    <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
+                                       <span className="text-gray-400">Bruto</span>
+                                       <span className="text-gray-300 font-mono">{formatCurrency(simpleAmountVal)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs group">
+                                       <span className="text-gray-400">Descontos (Marginal)</span>
+                                       <span className="text-red-400 font-mono">- {formatCurrency(simpleMarginalDiscount)}</span>
+                                    </div>
+                                    </>
+                                )}
+                             </div>
+
+                             <div className="relative z-0">
+                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalSimpleValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Valor Total {simpleDeductTaxes ? '(Líquido)' : ''}</p>
+                                   <p className={`text-3xl font-bold ${finalSimpleValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                     <NumberFlow 
+                                       value={finalSimpleValue} 
+                                       format={{ style: 'currency', currency: 'BRL' }}
+                                       locales="pt-BR"
+                                     />
+                                   </p>
+                                </div>
+                                
+                                <button 
+                                  type="submit"
+                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2"
+                                >
+                                  <Check size={18} />
+                                  Confirmar
+                                </button>
+                             </div>
+                          </div>
+                       </div>
+                    </>
                 </form>
               )}
 
@@ -678,7 +809,11 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                                 <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalCltNet > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salário Líquido</p>
                                    <p className={`text-3xl font-bold ${finalCltNet > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     {formatCurrency(finalCltNet)}
+                                     <NumberFlow 
+                                       value={finalCltNet} 
+                                       format={{ style: 'currency', currency: 'BRL' }}
+                                       locales="pt-BR"
+                                     />
                                    </p>
                                 </div>
                                 
@@ -793,6 +928,22 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                                     <span className="absolute right-3 top-3.5 text-xs font-bold text-gray-500 uppercase">Horas</span>
                                 </div>
                              </div>
+
+                             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+                                <label className="relative inline-flex items-center cursor-pointer group">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={deductTaxes} 
+                                        onChange={(e) => setDeductTaxes(e.target.checked)}
+                                        className="sr-only peer" 
+                                    />
+                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
+                                </label>
+                                <div>
+                                   <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
+                                   <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
+                                </div>
+                             </div>
                           </div>
 
                           {/* Result Card */}
@@ -810,19 +961,36 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                                    <span className="text-gray-400 flex items-center gap-1"><ChevronRight size={10}/> Valor Hora Extra (+{otPercent}%)</span>
                                    <span className="text-[#eab3a3] font-mono font-medium">{formatCurrency(otHourlyRate)}</span>
                                 </div>
+
+                                {deductTaxes && totalCalculated > 0 && (
+                                    <>
+                                    <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
+                                       <span className="text-gray-400">Bruto Total</span>
+                                       <span className="text-gray-300 font-mono">{formatCurrency(totalCalculated)}</span>
+                                    </div>
+                                    <div className="flex justify-between items-center text-xs group">
+                                       <span className="text-gray-400">Descontos (Marginal)</span>
+                                       <span className="text-red-400 font-mono">- {formatCurrency(marginalDiscount)}</span>
+                                    </div>
+                                    </>
+                                )}
                              </div>
 
                              <div className="relative z-0">
-                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${totalCalculated > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
-                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total a Receber</p>
-                                   <p className={`text-3xl font-bold ${totalCalculated > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     {formatCurrency(totalCalculated)}
+                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalOtValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total a Receber {deductTaxes ? '(Líquido)' : '(Bruto)'}</p>
+                                   <p className={`text-3xl font-bold ${finalOtValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                     <NumberFlow 
+                                       value={finalOtValue} 
+                                       format={{ style: 'currency', currency: 'BRL' }}
+                                       locales="pt-BR"
+                                     />
                                    </p>
                                 </div>
                                 
                                 <button 
                                   onClick={handleAddCalculated}
-                                  disabled={totalCalculated <= 0}
+                                  disabled={finalOtValue <= 0}
                                   className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                   <Check size={18} />

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight, Trash2 } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight, Trash2, PieChart, FileText } from "./Icons";
 import { triggerItemUpdate, syncPluggyData, deleteItem } from "../services/pluggyService";
 import { useToasts } from "./Toast";
 import { EmptyState } from "./EmptyState";
 import { ConfirmationCard } from "./UIComponents";
+import { AnimatePresence, motion } from "framer-motion";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -38,6 +39,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
   const [deletingItems, setDeletingItems] = useState<Set<string>>(new Set());
+  const [limitView, setLimitView] = useState<Set<string>>(new Set()); // New state for toggle
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const accountsPerPage = 3;
@@ -94,6 +96,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     });
   };
 
+  const toggleLimitView = (id: string) => {
+      setLimitView(prev => {
+          const next = new Set(prev);
+          if (next.has(id)) next.delete(id);
+          else next.add(id);
+          return next;
+      });
+  };
+
   const handleDeleteBank = (institutionName: string, itemId: string) => {
     setItemToDelete({ id: itemId, name: institutionName });
   };
@@ -143,6 +154,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     const syncProcess = async () => {
        const success = await triggerItemUpdate(itemId);
        if (!success) throw new Error("O banco não respondeu a tempo ou houve erro na conexão.");
+
+       // Delay para garantir consistência da API do Pluggy (propagar transações)
+       await new Promise(resolve => setTimeout(resolve, 3000));
 
        const count = await syncPluggyData(userId, itemId);
        
@@ -306,6 +320,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                 {paginatedInstitutionAccounts.map((acc) => {
                   const expandedCard = expanded.has(acc.id);
                   const isCredit = isCardFromInstitution(acc);
+                  const showLimit = limitView.has(acc.id);
+
+                  // Calculate Credit details
+                  const limit = acc.creditLimit || 0;
+                  const available = acc.availableCreditLimit || 0;
+                  const used = limit - available; // Or acc.balance if positive
+                  // Sometimes balance is the used amount directly. Let's trust balance for "used" usually, but if we have limit/available we can calc.
+                  // Pluggy: balance is usually the current invoice amount (total debt).
+                  const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
 
                   return (
                     <div key={acc.id} className="bg-gray-900/30 border border-gray-800/60 rounded-xl hover:border-gray-700 transition-colors">
@@ -318,19 +341,70 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                 </div>
                                 <div>
                                     <p className="text-sm font-bold text-gray-200">{acc.name}</p>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium mt-0.5">
-                                        {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
-                                    </p>
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                        <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
+                                            {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
-                            <div className="text-right">
+                            
+                            <div className="text-right min-w-[120px]">
                                 <p className={`text-base font-mono font-bold ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
                                     {formatCurrency(acc.balance, acc.currency)}
                                 </p>
-                                {lastSynced[acc.id] && (
-                                    <p className="text-[9px] text-gray-600 mt-0.5 font-medium">
-                                        {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                    </p>
+                                
+                                {isCredit ? (
+                                    <div 
+                                      onClick={() => toggleLimitView(acc.id)}
+                                      className="mt-1.5 cursor-pointer group/limit select-none relative pl-4"
+                                      title="Clique para alternar entre Fatura e Limite"
+                                    >
+                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/limit:opacity-100 transition-opacity text-gray-500">
+                                            {showLimit ? <FileText size={10} /> : <PieChart size={10} />}
+                                        </div>
+
+                                        {showLimit ? (
+                                            // Limit Consumption View
+                                            <div className="w-full animate-fade-in">
+                                                <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-700/50">
+                                                    <div 
+                                                        className={`h-full rounded-full transition-all duration-700 ease-out ${limitPercentage > 90 ? 'bg-red-500' : limitPercentage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                                        style={{ width: `${limitPercentage}%` }}
+                                                    ></div>
+                                                </div>
+                                                <div className="flex justify-between text-[8px] font-medium text-gray-400 uppercase tracking-wide">
+                                                    <span>{Math.round(limitPercentage)}% Uso</span>
+                                                    <span>Disp: {formatCurrency(available).replace('R$', '')}</span>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            // Invoice Dates View (Default)
+                                            <div className="flex flex-col items-end animate-fade-in gap-0.5">
+                                                {acc.balanceDueDate ? (
+                                                    <div className="flex items-center gap-1.5 bg-gray-800/40 hover:bg-gray-800/80 px-2 py-1 rounded-lg border border-gray-800/50 transition-colors">
+                                                        <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wide">
+                                                            Vence {new Date(acc.balanceDueDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[9px] text-gray-500 italic">Sem data de vencimento</span>
+                                                )}
+                                                {acc.balanceCloseDate && (
+                                                    <span className="text-[8px] text-gray-600">
+                                                        Fecha {new Date(acc.balanceCloseDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    // Checking Account View
+                                    lastSynced[acc.id] && (
+                                        <p className="text-[9px] text-gray-600 mt-0.5 font-medium">
+                                            {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    )
                                 )}
                             </div>
                           </div>
@@ -370,35 +444,45 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       </div>
 
                       {/* Área Expandida (Extrato) */}
-                      {expandedCard && (
-                        <div className="bg-gray-950/50 border-t border-gray-800/50 p-3 animate-slide-down">
-                          <p className="text-[10px] font-bold text-gray-500 uppercase mb-3 flex items-center gap-1.5 pl-1">
-                            <Sparkles size={10} className="text-[#d97757]" /> Últimas movimentações
-                          </p>
-                          {acc.previewTransactions && acc.previewTransactions.length > 0 ? (
-                            <div className="space-y-1">
-                              {acc.previewTransactions.map((tx) => {
-                                const isExpense = tx.amount < 0;
-                                return (
-                                  <div key={tx.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors border border-gray-800/50">
-                                    <div className="flex flex-col w-2/3">
-                                        <span className="text-gray-300 truncate font-medium">{tx.description}</span>
-                                        <span className="text-[9px] text-gray-600">{tx.date ? new Date(tx.date).toLocaleDateString('pt-BR') : 'Data n/a'}</span>
-                                    </div>
-                                    <span className={`font-mono font-bold ${isExpense ? "text-gray-300" : "text-emerald-400"}`}>
-                                      {formatCurrency(tx.amount, tx.currency || acc.currency)}
-                                    </span>
-                                  </div>
-                                );
-                              })}
+                      <AnimatePresence>
+                        {expandedCard && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.2, ease: "easeInOut" }}
+                            className="overflow-hidden"
+                          >
+                            <div className="bg-gray-950/50 border-t border-gray-800/50 p-3">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase mb-3 flex items-center gap-1.5 pl-1">
+                                <Sparkles size={10} className="text-[#d97757]" /> Últimas movimentações
+                              </p>
+                              {acc.previewTransactions && acc.previewTransactions.length > 0 ? (
+                                <div className="space-y-1">
+                                  {acc.previewTransactions.map((tx) => {
+                                    const isExpense = tx.amount < 0;
+                                    return (
+                                      <div key={tx.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors border border-gray-800/50">
+                                        <div className="flex flex-col w-2/3">
+                                            <span className="text-gray-300 truncate font-medium">{tx.description}</span>
+                                            <span className="text-[9px] text-gray-600">{tx.date ? new Date(tx.date).toLocaleDateString('pt-BR') : 'Data n/a'}</span>
+                                        </div>
+                                        <span className={`font-mono font-bold ${isExpense ? "text-gray-300" : "text-emerald-400"}`}>
+                                          {formatCurrency(tx.amount, tx.currency || acc.currency)}
+                                        </span>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="text-center py-4 bg-gray-900/30 rounded-lg border border-dashed border-gray-800">
+                                    <p className="text-[11px] text-gray-500 font-medium">Nenhuma movimentação recente.</p>
+                                </div>
+                              )}
                             </div>
-                          ) : (
-                            <div className="text-center py-4 bg-gray-900/30 rounded-lg border border-dashed border-gray-800">
-                                <p className="text-[11px] text-gray-500 font-medium">Nenhuma movimentação recente.</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
                     </div>
                   );
                 })}
