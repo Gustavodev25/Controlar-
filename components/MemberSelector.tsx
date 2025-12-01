@@ -151,56 +151,10 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
               ))}
             </div>
 
-            {/* Add New Member Interface */}
-            {isAdding ? (
-              <form onSubmit={handleAdd} className="p-3 bg-gray-950 border-t border-gray-800">
-                <div className="mb-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    placeholder="Nome do membro..."
-                    className="w-full bg-gray-800 border border-gray-700 rounded-lg px-2 py-1.5 text-sm text-white focus:border-[#d97757] outline-none"
-                    value={newName}
-                    onChange={e => setNewName(e.target.value)}
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setIsAdding(false)}
-                    className="flex-1 py-1.5 bg-gray-800 text-gray-400 rounded-lg text-xs hover:text-white"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="flex-1 py-1.5 bg-[#d97757] text-white rounded-lg text-xs font-bold hover:bg-[#c56a4d]"
-                  >
-                    Salvar
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <button
-                onClick={() => !isLimitReached && setIsAdding(true)}
-                className={`w-full p-3 flex items-center justify-center gap-2 text-xs font-medium border-t border-gray-800 transition-colors ${
-                    isLimitReached 
-                    ? 'text-gray-600 cursor-not-allowed bg-gray-900/50' 
-                    : 'text-gray-500 hover:text-white hover:bg-gray-800'
-                }`}
-              >
-                {isLimitReached ? (
-                    <>
-                       <div className="p-1 bg-gray-800 rounded-md"><Users size={12} className="opacity-50" /></div>
-                       <span>Limite do Plano Atingido</span>
-                    </>
-                ) : (
-                    <>
-                       <Plus size={14} /> Adicionar Membro
-                    </>
-                )}
-              </button>
-            )}
+            {/* Add New Member Interface - REMOVED for new Family System */}
+            {/* 
+              Formerly here. Now users should use the Family Dashboard to invite/add members.
+            */}
           </div>
         </div>
       )}

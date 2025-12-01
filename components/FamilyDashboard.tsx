@@ -302,9 +302,17 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                  <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-8 text-center relative overflow-hidden">
                      <div className="relative z-10">
                          <Users size={48} className="mx-auto text-[#d97757] mb-4" />
-                         <h3 className="text-xl font-bold text-white mb-2">Crie sua Família</h3>
+                         <h3 className="text-xl font-bold text-white mb-2">
+                            {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                                ? 'Configure sua Família' 
+                                : 'Crie sua Família'
+                            }
+                         </h3>
                          <p className="text-gray-400 max-w-md mx-auto mb-6">
-                             Compartilhe os benefícios Premium com quem você ama. Acompanhem metas juntos e gerenciem o orçamento doméstico.
+                             {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                                ? 'Você já tem o plano ativo! Agora crie o grupo para convidar os membros.'
+                                : 'Compartilhe os benefícios Premium com quem você ama. Acompanhem metas juntos e gerenciem o orçamento doméstico.'
+                             }
                          </p>
                          <button 
                             onClick={() => {
@@ -316,7 +324,10 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                             }}
                             className="px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-transform hover:scale-105"
                          >
-                             Ativar Plano Familiar
+                             {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                                ? 'Criar Grupo Familiar' 
+                                : 'Ativar Plano Familiar'
+                             }
                          </button>
                      </div>
                  </div>
