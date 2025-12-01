@@ -267,11 +267,10 @@ const App: React.FC = () => {
 
           // Prompt to join
           toast.message({
-              id: 'family-invite-prompt', // Prevent duplicates
-              type: 'info',
-              title: 'Convite para Plano Familiar',
-              message: 'Você foi convidado para participar de uma família Premium. Deseja aceitar?',
-              action: 'Aceitar Convite',
+              text: 'Convite para Plano Familiar',
+              description: 'Você foi convidado para participar de uma família Premium. Deseja aceitar?',
+              actionLabel: 'Aceitar Convite',
+              preserve: true,
               onAction: async () => {
                   try {
                       await familyService.joinFamily(userId, familyId, token);

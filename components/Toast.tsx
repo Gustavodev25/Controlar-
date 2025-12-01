@@ -76,6 +76,7 @@ export const useToasts = () => {
     success: (text: string, description?: string) => toast.success(text, { description }),
     warning: (text: string, description?: string) => toast.warning(text, { description }),
     error: (text: string, description?: string) => toast.error(text, { description }),
+    info: (text: string, description?: string) => toast.info(text, { description }),
     promise,
   };
 };
