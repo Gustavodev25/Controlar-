@@ -378,130 +378,134 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
              )}
          </div>
 
-         <div className="h-px bg-gray-800/50"></div>
+         {/* SECTION 2: Goals (Caixinhas) - ONLY IF FAMILY GROUP EXISTS */}
+         {familyGroup && (
+            <>
+                <div className="h-px bg-gray-800/50"></div>
 
-         {/* SECTION 2: Goals (Caixinhas) */}
-         <div className="space-y-8">
-             <div className="flex items-center justify-between">
-                <div>
-                   <h2 className="text-2xl font-bold text-white">Caixinhas</h2>
-                   <p className="text-gray-400 text-sm">Organize e alcance seus objetivos financeiros.</p>
+                <div className="space-y-8">
+                    <div className="flex items-center justify-between">
+                        <div>
+                        <h2 className="text-2xl font-bold text-white">Caixinhas</h2>
+                        <p className="text-gray-400 text-sm">Organize e alcance seus objetivos financeiros.</p>
+                        </div>
+                        <button
+                        onClick={() => setIsAddingGoal(true)}
+                        className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors border border-gray-700"
+                        >
+                        <Plus size={18} />
+                        <span className="hidden sm:inline">Nova Caixinha</span>
+                        </button>
+                    </div>
+
+                    {/* Create Goal Form */}
+                    {isAddingGoal && (
+                        <div className="bg-gray-900 border border-gray-800 p-5 rounded-2xl animate-slide-up">
+                        <h4 className="text-white font-bold mb-4">Criar Nova Caixinha</h4>
+                        <form onSubmit={handleSaveGoal} className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
+                            <div className="lg:col-span-2">
+                                <label className="text-xs text-gray-500 mb-1 block">Nome do Objetivo</label>
+                                <input
+                                    required
+                                    value={newGoal.title}
+                                    onChange={e => setNewGoal({ ...newGoal, title: e.target.value })}
+                                    placeholder="Ex: Viagem de Férias"
+                                    className="input-primary py-2"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-gray-500 mb-1 block">Valor Alvo (R$)</label>
+                                <input
+                                    required
+                                    type="number"
+                                    value={newGoal.targetAmount}
+                                    onChange={e => setNewGoal({ ...newGoal, targetAmount: e.target.value })}
+                                    placeholder="0.00"
+                                    className="input-primary py-2"
+                                />
+                            </div>
+                            <div className="flex gap-2 lg:flex-row">
+                                <button type="button" onClick={() => setIsAddingGoal(false)} className="flex-1 lg:flex-none px-4 py-2 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition-colors">Cancelar</button>
+                                <button type="submit" className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-bold transition-colors">Salvar</button>
+                            </div>
+                        </form>
+                        </div>
+                    )}
+
+                    {/* Goals Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {goals.length === 0 && !isAddingGoal && (
+                        <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
+                            <Target size={48} className="mx-auto text-gray-700 mb-4" />
+                            <p>Nenhuma caixinha definida ainda.</p>
+                            <button onClick={() => setIsAddingGoal(true)} className="text-[#d97757] hover:underline mt-2 text-sm">Criar a primeira</button>
+                        </div>
+                        )}
+
+                        {goals.map(goal => {
+                        const percentage = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100);
+
+                        return (
+                            <div key={goal.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-sm hover:border-gray-700 transition-all group relative overflow-hidden">
+                                <div
+                                    className="absolute bottom-0 left-0 h-1 bg-yellow-500 transition-all duration-500"
+                                    style={{ width: `${percentage}%` }}
+                                ></div>
+
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className="flex items-center gap-3">
+                                    <div className="p-2.5 bg-gray-800 rounded-xl text-yellow-500">
+                                        <Trophy size={20} />
+                                    </div>
+                                    <div>
+                                        <h3 className="font-bold text-white">{goal.title}</h3>
+                                        <p className="text-xs text-gray-500">Meta Familiar</p>
+                                    </div>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button
+                                        onClick={() => onDeleteGoal(goal.id)}
+                                        className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                                    >
+                                        <Trash2 size={14} />
+                                    </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                    <span className="text-gray-400">Guardado: <span className="text-white font-medium">{formatCurrency(goal.currentAmount)}</span></span>
+                                    <span className="text-gray-400">Meta: <span className="text-white font-medium">{formatCurrency(goal.targetAmount)}</span></span>
+                                    </div>
+
+                                    <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-yellow-500 rounded-full transition-all duration-500"
+                                        style={{ width: `${percentage}%` }}
+                                    ></div>
+                                    </div>
+
+                                    <div className="flex justify-between items-center text-xs mt-1">
+                                    <span className="text-yellow-500 font-bold">
+                                        {percentage.toFixed(0)}% alcançado
+                                    </span>
+                                    </div>
+
+                                    <button
+                                    onClick={() => setContributeGoalId(goal.id)}
+                                    className="w-full mt-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
+                                    >
+                                    <Plus size={14} />
+                                    Contribuir
+                                    </button>
+                                </div>
+                            </div>
+                        );
+                        })}
+                    </div>
                 </div>
-                <button
-                   onClick={() => setIsAddingGoal(true)}
-                   className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl flex items-center gap-2 transition-colors border border-gray-700"
-                >
-                   <Plus size={18} />
-                   <span className="hidden sm:inline">Nova Caixinha</span>
-                </button>
-             </div>
-
-             {/* Create Goal Form */}
-             {isAddingGoal && (
-                <div className="bg-gray-900 border border-gray-800 p-5 rounded-2xl animate-slide-up">
-                   <h4 className="text-white font-bold mb-4">Criar Nova Caixinha</h4>
-                   <form onSubmit={handleSaveGoal} className="grid grid-cols-1 lg:grid-cols-4 gap-4 items-end">
-                      <div className="lg:col-span-2">
-                         <label className="text-xs text-gray-500 mb-1 block">Nome do Objetivo</label>
-                         <input
-                            required
-                            value={newGoal.title}
-                            onChange={e => setNewGoal({ ...newGoal, title: e.target.value })}
-                            placeholder="Ex: Viagem de Férias"
-                            className="input-primary py-2"
-                         />
-                      </div>
-                      <div>
-                         <label className="text-xs text-gray-500 mb-1 block">Valor Alvo (R$)</label>
-                         <input
-                            required
-                            type="number"
-                            value={newGoal.targetAmount}
-                            onChange={e => setNewGoal({ ...newGoal, targetAmount: e.target.value })}
-                            placeholder="0.00"
-                            className="input-primary py-2"
-                         />
-                      </div>
-                      <div className="flex gap-2 lg:flex-row">
-                         <button type="button" onClick={() => setIsAddingGoal(false)} className="flex-1 lg:flex-none px-4 py-2 bg-gray-800 text-gray-300 rounded-lg text-sm hover:bg-gray-700 transition-colors">Cancelar</button>
-                         <button type="submit" className="flex-1 px-4 py-2 bg-green-600 hover:bg-green-500 text-white rounded-lg text-sm font-bold transition-colors">Salvar</button>
-                      </div>
-                   </form>
-                </div>
-             )}
-
-             {/* Goals Grid */}
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {goals.length === 0 && !isAddingGoal && (
-                   <div className="col-span-full py-12 text-center text-gray-500 bg-gray-900/50 rounded-2xl border border-dashed border-gray-800">
-                      <Target size={48} className="mx-auto text-gray-700 mb-4" />
-                      <p>Nenhuma caixinha definida ainda.</p>
-                      <button onClick={() => setIsAddingGoal(true)} className="text-[#d97757] hover:underline mt-2 text-sm">Criar a primeira</button>
-                   </div>
-                )}
-
-                {goals.map(goal => {
-                   const percentage = Math.min(100, (goal.currentAmount / goal.targetAmount) * 100);
-
-                   return (
-                      <div key={goal.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-sm hover:border-gray-700 transition-all group relative overflow-hidden">
-                         <div
-                            className="absolute bottom-0 left-0 h-1 bg-yellow-500 transition-all duration-500"
-                            style={{ width: `${percentage}%` }}
-                         ></div>
-
-                         <div className="flex justify-between items-start mb-4">
-                            <div className="flex items-center gap-3">
-                               <div className="p-2.5 bg-gray-800 rounded-xl text-yellow-500">
-                                  <Trophy size={20} />
-                               </div>
-                               <div>
-                                  <h3 className="font-bold text-white">{goal.title}</h3>
-                                  <p className="text-xs text-gray-500">Meta Familiar</p>
-                               </div>
-                            </div>
-                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                               <button
-                                  onClick={() => onDeleteGoal(goal.id)}
-                                  className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
-                               >
-                                  <Trash2 size={14} />
-                               </button>
-                            </div>
-                         </div>
-
-                         <div className="space-y-2">
-                            <div className="flex justify-between text-sm">
-                               <span className="text-gray-400">Guardado: <span className="text-white font-medium">{formatCurrency(goal.currentAmount)}</span></span>
-                               <span className="text-gray-400">Meta: <span className="text-white font-medium">{formatCurrency(goal.targetAmount)}</span></span>
-                            </div>
-
-                            <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
-                               <div
-                                  className="h-full bg-yellow-500 rounded-full transition-all duration-500"
-                                  style={{ width: `${percentage}%` }}
-                               ></div>
-                            </div>
-
-                            <div className="flex justify-between items-center text-xs mt-1">
-                               <span className="text-yellow-500 font-bold">
-                                  {percentage.toFixed(0)}% alcançado
-                               </span>
-                            </div>
-
-                            <button
-                               onClick={() => setContributeGoalId(goal.id)}
-                               className="w-full mt-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-medium text-sm transition-colors flex items-center justify-center gap-2"
-                            >
-                               <Plus size={14} />
-                               Contribuir
-                            </button>
-                         </div>
-                      </div>
-                   );
-                })}
-             </div>
-         </div>
+            </>
+         )}
 
          {/* Contribute Modal */}
          {contributeGoalId && (

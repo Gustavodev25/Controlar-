@@ -70,6 +70,9 @@ export const listenToFamilyGroup = (groupId: string, callback: (group: FamilyGro
     } else {
       callback(null);
     }
+  }, (error) => {
+    console.warn("Listen failed (likely permission or connection):", error);
+    callback(null);
   });
 };
 
