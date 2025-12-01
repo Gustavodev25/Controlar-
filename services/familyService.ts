@@ -149,12 +149,16 @@ export const createInvite = async (groupId: string, email?: string) => {
   const token = Math.random().toString(36).substring(2, 15);
   
   // 1. Add to local array for UI display
-  const inviteData = {
+  // Sanitize inviteData to remove undefined fields
+  const inviteData: any = {
     token,
     createdAt: new Date().toISOString(),
-    status: 'pending' as const,
-    email
+    status: 'pending' as const
   };
+
+  if (email) {
+      inviteData.email = email;
+  }
   
   const groupRef = doc(db, "families", groupId);
   await updateDoc(groupRef, {
