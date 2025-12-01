@@ -15,7 +15,9 @@ import {
   Sparkles,
   ArrowRight,
   Bot,
-  AlertCircle
+  AlertCircle,
+  CreditCard,
+  TrendingUp
 } from './Icons';
 import { EmptyState } from './EmptyState';
 import { CustomAutocomplete, ConfirmationCard } from './UIComponents';
@@ -43,54 +45,80 @@ const SubscriptionCard: React.FC<{
   
   const lastPayment = history.length > 0 ? history[0].date : 'N/A';
   
+  // Cores based on Cycle to differentiate visually
+  const colorClass = sub.billingCycle === 'monthly' 
+    ? { border: 'border-purple-500/30', bg: 'bg-purple-900/20', text: 'text-purple-400' }
+    : { border: 'border-blue-500/30', bg: 'bg-blue-900/20', text: 'text-blue-400' };
+
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-all group relative overflow-hidden">
-      <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
-             <Zap size={20} />
+    <div className="bg-gray-950 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-all duration-200 group relative shadow-lg shadow-black/20 overflow-hidden">
+      
+      {/* Luz de fundo decorativa suave */}
+      <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${colorClass.bg.replace('/20', '')}`}></div>
+
+      {/* Status Badge */}
+      <div className="absolute -top-0 -right-0 flex flex-col items-end">
+          <div className={`${sub.status === 'active' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'} border-l border-b text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide mb-1`}>
+            {sub.status === 'active' ? <><Check size={10} /> Ativa</> : <><X size={10} /> Cancelada</>}
+          </div>
+      </div>
+
+      <div className="flex justify-between items-start mb-5 relative z-10">
+        <div className="flex items-center gap-4">
+          <div className="p-3 rounded-xl bg-gray-900 border border-gray-800 shadow-inner">
+             <Zap size={24} className="text-white" />
           </div>
           <div>
-            <h4 className="font-bold text-white">{sub.name}</h4>
-            <p className="text-xs text-gray-500 capitalize">{sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}</p>
+            <h3 className="font-bold text-gray-100 text-lg leading-tight truncate max-w-[150px]">{sub.name}</h3>
+            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono capitalize">
+                <RefreshCw size={10} /> {sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}
+            </p>
           </div>
         </div>
-        <div className="text-right">
-          <span className="block text-lg font-bold text-white">
-            <NumberFlow value={sub.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-          </span>
-          <span className={`text-[10px] px-2 py-0.5 rounded-full border ${sub.status === 'active' ? 'bg-green-500/10 border-green-500/20 text-green-500' : 'bg-red-500/10 border-red-500/20 text-red-500'}`}>
-            {sub.status === 'active' ? 'Ativa' : 'Cancelada'}
-          </span>
+        
+        {/* Actions */}
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-200 absolute right-0 top-10 mt-2">
+            <button
+                onClick={() => onEdit(sub)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all shadow-lg"
+                title="Editar"
+            >
+                <Edit2 size={14} />
+            </button>
+            <button
+                onClick={() => onDelete(sub.id)}
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all shadow-lg"
+                title="Excluir"
+            >
+                <Trash2 size={14} />
+            </button>
         </div>
       </div>
 
-      <div className="space-y-2">
-         <div className="flex justify-between text-xs">
-            <span className="text-gray-500 flex items-center gap-1"><Tag size={12}/> Categoria</span>
-            <span className="text-gray-300">{sub.category}</span>
+      <div className="space-y-4 relative z-10">
+         <div className="flex justify-between items-end">
+            <div>
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Valor</p>
+                <p className="text-xl font-mono font-bold text-white">
+                    <NumberFlow value={sub.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                </p>
+            </div>
+            <div className="text-right">
+                <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Categoria</p>
+                <p className="text-sm font-medium text-gray-300 bg-gray-900 px-2 py-0.5 rounded-lg border border-gray-800 inline-block">
+                    {sub.category}
+                </p>
+            </div>
          </div>
-         {lastPayment !== 'N/A' && (
-             <div className="flex justify-between text-xs">
-                <span className="text-gray-500 flex items-center gap-1"><Calendar size={12}/> Último Pagto</span>
-                <span className="text-gray-300">{new Date(lastPayment).toLocaleDateString('pt-BR')}</span>
-             </div>
-         )}
-      </div>
 
-      <div className="flex gap-2 mt-4 pt-4 border-t border-gray-800/50 opacity-0 group-hover:opacity-100 transition-opacity">
-         <button 
-           onClick={() => onEdit(sub)}
-           className="flex-1 py-2 bg-gray-900 hover:bg-gray-800 text-gray-300 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-         >
-           <Edit2 size={14} /> Editar
-         </button>
-         <button 
-           onClick={() => onDelete(sub.id)}
-           className="flex-1 py-2 bg-gray-900 hover:bg-red-900/20 text-red-400 text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
-         >
-           <Trash2 size={14} /> Remover
-         </button>
+         <div className="pt-3 border-t border-gray-800/50 flex justify-between items-center text-xs">
+             <span className="text-gray-500 flex items-center gap-1.5">
+                <Calendar size={12} /> Último Pagto
+             </span>
+             <span className="font-mono text-gray-300">
+                {lastPayment !== 'N/A' ? new Date(lastPayment).toLocaleDateString('pt-BR') : 'Sem histórico'}
+             </span>
+         </div>
       </div>
     </div>
   );
@@ -240,7 +268,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white tracking-tight">Assinaturas</h2>
-            <p className="text-gray-400 text-sm mt-1">Gerencie seus serviços recorrentes</p>
+            <p className="text-gray-400 text-sm mt-1">Gerencie seus servicos recorrentes</p>
           </div>
 
           {/* Balloon Hint */}
@@ -250,7 +278,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 w-2.5 h-2.5 bg-gray-950 border-l border-b border-blue-500/20 rotate-45"></div>
                 
                 <p className="text-[11px] text-blue-200 leading-snug relative z-10">
-                  <span className="font-bold text-blue-400">Dica:</span> Veja o impacto no saldo clicando em <strong>"Previsão (Lembretes + Assinaturas)"</strong>.
+                  <span className="font-bold text-blue-400">Dica:</span> Veja o impacto no saldo clicando em <strong>"Previsao"</strong>.
                 </p>
             </div>
           </div>
@@ -265,36 +293,76 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         </button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-         <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl bg-[#d97757]/10 -mr-10 -mt-10"></div>
-            <div className="relative z-10">
-               <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Custo Mensal</p>
-               <p className="text-3xl font-bold text-white">
-                  <NumberFlow value={totalMonthly} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-               </p>
+      {/* Resumo compacto separado dos cards */}
+      <div className="rounded-3xl">
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 font-bold">Resumo</p>
+              <h3 className="text-lg text-white font-semibold">Impacto das assinaturas</h3>
             </div>
-         </div>
-         <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6">
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Ativas</p>
-            <p className="text-3xl font-bold text-green-400">
-               <NumberFlow value={subscriptions.filter(s => s.status === 'active').length} />
-            </p>
-         </div>
-         <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6">
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-widest mb-1">Anual Estimado</p>
-            <p className="text-3xl font-bold text-gray-300">
-               <NumberFlow value={totalMonthly * 12} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-            </p>
-         </div>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span className="h-2 w-2 rounded-full bg-[#d97757]"></span> Mensal
+              <span className="h-2 w-2 rounded-full bg-emerald-500 ml-3"></span> Ativas
+              <span className="h-2 w-2 rounded-full bg-blue-500 ml-3"></span> Anual
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-[#d97757]/15 text-[#d97757] border border-[#d97757]/30">
+                <CreditCard size={18} />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Custo Mensal</p>
+                <p className="text-xl font-semibold text-white leading-tight">
+                  <NumberFlow value={totalMonthly} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                </p>
+                <p className="text-[11px] text-gray-500">Total comprometido</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                <Check size={18} />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Ativas</p>
+                <p className="text-xl font-semibold text-white leading-tight">
+                  <NumberFlow value={subscriptions.filter(s => s.status === 'active').length} />
+                </p>
+                <p className="text-[11px] text-gray-500">Assinaturas em vigor</p>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-4 flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                <TrendingUp size={18} />
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-500">Anual Estimado</p>
+                <p className="text-xl font-semibold text-white leading-tight">
+                  <NumberFlow value={totalMonthly * 12} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                </p>
+                <p className="text-[11px] text-gray-500">Projecao de custo anual</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* List */}
+      {/* Lista de assinaturas */}
+      <div className="flex items-center justify-between mt-2">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 font-bold">Suas assinaturas</p>
+          <h3 className="text-lg text-white font-semibold">Todos os servicos conectados</h3>
+        </div>
+        <span className="text-xs text-gray-500 bg-gray-900/70 border border-gray-800 rounded-full px-3 py-1">
+          {subscriptions.length} no total
+        </span>
+      </div>
+
       {subscriptions.length === 0 ? (
-        <EmptyState title="Nenhuma assinatura" description="Adicione serviços como Netflix, Spotify, etc." />
+        <EmptyState title="Nenhuma assinatura" description="Adicione servi�os como Netflix, Spotify, etc." />
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
            {subscriptions.map(sub => (
              <SubscriptionCard 
                key={sub.id} 
@@ -545,3 +613,19 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     </div>
   );
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

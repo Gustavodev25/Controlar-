@@ -1,5 +1,6 @@
 import { Transaction, ConnectedAccount, ConnectedTransactionPreview } from "../types";
 import { addTransaction, transactionExists } from "./database";
+import { toLocalISODate } from "../utils/dateUtils";
 
 // Credenciais: prioriza variáveis de ambiente (fallback para valores locais)
 const PLUGGY_CLIENT_ID =
@@ -224,6 +225,35 @@ export const triggerItemUpdate = async (itemId: string): Promise<boolean> => {
 };
 
 /**
+ * Exclui um Item (Conexão Bancária) no Pluggy.
+ */
+export const deleteItem = async (itemId: string): Promise<boolean> => {
+  try {
+    const apiKey = await authenticate();
+    
+    const response = await fetch(`${API_URL}/items/${itemId}`, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-API-KEY": apiKey
+      }
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      console.error(`Failed to delete item ${itemId}: ${response.status} - ${errText}`);
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error("Error deleting item:", error);
+    throw error;
+  }
+};
+
+/**
  * Busca transacoes do Pluggy e retorna objetos Transaction prontos para importação, sem salvar no banco.
  */
 export const fetchPluggyTransactionsForImport = async (userId: string, itemId: string, targetAccountId?: string): Promise<Omit<Transaction, "id">[]> => {
@@ -261,7 +291,7 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
     const today = new Date();
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(today.getDate() - 30);
-    const fromDate = thirtyDaysAgo.toISOString().split("T")[0];
+    const fromDate = toLocalISODate(thirtyDaysAgo);
 
     // 2. Iterate accounts
     for (const account of accounts) {
@@ -292,7 +322,7 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         if (descLower.includes("saldo")) continue;
 
         const baseDesc = tx.description || account.name || "Transacao bancaria";
-        const baseDateStr = (tx.date || new Date().toISOString()).split("T")[0];
+        const baseDateStr = tx.date ? tx.date.split("T")[0] : toLocalISODate();
         const baseDate = new Date(baseDateStr + "T12:00:00");
 
         // Detect installments
@@ -309,7 +339,7 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
           const installmentIndex = currentInstallment && currentInstallment > 0 ? i - currentInstallment : i - 1;
           const dateObj = new Date(baseDate);
           dateObj.setMonth(baseDate.getMonth() + installmentIndex);
-          const dateStr = dateObj.toISOString().split("T")[0];
+          const dateStr = toLocalISODate(dateObj);
 
           const descWithParcel = installmentsCount > 1
             ? `Parcela ${i}/${installmentsCount} - ${baseDesc}`
@@ -435,7 +465,7 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
   const today = new Date();
   const thirtyDaysAgo = new Date();
   thirtyDaysAgo.setDate(today.getDate() - 30);
-  const fromDate = thirtyDaysAgo.toISOString().split("T")[0];
+  const fromDate = toLocalISODate(thirtyDaysAgo);
 
   const connectedAccounts: ConnectedAccount[] = [];
 
@@ -466,7 +496,7 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
             id: tx.id || `${account.id}-${tx.date}-${Math.random()}`,
             description: tx.description || "Transacao",
             amount: tx.amount,
-            date: (tx.date || new Date().toISOString()).split("T")[0],
+            date: tx.date ? tx.date.split("T")[0] : toLocalISODate(),
             type: isExpense ? "expense" : "income",
             category: tx.category,
             currency: tx.currencyCode || account.currencyCode || "BRL",

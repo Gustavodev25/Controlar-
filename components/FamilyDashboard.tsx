@@ -4,6 +4,7 @@ import { Transaction, Member, FamilyGoal } from '../types';
 import { Trophy, Target, TrendingUp, TrendingDown, Plus, Coins, Check, X, Users, Trash2, Edit2 } from './Icons';
 import { StatsCards } from './StatsCards';
 import { ConfirmationCard } from './UIComponents';
+import { toLocalISODate } from '../utils/dateUtils';
 
 interface FamilyDashboardProps {
    transactions: Transaction[];
@@ -82,7 +83,7 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
             category: 'Investimentos',
             type: 'expense',
             status: 'completed',
-            date: new Date().toISOString().split('T')[0],
+            date: toLocalISODate(),
             memberId: contributionMemberId
          });
 

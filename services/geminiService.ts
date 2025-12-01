@@ -1,6 +1,7 @@
 ﻿
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { Transaction, AIParsedTransaction, Reminder, Budget, Investment } from "../types";
+import { getCurrentLocalMonth, toLocalISODate } from "../utils/dateUtils";
 
 // API key read from environment or fallback to provided key
 const API_KEY =
@@ -172,7 +173,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
     if (result.amount === undefined || result.amount === null) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.type) result.type = "expense";
-    if (!result.date) result.date = new Date().toISOString().split('T')[0];
+    if (!result.date) result.date = toLocalISODate();
     if (!result.installments || result.installments < 1) result.installments = 1;
 
     return result;
@@ -187,7 +188,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
  */
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
-  const today = new Date().toISOString().split('T')[0];
+  const today = toLocalISODate();
   
   const prompt = `
     Hoje é: ${today}.
@@ -286,7 +287,7 @@ export const parseSubscriptionFromText = async (text: string): Promise<{ name: s
 
 export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
   if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = toLocalISODate();
 
   const prompt = `
     Analise este documento (extrato bancário/fatura).
@@ -368,7 +369,7 @@ export const processAssistantMessage = async (
     `${t.date}: ${t.description} (${t.amount})`
   ).join("\n");
 
-  const currentMonth = new Date().toISOString().slice(0, 7);
+  const currentMonth = getCurrentLocalMonth();
   const budgetsSummary = contextBudgets.slice(0, 5).map(b => {
     const spent = contextTransactions
       .filter(t => t.type === 'expense' && t.category === b.category && t.date.startsWith(currentMonth))
@@ -445,7 +446,7 @@ export const processAssistantMessage = async (
 
     if (result.intent === 'transaction' && result.transactionData) {
       const data = result.transactionData as AIParsedTransaction;
-      if (!data.date) data.date = new Date().toISOString().split('T')[0];
+      if (!data.date) data.date = toLocalISODate();
       if (!data.installments || data.installments < 1) data.installments = 1;
       if (!data.description) data.description = 'Transação';
       if (!data.category) data.category = 'Outros';

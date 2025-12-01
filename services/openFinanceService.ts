@@ -1,6 +1,7 @@
 
 import { Transaction } from "../types";
 import { addTransaction } from "./database";
+import { toLocalISODate } from "../utils/dateUtils";
 
 // --- OFX PARSER UTILITY ---
 // Um parser leve e eficiente para arquivos .OFX (Open Financial Exchange)
@@ -72,7 +73,7 @@ export const generateMockData = async (userId: string, bankName: string): Promis
     const daysAgo = (days: number) => {
         const d = new Date();
         d.setDate(today.getDate() - days);
-        return d.toISOString().split('T')[0];
+        return toLocalISODate(d);
     };
 
     let transactions: Omit<Transaction, 'id'>[] = [];

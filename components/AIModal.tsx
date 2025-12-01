@@ -6,6 +6,7 @@ import { AIParsedTransaction, Transaction } from '../types';
 import { CustomAutocomplete, CustomDatePicker } from './UIComponents';
 import coinzinhaImg from '../assets/coinzinha.png';
 import { CoinzinhaGreeting } from './CoinzinhaGreeting';
+import { toLocalISODate } from '../utils/dateUtils';
 
 interface AIModalProps {
   isOpen: boolean;
@@ -31,7 +32,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
     description: '',
     amount: '',
     category: 'Alimentação',
-    date: new Date().toISOString().split('T')[0],
+    date: toLocalISODate(),
     type: 'expense' as 'income' | 'expense'
   });
 
@@ -165,7 +166,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
           description: '',
           amount: '',
           category: 'Alimentação',
-          date: new Date().toISOString().split('T')[0],
+          date: toLocalISODate(),
           type: 'expense'
         });
         setMode('ai');

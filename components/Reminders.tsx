@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Reminder } from '../types';
 import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2 } from './Icons';
@@ -8,6 +8,8 @@ import { EmptyState } from './EmptyState';
 import coinzinhaImg from '../assets/coinzinha.png';
 import { CoinzinhaGreeting } from './CoinzinhaGreeting';
 import NumberFlow from '@number-flow/react';
+import { toLocalISODate } from '../utils/dateUtils';
+import { CheckSquare, Square } from 'lucide-react';
 
 interface RemindersProps {
   reminders: Reminder[];
@@ -43,9 +45,11 @@ interface ReminderCardProps {
   onPayReminder: (reminder: Reminder) => void;
   onConfirmDelete: (id: string) => void;
   onEdit: (reminder: Reminder) => void;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }
-
-const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete, onEdit }) => {
+const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete, onEdit, selectionMode = false, selected = false, onToggleSelect }) => {
   const daysDiff = getDaysDiff(item.dueDate);
 
   // Configuração visual baseada no status
@@ -95,13 +99,32 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
   }
 
   return (
-    <div className="bg-gray-950 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20">
+    <div
+      className={`
+        bg-gray-950 rounded-2xl p-4 hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20
+        ${selected ? 'border-[#d97757]/70 ring-2 ring-[#d97757]/30' : 'border-gray-800'}
+        ${selectionMode ? 'cursor-pointer' : ''}
+      `}
+      onClick={selectionMode ? () => onToggleSelect && onToggleSelect(item.id) : undefined}
+    >
       {/* Luz de fundo decorativa suave */}
       <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${statusConfig.glowColor}`}></div>
       
       {/* Barra lateral colorida sutil */}
       <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${statusConfig.barColor}`} />
-
+      {selectionMode && (
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(item.id); }}
+          className={`absolute top-3 right-3 w-9 h-9 rounded-xl border transition-colors flex items-center justify-center ${
+            selected
+              ? 'bg-[#d97757]/20 border-[#d97757]/50 text-[#d97757]'
+              : 'bg-gray-900 border-gray-800 text-gray-500 hover:border-[#d97757]/50 hover:text-[#d97757]'
+          }`}
+          title={selected ? 'Remover da seleção' : 'Selecionar'}
+        >
+          {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+        </button>
+      )}
       <div className="flex flex-col sm:flex-row items-center gap-4 pl-3 relative z-10">
         {/* Ícone */}
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/5 shadow-inner ${statusConfig.iconBg}`}>
@@ -139,25 +162,27 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
                   {statusConfig.statusText}
               </p>
            </div>
-
            <div className="flex items-center gap-2">
               <button
-                onClick={() => onPayReminder(item)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-emerald-500/10 text-gray-500 hover:text-emerald-400 border border-gray-800 hover:border-emerald-500/30 transition-all shadow-sm"
+                onClick={(e) => { e.stopPropagation(); if (!selectionMode) onPayReminder(item); }}
+                disabled={selectionMode}
+                className={`w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-emerald-500/10 text-gray-500 hover:text-emerald-400 border border-gray-800 hover:border-emerald-500/30 transition-all ${selectionMode ? 'opacity-40 cursor-not-allowed hover:bg-gray-900 hover:text-gray-500 hover:border-gray-800' : ''}`}
                 title={item.type === 'income' ? "Confirmar Recebimento" : "Pagar"}
               >
                 <Check size={16} strokeWidth={2.5} />
               </button>
               <button
-                onClick={() => onEdit(item)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-[#d97757]/10 text-gray-500 hover:text-[#d97757] border border-gray-800 hover:border-[#d97757]/30 transition-all shadow-sm"
+                onClick={(e) => { e.stopPropagation(); if (!selectionMode) onEdit(item); }}
+                disabled={selectionMode}
+                className={`w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-[#d97757]/10 text-gray-500 hover:text-[#d97757] border border-gray-800 hover:border-[#d97757]/30 transition-all ${selectionMode ? 'opacity-40 cursor-not-allowed hover:bg-gray-900 hover:text-gray-500 hover:border-gray-800' : ''}`}
                 title="Editar"
               >
                 <Edit2 size={16} strokeWidth={2.5} />
               </button>
               <button
-                onClick={() => onConfirmDelete(item.id)}
-                className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all shadow-sm"
+                onClick={(e) => { e.stopPropagation(); if (!selectionMode) onConfirmDelete(item.id); }}
+                disabled={selectionMode}
+                className={`w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all ${selectionMode ? 'opacity-40 cursor-not-allowed hover:bg-gray-900 hover:text-gray-500 hover:border-gray-800' : ''}`}
                 title="Excluir"
               >
                 <Trash2 size={16} strokeWidth={2.5} />
@@ -188,13 +213,19 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [newReminder, setNewReminder] = useState({
     description: '',
     amount: '',
-    dueDate: new Date().toISOString().split('T')[0],
+    dueDate: toLocalISODate(),
     category: 'Moradia',
     type: 'expense' as 'income' | 'expense',
     isRecurring: true,
     frequency: 'monthly' as 'monthly' | 'weekly' | 'yearly'
   });
-
+  // Seleção em massa
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkMode, setBulkMode] = useState<'single' | 'per-item'>('single');
+  const [bulkDate, setBulkDate] = useState('');
+  const [perReminderDates, setPerReminderDates] = useState<Record<string, string>>({});
+  const [isApplyingBulk, setIsApplyingBulk] = useState(false);
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -222,7 +253,40 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     }
     return () => clearTimeout(timeoutId);
   }, [isModalOpen]);
-
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => reminders.some((r) => r.id === id)));
+  }, [reminders]);
+  useEffect(() => {
+    if (!selectionMode) {
+      setBulkDate('');
+      setPerReminderDates({});
+      setBulkMode('single');
+      setIsApplyingBulk(false);
+      return;
+    }
+    if (bulkMode === 'single' && selectedIds.length > 0 && !bulkDate) {
+      const first = reminders.find((r) => r.id === selectedIds[0]);
+      if (first) setBulkDate(first.dueDate);
+    }
+    if (bulkMode === 'per-item') {
+      setPerReminderDates((prev) => {
+        const next: Record<string, string> = {};
+        selectedIds.forEach((id) => {
+          const found = prev[id] || reminders.find((r) => r.id === id)?.dueDate;
+          if (found) next[id] = found;
+        });
+        return next;
+      });
+    } else {
+      setPerReminderDates((prev) => {
+        const next: Record<string, string> = {};
+        selectedIds.forEach((id) => {
+          if (prev[id]) next[id] = prev[id];
+        });
+        return next;
+      });
+    }
+  }, [selectionMode, selectedIds, bulkMode, bulkDate, reminders]);
   const handleEditClick = (reminder: Reminder) => {
     setEditingReminder(reminder);
     setNewReminder({
@@ -299,7 +363,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       setNewReminder({
         description: '',
         amount: '',
-        dueDate: new Date().toISOString().split('T')[0],
+        dueDate: toLocalISODate(),
         category: 'Moradia',
         type: 'expense',
         isRecurring: true,
@@ -312,11 +376,26 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       setAiError('');
     }, 300);
   };
-
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]);
+  };
+  const handleSelectAll = () => {
+    if (selectedIds.length === reminders.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(reminders.map((r) => r.id));
+    }
+  };
+  const resetBulkSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds([]);
+    setBulkDate('');
+    setPerReminderDates({});
+    setBulkMode('single');
+  };
   const sortedReminders = useMemo(() => {
     return [...reminders].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
   }, [reminders]);
-
   const groupedReminders = useMemo(() => {
     return reminders.reduce((acc, curr) => {
       if (!acc[curr.category]) acc[curr.category] = [];
@@ -324,7 +403,28 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       return acc;
     }, {} as Record<string, Reminder[]>);
   }, [reminders]);
-
+  const selectedReminders = useMemo(() => {
+    return reminders.filter((r) => selectedIds.includes(r.id));
+  }, [reminders, selectedIds]);
+  const handleBulkApplyDates = async () => {
+    if (selectedReminders.length === 0) return;
+    if (bulkMode === 'single' && !bulkDate) return;
+    setIsApplyingBulk(true);
+    try {
+      const updates = selectedReminders.map((reminder) => {
+        const nextDate = bulkMode === 'single' ? bulkDate : (perReminderDates[reminder.id] || reminder.dueDate);
+        if (!nextDate || nextDate === reminder.dueDate) return null;
+        return Promise.resolve(onUpdateReminder({ ...reminder, dueDate: nextDate }));
+      }).filter((p): p is Promise<void> => !!p);
+      await Promise.all(updates);
+    } finally {
+      setIsApplyingBulk(false);
+      resetBulkSelection();
+    }
+  };
+  const allSelected = reminders.length > 0 && selectedIds.length === reminders.length;
+  const applyDisabled = selectedReminders.length === 0 || (bulkMode === 'single' && !bulkDate) || isApplyingBulk;
+  const selectedLabel = selectedReminders.length === 1 ? '1 item' : `${selectedReminders.length} itens`;
   return (
     <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
 
@@ -338,7 +438,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
           {/* Balloon Hint */}
           <div className="hidden md:block animate-fade-in ml-2">
-            <div className="relative bg-blue-500/10 border border-blue-500/20 rounded-lg py-2 px-3 shadow-sm">
+            <div className="relative bg-blue-500/10 border border-blue-500/20 rounded-lg py-2 px-3 ">
                {/* Arrow */}
                <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 w-2.5 h-2.5 bg-gray-950 border-l border-b border-blue-500/20 rotate-45"></div>
                
@@ -350,6 +450,13 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         </div>
 
         <div className="flex items-center gap-3">
+            <button
+                onClick={() => selectionMode ? resetBulkSelection() : setSelectionMode(true)}
+                className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 transition-all text-sm font-semibold ${selectionMode ? 'border-[#d97757]/60 bg-[#d97757]/10 text-[#d97757]' : 'border-gray-800 text-gray-300 hover:border-[#d97757]/50 hover:text-white'}`}
+            >
+                {selectionMode ? <X size={18} /> : <CheckSquare size={18} />}
+                {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
+            </button>
             <button
                 onClick={() => setIsModalOpen(true)}
                 className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
@@ -363,18 +470,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       {/* QUICK STATS CARDS - VISUAL IGUAL CONFIRMATION CARD */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Card Despesas */}
-        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
-           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-red-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
            
-           <div className="flex justify-between items-start mb-4 relative z-10">
+           <div className="flex justify-between items-start mb-3">
                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-red-500 shadow-sm">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-red-500 ">
                         <TrendingDown size={20} />
                     </div>
-                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Pagar (Mês)</span>
+                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Pagar (Mes)</span>
                </div>
            </div>
-           <div className="relative z-10">
+           <div className="">
               <p className="text-3xl font-bold text-white tracking-tight">
                 <NumberFlow 
                     value={reminders.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0)}
@@ -387,18 +493,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         </div>
 
         {/* Card Receitas */}
-        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
-           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-emerald-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
            
-           <div className="flex justify-between items-start mb-4 relative z-10">
+           <div className="flex justify-between items-start mb-3">
                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500 shadow-sm">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500 ">
                         <TrendingUp size={20} />
                     </div>
-                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Receber (Mês)</span>
+                    <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Receber (Mes)</span>
                </div>
            </div>
-           <div className="relative z-10">
+           <div className="">
               <p className="text-3xl font-bold text-white tracking-tight">
                 <NumberFlow 
                     value={reminders.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0)}
@@ -435,7 +540,98 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
             </div>
         </div>
       )}
-
+      {selectionMode && (
+        <div className="rounded-2xl border border-[#d97757]/40 bg-[#d97757]/5 p-4 space-y-4">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="p-2.5 rounded-xl bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/40">
+                <CalendarClock size={18} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-white">Editar datas de lembretes</p>
+                <p className="text-xs text-gray-300">
+                  Selecionados: {selectedLabel}. Escolha uma data única ou personalize cada um.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap">
+              <button
+                onClick={handleSelectAll}
+                className="px-3 py-2 rounded-lg border border-gray-800 text-xs font-semibold text-gray-200 hover:border-[#d97757]/50 hover:text-white transition-colors"
+              >
+                {allSelected ? 'Limpar seleção' : 'Selecionar todos'}
+              </button>
+              <button
+                onClick={resetBulkSelection}
+                className="px-3 py-2 rounded-lg border border-gray-800 text-xs font-semibold text-gray-400 hover:text-white transition-colors"
+              >
+                Sair
+              </button>
+            </div>
+          </div>
+          <div className="flex bg-gray-900/60 border border-gray-800 rounded-xl p-1.5 w-fit">
+            <button
+              onClick={() => setBulkMode('single')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${bulkMode === 'single' ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 ring-1 ring-[#d97757]/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            >
+              Mesma data
+            </button>
+            <button
+              onClick={() => setBulkMode('per-item')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${bulkMode === 'per-item' ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            >
+              Uma por uma
+            </button>
+          </div>
+          {bulkMode === 'single' ? (
+            <div className="flex flex-col sm:flex-row items-center gap-3">
+              <CustomDatePicker
+                value={bulkDate}
+                onChange={setBulkDate}
+                className="w-full sm:w-64"
+              />
+              <button
+                onClick={handleBulkApplyDates}
+                disabled={applyDisabled}
+                className="w-full sm:w-auto px-4 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-semibold shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isApplyingBulk ? 'Aplicando...' : `Aplicar para ${selectedLabel}`}
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                {selectedReminders.length === 0 ? (
+                  <p className="text-xs text-gray-400 px-1">Selecione lembretes para definir datas individualmente.</p>
+                ) : (
+                  selectedReminders.map((reminder) => (
+                    <div key={reminder.id} className="flex items-center gap-3 bg-gray-950/70 border border-gray-800 rounded-xl p-3">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{reminder.description}</p>
+                        <p className="text-[11px] text-gray-500">Atual: {formatDate(reminder.dueDate)}</p>
+                      </div>
+                      <CustomDatePicker
+                        value={perReminderDates[reminder.id] || reminder.dueDate}
+                        onChange={(val) => setPerReminderDates((prev) => ({ ...prev, [reminder.id]: val }))}
+                        className="w-[170px]"
+                      />
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="flex justify-end">
+                <button
+                  onClick={handleBulkApplyDates}
+                  disabled={applyDisabled}
+                  className="px-4 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-semibold shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {isApplyingBulk ? 'Aplicando...' : 'Aplicar datas selecionadas'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
       {/* LISTA DE CONTEÚDO */}
       {sortedReminders.length === 0 ? (
         <EmptyState
@@ -453,6 +649,9 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   onPayReminder={onPayReminder}
                   onConfirmDelete={setDeleteId}
                   onEdit={handleEditClick}
+                  selectionMode={selectionMode}
+                  selected={selectedIds.includes(item.id)}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </div>
@@ -475,6 +674,9 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                         onPayReminder={onPayReminder}
                         onConfirmDelete={setDeleteId}
                         onEdit={handleEditClick}
+                        selectionMode={selectionMode}
+                        selected={selectedIds.includes(item.id)}
+                        onToggleSelect={handleToggleSelect}
                       />
                     ))}
                   </div>
@@ -568,7 +770,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                           }}
                         />
                         <div className="absolute bottom-4 right-4 text-[10px] text-gray-600 uppercase font-bold tracking-wider bg-gray-900 px-2 py-1 rounded border border-gray-800">
-                            Enter ↵
+                            Enter ?
                         </div>
                       </div>
 
@@ -743,7 +945,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                         </div>
                       </div>
                       <div className={`w-12 h-6 rounded-full p-1 transition-all duration-300 ${newReminder.isRecurring ? 'bg-[#d97757]' : 'bg-gray-800'}`}>
-                         <div className={`w-4 h-4 rounded-full bg-white shadow-sm transition-all duration-300 ${newReminder.isRecurring ? 'translate-x-6' : 'translate-x-0'}`} />
+                         <div className={`w-4 h-4 rounded-full bg-white  transition-all duration-300 ${newReminder.isRecurring ? 'translate-x-6' : 'translate-x-0'}`} />
                       </div>
                       <input
                         type="checkbox"

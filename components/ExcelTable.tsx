@@ -131,7 +131,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     <div className="bg-gray-950 rounded-3xl shadow-2xl border border-gray-800 overflow-hidden flex flex-col h-full animate-fade-in">
       
       {/* Toolbar */}
-      <div className="p-4 lg:p-6 border-b border-gray-800 flex flex-col gap-4 bg-gray-950/50 backdrop-blur-xl">
+      <div className="p-4 lg:p-6 border-b border-gray-800 flex flex-col gap-4 bg-gray-950/50 backdrop-blur-xl relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">

@@ -88,7 +88,9 @@ import {
   Download,
   Upload,
   Copy,
-  RefreshCw
+  RefreshCw,
+  ArrowUpCircle,
+  ArrowDownCircle
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -198,5 +200,7 @@ export {
   Download,
   Upload,
   Copy,
-  RefreshCw
+  RefreshCw,
+  ArrowUpCircle,
+  ArrowDownCircle
 };

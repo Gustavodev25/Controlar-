@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Bell, AlertTriangle, Info, Check, Sparkles, Clock, Calendar, TrendingUp, Target } from './Icons';
 import { Reminder, Budget, Transaction } from '../types';
+import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 
 export interface SystemNotification {
   id: string;
@@ -42,7 +43,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
     return reminders.filter(r => {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      const due = new Date(r.dueDate);
+      const due = new Date((r.dueDate || toLocalISODate()) + "T00:00:00");
       due.setHours(0, 0, 0, 0);
       return due <= today;
     });
@@ -51,7 +52,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
   // Gerar alertas de orçamento
   const budgetAlerts = useMemo(() => {
     const alerts: SystemNotification[] = [];
-    const currentMonth = new Date().toISOString().slice(0, 7);
+    const currentMonth = getCurrentLocalMonth();
 
     budgets.forEach(budget => {
       const spent = transactions
@@ -71,7 +72,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           type: 'budget_danger',
           title: 'Orçamento Excedido',
           message: `Você excedeu o limite de ${budget.category} (${percentage.toFixed(0)}%).`,
-          date: new Date().toISOString().split('T')[0],
+          date: toLocalISODate(),
           read: false
         });
       } else if (percentage >= budget.alertThreshold) {
@@ -80,7 +81,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
           type: 'budget_warning',
           title: 'Alerta de Orçamento',
           message: `Você atingiu ${percentage.toFixed(0)}% do limite de ${budget.category}.`,
-          date: new Date().toISOString().split('T')[0],
+          date: toLocalISODate(),
           read: false
         });
       }
@@ -151,7 +152,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
                       <div>
                         <h4 className={`text-sm font-bold ${isIncome ? 'text-green-200' : 'text-red-200'}`}>{r.description}</h4>
                         <p className={`text-xs mt-1 flex items-center gap-1 ${isIncome ? 'text-green-400/70' : 'text-red-400/70'}`}>
-                          <Clock size={12} /> {isIncome ? 'Recebimento Previsto:' : 'Vence:'} {new Date(r.dueDate).toLocaleDateString('pt-BR')}
+                          <Clock size={12} /> {isIncome ? 'Recebimento Previsto:' : 'Vence:'} {new Date((r.dueDate || toLocalISODate()) + "T00:00:00").toLocaleDateString('pt-BR')}
                         </p>
                       </div>
                     </div>

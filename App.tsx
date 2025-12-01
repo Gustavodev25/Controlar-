@@ -18,7 +18,7 @@ import {
   Target,
   Building
 } from './components/Icons';
-import { Flame, Vault, Lock } from 'lucide-react';
+import { Flame, Vault, Lock, MessageCircle } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -58,6 +58,7 @@ import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
+import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 
 // Sub-component for Nav Items
 interface NavItemProps {
@@ -132,6 +133,59 @@ interface PendingTwoFactor {
   secret: string;
 }
 
+const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ isOpen, onClose }) => {
+  if (!isOpen) return null;
+  
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in p-4">
+       <div className="bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl animate-scale-in">
+          <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors">
+             <X size={20} />
+          </button>
+
+          <div className="p-6 flex flex-col items-center text-center">
+             <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mb-4 text-[#25D366] ring-1 ring-[#25D366]/20">
+                <MessageCircle size={32} />
+             </div>
+             
+             <h2 className="text-xl font-bold text-white mb-2">Coinzinha no WhatsApp</h2>
+             <p className="text-gray-400 text-sm mb-6 leading-relaxed">
+               Converse com sua IA financeira diretamente pelo WhatsApp. Envie áudios de gastos, fotos de notas fiscais ou peça conselhos.
+             </p>
+
+             <div className="bg-gray-800/50 rounded-xl p-4 w-full mb-6 border border-gray-800 text-left">
+                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Como funciona:</p>
+                <ul className="text-sm text-gray-300 space-y-2">
+                   <li className="flex gap-2 items-start">
+                      <span className="text-[#25D366] font-bold">1.</span>
+                      <span>Clique no botão abaixo para abrir o chat.</span>
+                   </li>
+                   <li className="flex gap-2 items-start">
+                      <span className="text-[#25D366] font-bold">2.</span>
+                      <span>Se for sua primeira vez, envie o código de conexão (ex: <code>join stomach-event</code>).</span>
+                   </li>
+                   <li className="flex gap-2 items-start">
+                      <span className="text-[#25D366] font-bold">3.</span>
+                      <span>Pronto! O Coinzinha vai processar tudo e sincronizar aqui.</span>
+                   </li>
+                </ul>
+             </div>
+
+             <a 
+               href="https://wa.me/14155238886?text=join%20stomach-event" 
+               target="_blank" 
+               rel="noreferrer"
+               className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,211,102,0.3)]"
+             >
+               <MessageCircle size={20} />
+               Abrir WhatsApp
+             </a>
+          </div>
+       </div>
+    </div>
+  );
+};
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -151,7 +205,7 @@ const App: React.FC = () => {
               plan: planId as any, 
               status: 'active' as const, 
               billingCycle: 'monthly' as const, // Simplified assumption or pass via URL
-              nextBillingDate: new Date(Date.now() + 30*24*60*60*1000).toISOString()
+              nextBillingDate: toLocalISOString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
           }
       };
       setCurrentUser(updatedUser);
@@ -161,6 +215,7 @@ const App: React.FC = () => {
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription' | 'subscriptions'>('dashboard');
+  const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
     const isDesktop = typeof window !== 'undefined' && window.innerWidth >= 1024;
@@ -311,7 +366,7 @@ const App: React.FC = () => {
 
       if (newCandidates.length === 0) {
         toast.message({ text: "Nenhuma transação nova para importar." });
-        setPluggyLastSync(prev => ({ ...prev, [account.id]: new Date().toISOString() }));
+        setPluggyLastSync(prev => ({ ...prev, [account.id]: toLocalISOString() }));
         return 0;
       }
 
@@ -735,7 +790,13 @@ const App: React.FC = () => {
   // NEW: Calculate Account Balances
   const accountBalances = useMemo(() => {
     const checking = pluggyAccounts
-        .filter(a => a.type === 'BANK' || a.subtype === 'CHECKING_ACCOUNT')
+        .filter(a => {
+          const subtype = (a.subtype || '').toUpperCase();
+          if (subtype === 'SAVINGS_ACCOUNT') return false; // savings ficam nas caixinhas
+          if (subtype === 'CHECKING_ACCOUNT') return true;
+          // se for banco sem subtype, assume conta corrente para n�o somar poupan�a
+          return a.type === 'BANK' && !subtype;
+        })
         .reduce((sum, a) => sum + (a.balance || 0), 0);
     
     const credit = pluggyAccounts
@@ -882,7 +943,7 @@ const App: React.FC = () => {
   const overdueRemindersCount = filteredReminders.filter(r => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const due = new Date(r.dueDate);
+    const due = new Date((r.dueDate || toLocalISODate()) + "T00:00:00");
     due.setHours(0, 0, 0, 0);
     return due <= today;
   }).length;
@@ -1136,7 +1197,7 @@ const App: React.FC = () => {
       amount: amount,
       category: 'Trabalho',
       type: 'income',
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalISODate(),
       status: 'completed',
       memberId: activeMemberId === 'FAMILY_OVERVIEW' ? admin.id : activeMemberId
     };
@@ -1182,7 +1243,7 @@ const App: React.FC = () => {
     const newTransaction: Omit<Transaction, 'id'> = {
       description: reminder.description,
       amount: reminder.amount,
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalISODate(),
       category: reminder.category,
       type: reminder.type || 'expense',
       status: 'completed',
@@ -1192,12 +1253,13 @@ const App: React.FC = () => {
     await dbService.addTransaction(userId, newTransaction);
 
     if (reminder.isRecurring) {
-      const nextDate = new Date(reminder.dueDate);
+      const baseDate = (reminder.dueDate || toLocalISODate()) + "T00:00:00";
+      const nextDate = new Date(baseDate);
       if (reminder.frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
       else if (reminder.frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
       else nextDate.setMonth(nextDate.getMonth() + 1);
 
-      const updatedReminder = { ...reminder, dueDate: nextDate.toISOString().split('T')[0] };
+      const updatedReminder = { ...reminder, dueDate: toLocalISODate(nextDate) };
       await dbService.updateReminder(userId, updatedReminder);
       toast.success(reminder.type === 'income' ? "Recebimento confirmado! Próxima data agendada." : "Conta Paga! Vencimento atualizado.");
     } else {
@@ -1489,6 +1551,14 @@ const App: React.FC = () => {
           <div className="space-y-1">
             {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
 
+            <NavItem
+                active={false}
+                onClick={() => setIsWhatsAppOpen(true)}
+                icon={<MessageCircle size={20} className="text-[#25D366]" />}
+                label="Coinzinha WhatsApp"
+                isOpen={isSidebarOpen}
+            />
+
             <button
               onClick={() => setIsAIModalOpen(true)}
               disabled={activeMemberId === 'FAMILY_OVERVIEW'}
@@ -1514,6 +1584,19 @@ const App: React.FC = () => {
               )}
             </button>
           </div>
+
+          {isSidebarOpen && (
+            <div className="px-3 pb-6 mt-auto animate-fade-in">
+                <div className="bg-[#363735] border border-[#3A3B39] rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                    <div className="text-[#d97757] shrink-0">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" /></svg>
+                    </div>
+                    <p className="text-xs text-gray-300 leading-snug text-left font-medium">
+                        Você está navegando na versão Beta (0.1.0) do Controlar<span className="text-[#d97757] font-bold">+</span>
+                    </p>
+                </div>
+            </div>
+          )}
         </div>
       </aside>
 
@@ -1793,7 +1876,7 @@ const App: React.FC = () => {
                 )}
 
                 {activeTab === 'table' && (
-                  <div className="h-[calc(100vh-280px)] animate-fade-in">
+                  <div className="h-[calc(100vh-140px)] animate-fade-in">
                     <ExcelTable
                       transactions={memberFilteredTransactions}
                       onDelete={handleDeleteTransaction}
@@ -1953,6 +2036,11 @@ const App: React.FC = () => {
             setActiveTab('subscription');
         }}
         initialTab={settingsInitialTab}
+      />
+
+      <WhatsAppConnect 
+        isOpen={isWhatsAppOpen} 
+        onClose={() => setIsWhatsAppOpen(false)} 
       />
     </div>
   );

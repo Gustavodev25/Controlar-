@@ -137,20 +137,13 @@
         color: #faf9f5;
       }
       
-      /* Scrollbar customizada */
+      /* Scrollbar customizada - AGORA OCULTA MAS FUNCIONAL */
       .custom-scrollbar::-webkit-scrollbar {
-        height: 8px;
-        width: 8px;
+        display: none;
       }
-      .custom-scrollbar::-webkit-scrollbar-track {
-        background: #363735;
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb {
-        background: #d97757;
-        border-radius: 4px;
-      }
-      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-        background: #c56a4d;
+      .custom-scrollbar {
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: none;  /* Firefox */
       }
 
       /* NO SCROLLBAR UTILITY - Esconde a barra mas mantem scroll */

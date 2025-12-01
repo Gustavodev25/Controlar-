@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight } from "./Icons";
-import { triggerItemUpdate, syncPluggyData } from "../services/pluggyService";
+import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight, Trash2 } from "./Icons";
+import { triggerItemUpdate, syncPluggyData, deleteItem } from "../services/pluggyService";
 import { useToasts } from "./Toast";
 import { EmptyState } from "./EmptyState";
+import { ConfirmationCard } from "./UIComponents";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -36,6 +37,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
+  const [deletingItems, setDeletingItems] = useState<Set<string>>(new Set());
+  const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const accountsPerPage = 3;
   const toast = useToasts();
@@ -89,6 +92,43 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       }
       return next;
     });
+  };
+
+  const handleDeleteBank = (institutionName: string, itemId: string) => {
+    setItemToDelete({ id: itemId, name: institutionName });
+  };
+
+  const confirmDeleteBank = async () => {
+    if (!itemToDelete) return;
+    const { id: itemId, name: institutionName } = itemToDelete;
+    
+    if (deletingItems.has(itemId)) return;
+
+    setDeletingItems(prev => new Set(prev).add(itemId));
+    setItemToDelete(null); // Close modal immediately or keep it? Usually close it.
+
+    try {
+      await toast.promise(
+        deleteItem(itemId),
+        {
+          loading: `Desconectando ${institutionName}...`,
+          success: "Banco desconectado com sucesso!",
+          error: "Erro ao desconectar banco."
+        }
+      );
+      
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setDeletingItems(prev => {
+        const next = new Set(prev);
+        next.delete(itemId);
+        return next;
+      });
+    }
   };
 
   const handleSyncItem = async (institutionName: string, itemId: string) => {
@@ -235,15 +275,30 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
                 </div>
                 
-                {/* Botão de Sincronizar Instituição Específica */}
-                <button 
-                    onClick={() => handleSyncItem(institution, itemId)}
-                    disabled={isSyncing}
-                    title="Sincronizar agora com o banco"
-                    className={`p-2.5 rounded-xl transition-all border ${isSyncing ? 'bg-gray-900 text-gray-500 border-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-[#d97757]/10 text-gray-400 hover:text-[#d97757] border-gray-800 hover:border-[#d97757]/30'}`}
-                >
-                    <RefreshCw size={18} className={isSyncing ? "animate-spin text-[#d97757]" : ""} />
-                </button>
+                {/* Ações da Instituição */}
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => handleSyncItem(institution, itemId)}
+                        disabled={isSyncing || deletingItems.has(itemId)}
+                        title="Sincronizar agora com o banco"
+                        className={`p-2.5 rounded-xl transition-all border ${isSyncing ? 'bg-gray-900 text-gray-500 border-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-[#d97757]/10 text-gray-400 hover:text-[#d97757] border-gray-800 hover:border-[#d97757]/30'}`}
+                    >
+                        <RefreshCw size={18} className={isSyncing ? "animate-spin text-[#d97757]" : ""} />
+                    </button>
+
+                    <button 
+                        onClick={() => handleDeleteBank(institution, itemId)}
+                        disabled={isSyncing || deletingItems.has(itemId)}
+                        title="Excluir conexão bancária"
+                        className={`p-2.5 rounded-xl transition-all border ${deletingItems.has(itemId) ? 'bg-gray-900 text-gray-500 border-gray-800 cursor-not-allowed' : 'bg-gray-900 hover:bg-red-500/10 text-gray-400 hover:text-red-500 border-gray-800 hover:border-red-500/30'}`}
+                    >
+                        {deletingItems.has(itemId) ? (
+                           <RefreshCw size={18} className="animate-spin text-red-500" />
+                        ) : (
+                           <Trash2 size={18} />
+                        )}
+                    </button>
+                </div>
               </div>
 
               {/* Lista de Contas dentro do Banco */}
@@ -386,6 +441,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           })}
         </div>
       )}
+
+      <ConfirmationCard
+        isOpen={!!itemToDelete}
+        onClose={() => setItemToDelete(null)}
+        onConfirm={confirmDeleteBank}
+        title="Desconectar Banco?"
+        description={`Tem certeza que deseja desconectar o ${itemToDelete?.name}? Todas as contas vinculadas serão removidas.`}
+        isDestructive={true}
+        confirmText="Sim, desconectar"
+        cancelText="Cancelar"
+      />
     </div>
   );
 };

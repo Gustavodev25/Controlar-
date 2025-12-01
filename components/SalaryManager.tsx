@@ -41,6 +41,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   // CLT Mode State
   const [cltGross, setCltGross] = useState('');
   const [cltDependents, setCltDependents] = useState('0');
+  const [cltOtherDiscounts, setCltOtherDiscounts] = useState('');
+  const [cltBenefits, setCltBenefits] = useState('');
 
   // Validation State
   const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean, tempBaseSalary?: boolean}>({});
@@ -73,6 +75,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   // 2. CLT Logic (2025 Rules)
   const safeCltGross = parseInput(cltGross);
   const safeCltDependents = parseInt(cltDependents) || 0;
+  const safeCltOtherDiscounts = parseInput(cltOtherDiscounts);
+  const safeCltBenefits = parseInput(cltBenefits);
 
   const calculateCLT = (gross: number, dependents: number) => {
       if (gross <= 0) return { inss: 0, irrf: 0, net: 0 };
@@ -125,6 +129,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   };
 
   const cltResults = calculateCLT(safeCltGross, safeCltDependents);
+  const finalCltNet = Math.max(0, cltResults.net - safeCltOtherDiscounts + safeCltBenefits);
 
   // --- Effects for Animation ---
   useEffect(() => {
@@ -218,8 +223,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   };
 
   const handleAddCLT = () => {
-      if (cltResults.net > 0) {
-          onAddExtra(cltResults.net, "Salário Líquido (CLT)");
+      if (finalCltNet > 0) {
+          onAddExtra(finalCltNet, "Salário Líquido (CLT)");
           handleCloseModal();
       } else {
           toast.error("Valor inválido.");
@@ -235,6 +240,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
         setExtraDesc('Freelance');
         setCltGross('');
         setCltDependents('0');
+        setCltOtherDiscounts('');
+        setCltBenefits('');
         setErrors({});
         setSalaryError(null);
         setActiveTab('simple');
@@ -601,12 +608,46 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                                   />
                                 </div>
                              </div>
+
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Outros Descontos (R$)
+                                </label>
+                                <div className="relative group">
+                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0,00"
+                                    value={cltOtherDiscounts}
+                                    onChange={e => setCltOtherDiscounts(e.target.value)}
+                                    className="input-primary pl-10 font-bold focus:border-[#d97757]"
+                                  />
+                                </div>
+                             </div>
+
+                             <div>
+                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                                  Benefícios (R$)
+                                </label>
+                                <div className="relative group">
+                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    placeholder="0,00"
+                                    value={cltBenefits}
+                                    onChange={e => setCltBenefits(e.target.value)}
+                                    className="input-primary pl-10 font-bold focus:border-[#d97757]"
+                                  />
+                                </div>
+                             </div>
                           </div>
 
                           {/* Result Card */}
                           <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
                              <div className="space-y-3 relative z-0 mb-4">
-                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Deduções Estimadas</h5>
+                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhes do Cálculo</h5>
                                 
                                 <div className="flex justify-between items-center text-xs group">
                                    <span className="text-gray-400">INSS</span>
@@ -617,19 +658,33 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
                                    <span className="text-gray-400">IRRF</span>
                                    <span className="text-red-400 font-mono">- {formatCurrency(cltResults.irrf)}</span>
                                 </div>
+
+                                {safeCltOtherDiscounts > 0 && (
+                                  <div className="flex justify-between items-center text-xs group">
+                                     <span className="text-gray-400">Outros Descontos</span>
+                                     <span className="text-red-400 font-mono">- {formatCurrency(safeCltOtherDiscounts)}</span>
+                                  </div>
+                                )}
+
+                                {safeCltBenefits > 0 && (
+                                  <div className="flex justify-between items-center text-xs group">
+                                     <span className="text-gray-400">Benefícios</span>
+                                     <span className="text-green-400 font-mono">+ {formatCurrency(safeCltBenefits)}</span>
+                                  </div>
+                                )}
                              </div>
 
                              <div className="relative z-0">
-                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${cltResults.net > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalCltNet > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
                                    <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salário Líquido</p>
-                                   <p className={`text-3xl font-bold ${cltResults.net > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     {formatCurrency(cltResults.net)}
+                                   <p className={`text-3xl font-bold ${finalCltNet > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                                     {formatCurrency(finalCltNet)}
                                    </p>
                                 </div>
                                 
                                 <button 
                                   onClick={handleAddCLT}
-                                  disabled={cltResults.net <= 0}
+                                  disabled={finalCltNet <= 0}
                                   className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                   <Check size={18} />

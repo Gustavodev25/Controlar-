@@ -6,6 +6,7 @@ import { useToasts } from './Toast';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
+import { toLocalISODate } from '../utils/dateUtils';
 
 import NumberFlow from '@number-flow/react';
 import { motion } from 'framer-motion';
@@ -97,7 +98,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
             plan: planToBuy,
             status: 'active' as const,
             billingCycle: cycleToBuy,
-            nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+            nextBillingDate: toLocalISODate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
             paymentMethod: 'CREDIT_CARD'
           };
 

@@ -7,6 +7,7 @@ import { ConfirmationCard } from './UIComponents';
 import { Transaction, ConnectedAccount } from '../types';
 import { EmptyState } from './EmptyState';
 import NumberFlow from '@number-flow/react';
+import { toLocalISODate, toLocalISOString } from '../utils/dateUtils';
 
 export interface Investment {
   id: string;
@@ -85,7 +86,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
     color: 'green',
     targetAmount: 0, // Connected accounts don't have explicit targets here usually
     currentAmount: acc.balance || 0,
-    createdAt: acc.lastUpdated || new Date().toISOString(),
+    createdAt: acc.lastUpdated || toLocalISOString(),
     isConnected: true,
     institution: acc.institution
   }));
@@ -103,7 +104,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
     color: 'blue',
     targetAmount: 0,
     currentAmount: 0,
-    createdAt: new Date().toISOString().split('T')[0],
+    createdAt: toLocalISODate(),
     deadline: ''
   });
 
@@ -168,7 +169,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
         color: 'blue',
         targetAmount: 0,
         currentAmount: 0,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: toLocalISODate(),
         deadline: ''
       });
       setModalStep('template');
@@ -198,7 +199,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
         color: 'blue',
         targetAmount: 0,
         currentAmount: 0,
-        createdAt: new Date().toISOString().split('T')[0],
+        createdAt: toLocalISODate(),
         deadline: ''
       });
     }, 300);
@@ -242,7 +243,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
     });
 
     onAddTransaction({
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalISODate(),
       description: `Depósito em ${depositInvestment.name}`,
       amount: amount,
       category: `Caixinha - ${depositInvestment.name}`,
@@ -278,7 +279,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
     });
 
     onAddTransaction({
-      date: new Date().toISOString().split('T')[0],
+      date: toLocalISODate(),
       description: `Retirada de ${depositInvestment.name}`,
       amount: amount,
       category: `Caixinha - ${depositInvestment.name}`,
@@ -340,18 +341,16 @@ export const Investments: React.FC<InvestmentsProps> = ({
       {/* QUICK STATS CARDS - VISUAL IGUAL REMINDERS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
         {/* Card Total Guardado */}
-        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
-           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-emerald-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
-           
-           <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
+           <div className="flex justify-between items-start mb-3">
                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500 shadow-sm">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500">
                         <Coins size={20} />
                     </div>
                     <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Total Guardado</span>
                </div>
            </div>
-           <div className="relative z-10">
+           <div>
               <p className="text-3xl font-bold text-white tracking-tight">
                 <NumberFlow value={totalSaved} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
               </p>
@@ -360,18 +359,16 @@ export const Investments: React.FC<InvestmentsProps> = ({
         </div>
 
         {/* Card Meta Total */}
-        <div className="bg-gray-950 border border-gray-800 rounded-2xl p-6 flex flex-col justify-between relative overflow-hidden group shadow-xl">
-           <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-10 bg-blue-500 pointer-events-none transition-opacity group-hover:opacity-20"></div>
-           
-           <div className="flex justify-between items-start mb-4 relative z-10">
+        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
+           <div className="flex justify-between items-start mb-3">
                <div className="flex items-center gap-3">
-                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-blue-500 shadow-sm">
+                    <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-blue-500">
                         <Target size={20} />
                     </div>
                     <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Meta Total</span>
                </div>
            </div>
-           <div className="relative z-10">
+           <div>
               <p className="text-3xl font-bold text-white tracking-tight">
                 <NumberFlow value={totalTarget} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
               </p>

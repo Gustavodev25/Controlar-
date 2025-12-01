@@ -7,6 +7,7 @@ import { useToasts } from './Toast';
 import { ConfirmationCard, CustomAutocomplete } from './UIComponents';
 import { EmptyState } from './EmptyState';
 import NumberFlow from '@number-flow/react';
+import { getCurrentLocalMonth } from '../utils/dateUtils';
 
 interface BudgetsProps {
     userId: string;
@@ -117,7 +118,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
     // Calculate Progress
     const budgetProgress = useMemo(() => {
-        const currentMonth = new Date().toISOString().slice(0, 7); // YYYY-MM
+        const currentMonth = getCurrentLocalMonth(); // YYYY-MM
 
         return budgets.map(budget => {
             const relevantTransactions = transactions.filter(t => {
@@ -189,7 +190,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredBudgets.map(budget => (
-                    <div key={budget.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-5 shadow-sm hover:border-gray-700 transition-all group relative overflow-hidden">
+                    <div key={budget.id} className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-all group relative overflow-hidden">
                         {/* Background Progress Bar (Subtle) */}
                         <div
                             className={`absolute bottom-0 left-0 h-1 transition-all duration-500 ${getProgressBarColor(budget.percentage)}`}

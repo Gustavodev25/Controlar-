@@ -15,6 +15,7 @@ import { ConfirmationCard } from './UIComponents';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
+import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 
 interface SettingsModalProps {
    isOpen: boolean;
@@ -640,7 +641,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    const allCategorizedThisMonth = useMemo(() => {
       if (!transactions.length) return false;
-      const currentMonth = new Date().toISOString().slice(0, 7);
+      const currentMonth = getCurrentLocalMonth();
       const currentTx = transactions.filter((t) => normalizeMonth(t.date) === currentMonth);
       if (!currentTx.length) return false;
       return currentTx.every((t) => {
@@ -899,11 +900,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    }, [user, isOpen]);
 
    useEffect(() => {
-      if (isOpen) setIsVisible(true);
-      else setTimeout(() => {
-         setIsVisible(false);
-      }, 300);
-   }, [isOpen]);
+      if (isOpen) {
+         setIsVisible(true);
+         const targetTab = initialTab === 'profile' ? 'account' : initialTab;
+         setActiveTab(targetTab as SettingsTab);
+      } else {
+         setTimeout(() => {
+            setIsVisible(false);
+         }, 300);
+      }
+   }, [isOpen, initialTab]);
 
    if (!isVisible) return null;
 
@@ -1824,7 +1830,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
                                  const link = document.createElement("a");
                                  link.href = URL.createObjectURL(blob);
-                                 link.setAttribute("download", "relatorio_financeiro_" + new Date().toISOString().split('T')[0] + ".csv");
+                                 link.setAttribute("download", "relatorio_financeiro_" + toLocalISODate() + ".csv");
                                  document.body.appendChild(link);
                                  link.click();
                                  document.body.removeChild(link);
