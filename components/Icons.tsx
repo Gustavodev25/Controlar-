@@ -90,7 +90,8 @@ import {
   Copy,
   RefreshCw,
   ArrowUpCircle,
-  ArrowDownCircle
+  ArrowDownCircle,
+  UserPlus
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -202,5 +203,6 @@ export {
   Copy,
   RefreshCw,
   ArrowUpCircle,
-  ArrowDownCircle
+  ArrowDownCircle,
+  UserPlus
 };

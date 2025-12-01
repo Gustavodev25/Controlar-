@@ -24,6 +24,21 @@ export interface User {
     expiry: string;
     brand?: string;
   };
+  familyGroupId?: string;
+  familyRole?: 'owner' | 'member';
+}
+
+export interface FamilyGroup {
+  id: string;
+  ownerId: string;
+  plan: 'pro' | 'family';
+  members: string[]; // User IDs
+  invites: {
+    token: string;
+    createdAt: string;
+    status: 'pending' | 'accepted';
+    email?: string;
+  }[];
 }
 
 export interface Member {

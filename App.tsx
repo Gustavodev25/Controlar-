@@ -57,6 +57,7 @@ import { ImportReviewModal } from './components/ImportReviewModal';
 
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
+import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
@@ -229,6 +230,64 @@ const App: React.FC = () => {
   const [pendingTwoFactor, setPendingTwoFactor] = useState<PendingTwoFactor | null>(null);
   const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
   const toast = useToasts();
+
+  // Handle Family Invite Link
+  useEffect(() => {
+      if (typeof window === 'undefined') return;
+      const params = new URLSearchParams(window.location.search);
+      const token = params.get('inviteToken');
+      const familyId = params.get('familyId');
+      
+      if (token && familyId) {
+          localStorage.setItem('pending_invite_token', token);
+          localStorage.setItem('pending_invite_family_id', familyId);
+          // Clean URL to look nicer
+          window.history.replaceState({}, document.title, window.location.pathname);
+          toast.info("Convite de família detectado! Faça login para aceitar.");
+      }
+  }, []);
+
+  // Process Pending Invite after Login
+  useEffect(() => {
+      const token = localStorage.getItem('pending_invite_token');
+      const familyId = localStorage.getItem('pending_invite_family_id');
+
+      if (userId && currentUser && token && familyId) {
+          // Check if already in a family
+          if (currentUser.familyGroupId) {
+              if (currentUser.familyGroupId === familyId) {
+                  toast.success("Você já faz parte desta família!");
+                  localStorage.removeItem('pending_invite_token');
+                  localStorage.removeItem('pending_invite_family_id');
+              } else {
+                  toast.warning("Você já faz parte de outra família. Saia dela antes de entrar em uma nova.");
+              }
+              return;
+          }
+
+          // Prompt to join
+          toast.message({
+              id: 'family-invite-prompt', // Prevent duplicates
+              type: 'info',
+              title: 'Convite para Plano Familiar',
+              message: 'Você foi convidado para participar de uma família Premium. Deseja aceitar?',
+              action: 'Aceitar Convite',
+              onAction: async () => {
+                  try {
+                      await familyService.joinFamily(userId, familyId, token);
+                      toast.success("Bem-vindo à família! Acesso liberado.");
+                      localStorage.removeItem('pending_invite_token');
+                      localStorage.removeItem('pending_invite_family_id');
+                      // Refresh profile
+                      const profile = await dbService.getUserProfile(userId);
+                      if (profile) setCurrentUser(prev => ({ ...prev!, ...profile }));
+                  } catch (err: any) {
+                      toast.error(err.message || "Erro ao entrar na família.");
+                  }
+              }
+          });
+      }
+  }, [userId, currentUser]);
 
   // Handle Stripe Payment Return
   usePaymentStatus(async (planId) => {
@@ -1980,6 +2039,8 @@ const App: React.FC = () => {
                 onUpdateGoal={handleUpdateGoal}
                 onDeleteGoal={handleDeleteGoal}
                 onAddTransaction={handleAddTransaction}
+                currentUser={currentUser}
+                userId={userId}
               />
             ) : (
               <>
