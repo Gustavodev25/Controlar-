@@ -1,0 +1,28 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Regras para Usuarios: Cada um acessa apenas seus proprios dados
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Regras para Familias
+    match /families/{familyId} {
+      // Leitura: Permitida se o usuario for membro ou dono
+      allow read: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.members.hasAny([request.auth.uid])
+      );
+      
+      // Criacao: Permitida para qualquer usuario autenticado (que se defina como dono)
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      
+      // Atualizacao: Permitida para membros (ex: entrar/sair) ou dono
+      allow update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.members.hasAny([request.auth.uid])
+      );
+    }
+  }
+}

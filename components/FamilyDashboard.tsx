@@ -319,7 +319,12 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                 if (userId) {
                                     // Initialize as Pro/Family based on subscription (defaulting to Family for demo if needed, or checking sub)
                                     const plan = currentUser?.subscription?.plan === 'pro' ? 'pro' : 'family';
-                                    familyService.initializeFamilyGroup(userId, plan).then(() => toast.success("Grupo familiar criado!"));
+                                    familyService.initializeFamilyGroup(userId, plan)
+                                        .then(() => toast.success("Grupo familiar criado!"))
+                                        .catch((err) => {
+                                            console.error("Erro ao criar grupo:", err);
+                                            toast.error("Erro ao criar grupo. Verifique se as regras do Firestore permitem a criação na coleção 'families'.");
+                                        });
                                 }
                             }}
                             className="px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-transform hover:scale-105"
