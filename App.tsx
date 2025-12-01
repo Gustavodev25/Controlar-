@@ -54,6 +54,7 @@ import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
 import { ImportReviewModal } from './components/ImportReviewModal';
+import { InviteAcceptModal } from './components/InviteAcceptModal';
 
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
@@ -229,64 +230,103 @@ const App: React.FC = () => {
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [pendingTwoFactor, setPendingTwoFactor] = useState<PendingTwoFactor | null>(null);
   const [isVerifyingTwoFactor, setIsVerifyingTwoFactor] = useState(false);
+  const [pendingInvite, setPendingInvite] = useState<{ token: string; familyId: string; ownerName?: string } | null>(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [isProcessingInvite, setIsProcessingInvite] = useState(false);
   const toast = useToasts();
 
-  // Handle Family Invite Link
+  // Handle Family Invite Link & Context Loading
   useEffect(() => {
-      if (typeof window === 'undefined') return;
-      const params = new URLSearchParams(window.location.search);
-      const token = params.get('inviteToken');
-      const familyId = params.get('familyId');
-      
-      if (token && familyId) {
-          localStorage.setItem('pending_invite_token', token);
-          localStorage.setItem('pending_invite_family_id', familyId);
-          // Clean URL to look nicer
-          window.history.replaceState({}, document.title, window.location.pathname);
-          toast.info("Convite de família detectado! Faça login para aceitar.");
-      }
+      const loadInvite = async () => {
+        let token: string | null = null;
+        let familyId: string | null = null;
+
+        if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            token = params.get('inviteToken');
+            familyId = params.get('familyId');
+
+            if (token && familyId) {
+                localStorage.setItem('pending_invite_token', token);
+                localStorage.setItem('pending_invite_family_id', familyId);
+                window.history.replaceState({}, document.title, window.location.pathname);
+            } else {
+                token = localStorage.getItem('pending_invite_token');
+                familyId = localStorage.getItem('pending_invite_family_id');
+            }
+        }
+
+        if (token && familyId) {
+            try {
+                const group = await familyService.getFamilyGroup(familyId);
+                let ownerName = 'Alguém';
+                if (group && group.ownerId) {
+                    const ownerProfile = await dbService.getUserProfile(group.ownerId);
+                    if (ownerProfile?.name) ownerName = ownerProfile.name;
+                }
+                setPendingInvite({ token, familyId, ownerName });
+            } catch (err) {
+                console.error("Erro ao carregar convite:", err);
+            }
+        }
+      };
+      loadInvite();
   }, []);
 
-  // Process Pending Invite after Login
+  // Trigger Modal after Login
   useEffect(() => {
-      const token = localStorage.getItem('pending_invite_token');
-      const familyId = localStorage.getItem('pending_invite_family_id');
-
-      if (userId && currentUser && token && familyId) {
-          // Check if already in a family
+      if (userId && currentUser && pendingInvite) {
+          // Check if already in *this* family or another
           if (currentUser.familyGroupId) {
-              if (currentUser.familyGroupId === familyId) {
+              if (currentUser.familyGroupId === pendingInvite.familyId) {
                   toast.success("Você já faz parte desta família!");
+                  setPendingInvite(null);
                   localStorage.removeItem('pending_invite_token');
                   localStorage.removeItem('pending_invite_family_id');
               } else {
-                  toast.warning("Você já faz parte de outra família. Saia dela antes de entrar em uma nova.");
+                  // If in another family, we might still show the modal but warn them they need to leave first?
+                  // Or just show the modal and let the join fail or handle logic there.
+                  // For simplicity: Show modal, let user confirm.
+                  setShowInviteModal(true);
               }
-              return;
+          } else {
+              setShowInviteModal(true);
           }
-
-          // Prompt to join
-          toast.message({
-              text: 'Convite para Plano Familiar',
-              description: 'Você foi convidado para participar de uma família Premium. Deseja aceitar?',
-              actionLabel: 'Aceitar Convite',
-              preserve: true,
-              onAction: async () => {
-                  try {
-                      await familyService.joinFamily(userId, familyId, token);
-                      toast.success("Bem-vindo à família! Acesso liberado.");
-                      localStorage.removeItem('pending_invite_token');
-                      localStorage.removeItem('pending_invite_family_id');
-                      // Refresh profile
-                      const profile = await dbService.getUserProfile(userId);
-                      if (profile) setCurrentUser(prev => ({ ...prev!, ...profile }));
-                  } catch (err: any) {
-                      toast.error(err.message || "Erro ao entrar na família.");
-                  }
-              }
-          });
       }
-  }, [userId, currentUser]);
+  }, [userId, currentUser, pendingInvite]);
+
+  const handleAcceptInvite = async () => {
+      if (!userId || !pendingInvite) return;
+      setIsProcessingInvite(true);
+      try {
+          await familyService.joinFamily(userId, pendingInvite.familyId, pendingInvite.token);
+          toast.success("Bem-vindo à família! Acesso liberado.");
+          
+          // Cleanup
+          localStorage.removeItem('pending_invite_token');
+          localStorage.removeItem('pending_invite_family_id');
+          setPendingInvite(null);
+          setShowInviteModal(false);
+          
+          // Refresh profile immediately
+          const profile = await dbService.getUserProfile(userId);
+          if (profile) setCurrentUser(prev => ({ ...prev!, ...profile }));
+      } catch (err: any) {
+          toast.error(err.message || "Erro ao entrar na família.");
+          // If user is already in another family, the service throws an error.
+          // If the error is specifically about leaving the current family, we could offer that option here.
+      } finally {
+          setIsProcessingInvite(false);
+      }
+  };
+
+  const handleDeclineInvite = () => {
+      localStorage.removeItem('pending_invite_token');
+      localStorage.removeItem('pending_invite_family_id');
+      setPendingInvite(null);
+      setShowInviteModal(false);
+      toast.info("Convite recusado.");
+  };
 
   // Handle Stripe Payment Return
   usePaymentStatus(async (planId) => {
@@ -1531,11 +1571,16 @@ const App: React.FC = () => {
       <>
         <ToastContainer />
         <AuthModal 
-            onLogin={() => { }} 
+            onLogin={(u) => { 
+                // Explicit trigger handled by AuthModal calling this, 
+                // but we rely on onAuthStateChanged for main logic. 
+                // This callback can be used for immediate UI feedback if needed.
+            }} 
             onBack={pendingTwoFactor ? undefined : () => setShowLanding(true)}
             isTwoFactorPending={!!pendingTwoFactor}
             onVerifyTwoFactor={handleVerifyTwoFactor}
             onCancelTwoFactor={handleCancelTwoFactor}
+            inviteContext={pendingInvite}
         />
       </>
     );
@@ -1546,6 +1591,13 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
       <ToastContainer />
+      <InviteAcceptModal 
+          isOpen={showInviteModal} 
+          onAccept={handleAcceptInvite} 
+          onDecline={handleDeclineInvite} 
+          ownerName={pendingInvite?.ownerName || 'Alguém'} 
+          isProcessing={isProcessingInvite}
+      />
 
       {/* Sidebar */}
       <aside className={sidebarClasses}>

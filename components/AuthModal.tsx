@@ -11,6 +11,7 @@ interface AuthModalProps {
   isTwoFactorPending?: boolean;
   onVerifyTwoFactor?: (code: string) => Promise<void>;
   onCancelTwoFactor?: () => void;
+  inviteContext?: { ownerName: string } | null;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ 
@@ -18,7 +19,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   onBack, 
   isTwoFactorPending, 
   onVerifyTwoFactor, 
-  onCancelTwoFactor 
+  onCancelTwoFactor,
+  inviteContext
 }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isResettingPassword, setIsResettingPassword] = useState(false);
@@ -312,12 +314,20 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   <h2 className="text-3xl font-bold tracking-tight text-white">
                     {isResettingPassword
                       ? 'Recuperar Senha'
-                      : (isLogin ? 'Bem-vindo de volta' : 'Comece agora')}
+                      : (inviteContext 
+                          ? `Convite de ${inviteContext.ownerName}` 
+                          : (isLogin ? 'Bem-vindo de volta' : 'Comece agora')
+                        )
+                    }
                   </h2>
                   <p className="text-gray-400">
                     {isResettingPassword
                       ? 'Digite seu e-mail para receber o link de redefinição.'
-                      : (isLogin ? 'Preencha seus dados para acessar.' : 'Crie sua conta gratuita em segundos.')}
+                      : (inviteContext
+                          ? 'Crie sua conta ou faça login para aceitar o convite e entrar no grupo familiar.'
+                          : (isLogin ? 'Preencha seus dados para acessar.' : 'Crie sua conta gratuita em segundos.')
+                        )
+                    }
                   </p>
                 </div>
 
