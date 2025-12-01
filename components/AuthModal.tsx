@@ -94,7 +94,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       }
 
       if (isLogin) {
-        await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        const userCredential = await signInWithEmailAndPassword(auth, formData.email, formData.password);
+        if (onLogin) onLogin(userCredential.user);
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
         if (userCredential.user) {
@@ -104,6 +105,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             email: formData.email,
             baseSalary: 0
           });
+          if (onLogin) onLogin(userCredential.user);
         }
       }
     } catch (err: any) {
