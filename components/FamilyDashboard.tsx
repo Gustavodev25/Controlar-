@@ -19,6 +19,7 @@ interface FamilyDashboardProps {
    onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
    currentUser?: User | null; // Pass current user for context
    userId?: string | null;
+   onUpgrade?: () => void;
 }
 
 export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
@@ -30,7 +31,8 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
    onDeleteGoal,
    onAddTransaction,
    currentUser,
-   userId
+   userId,
+   onUpgrade
 }) => {
    const toast = useToasts();
    const [isAddingGoal, setIsAddingGoal] = useState(false);
@@ -317,8 +319,16 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                          <button 
                             onClick={() => {
                                 if (userId) {
-                                    // Initialize as Pro/Family based on subscription (defaulting to Family for demo if needed, or checking sub)
-                                    const plan = currentUser?.subscription?.plan === 'pro' ? 'pro' : 'family';
+                                    const currentPlan = currentUser?.subscription?.plan || 'starter';
+                                    
+                                    if (currentPlan === 'starter') {
+                                        if (onUpgrade) onUpgrade();
+                                        return;
+                                    }
+
+                                    // Initialize as Pro/Family based on subscription
+                                    const plan = currentPlan === 'pro' ? 'pro' : 'family';
+                                    
                                     familyService.initializeFamilyGroup(userId, plan)
                                         .then(() => toast.success("Grupo familiar criado!"))
                                         .catch((err) => {

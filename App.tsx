@@ -2092,6 +2092,7 @@ const App: React.FC = () => {
                 onAddTransaction={handleAddTransaction}
                 currentUser={currentUser}
                 userId={userId}
+                onUpgrade={() => setActiveTab('subscription')}
               />
             ) : (
               <>
