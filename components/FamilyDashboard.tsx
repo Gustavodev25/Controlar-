@@ -323,7 +323,11 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                         .then(() => toast.success("Grupo familiar criado!"))
                                         .catch((err) => {
                                             console.error("Erro ao criar grupo:", err);
-                                            toast.error("Erro ao criar grupo. Verifique se as regras do Firestore permitem a criação na coleção 'families'.");
+                                            if (err.code === 'permission-denied') {
+                                                toast.error("Permissão negada! Atualize as regras do Firestore no Firebase Console para permitir a coleção 'families'.");
+                                            } else {
+                                                toast.error(`Erro ao criar grupo: ${err.message}`);
+                                            }
                                         });
                                 }
                             }}

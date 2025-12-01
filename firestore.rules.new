@@ -1,0 +1,22 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // MANTENHA SUAS REGRAS EXISTENTES DE USUÁRIO
+    match /users/{uid}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+    
+    // ADICIONE ESTE BLOCO NOVO PARA AS FAMÍLIAS FUNCIONAREM
+    match /families/{familyId} {
+      // Permite criar se você estiver logado e se definir como dono
+      allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
+      
+      // Permite ler e atualizar se você for o dono ou um membro
+      allow read, update: if request.auth != null && (
+        resource.data.ownerId == request.auth.uid ||
+        resource.data.members.hasAny([request.auth.uid])
+      );
+    }
+  }
+}
