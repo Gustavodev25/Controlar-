@@ -477,7 +477,84 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
   );
 };
 
-// --- CONFIRMATION CARD (Bottom Centered) ---
+// --- CURRENCY INPUT ---
+interface CurrencyInputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
+  value: number | undefined;
+  onValueChange: (value: number) => void;
+}
+
+export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onValueChange, className = "", ...props }) => {
+  // Local state for the display string (what the user sees/types)
+  const [displayValue, setDisplayValue] = useState('');
+
+  // Update local state when the external value prop changes
+  useEffect(() => {
+    if (value !== undefined && !isNaN(value)) {
+      // Format as BRL string if not currently focusing/typing, OR if it's the initial load
+      // We check document.activeElement to avoid overwriting while typing if this effect runs
+      // But for simplicity, let's just set it. If user is typing, we rely on handleChange.
+      // To avoid jumping cursor, we might want to only format on blur or initial.
+      // Here: Initial set.
+      const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      // Only update if the parsed number from current display is different, to avoid loop
+      const currentNum = parseCurrency(displayValue);
+      if (Math.abs(currentNum - value) > 0.001) { // float comparison
+         setDisplayValue(formatted);
+      }
+    } else if (value === 0) {
+       setDisplayValue('0,00');
+    }
+  }, [value]);
+
+  const parseCurrency = (val: string): number => {
+    // Remove thousands separators (dots) and replace decimal separator (comma) with dot
+    const clean = val.replace(/\./g, '').replace(',', '.');
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    
+    // Allow only numbers, dots and commas
+    val = val.replace(/[^0-9.,]/g, '');
+    
+    // Prevent multiple commas
+    const parts = val.split(',');
+    if (parts.length > 2) {
+        val = parts[0] + ',' + parts.slice(1).join('');
+    }
+
+    setDisplayValue(val);
+    
+    // We don't call onValueChange immediately with the partial number because
+    // "1" -> 1.00, "10" -> 10.00. But "10," -> is NaN or 10.
+    // We want to wait? No, real-time updates are usually good but parsing needs care.
+    // Strategy: Parse continuously.
+    const num = parseCurrency(val);
+    onValueChange(num);
+  };
+
+  const handleBlur = () => {
+    // On blur, format nicely
+    const num = parseCurrency(displayValue);
+    const formatted = num.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    setDisplayValue(formatted);
+    onValueChange(num);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={displayValue}
+      onChange={handleChange}
+      onBlur={handleBlur}
+      className={className}
+      {...props}
+    />
+  );
+};
 interface ConfirmationCardProps {
   isOpen: boolean;
   onClose: () => void;

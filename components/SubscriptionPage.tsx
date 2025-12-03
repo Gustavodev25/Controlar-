@@ -44,10 +44,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
     {
       id: 'pro',
       name: 'Pro',
-      price: 19.90,
-      annualPrice: 199.90,
+      price: 34.90,
+      annualPrice: 399.00,
       image: fogueteImg,
-      description: 'Todos os recursos avançados agora gratuitos.',
+      description: 'Todos os recursos avançados.',
       features: [
         'IA Integrada ilimitada',
         'Lançamentos por Texto',
@@ -60,10 +60,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
     {
       id: 'family',
       name: 'Family',
-      price: 59.90,
-      annualPrice: 599.90,
+      price: 69.90,
+      annualPrice: 749.00,
       image: familiaImg,
-      description: 'Gestão completa para toda a casa, sem custo.',
+      description: 'Gestão completa para toda a casa.',
       features: [
         'Tudo incluso no plano gratuito',
         'Até 5 Membros',
@@ -181,7 +181,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                 )}
                                 <span className="relative z-10">Anual</span>
                                 <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
-                                    -16%
+                                    -5%
                                 </span>
                             </button>
                         </div>

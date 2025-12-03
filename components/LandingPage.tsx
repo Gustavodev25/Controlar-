@@ -473,9 +473,9 @@ const PricingSection = () => {
           <h3 className="text-xl font-bold text-white mb-2 flex items-center gap-2">
              Pro <Sparkles size={16} className="text-[#d97757]" />
           </h3>
-          <p className="text-gray-400 text-sm mb-6">Todos os recursos avançados agora gratuitos.</p>
+          <p className="text-gray-400 text-sm mb-6">Todos os recursos avançados.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 0</span>
+             <span className="text-4xl font-bold text-white">R$ 34,90</span>
              <span className="text-gray-500">/mês</span>
           </div>
           <ul className="space-y-4 mb-8 flex-1">
@@ -485,7 +485,7 @@ const PricingSection = () => {
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#d97757]"/> Metas e Lembretes</li>
           </ul>
           <button className="w-full py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold transition-colors shadow-lg shadow-[#d97757]/25">
-             Usar gratuitamente
+             Assinar Pro
           </button>
        </div>
 
@@ -495,19 +495,19 @@ const PricingSection = () => {
              <img src={familiaImg} alt="Family" className="w-16 h-16 object-contain" />
           </div>
           <h3 className="text-xl font-bold text-white mb-2">Family</h3>
-          <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa, sem custo.</p>
+          <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 0</span>
+             <span className="text-4xl font-bold text-white">R$ 69,90</span>
              <span className="text-gray-500">/mês</span>
           </div>
           <ul className="space-y-4 mb-8 flex-1">
-             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Tudo incluso no plano gratuito</li>
+             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Tudo do Pro</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Até 5 Membros</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Metas Compartilhadas</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#d97757]"/> Relatórios Unificados</li>
           </ul>
           <button className="w-full py-3 rounded-xl border border-gray-700 text-white font-bold hover:bg-gray-800 transition-colors">
-             Usar gratuitamente em família
+             Assinar Family
           </button>
        </div>
     </div>
@@ -660,7 +660,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin }) => {
 
             <div className="flex flex-col items-center text-center mb-12 lg:mb-16">
               <h2 className="text-2xl lg:text-5xl font-bold mb-3 lg:mb-4 relative z-10">Planos transparentes</h2>
-              <p className="text-sm lg:text-base text-gray-400 relative z-10">Todos os planos custam R$ 0. Escolha o formato que faz mais sentido.</p>
+              <p className="text-sm lg:text-base text-gray-400 relative z-10">Escolha o plano ideal para sua jornada financeira.</p>
             </div>
             <PricingSection />
          </div>

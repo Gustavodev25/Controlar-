@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled } from './Icons';
 import { useToasts } from './Toast';
 import NumberFlow from '@number-flow/react';
 
@@ -8,17 +8,39 @@ interface SalaryManagerProps {
   baseSalary: number;
   currentIncome: number;
   paymentDay?: number;
-  onUpdateSalary: (newSalary: number, paymentDay?: number) => void;
+  advanceValue?: number;
+  advancePercent?: number;
+  advanceDay?: number;
+  onUpdateSalary: (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }) => void;
   onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
+  onEditClick?: () => void;
+  isSalaryLaunched?: boolean;
 }
 
-export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, currentIncome, paymentDay, onUpdateSalary, onAddExtra }) => {
+export const SalaryManager: React.FC<SalaryManagerProps> = ({ 
+    baseSalary, 
+    currentIncome, 
+    paymentDay, 
+    advanceValue, 
+    advancePercent, 
+    advanceDay, 
+    onUpdateSalary, 
+    onAddExtra, 
+    onEditClick,
+    isSalaryLaunched
+}) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
   const [tempSalary, setTempSalary] = useState(baseSalary.toString());
   const [tempPaymentDay, setTempPaymentDay] = useState(paymentDay?.toString() || '5');
-  const [salaryError, setSalaryError] = useState<string | null>(null);
   
+  // Split / Advance Logic
+  const [hasAdvance, setHasAdvance] = useState(!!(advancePercent && advancePercent > 0) || !!(advanceValue && advanceValue > 0));
+  const [tempAdvancePercent, setTempAdvancePercent] = useState(advancePercent?.toString() || '40');
+  const [tempAdvanceDay, setTempAdvanceDay] = useState(advanceDay?.toString() || '20');
+
+  const [salaryError, setSalaryError] = useState<string | null>(null);
+
   // State for Modal
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -28,7 +50,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
 
   // Modal Logic State
   const [activeTab, setActiveTab] = useState<'simple' | 'calculator' | 'clt'>('simple');
-  
+
   // Simple Mode State
   const [extraAmount, setExtraAmount] = useState('');
   const [extraDesc, setExtraDesc] = useState('Freelance');
@@ -48,16 +70,16 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const [cltBenefits, setCltBenefits] = useState('');
 
   // Validation State
-  const [errors, setErrors] = useState<{monthlyHours?: boolean, otQuantity?: boolean, tempBaseSalary?: boolean}>({});
+  const [errors, setErrors] = useState<{ monthlyHours?: boolean, otQuantity?: boolean, tempBaseSalary?: boolean }>({});
 
   // --- Calculated Values (Real-time) ---
   // Helper to safely parse inputs that might contain commas
   const parseInput = (val: string) => {
-      if (!val) return 0;
-      // Replace comma with dot
-      const normalized = val.replace(',', '.');
-      const parsed = parseFloat(normalized);
-      return isNaN(parsed) ? 0 : parsed;
+    if (!val) return 0;
+    // Replace comma with dot
+    const normalized = val.replace(',', '.');
+    const parsed = parseFloat(normalized);
+    return isNaN(parsed) ? 0 : parsed;
   };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -82,53 +104,53 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   const safeCltBenefits = parseInput(cltBenefits);
 
   const calculateCLT = (gross: number, dependents: number) => {
-      if (gross <= 0) return { inss: 0, irrf: 0, net: 0 };
+    if (gross <= 0) return { inss: 0, irrf: 0, net: 0 };
 
-      // 1. INSS (2025 Progressive)
-      let inss = 0;
-      if (gross <= 1518.00) {
-          inss = gross * 0.075;
-      } else if (gross <= 2793.88) {
-          inss = (gross * 0.09) - 22.77;
-      } else if (gross <= 4190.83) {
-          inss = (gross * 0.12) - 106.59;
-      } else if (gross <= 8157.41) {
-          inss = (gross * 0.14) - 190.40;
-      } else {
-          inss = 951.63; // Teto
-      }
+    // 1. INSS (2025 Progressive)
+    let inss = 0;
+    if (gross <= 1518.00) {
+      inss = gross * 0.075;
+    } else if (gross <= 2793.88) {
+      inss = (gross * 0.09) - 22.77;
+    } else if (gross <= 4190.83) {
+      inss = (gross * 0.12) - 106.59;
+    } else if (gross <= 8157.41) {
+      inss = (gross * 0.14) - 190.40;
+    } else {
+      inss = 951.63; // Teto
+    }
 
-      // 2. IRRF (2025 Rules)
-      // Option A: Legal Deductions (INSS + Dependents)
-      const deductibleDependents = dependents * 189.59;
-      const baseA = gross - inss - deductibleDependents;
+    // 2. IRRF (2025 Rules)
+    // Option A: Legal Deductions (INSS + Dependents)
+    const deductibleDependents = dependents * 189.59;
+    const baseA = gross - inss - deductibleDependents;
 
-      // Option B: Simplified Discount (Replaces Legal Deductions)
-      const simplifiedDiscount = 607.20; // 2025
-      const baseB = gross - simplifiedDiscount;
+    // Option B: Simplified Discount (Replaces Legal Deductions)
+    const simplifiedDiscount = 607.20; // 2025
+    const baseB = gross - simplifiedDiscount;
 
-      // Use the smaller base (beneficial for user)
-      const finalBase = Math.min(baseA, baseB);
-      
-      // IRRF Calculation Function (2025 Table)
-      const calcTax = (base: number) => {
-          if (base <= 2428.80) return 0;
-          if (base <= 2826.65) return (base * 0.075) - 182.16;
-          if (base <= 3751.05) return (base * 0.15) - 394.16;
-          if (base <= 4664.68) return (base * 0.225) - 675.49;
-          return (base * 0.275) - 908.73;
-      };
+    // Use the smaller base (beneficial for user)
+    const finalBase = Math.min(baseA, baseB);
 
-      const taxA = Math.max(0, calcTax(baseA));
-      const taxB = Math.max(0, calcTax(baseB)); // Note: BaseB here is Gross - 607.20 (NO INSS deduction)
+    // IRRF Calculation Function (2025 Table)
+    const calcTax = (base: number) => {
+      if (base <= 2428.80) return 0;
+      if (base <= 2826.65) return (base * 0.075) - 182.16;
+      if (base <= 3751.05) return (base * 0.15) - 394.16;
+      if (base <= 4664.68) return (base * 0.225) - 675.49;
+      return (base * 0.275) - 908.73;
+    };
 
-      const irrf = Math.min(taxA, taxB);
+    const taxA = Math.max(0, calcTax(baseA));
+    const taxB = Math.max(0, calcTax(baseB)); // Note: BaseB here is Gross - 607.20 (NO INSS deduction)
 
-      return {
-          inss,
-          irrf,
-          net: gross - inss - irrf
-      };
+    const irrf = Math.min(taxA, taxB);
+
+    return {
+      inss,
+      irrf,
+      net: gross - inss - irrf
+    };
   };
 
   // Calculate Marginal Tax for Overtime
@@ -170,23 +192,45 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     setSalaryError(null);
     const val = parseInput(tempSalary);
     const day = parseInt(tempPaymentDay);
-    
+
     if (isNaN(val)) {
       setSalaryError("Insira um número válido");
       return;
     }
-    
+
     if (val < 0) {
-        setSalaryError("O valor não pode ser negativo");
-        return;
+      setSalaryError("O valor não pode ser negativo");
+      return;
     }
 
     if (isNaN(day) || day < 1 || day > 31) {
-        setSalaryError("Dia de pagamento inválido (1-31)");
-        return;
+      setSalaryError("Dia de pagamento inválido (1-31)");
+      return;
     }
 
-    onUpdateSalary(val, day);
+    let advPercent = 0;
+    let advDay = 0;
+
+    if (hasAdvance) {
+        advPercent = parseInput(tempAdvancePercent);
+        advDay = parseInt(tempAdvanceDay);
+        
+        if (isNaN(advPercent) || advPercent <= 0 || advPercent >= 100) {
+            setSalaryError("Porcentagem do vale inválida");
+            return;
+        }
+        if (isNaN(advDay) || advDay < 1 || advDay > 31) {
+            setSalaryError("Dia do vale inválido (1-31)");
+            return;
+        }
+    }
+
+    onUpdateSalary(val, day, {
+        advancePercent: hasAdvance ? advPercent : 0,
+        advanceValue: 0, // We prefer percent now
+        advanceDay: hasAdvance ? advDay : undefined
+    });
+    
     setIsEditing(false);
   };
 
@@ -203,11 +247,11 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
 
   const handleAddSimple = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (finalSimpleValue > 0) {
-       const desc = `${extraDesc}${simpleDeductTaxes ? ' - Líq.' : ''}`;
-       onAddExtra(finalSimpleValue, desc);
-       handleCloseModal();
+      const desc = `${extraDesc}${simpleDeductTaxes ? ' - Líq.' : ''}`;
+      onAddExtra(finalSimpleValue, desc);
+      handleCloseModal();
     } else {
       toast.error("Por favor, insira um valor válido.");
     }
@@ -231,7 +275,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
       const desc = `Hora Extra (${safeOtQuantity.toString().replace('.', ',')}h à ${safeOtPercent}%)${deductTaxes ? ' - Líq.' : ''}`;
       // Arredondamos para 2 casas decimais para o registro
       const finalAmount = Math.round((finalOtValue + Number.EPSILON) * 100) / 100;
-      
+
       onAddExtra(finalAmount, desc);
       handleCloseModal();
     } else {
@@ -240,30 +284,30 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
   };
 
   const handleAddCLT = () => {
-      if (finalCltNet > 0) {
-          onAddExtra(finalCltNet, "Salário Líquido (CLT)");
-          handleCloseModal();
-      } else {
-          toast.error("Valor inválido.");
-      }
+    if (finalCltNet > 0) {
+      onAddExtra(finalCltNet, "Salário Líquido (CLT)");
+      handleCloseModal();
+    } else {
+      toast.error("Valor inválido.");
+    }
   };
 
   const handleCloseModal = () => {
     setIsModalOpen(false);
     setTimeout(() => {
-        setExtraAmount('');
-        setOtQuantity('');
-        setTempBaseSalary('');
-        setExtraDesc('Freelance');
-        setCltGross('');
-        setCltDependents('0');
-        setCltOtherDiscounts('');
-        setCltBenefits('');
-        setErrors({});
-        setSalaryError(null);
-        setDeductTaxes(false);
-        setSimpleDeductTaxes(false);
-        setActiveTab('simple');
+      setExtraAmount('');
+      setOtQuantity('');
+      setTempBaseSalary('');
+      setExtraDesc('Freelance');
+      setCltGross('');
+      setCltDependents('0');
+      setCltOtherDiscounts('');
+      setCltBenefits('');
+      setErrors({});
+      setSalaryError(null);
+      setDeductTaxes(false);
+      setSimpleDeductTaxes(false);
+      setActiveTab('simple');
     }, 300);
   };
 
@@ -272,123 +316,216 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
     <>
       {/* Widget Principal do Dashboard */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 shadow-sm overflow-hidden mb-6 flex flex-col lg:flex-row animate-fade-in">
-        
+
         {/* Lado Esquerdo: Visualização e Edição do Salário */}
         <div className="p-6 flex-1 relative overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-800">
-           {/* Blur using Primary Color (Terracotta) */}
-           <div className="absolute top-0 right-0 w-48 h-48 bg-[#d97757]/15 rounded-full -mr-10 -mt-10 blur-3xl pointer-events-none"></div>
-           
-           <div className="flex justify-between items-start mb-2 relative z-10">
+          {/* Blur using Primary Color (Terracotta) */}
+          <div className="absolute top-0 right-0 w-48 h-48 bg-[#d97757]/15 rounded-full -mr-10 -mt-10 blur-3xl pointer-events-none"></div>
+
+          <div className="flex justify-between items-start mb-2 relative z-10">
             <div className="flex items-center gap-2">
               <Coins size={18} className="text-[#d97757]" />
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Salário Base</h3>
             </div>
             {!isEditing && baseSalary > 0 && (
-               <button 
-                 onClick={() => { 
-                    setTempSalary(baseSalary.toString().replace('.', ',')); 
+              <button
+                onClick={() => {
+                  if (onEditClick) {
+                    onEditClick();
+                  } else {
+                    setTempSalary(baseSalary.toString().replace('.', ','));
                     setTempPaymentDay(paymentDay?.toString() || '5');
-                    setIsEditing(true); 
-                    setSalaryError(null); 
-                 }} 
-                 className="text-gray-500 hover:text-[#d97757] transition-colors text-xs flex items-center gap-1"
-               >
-                 <Edit2 size={12} /> Editar
-               </button>
+                    setIsEditing(true);
+                    setSalaryError(null);
+                  }
+                }}
+                className="text-gray-500 hover:text-[#d97757] transition-colors text-xs flex items-center gap-1"
+              >
+                <Edit2 size={12} /> Editar
+              </button>
             )}
           </div>
 
           <div className="mt-3 relative group min-h-[48px] flex flex-col justify-center">
             {isEditing ? (
-              <div className="space-y-2 animate-fade-in relative z-20">
-                  <div className="flex items-center gap-3 w-full">
-                    <div className="flex-1 flex items-center gap-2">
-                        <span className="text-gray-400 text-xl font-medium">R$</span>
-                        <input 
-                            type="text"
-                            inputMode="decimal"
-                            value={tempSalary}
-                            onChange={(e) => {
-                                setTempSalary(e.target.value);
-                                if (salaryError) setSalaryError(null);
-                            }}
-                            onKeyDown={handleKeyDown}
-                            className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
-                            autoFocus
-                            placeholder="0,00"
-                        />
-                    </div>
-                    
-                    <div className="w-24">
-                        <label className="text-[10px] text-gray-400 block mb-0.5">Dia Pagto.</label>
-                        <input 
-                            type="number"
-                            min="1"
-                            max="31"
-                            value={tempPaymentDay}
-                            onChange={(e) => setTempPaymentDay(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            className="bg-gray-800 text-white text-sm font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
-                        />
+              <div className="space-y-4 animate-fade-in relative z-20 w-full">
+                <div className="flex items-center gap-3 w-full">
+                  <div className="flex-1 flex items-center gap-2">
+                    <span className="text-gray-400 text-xl font-medium">R$</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={tempSalary}
+                      onChange={(e) => {
+                        setTempSalary(e.target.value);
+                        if (salaryError) setSalaryError(null);
+                      }}
+                      onKeyDown={handleKeyDown}
+                      className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
+                      autoFocus
+                      placeholder="0,00"
+                    />
+                  </div>
+
+                  <div className="w-24">
+                    <label className="text-[10px] text-gray-400 block mb-0.5">Dia Pagto.</label>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={tempPaymentDay}
+                      onChange={(e) => setTempPaymentDay(e.target.value)}
+                      onKeyDown={handleKeyDown}
+                      className="bg-gray-800 text-white text-sm font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
+                    />
+                  </div>
+                </div>
+
+                {/* Divisão de Salário / Vale */}
+                <div className="bg-gray-800/50 rounded-xl p-3 border border-gray-700/50">
+                    <div className="flex items-center gap-2 mb-3">
+                         <label className="relative inline-flex items-center cursor-pointer">
+                          <input 
+                            type="checkbox" 
+                            checked={hasAdvance} 
+                            onChange={(e) => setHasAdvance(e.target.checked)}
+                            className="sr-only peer" 
+                          />
+                          <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#d97757]"></div>
+                        </label>
+                        <span className="text-xs font-medium text-gray-300">Recebo Adiantamento (Vale)</span>
                     </div>
 
-                    <button 
-                    onClick={handleSaveSalary}
-                    className="p-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-lg shadow-green-900/20 shrink-0 self-end mb-0.5"
-                    title="Salvar (Enter)"
+                    {hasAdvance && (
+                        <div className="space-y-3 animate-fade-in">
+                             <div className="flex items-center gap-4">
+                                 <div className="flex-1">
+                                     <label className="text-[10px] text-gray-400 block mb-1 flex justify-between">
+                                        <span>Porcentagem do Vale</span>
+                                        <span className="text-white font-bold">{tempAdvancePercent}%</span>
+                                     </label>
+                                     <input 
+                                        type="range" 
+                                        min="10" 
+                                        max="80" 
+                                        step="5"
+                                        value={tempAdvancePercent} 
+                                        onChange={(e) => setTempAdvancePercent(e.target.value)}
+                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#d97757]"
+                                     />
+                                 </div>
+                                 <div className="w-20">
+                                    <label className="text-[10px] text-gray-400 block mb-0.5">Dia Vale</label>
+                                    <input
+                                      type="number"
+                                      min="1"
+                                      max="31"
+                                      value={tempAdvanceDay}
+                                      onChange={(e) => setTempAdvanceDay(e.target.value)}
+                                      className="bg-gray-900 text-white text-xs font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
+                                    />
+                                 </div>
+                             </div>
+
+                             {/* Preview Calculation */}
+                             {(() => {
+                                 const sal = parseInput(tempSalary);
+                                 const perc = parseInput(tempAdvancePercent);
+                                 const vale = sal * (perc / 100);
+                                 const resto = sal - vale;
+                                 return (
+                                     <div className="flex gap-2 text-[10px]">
+                                         <div className="flex-1 bg-gray-900/50 p-2 rounded border border-gray-700/50">
+                                             <p className="text-gray-500 mb-0.5">Vale ({perc}%)</p>
+                                             <p className="text-[#eab3a3] font-mono font-bold">{formatCurrency(vale)}</p>
+                                         </div>
+                                          <div className="flex-1 bg-gray-900/50 p-2 rounded border border-gray-700/50">
+                                             <p className="text-gray-500 mb-0.5">Restante</p>
+                                             <p className="text-white font-mono font-bold">{formatCurrency(resto)}</p>
+                                         </div>
+                                     </div>
+                                 )
+                             })()}
+                        </div>
+                    )}
+                </div>
+
+                <div className="flex justify-end gap-2">
+                    <button
+                         onClick={() => {
+                             setIsEditing(false);
+                             setSalaryError(null);
+                         }}
+                        className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
                     >
-                    <Check size={18} />
+                        Cancelar
                     </button>
-                  </div>
-                  {salaryError && (
-                      <p className="text-red-400 text-xs flex items-center gap-1 animate-shake">
-                          <AlertCircle size={12} /> {salaryError}
-                      </p>
-                  )}
+                    <button
+                        onClick={handleSaveSalary}
+                        className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-lg shadow-green-900/20 flex items-center gap-2 text-xs font-bold"
+                    >
+                        <Check size={14} />
+                        Salvar Configuração
+                    </button>
+                </div>
+                
+                {salaryError && (
+                  <p className="text-red-400 text-xs flex items-center gap-1 animate-shake">
+                    <AlertCircle size={12} /> {salaryError}
+                  </p>
+                )}
               </div>
             ) : (
-              <div 
-                onClick={() => { 
-                    setTempSalary(baseSalary.toString().replace('.', ',')); 
+              <div
+                onClick={() => {
+                  if (onEditClick) {
+                    onEditClick();
+                  } else {
+                    setTempSalary(baseSalary.toString().replace('.', ','));
                     setTempPaymentDay(paymentDay?.toString() || '5');
-                    setIsEditing(true); 
-                    setSalaryError(null); 
+                    setIsEditing(true);
+                    setSalaryError(null);
+                  }
                 }}
                 className="flex items-baseline gap-2 cursor-pointer hover:bg-gray-800/50 p-2 -ml-2 rounded-lg transition-all group w-full"
                 title="Clique para editar seu salário base"
               >
                 {baseSalary > 0 ? (
-                   <>
-                      <div className="flex flex-col">
-                          <div className="flex items-baseline gap-1">
-                             <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
-                                {formatCurrency(baseSalary)}
-                             </span>
-                             <span className="text-sm text-gray-500 font-medium">/mês</span>
-                          </div>
-                          {paymentDay ? (
-                              <span className="text-xs text-gray-500 flex items-center gap-1 mt-1">
-                                 <Clock size={10} /> Recebe dia {paymentDay}
-                              </span>
-                          ) : (
-                              <span className="text-xs text-amber-400 flex items-center gap-1 mt-1 font-medium animate-pulse">
-                                 <AlertCircle size={10} /> Definir dia de pagamento
+                  <>
+                    <div className="flex flex-col w-full">
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
+                          {formatCurrency(baseSalary)}
+                        </span>
+                        <span className="text-sm text-gray-500 font-medium">/mês</span>
+                      </div>
+                      
+                      <div className="flex flex-wrap gap-2 mt-2">
+                          <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border border-gray-700/50">
+                            <Clock size={10} /> Recebe dia {paymentDay || 5}
+                          </span>
+                          
+                          {(advancePercent || (advanceValue && advanceValue > 0)) && (
+                              <span className="text-xs text-[#eab3a3] flex items-center gap-1 bg-[#d97757]/10 px-2 py-1 rounded border border-[#d97757]/20">
+                                <PieChart size={10} /> 
+                                Vale {advancePercent}% (Dia {advanceDay || 20})
                               </span>
                           )}
                       </div>
-                   </>
+                    </div>
+                  </>
                 ) : (
-                   <div className="flex flex-col gap-1">
-                       <span className="text-xl font-medium text-gray-300 group-hover:text-white transition-colors flex items-center gap-2">
-                          <AlertCircle size={20} className="text-amber-400" />
-                          Definir Renda Mensal
-                       </span>
-                       <span className="text-xs text-gray-500 group-hover:text-amber-400/80 transition-colors ml-7">
-                          Clique para configurar salário e data
-                       </span>
-                   </div>
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xl font-medium text-gray-300 group-hover:text-white transition-colors flex items-center gap-2">
+                      <AlertCircle size={20} className="text-amber-400" />
+                      Definir Renda Mensal
+                    </span>
+                    <span className="text-xs text-gray-500 group-hover:text-amber-400/80 transition-colors ml-7">
+                      Clique para configurar salário e data
+                    </span>
+                  </div>
                 )}
-                
+
                 <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-gray-300 text-[10px] px-2 py-1 rounded ml-auto self-start mt-2">
                   Editar
                 </div>
@@ -397,617 +534,653 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({ baseSalary, curren
           </div>
 
           {/* Salary Insights Grid */}
-          {baseSalary > 0 && (
+          {baseSalary > 0 && !isEditing && (
             <div className="mt-6 grid grid-cols-2 gap-2 animate-fade-in">
-               {/* Hourly Rate Card */}
-               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
-                  <div className="flex items-center gap-1.5 mb-1">
-                     <Clock size={12} className="text-gray-500" />
-                     <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Valor Hora</span>
-                  </div>
-                  <p className="text-gray-300 font-mono font-bold text-sm">
-                    {formatCurrency(baseSalary / 220)}
-                  </p>
-               </div>
+              {/* Hourly Rate Card */}
+              <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Clock size={12} className="text-gray-500" />
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Valor Hora</span>
+                </div>
+                <p className="text-gray-300 font-mono font-bold text-sm">
+                  {formatCurrency(baseSalary / 220)}
+                </p>
+              </div>
 
-               {/* Payment Countdown */}
-               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
-                   <div className="flex items-center gap-1.5 mb-1">
-                      <Calendar size={12} className="text-gray-500" />
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Próx. Pagto</span>
-                   </div>
-                   <p className="text-gray-300 font-mono font-bold text-sm">
-                     {(() => {
-                        if (!paymentDay) return <span className="text-gray-600 text-xs font-sans">Definir dia</span>;
-                        
-                        const today = new Date();
-                        const currentDay = today.getDate();
-                        let days = 0;
+              {/* Payment Countdown */}
+              <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
+                <div className="flex items-center gap-1.5 mb-1">
+                  <Calendar size={12} className="text-gray-500" />
+                  <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider">Próx. Pagto</span>
+                </div>
+                <p className="text-gray-300 font-mono font-bold text-sm">
+                  {(() => {
+                    if (!paymentDay) return <span className="text-gray-600 text-xs font-sans">Definir dia</span>;
 
-                        if (currentDay === paymentDay) return <span className="text-green-400">Hoje!</span>;
-                        
-                        if (paymentDay > currentDay) {
-                            days = paymentDay - currentDay;
-                        } else {
-                            // Get days in current month to find exact days until next month's date
-                            const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                            days = (daysInMonth - currentDay) + paymentDay;
-                        }
-                        
-                        return <span className={days <= 5 ? 'text-[#d97757]' : ''}>{days} dias</span>;
-                     })()}
-                   </p>
-               </div>
+                    const today = new Date();
+                    const currentDay = today.getDate();
+                    let days = 0;
+                    
+                    // Check upcoming payment (either Main or Advance)
+                    const dates = [paymentDay];
+                    if (advanceDay) dates.push(advanceDay);
+                    dates.sort((a,b) => a - b);
+                    
+                    const nextDate = dates.find(d => d >= currentDay) || dates[0]; // Next in this month or first of next month
+
+                    if (currentDay === nextDate) return <span className="text-green-400">Hoje!</span>;
+
+                    if (nextDate > currentDay) {
+                      days = nextDate - currentDay;
+                    } else {
+                      // Get days in current month to find exact days until next month's date
+                      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+                      days = (daysInMonth - currentDay) + nextDate;
+                    }
+
+                    return <span className={days <= 5 ? 'text-[#d97757]' : ''}>{days} dias</span>;
+                  })()}
+                </p>
+              </div>
             </div>
           )}
         </div>
 
         {/* Lado Direito: Botão de Ação */}
         <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center gap-3 border-t lg:border-t-0 border-gray-800">
-           <div className="text-center mb-1">
-             <p className="text-base font-medium text-gray-200">Gerenciar Renda</p>
-             <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
-           </div>
+          <div className="text-center mb-1">
+            <p className="text-base font-medium text-gray-200">Gerenciar Renda</p>
+            <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
+          </div>
 
-           {baseSalary <= 0 && (
-             <div className="w-full py-2.5 px-3 bg-gray-800/50 border border-gray-700 border-dashed rounded-xl flex items-center justify-center gap-2 text-gray-500 mb-1">
-               <AlertCircle size={14} />
-               <span className="text-xs font-medium text-center">Defina seu salário nas Configurações do Perfil</span>
-             </div>
-           )}
+          {baseSalary <= 0 && (
+            <div className="w-full py-2.5 px-3 bg-gray-800/50 border border-gray-700 border-dashed rounded-xl flex items-center justify-center gap-2 text-gray-500 mb-1">
+              <AlertCircle size={14} />
+              <span className="text-xs font-medium text-center">Defina seu salário nas Configurações do Perfil</span>
+            </div>
+          )}
 
-           <div className="grid grid-cols-2 gap-2 mt-1 w-full">
-              <button
-                onClick={() => {
-                    if (baseSalary <= 0) {
-                        toast.error("Defina um salário base primeiro.");
-                        return;
+          <div className="grid grid-cols-2 gap-2 mt-1 w-full">
+            <button
+              disabled={isSalaryLaunched}
+              onClick={() => {
+                if (isSalaryLaunched) return;
+                
+                if (baseSalary <= 0) {
+                  toast.error("Defina um salário base primeiro.");
+                  return;
+                }
+
+                const today = new Date();
+                const pDay = paymentDay || 5;
+
+                // Main Salary Date
+                let targetDate = new Date(today.getFullYear(), today.getMonth(), pDay)
+                const dateStr = targetDate.toISOString().split('T')[0];
+
+                // Calculate Advance (Value or Percent)
+                let advance = advanceValue || 0;
+                
+                // Calculate based on percent if preferred (and configured)
+                if (advancePercent && advancePercent > 0) {
+                    advance = baseSalary * (advancePercent / 100);
+                }
+                
+                // Round to 2 decimals
+                advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+                const salaryRemaining = Math.max(0, baseSalary - advance);
+
+                // 1. Register Remaining Salary (Main Payment)
+                onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
+                
+                // 2. Register Advance (Vale)
+                if (advance > 0) {
+                    // Determine Vale Date
+                    let valeDateStr = dateStr;
+                    if (advanceDay) {
+                            const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
+                            valeDateStr = vDate.toISOString().split('T')[0];
                     }
-                    
-                    const today = new Date();
-                    const currentDay = today.getDate();
-                    const pDay = paymentDay || 5;
-                    
-                    // Determine if the salary is for this month or next
-                    // Heuristic: If we are past the payment day + 5 days, assume next month
-                    // Or simpler: Always prompt? No, "Lançar Salário" implies quick action.
-                    // Let's default to the *next* occurrence of the payment day.
-                    
-                    let targetDate = new Date(today.getFullYear(), today.getMonth(), pDay);
-                    if (currentDay > pDay) {
-                        targetDate.setMonth(targetDate.getMonth() + 1);
-                    }
-                    
-                    // Format YYYY-MM-DD
-                    const dateStr = targetDate.toISOString().split('T')[0];
-                    
-                    onAddExtra(baseSalary, "Salário Mensal", "pending", dateStr);
-                    toast.success(`Previsão de salário lançada para ${targetDate.toLocaleDateString('pt-BR')}!`);
-                }}
-                className="col-span-2 py-3 bg-[#d97757]/10 hover:bg-[#d97757]/20 text-[#d97757] hover:text-white rounded-xl font-bold transition-all border border-[#d97757]/20 hover:border-[#d97757] flex items-center justify-center gap-2 text-xs mb-1"
-              >
-                <Calendar size={14} />
-                Lançar Salário
-              </button>
 
-              <button
-                onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
-                className="col-span-2 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2 text-xs"
-              >
-                <PlusCircle size={14} className="text-[#d97757]" />
-                Lançar Extra
-              </button>
-              <button
-                onClick={() => { setActiveTab('clt'); setIsModalOpen(true); }}
-                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
-              >
-                <Briefcase size={14} className="text-[#d97757]" />
-                Calc. CLT
-              </button>
-              <button
-                onClick={() => { setActiveTab('calculator'); setIsModalOpen(true); }}
-                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
-              >
-                <Clock size={14} className="text-[#d97757]" />
-                Calc. Hora Extra
-              </button>
-           </div>
+                    setTimeout(() => {
+                        onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
+                    }, 100);
+                    
+                    toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
+                } else {
+                    toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+                }
+              }}
+            className={`col-span-2 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs mb-1 border ${
+                isSalaryLaunched 
+                ? 'bg-green-900/20 text-green-500 border-green-900/30 cursor-default' 
+                : 'bg-[#d97757]/10 hover:bg-[#d97757]/20 text-[#d97757] hover:text-white border-[#d97757]/20 hover:border-[#d97757]'
+            }`}
+            >
+            {isSalaryLaunched ? <CheckCircleFilled size={14} /> : <Calendar size={14} />}
+            {isSalaryLaunched ? 'Salário Lançado' : 'Lançar Salário Atual'}
+          </button>
+
+          <button
+            onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
+            className="col-span-2 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2 text-xs"
+          >
+            <PlusCircle size={14} className="text-[#d97757]" />
+            Lançar Extra
+          </button>
+          <button
+            onClick={() => { setActiveTab('clt'); setIsModalOpen(true); }}
+            className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+          >
+            <Briefcase size={14} className="text-[#d97757]" />
+            Calc. CLT
+          </button>
+          <button
+            onClick={() => { setActiveTab('calculator'); setIsModalOpen(true); }}
+            className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+          >
+            <Clock size={14} className="text-[#d97757]" />
+            Calc. Hora Extra
+          </button>
         </div>
       </div>
+    </div >
 
-      {/* MODAL DE INSERÇÃO DE RENDA */}
-      {isVisible && createPortal(
-        <div 
-            className={`
+      {/* MODAL DE INSERÇÃO DE RENDA */ }
+  {
+    isVisible && createPortal(
+      <div
+        className={`
                 fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
                 ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
             `}
-        >
-          <div 
-             className={`
+      >
+        <div
+          className={`
                 bg-gray-950 rounded-3xl shadow-2xl w-full max-w-xl overflow-visible border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
                 ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
             `}
-          >
-            {/* Background Effects */}
-            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-                <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-            </div>
-            
-            {/* Header */}
-            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-              {/* Toggle Tab Style */}
-              <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md overflow-x-auto no-scrollbar max-w-[80%]">
-                <button 
-                  onClick={() => setActiveTab('simple')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'simple' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  <Briefcase size={14} />
-                  Simples
-                </button>
-                <button 
-                  onClick={() => setActiveTab('clt')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'clt' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  <Coins size={14} />
-                  Líquido CLT
-                </button>
-                <button 
-                  onClick={() => setActiveTab('calculator')}
-                  className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'calculator' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-                >
-                  <Calculator size={14} />
-                  Hora Extra
-                </button>
-              </div>
+        >
+          {/* Background Effects */}
+          <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+          </div>
 
-              <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors shrink-0">
-                <X size={20} />
+          {/* Header */}
+          <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+            {/* Toggle Tab Style */}
+            <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md overflow-x-auto no-scrollbar max-w-[80%]">
+              <button
+                onClick={() => setActiveTab('simple')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'simple' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <Briefcase size={14} />
+                Simples
+              </button>
+              <button
+                onClick={() => setActiveTab('clt')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'clt' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <Coins size={14} />
+                Líquido CLT
+              </button>
+              <button
+                onClick={() => setActiveTab('calculator')}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 whitespace-nowrap ${activeTab === 'calculator' ? 'bg-gray-800 text-white shadow-lg border border-gray-700' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+              >
+                <Calculator size={14} />
+                Hora Extra
               </button>
             </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto custom-scrollbar relative z-10">
-              
-              {/* ABA: SIMPLES */}
-              {activeTab === 'simple' && (
-                <form onSubmit={handleAddSimple} className="space-y-6 animate-slide-up">
-                    <>
-                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
-                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
-                          <div>
-                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Lançamento Rápido</h4>
-                            <p className="text-xs text-gray-400 leading-relaxed">
-                              Registre entradas avulsas de forma simples.
-                              <br />
-                              <span className="opacity-70">Ideal para vendas ocasionais, freelances ou bônus de valor fixo.</span>
-                            </p>
-                          </div>
-                       </div>
-
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-5">
-                              <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Descrição</label>
-                                <div className="relative group">
-                                    <Briefcase className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                                    <input 
-                                    type="text" 
-                                    required
-                                    placeholder="Ex: Venda de item usado"
-                                    value={extraDesc}
-                                    onChange={e => setExtraDesc(e.target.value)}
-                                    className="input-primary pl-10 focus:border-[#d97757]"
-                                    autoFocus
-                                    />
-                                </div>
-                              </div>
-                              
-                              <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">Valor Recebido (R$)</label>
-                                <div className="relative group">
-                                    <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                                    <input 
-                                    type="text"
-                                    inputMode="decimal"
-                                    required
-                                    placeholder="0,00"
-                                    value={extraAmount}
-                                    onChange={e => setExtraAmount(e.target.value)}
-                                    className="input-primary pl-10 text-xl font-bold text-white focus:border-[#d97757]"
-                                    />
-                                </div>
-                              </div>
-                              
-                             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
-                                <label className="relative inline-flex items-center cursor-pointer group">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={simpleDeductTaxes} 
-                                        onChange={(e) => setSimpleDeductTaxes(e.target.checked)}
-                                        className="sr-only peer" 
-                                    />
-                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
-                                </label>
-                                <div>
-                                   <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
-                                   <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
-                                </div>
-                             </div>
-                          </div>
-
-                          {/* Result Card (Summary) */}
-                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
-                             
-                             <div className="space-y-3 relative z-0 mb-4">
-                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Resumo do Lançamento</h5>
-                                
-                                <div className="flex justify-between items-center text-xs group">
-                                   <span className="text-gray-400">Tipo</span>
-                                   <span className="text-gray-300 font-medium">{extraDesc || '...'}</span>
-                                </div>
-
-                                {simpleDeductTaxes && simpleAmountVal > 0 && (
-                                    <>
-                                    <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
-                                       <span className="text-gray-400">Bruto</span>
-                                       <span className="text-gray-300 font-mono">{formatCurrency(simpleAmountVal)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs group">
-                                       <span className="text-gray-400">Descontos (Marginal)</span>
-                                       <span className="text-red-400 font-mono">- {formatCurrency(simpleMarginalDiscount)}</span>
-                                    </div>
-                                    </>
-                                )}
-                             </div>
-
-                             <div className="relative z-0">
-                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalSimpleValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
-                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Valor Total {simpleDeductTaxes ? '(Líquido)' : ''}</p>
-                                   <p className={`text-3xl font-bold ${finalSimpleValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     <NumberFlow 
-                                       value={finalSimpleValue} 
-                                       format={{ style: 'currency', currency: 'BRL' }}
-                                       locales="pt-BR"
-                                     />
-                                   </p>
-                                </div>
-                                
-                                <button 
-                                  type="submit"
-                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2"
-                                >
-                                  <Check size={18} />
-                                  Confirmar
-                                </button>
-                             </div>
-                          </div>
-                       </div>
-                    </>
-                </form>
-              )}
-
-              {/* ABA: CLT */}
-              {activeTab === 'clt' && (
-                  <div className="space-y-6 animate-slide-up">
-                      <>
-                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
-                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
-                          <div>
-                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Salário Líquido</h4>
-                            <p className="text-xs text-gray-400 leading-relaxed">
-                              Descontos automáticos de INSS e IRRF (Regras 2025).
-                              <br />
-                              <span className="opacity-70">Considera desconto simplificado quando vantajoso.</span>
-                            </p>
-                          </div>
-                       </div>
-
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          <div className="space-y-5">
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Salário Bruto (R$)
-                                </label>
-                                <div className="relative group">
-                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="Ex: 5000,00"
-                                    value={cltGross}
-                                    onChange={e => setCltGross(e.target.value)}
-                                    className="input-primary pl-10 text-lg font-bold focus:border-[#d97757]"
-                                    autoFocus
-                                  />
-                                </div>
-                             </div>
-
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Nº de Dependentes
-                                </label>
-                                <div className="relative group">
-                                  <Users className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757]" size={16} />
-                                  <input
-                                    type="number"
-                                    min="0"
-                                    value={cltDependents}
-                                    onChange={e => setCltDependents(e.target.value)}
-                                    className="input-primary pl-10 focus:border-[#d97757]"
-                                  />
-                                </div>
-                             </div>
-
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Outros Descontos (R$)
-                                </label>
-                                <div className="relative group">
-                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="0,00"
-                                    value={cltOtherDiscounts}
-                                    onChange={e => setCltOtherDiscounts(e.target.value)}
-                                    className="input-primary pl-10 font-bold focus:border-[#d97757]"
-                                  />
-                                </div>
-                             </div>
-
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Benefícios (R$)
-                                </label>
-                                <div className="relative group">
-                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="0,00"
-                                    value={cltBenefits}
-                                    onChange={e => setCltBenefits(e.target.value)}
-                                    className="input-primary pl-10 font-bold focus:border-[#d97757]"
-                                  />
-                                </div>
-                             </div>
-                          </div>
-
-                          {/* Result Card */}
-                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
-                             <div className="space-y-3 relative z-0 mb-4">
-                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhes do Cálculo</h5>
-                                
-                                <div className="flex justify-between items-center text-xs group">
-                                   <span className="text-gray-400">INSS</span>
-                                   <span className="text-red-400 font-mono">- {formatCurrency(cltResults.inss)}</span>
-                                </div>
-                                
-                                <div className="flex justify-between items-center text-xs group">
-                                   <span className="text-gray-400">IRRF</span>
-                                   <span className="text-red-400 font-mono">- {formatCurrency(cltResults.irrf)}</span>
-                                </div>
-
-                                {safeCltOtherDiscounts > 0 && (
-                                  <div className="flex justify-between items-center text-xs group">
-                                     <span className="text-gray-400">Outros Descontos</span>
-                                     <span className="text-red-400 font-mono">- {formatCurrency(safeCltOtherDiscounts)}</span>
-                                  </div>
-                                )}
-
-                                {safeCltBenefits > 0 && (
-                                  <div className="flex justify-between items-center text-xs group">
-                                     <span className="text-gray-400">Benefícios</span>
-                                     <span className="text-green-400 font-mono">+ {formatCurrency(safeCltBenefits)}</span>
-                                  </div>
-                                )}
-                             </div>
-
-                             <div className="relative z-0">
-                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalCltNet > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
-                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salário Líquido</p>
-                                   <p className={`text-3xl font-bold ${finalCltNet > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     <NumberFlow 
-                                       value={finalCltNet} 
-                                       format={{ style: 'currency', currency: 'BRL' }}
-                                       locales="pt-BR"
-                                     />
-                                   </p>
-                                </div>
-                                
-                                <button 
-                                  onClick={handleAddCLT}
-                                  disabled={finalCltNet <= 0}
-                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                  <Check size={18} />
-                                  Lançar Líquido
-                                </button>
-                             </div>
-                          </div>
-                       </div>
-                      </>
-                  </div>
-              )}
-              
-              {/* ABA: CALCULADORA (HORA EXTRA) */}
-              {activeTab === 'calculator' && (
-                <div className="space-y-6 animate-slide-up">
-                    <>
-                       <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
-                          <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
-                          <div>
-                            <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Hora Extra</h4>
-                            <p className="text-xs text-gray-400 leading-relaxed">
-                              {baseSalary > 0 ? (
-                                <>Usando seu salário base de <span className="text-white font-bold">{formatCurrency(baseSalary)}</span>.</>
-                              ) : (
-                                <>Insira seu salário base abaixo para calcular horas extras.</>
-                              )}
-                              <br />
-                              <span className="opacity-70">Fórmula: (Salário / Divisor) * (1 + %) * Horas</span>
-                            </p>
-                          </div>
-                       </div>
-
-                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                          {/* Inputs */}
-                          <div className="space-y-5">
-                             {baseSalary <= 0 && (
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Salário Base (R$)
-                                </label>
-                                <div className="relative group">
-                                  <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="decimal"
-                                    placeholder="Ex: 3000,00"
-                                    value={tempBaseSalary}
-                                    onChange={e => { setTempBaseSalary(e.target.value); if(errors.tempBaseSalary) setErrors({...errors, tempBaseSalary: false}); }}
-                                    className={`input-primary pl-10 text-lg font-bold ${errors.tempBaseSalary ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
-                                  />
-                                </div>
-                             </div>
-                             )}
-                             <div>
-                                <label className="flex justify-between text-xs font-medium text-gray-400 mb-1.5">
-                                  <span>Divisor Mensal (Horas)</span>
-                                </label>
-                                <div className="relative group">
-                                  <Clock className={`absolute left-3 top-3.5 ${errors.monthlyHours ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#d97757]'}`} size={16} />
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={monthlyHours}
-                                    onChange={e => { setMonthlyHours(e.target.value); if(errors.monthlyHours) setErrors({...errors, monthlyHours: false}); }}
-                                    className={`input-primary pl-10 ${errors.monthlyHours ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
-                                    placeholder="Padrão: 220"
-                                  />
-                                </div>
-                             </div>
-
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Adicional (%)
-                                </label>
-                                <div className="grid grid-cols-3 gap-2">
-                                   {[
-                                     { label: '50%', value: '50', desc: 'Dia útil' }, 
-                                     { label: '60%', value: '60', desc: 'Noturno' }, 
-                                     { label: '100%', value: '100', desc: 'Feriado' }
-                                   ].map((opt) => (
-                                     <button
-                                       key={opt.value}
-                                       onClick={() => setOtPercent(opt.value)}
-                                       className={`p-2 rounded-lg border text-center transition-all ${otPercent === opt.value ? 'bg-[#d97757] border-[#d97757] text-[#faf9f5] shadow-lg' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
-                                     >
-                                       <div className="font-bold text-sm">{opt.label}</div>
-                                     </button>
-                                   ))}
-                                </div>
-                             </div>
-
-                             <div>
-                                <label className="text-xs font-medium text-gray-400 mb-1.5 block">
-                                  Quantidade de Horas Feitas
-                                </label>
-                                <div className="relative group">
-                                    <input 
-                                        type="text"
-                                        inputMode="decimal" 
-                                        placeholder="Ex: 2,5"
-                                        value={otQuantity}
-                                        onChange={e => { setOtQuantity(e.target.value); if(errors.otQuantity) setErrors({...errors, otQuantity: false}); }}
-                                        className={`input-primary text-lg font-bold ${errors.otQuantity ? 'border-red-500 bg-red-900/10 focus:border-red-500 text-red-400' : 'focus:border-[#d97757]'}`}
-                                        autoFocus
-                                    />
-                                    <span className="absolute right-3 top-3.5 text-xs font-bold text-gray-500 uppercase">Horas</span>
-                                </div>
-                             </div>
-
-                             <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
-                                <label className="relative inline-flex items-center cursor-pointer group">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={deductTaxes} 
-                                        onChange={(e) => setDeductTaxes(e.target.checked)}
-                                        className="sr-only peer" 
-                                    />
-                                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
-                                </label>
-                                <div>
-                                   <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
-                                   <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
-                                </div>
-                             </div>
-                          </div>
-
-                          {/* Result Card */}
-                          <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
-                             
-                             <div className="space-y-3 relative z-0 mb-4">
-                                <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhamento</h5>
-                                
-                                <div className="flex justify-between items-center text-xs group">
-                                   <span className="text-gray-400">Valor da Hora Normal</span>
-                                   <span className="text-gray-300 font-mono">{formatCurrency(hourlyRate)}</span>
-                                </div>
-                                
-                                <div className="flex justify-between items-center text-xs group">
-                                   <span className="text-gray-400 flex items-center gap-1"><ChevronRight size={10}/> Valor Hora Extra (+{otPercent}%)</span>
-                                   <span className="text-[#eab3a3] font-mono font-medium">{formatCurrency(otHourlyRate)}</span>
-                                </div>
-
-                                {deductTaxes && totalCalculated > 0 && (
-                                    <>
-                                    <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
-                                       <span className="text-gray-400">Bruto Total</span>
-                                       <span className="text-gray-300 font-mono">{formatCurrency(totalCalculated)}</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-xs group">
-                                       <span className="text-gray-400">Descontos (Marginal)</span>
-                                       <span className="text-red-400 font-mono">- {formatCurrency(marginalDiscount)}</span>
-                                    </div>
-                                    </>
-                                )}
-                             </div>
-
-                             <div className="relative z-0">
-                                <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalOtValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
-                                   <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total a Receber {deductTaxes ? '(Líquido)' : '(Bruto)'}</p>
-                                   <p className={`text-3xl font-bold ${finalOtValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
-                                     <NumberFlow 
-                                       value={finalOtValue} 
-                                       format={{ style: 'currency', currency: 'BRL' }}
-                                       locales="pt-BR"
-                                     />
-                                   </p>
-                                </div>
-                                
-                                <button 
-                                  onClick={handleAddCalculated}
-                                  disabled={finalOtValue <= 0}
-                                  className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                                >
-                                  <Check size={18} />
-                                  Lançar Renda
-                                </button>
-                             </div>
-                          </div>
-                       </div>
-                    </>
-                </div>
-              )}
-            </div>
-
+            <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors shrink-0">
+              <X size={20} />
+            </button>
           </div>
-        </div>,
-        document.body
-      )}
+
+          {/* Content */}
+          <div className="p-6 overflow-y-auto custom-scrollbar relative z-10">
+
+            {/* ABA: SIMPLES */}
+            {activeTab === 'simple' && (
+              <form onSubmit={handleAddSimple} className="space-y-6 animate-slide-up">
+                <>
+                  <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                    <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                    <div>
+                      <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Lançamento Rápido</h4>
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        Registre entradas avulsas de forma simples.
+                        <br />
+                        <span className="opacity-70">Ideal para vendas ocasionais, freelances ou bônus de valor fixo.</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-5">
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">Descrição</label>
+                        <div className="relative group">
+                          <Briefcase className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                          <input
+                            type="text"
+                            required
+                            placeholder="Ex: Venda de item usado"
+                            value={extraDesc}
+                            onChange={e => setExtraDesc(e.target.value)}
+                            className="input-primary pl-10 focus:border-[#d97757]"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">Valor Recebido (R$)</label>
+                        <div className="relative group">
+                          <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            required
+                            placeholder="0,00"
+                            value={extraAmount}
+                            onChange={e => setExtraAmount(e.target.value)}
+                            className="input-primary pl-10 text-xl font-bold text-white focus:border-[#d97757]"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+                        <label className="relative inline-flex items-center cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={simpleDeductTaxes}
+                            onChange={(e) => setSimpleDeductTaxes(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
+                        </label>
+                        <div>
+                          <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
+                          <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Result Card (Summary) */}
+                    <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+
+                      <div className="space-y-3 relative z-0 mb-4">
+                        <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Resumo do Lançamento</h5>
+
+                        <div className="flex justify-between items-center text-xs group">
+                          <span className="text-gray-400">Tipo</span>
+                          <span className="text-gray-300 font-medium">{extraDesc || '...'}</span>
+                        </div>
+
+                        {simpleDeductTaxes && simpleAmountVal > 0 && (
+                          <>
+                            <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
+                              <span className="text-gray-400">Bruto</span>
+                              <span className="text-gray-300 font-mono">{formatCurrency(simpleAmountVal)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs group">
+                              <span className="text-gray-400">Descontos (Marginal)</span>
+                              <span className="text-red-400 font-mono">- {formatCurrency(simpleMarginalDiscount)}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="relative z-0">
+                        <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalSimpleValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Valor Total {simpleDeductTaxes ? '(Líquido)' : ''}</p>
+                          <p className={`text-3xl font-bold ${finalSimpleValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                            <NumberFlow
+                              value={finalSimpleValue}
+                              format={{ style: 'currency', currency: 'BRL' }}
+                              locales="pt-BR"
+                            />
+                          </p>
+                        </div>
+
+                        <button
+                          type="submit"
+                          className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Check size={18} />
+                          Confirmar
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              </form>
+            )}
+
+            {/* ABA: CLT */}
+            {activeTab === 'clt' && (
+              <div className="space-y-6 animate-slide-up">
+                <>
+                  <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                    <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                    <div>
+                      <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Salário Líquido</h4>
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        Descontos automáticos de INSS e IRRF (Regras 2025).
+                        <br />
+                        <span className="opacity-70">Considera desconto simplificado quando vantajoso.</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="space-y-5">
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Salário Bruto (R$)
+                        </label>
+                        <div className="relative group">
+                          <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Ex: 5000,00"
+                            value={cltGross}
+                            onChange={e => setCltGross(e.target.value)}
+                            className="input-primary pl-10 text-lg font-bold focus:border-[#d97757]"
+                            autoFocus
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Nº de Dependentes
+                        </label>
+                        <div className="relative group">
+                          <Users className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757]" size={16} />
+                          <input
+                            type="number"
+                            min="0"
+                            value={cltDependents}
+                            onChange={e => setCltDependents(e.target.value)}
+                            className="input-primary pl-10 focus:border-[#d97757]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Outros Descontos (R$)
+                        </label>
+                        <div className="relative group">
+                          <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={cltOtherDiscounts}
+                            onChange={e => setCltOtherDiscounts(e.target.value)}
+                            className="input-primary pl-10 font-bold focus:border-[#d97757]"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Benefícios (R$)
+                        </label>
+                        <div className="relative group">
+                          <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="0,00"
+                            value={cltBenefits}
+                            onChange={e => setCltBenefits(e.target.value)}
+                            className="input-primary pl-10 font-bold focus:border-[#d97757]"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Result Card */}
+                    <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+                      <div className="space-y-3 relative z-0 mb-4">
+                        <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhes do Cálculo</h5>
+
+                        <div className="flex justify-between items-center text-xs group">
+                          <span className="text-gray-400">INSS</span>
+                          <span className="text-red-400 font-mono">- {formatCurrency(cltResults.inss)}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs group">
+                          <span className="text-gray-400">IRRF</span>
+                          <span className="text-red-400 font-mono">- {formatCurrency(cltResults.irrf)}</span>
+                        </div>
+
+                        {safeCltOtherDiscounts > 0 && (
+                          <div className="flex justify-between items-center text-xs group">
+                            <span className="text-gray-400">Outros Descontos</span>
+                            <span className="text-red-400 font-mono">- {formatCurrency(safeCltOtherDiscounts)}</span>
+                          </div>
+                        )}
+
+                        {safeCltBenefits > 0 && (
+                          <div className="flex justify-between items-center text-xs group">
+                            <span className="text-gray-400">Benefícios</span>
+                            <span className="text-green-400 font-mono">+ {formatCurrency(safeCltBenefits)}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="relative z-0">
+                        <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalCltNet > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Salário Líquido</p>
+                          <p className={`text-3xl font-bold ${finalCltNet > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                            <NumberFlow
+                              value={finalCltNet}
+                              format={{ style: 'currency', currency: 'BRL' }}
+                              locales="pt-BR"
+                            />
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={handleAddCLT}
+                          disabled={finalCltNet <= 0}
+                          className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <Check size={18} />
+                          Lançar Líquido
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              </div>
+            )}
+
+            {/* ABA: CALCULADORA (HORA EXTRA) */}
+            {activeTab === 'calculator' && (
+              <div className="space-y-6 animate-slide-up">
+                <>
+                  <div className="bg-[#d97757]/10 border border-[#d97757]/30 rounded-xl p-4 flex gap-4 items-start">
+                    <HelpCircle className="text-[#d97757] shrink-0 mt-1" size={20} />
+                    <div>
+                      <h4 className="text-sm font-bold text-[#eab3a3] mb-1">Calculadora de Hora Extra</h4>
+                      <p className="text-xs text-gray-400 leading-relaxed">
+                        {baseSalary > 0 ? (
+                          <>Usando seu salário base de <span className="text-white font-bold">{formatCurrency(baseSalary)}</span>.</>
+                        ) : (
+                          <>Insira seu salário base abaixo para calcular horas extras.</>
+                        )}
+                        <br />
+                        <span className="opacity-70">Fórmula: (Salário / Divisor) * (1 + %) * Horas</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Inputs */}
+                    <div className="space-y-5">
+                      {baseSalary <= 0 && (
+                        <div>
+                          <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                            Salário Base (R$)
+                          </label>
+                          <div className="relative group">
+                            <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg group-focus-within:text-[#d97757] transition-colors">R$</span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="Ex: 3000,00"
+                              value={tempBaseSalary}
+                              onChange={e => { setTempBaseSalary(e.target.value); if (errors.tempBaseSalary) setErrors({ ...errors, tempBaseSalary: false }); }}
+                              className={`input-primary pl-10 text-lg font-bold ${errors.tempBaseSalary ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
+                            />
+                          </div>
+                        </div>
+                      )}
+                      <div>
+                        <label className="flex justify-between text-xs font-medium text-gray-400 mb-1.5">
+                          <span>Divisor Mensal (Horas)</span>
+                        </label>
+                        <div className="relative group">
+                          <Clock className={`absolute left-3 top-3.5 ${errors.monthlyHours ? 'text-red-500' : 'text-gray-500 group-focus-within:text-[#d97757]'}`} size={16} />
+                          <input
+                            type="text"
+                            inputMode="numeric"
+                            value={monthlyHours}
+                            onChange={e => { setMonthlyHours(e.target.value); if (errors.monthlyHours) setErrors({ ...errors, monthlyHours: false }); }}
+                            className={`input-primary pl-10 ${errors.monthlyHours ? 'border-red-500 bg-red-900/10 focus:border-red-500' : 'focus:border-[#d97757]'}`}
+                            placeholder="Padrão: 220"
+                          />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Adicional (%)
+                        </label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { label: '50%', value: '50', desc: 'Dia útil' },
+                            { label: '60%', value: '60', desc: 'Noturno' },
+                            { label: '100%', value: '100', desc: 'Feriado' }
+                          ].map((opt) => (
+                            <button
+                              key={opt.value}
+                              onClick={() => setOtPercent(opt.value)}
+                              className={`p-2 rounded-lg border text-center transition-all ${otPercent === opt.value ? 'bg-[#d97757] border-[#d97757] text-[#faf9f5] shadow-lg' : 'bg-gray-800 border-gray-700 text-gray-400 hover:bg-gray-700'}`}
+                            >
+                              <div className="font-bold text-sm">{opt.label}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-gray-400 mb-1.5 block">
+                          Quantidade de Horas Feitas
+                        </label>
+                        <div className="relative group">
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            placeholder="Ex: 2,5"
+                            value={otQuantity}
+                            onChange={e => { setOtQuantity(e.target.value); if (errors.otQuantity) setErrors({ ...errors, otQuantity: false }); }}
+                            className={`input-primary text-lg font-bold ${errors.otQuantity ? 'border-red-500 bg-red-900/10 focus:border-red-500 text-red-400' : 'focus:border-[#d97757]'}`}
+                            autoFocus
+                          />
+                          <span className="absolute right-3 top-3.5 text-xs font-bold text-gray-500 uppercase">Horas</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
+                        <label className="relative inline-flex items-center cursor-pointer group">
+                          <input
+                            type="checkbox"
+                            checked={deductTaxes}
+                            onChange={(e) => setDeductTaxes(e.target.checked)}
+                            className="sr-only peer"
+                          />
+                          <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
+                        </label>
+                        <div>
+                          <p className="text-xs font-bold text-gray-300">Deduzir Impostos (Estimativa)</p>
+                          <p className="text-[9px] text-gray-500">Calcula INSS/IRRF marginal sobre o valor extra.</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Result Card */}
+                    <div className="bg-gray-900/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
+
+                      <div className="space-y-3 relative z-0 mb-4">
+                        <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2">Detalhamento</h5>
+
+                        <div className="flex justify-between items-center text-xs group">
+                          <span className="text-gray-400">Valor da Hora Normal</span>
+                          <span className="text-gray-300 font-mono">{formatCurrency(hourlyRate)}</span>
+                        </div>
+
+                        <div className="flex justify-between items-center text-xs group">
+                          <span className="text-gray-400 flex items-center gap-1"><ChevronRight size={10} /> Valor Hora Extra (+{otPercent}%)</span>
+                          <span className="text-[#eab3a3] font-mono font-medium">{formatCurrency(otHourlyRate)}</span>
+                        </div>
+
+                        {deductTaxes && totalCalculated > 0 && (
+                          <>
+                            <div className="flex justify-between items-center text-xs group pt-2 mt-2 border-t border-gray-800/50 border-dashed">
+                              <span className="text-gray-400">Bruto Total</span>
+                              <span className="text-gray-300 font-mono">{formatCurrency(totalCalculated)}</span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs group">
+                              <span className="text-gray-400">Descontos (Marginal)</span>
+                              <span className="text-red-400 font-mono">- {formatCurrency(marginalDiscount)}</span>
+                            </div>
+                          </>
+                        )}
+                      </div>
+
+                      <div className="relative z-0">
+                        <div className={`bg-gray-950 rounded-xl p-4 border transition-colors mb-4 shadow-inner flex flex-col items-center justify-center ${finalOtValue > 0 ? 'border-green-500/30' : 'border-gray-800'}`}>
+                          <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Total a Receber {deductTaxes ? '(Líquido)' : '(Bruto)'}</p>
+                          <p className={`text-3xl font-bold ${finalOtValue > 0 ? 'text-green-400' : 'text-gray-600'}`}>
+                            <NumberFlow
+                              value={finalOtValue}
+                              format={{ style: 'currency', currency: 'BRL' }}
+                              locales="pt-BR"
+                            />
+                          </p>
+                        </div>
+
+                        <button
+                          onClick={handleAddCalculated}
+                          disabled={finalOtValue <= 0}
+                          className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-[#faf9f5] rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                        >
+                          <Check size={18} />
+                          Lançar Renda
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              </div>
+            )}
+          </div>
+
+        </div>
+      </div>,
+      document.body
+    )
+  }
     </>
   );
 };

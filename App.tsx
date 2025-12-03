@@ -395,9 +395,9 @@ const App: React.FC = () => {
   const [projectionSettings, setProjectionSettings] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('finances_projection_settings');
-      return saved !== null ? JSON.parse(saved) : { reminders: false, subscriptions: false, salary: false };
+      return saved !== null ? JSON.parse(saved) : { reminders: false, subscriptions: false, salary: false, vale: false };
     }
-    return { reminders: false, subscriptions: false, salary: false };
+    return { reminders: false, subscriptions: false, salary: false, vale: false };
   });
 
   useEffect(() => {
@@ -421,6 +421,22 @@ const App: React.FC = () => {
     return true;
   });
 
+  const [creditCardUseTotalLimit, setCreditCardUseTotalLimit] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_cc_use_total_limit');
+      return saved !== null ? JSON.parse(saved) : false;
+    }
+    return false;
+  });
+
+  const [creditCardUseFullLimit, setCreditCardUseFullLimit] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_cc_use_full_limit');
+      return saved !== null ? JSON.parse(saved) : false;
+    }
+    return false;
+  });
+
   useEffect(() => {
     localStorage.setItem('finances_include_checking', JSON.stringify(includeCheckingInStats));
   }, [includeCheckingInStats]);
@@ -428,6 +444,14 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('finances_include_credit', JSON.stringify(includeCreditCardInStats));
   }, [includeCreditCardInStats]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_cc_use_total_limit', JSON.stringify(creditCardUseTotalLimit));
+  }, [creditCardUseTotalLimit]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_cc_use_full_limit', JSON.stringify(creditCardUseFullLimit));
+  }, [creditCardUseFullLimit]);
 
   // Member Management State
   const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
@@ -441,7 +465,7 @@ const App: React.FC = () => {
   // Modals State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data'>('profile');
+  const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data' | 'finance'>('profile');
 
   useEffect(() => {
     if (activeMemberId) {
@@ -756,10 +780,24 @@ const App: React.FC = () => {
          );
 
          if (!exists) {
-           // Add it
+           // Calculate Advance
+           let advance = currentUser.salaryAdvanceValue || 0;
+           
+           // Sanity Check
+           if (advance >= currentUser.baseSalary!) {
+               advance = 0;
+           }
+           
+           if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+               advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+           }
+           advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+
+           const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
+
            const newTx: Omit<Transaction, 'id'> = {
               description: "Salário Mensal",
-              amount: currentUser.baseSalary!,
+              amount: salaryAmount,
               type: 'income',
               category: 'Trabalho',
               date: dateString,
@@ -769,6 +807,49 @@ const App: React.FC = () => {
 
            try {
               await dbService.addTransaction(userId, newTx);
+              
+              // Check/Add Vale separately if needed
+              // Note: This auto-register only runs when "Salário Mensal" day arrives.
+              // If the user wants Vale to be auto-registered on its own day, we should have a separate check.
+              // But for now, we register it together or skip if already exists?
+              // Ideally, Vale should be registered on ITS day. 
+              // If we register it here (on Salary day), it might be late.
+              // But if we register it here, let's check if it exists first.
+              
+              if (advance > 0) {
+                   // Determine Vale Date
+                   let valeDateStr = dateStr;
+                   const pDay = currentUser.salaryPaymentDay || 5;
+                   const aDay = currentUser.salaryAdvanceDay;
+                   
+                   if (aDay) {
+                       const vDate = new Date(currentYear, currentMonth, 1); // Start with current month of Salary logic
+                       vDate.setDate(aDay);
+                       valeDateStr = `${vDate.getFullYear()}-${String(vDate.getMonth() + 1).padStart(2, '0')}-${String(vDate.getDate()).padStart(2, '0')}`;
+                   }
+
+                   // Check if Vale exists
+                   const valePrefix = valeDateStr.slice(0, 7);
+                   const valeExists = transactions.some(t =>
+                       t.type === 'income' &&
+                       t.description === "Vale / Adiantamento" &&
+                       t.date.startsWith(valePrefix)
+                   );
+                   
+                   if (!valeExists) {
+                      const advanceTx: Omit<Transaction, 'id'> = {
+                          description: "Vale / Adiantamento",
+                          amount: advance,
+                          type: 'income',
+                          category: 'Trabalho',
+                          date: valeDateStr,
+                          status: 'completed',
+                          memberId: newTx.memberId
+                      };
+                      await dbService.addTransaction(userId, advanceTx);
+                   }
+              }
+
               toast.success("Salário mensal registrado automaticamente!");
            } catch (err) {
               console.error("Erro ao registrar salario automatico:", err);
@@ -1076,85 +1157,89 @@ const App: React.FC = () => {
 
   // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
-    const incomes = reviewedDashboardTransactions.filter(t => 
-        t.type === 'income' && 
-        !t.isInvestment && 
-        !t.category.startsWith('Caixinha') // Fallback for older txs
-    );
-    const expenses = reviewedDashboardTransactions.filter(t => 
+    const todayStr = toLocalISODate();
+    
+    const incomes = reviewedDashboardTransactions.filter(t => {
+        if (t.type !== 'income') return false;
+        if (t.isInvestment) return false;
+        if (t.category.startsWith('Caixinha')) return false;
+        
+        // Salary Visibility Logic
+        if (t.description === "Salário Mensal" && t.date > todayStr && !projectionSettings.salary) {
+            return false;
+        }
+        // Vale Visibility Logic
+        if (t.description === "Vale / Adiantamento" && t.date > todayStr && !projectionSettings.vale) {
+            return false;
+        }
+        return true;
+    });
+
+    // Base Expenses (All types)
+    const baseExpenses = reviewedDashboardTransactions.filter(t => 
         t.type === 'expense' && 
         !t.isInvestment && 
         !t.category.startsWith('Caixinha') // Fallback for older txs
     );
     
-    let totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
-    let totalExpense = expenses.reduce((acc, t) => acc + t.amount, 0);
+    // Split Expenses by Type (Credit Card vs Others)
+    const ccTransactions = baseExpenses.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
+    const nonCCTransactions = baseExpenses.filter(t => !(t.accountType || '').toUpperCase().includes('CREDIT'));
     
-    // Calculate pure flow for "Resultado do Período" (Monthly Savings)
-    let periodIncome = totalIncome;
-    let periodExpense = totalExpense; // Start with Accrual Expense (Sum of all txs)
+    const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
+    const nonCCSpending = nonCCTransactions.reduce((acc, t) => acc + t.amount, 0);
+    const ccSpending = ccTransactions.reduce((acc, t) => acc + t.amount, 0);
     
-    // Calculate Total Balance (Snapshot Base)
-    let calculatedBalance = 0;
+    // Calculate Account-level Credit Data (Debt & Limit)
+    let ccBillsInView = 0;
+    let ccTotalLimitInView = 0;
+    
+    if (includeCreditCardInStats) {
+        accountMap.forEach((acc) => {
+            const type = (acc.subtype || acc.type || "").toUpperCase();
+            const isCredit = type.includes('CREDIT');
+            
+            if (isCredit) {
+                ccBillsInView += (acc.balance || 0);
+                ccTotalLimitInView += (acc.creditLimit || 0);
+            }
+        });
+    }
 
-    // 1. Checking Account & Salary Logic
+    // Determine Final Credit Card Expense Value for Stats
+    let finalCCExpense = 0;
+    
+    if (includeCreditCardInStats) {
+        if (creditCardUseFullLimit) {
+            finalCCExpense = ccTotalLimitInView;
+        } else if (creditCardUseTotalLimit) {
+            finalCCExpense = ccBillsInView;
+        } else {
+            finalCCExpense = ccSpending;
+        }
+    }
+
+    // Final Totals
+    const totalExpense = nonCCSpending + finalCCExpense;
+    
+    // Calculate Balance
+    let calculatedBalance = 0;
     if (includeCheckingInStats) {
        calculatedBalance += accountBalances.checking;
-
-       // User Request: "Considerar o salario + o Saldo em Conta Corrente quando o considerar do Saldo em Conta Corrente estiver ativo"
-       // We automatically include the projected salary if it hasn't been paid yet.
-       if (currentUser?.baseSalary) {
-           const salaryPaid = reviewedDashboardTransactions.some(t => 
-              t.type === 'income' && 
-              t.description === "Salário Mensal"
-           );
-
-           if (!salaryPaid) {
-               const salaryAmount = currentUser.baseSalary;
-               calculatedBalance += salaryAmount;
-               // Update Income Card to reflect this expected inflow
-               totalIncome += salaryAmount;
-           }
-       }
     }
     
-    // 2. Credit Card Logic
+    // Subtract CC Liability from Balance (if enabled)
     if (includeCreditCardInStats) {
-       // Logic: Cash Flow View (Visão de Caixa)
-       
-       // A. Identify CC transactions in the current view (Swipes)
-       const ccSpendingInView = reviewedDashboardTransactions
-          .filter(t => t.type === 'expense' && (t.accountType === 'CREDIT_CARD' || t.accountType === 'CREDIT'))
-          .reduce((acc, t) => acc + t.amount, 0);
+        calculatedBalance -= finalCCExpense;
+    }
 
-       // B. Identify CC Bills due in this view (Pluggy Data)
-       let ccBillsInView = 0;
-       accountMap.forEach((acc) => {
-          const type = (acc.subtype || acc.type || "").toUpperCase();
-          const isCredit = type === 'CREDIT_CARD' || type === 'CREDIT';
-          
-          if (isCredit) {
-              // Check if bill is due in the selected month
-              if (acc.balanceDueDate && acc.balanceDueDate.startsWith(dashboardDate)) {
-                  ccBillsInView += (acc.balance || 0);
-              }
-          }
-       });
+    // Period Flow (Savings)
+    const periodSavings = totalIncome - totalExpense;
 
-       // C. Adjust Total Expense for Display (Red Card)
-       // Use Bill Amount if available, otherwise fallback to Swipes (Accrual)
-       const displayedCCExpense = ccBillsInView > 0 ? ccBillsInView : ccSpendingInView;
-       totalExpense = totalExpense - ccSpendingInView + displayedCCExpense;
-       
-       // D. Adjust Balance
-       // Subtract the actual Bill Amount (Liability) from the Cash
-       calculatedBalance -= ccBillsInView;
-       
-       // Update Period Expense for "Resultado"
-       periodExpense = totalExpense;
-    } 
+    // 3. Projections (Reminders + Subscriptions) - Adjust totals if needed
+    let projectedIncome = 0;
+    let projectedExpense = 0;
 
-    // 3. Projections (Reminders + Subscriptions)
     if (filterMode === 'month') {
       // Reminders
       if (projectionSettings.reminders) {
@@ -1166,11 +1251,9 @@ const App: React.FC = () => {
 
         projectedReminders.forEach(r => {
           if (r.type === 'income') {
-            totalIncome += r.amount;
-            calculatedBalance += r.amount;
+            projectedIncome += r.amount;
           } else {
-            totalExpense += r.amount;
-            calculatedBalance -= r.amount;
+            projectedExpense += r.amount;
           }
         });
       }
@@ -1191,22 +1274,55 @@ const App: React.FC = () => {
            );
 
            if (!alreadyPaid) {
-               totalExpense += s.amount;
-               calculatedBalance -= s.amount;
+               projectedExpense += s.amount;
            }
         });
       }
       
-      // Note: Salary projection is now handled in Step 1 (Checking Logic)
+      // Salary Projection
+      if (projectionSettings.salary && currentUser?.baseSalary) {
+           const salaryTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
+           if (!salaryTx || (salaryTx.amount === 0 && currentUser.baseSalary > 0)) {
+               let advance = currentUser.salaryAdvanceValue || 0;
+               if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+                   advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+               }
+               advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+               const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
+               projectedIncome += salaryAmount;
+           }
+      }
+
+      // Vale Projection
+      if (projectionSettings.vale && currentUser?.baseSalary) {
+           const valeTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
+           if (!valeTx || (valeTx.amount === 0 && currentUser.baseSalary > 0)) {
+               let advance = currentUser.salaryAdvanceValue || 0;
+               if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+                   advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+               }
+               advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+               if (advance > 0) {
+                   projectedIncome += advance;
+               }
+           }
+      }
     }
 
+    // Apply Projections
+    const finalTotalIncome = totalIncome + projectedIncome;
+    const finalTotalExpense = totalExpense + projectedExpense;
+    const finalBalance = calculatedBalance + projectedIncome - projectedExpense;
+    const finalMonthlySavings = finalTotalIncome - finalTotalExpense;
+
     return {
-      totalIncome,
-      totalExpense,
-      totalBalance: calculatedBalance,
-      monthlySavings: periodIncome > 0 ? (periodIncome - periodExpense) : (periodIncome - periodExpense)
+      totalIncome: finalTotalIncome,
+      totalExpense: finalTotalExpense,
+      totalBalance: finalBalance,
+      monthlySavings: finalMonthlySavings,
+      creditCardSpending: ccSpending
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, accountBalances, dashboardCategory]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -1365,10 +1481,16 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSalary = async (newSalary: number, paymentDay?: number) => {
+  const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }) => {
     if (userId) {
-      await dbService.updateUserProfile(userId, { baseSalary: newSalary, salaryPaymentDay: paymentDay });
-      toast.success("Salário base e dia de pagamento atualizados.");
+      await dbService.updateUserProfile(userId, { 
+          baseSalary: newSalary, 
+          salaryPaymentDay: paymentDay, 
+          salaryAdvanceValue: advanceOptions?.advanceValue,
+          salaryAdvancePercent: advanceOptions?.advancePercent,
+          salaryAdvanceDay: advanceOptions?.advanceDay
+      });
+      toast.success("Configurações de renda atualizadas.");
     }
   };
 
@@ -1935,6 +2057,20 @@ const App: React.FC = () => {
                                  <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.salary ? 'translate-x-4' : ''}`}></div>
                               </div>
                            </div>
+                           
+                           {/* Toggle Vale */}
+                           <div 
+                              onClick={() => setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
+                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                           >
+                              <div className="flex items-center gap-2">
+                                 <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
+                              </div>
+                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.vale ? 'translate-x-4' : ''}`}></div>
+                              </div>
+                           </div>
                         </div>
                       </>
                     )}
@@ -2104,8 +2240,24 @@ const App: React.FC = () => {
                         baseSalary={currentUser.baseSalary || 0}
                         currentIncome={stats.totalIncome}
                         paymentDay={currentUser.salaryPaymentDay}
+                        advanceValue={currentUser.salaryAdvanceValue}
+                        advancePercent={currentUser.salaryAdvancePercent}
+                        advanceDay={currentUser.salaryAdvanceDay}
                         onUpdateSalary={handleUpdateSalary}
                         onAddExtra={handleAddExtraIncome}
+                        onEditClick={() => {
+                          setSettingsInitialTab('finance');
+                          setIsSettingsOpen(true);
+                        }}
+                        isSalaryLaunched={(() => {
+                            const today = new Date();
+                            const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                            return memberFilteredTransactions.some(t => 
+                                t.description === "Salário Mensal" && 
+                                t.date.startsWith(currentMonth) &&
+                                !t.ignored
+                            );
+                        })()}
                       />
                     )}
                     <StatsCards 
@@ -2116,7 +2268,11 @@ const App: React.FC = () => {
                         includeChecking: includeCheckingInStats,
                         setIncludeChecking: setIncludeCheckingInStats,
                         includeCredit: includeCreditCardInStats,
-                        setIncludeCredit: setIncludeCreditCardInStats
+                        setIncludeCredit: setIncludeCreditCardInStats,
+                        creditCardUseTotalLimit: creditCardUseTotalLimit,
+                        setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                        creditCardUseFullLimit: creditCardUseFullLimit,
+                        setCreditCardUseFullLimit: setCreditCardUseFullLimit
                       }}
                     />
                     <div className="animate-fade-in space-y-6">

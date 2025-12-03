@@ -263,7 +263,6 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
 
     const shouldSkipTx = (tx: any, account: any) => {
       const descLower = (tx.description || "").toLowerCase();
-      // More specific filtering to avoid skipping legitimate transactions
       if (descLower.includes("saldo anterior") || 
           descLower.includes("sdo ant") || 
           descLower.includes("saldo do dia") || 
@@ -330,20 +329,15 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         const category = mapCategory(tx.category, tx.description);
         let isExpense;
         
-        // Lógica híbrida: Prioriza a categoria se for claramente despesa/receita,
-        // senão usa o sinal do valor (padrão Pluggy).
         const expenseCategories = ['Alimentacao', 'Transporte', 'Lazer', 'Saude', 'Moradia'];
         
         if (category === 'Salario') {
            isExpense = false;
         } else if (category === 'Investimentos') {
-           // Investimentos podem ser entrada (resgate) ou saída (aplicação).
-           // Vamos manter a lógica do sinal para investimentos por enquanto.
            isExpense = isCreditCard ? tx.amount > 0 : tx.amount < 0;
         } else if (expenseCategories.includes(category)) {
            isExpense = true;
         } else {
-           // Fallback para sinal
             if (isCreditCard) {
               isExpense = tx.amount > 0;
             } else {
@@ -355,10 +349,9 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         if (absAmount === 0) continue;
 
         const baseDesc = tx.description || account.name || "Transacao bancaria";
-        const baseDateStr = tx.date ? tx.date.split("T")[0] : toLocalISODate();
-        const baseDate = new Date(baseDateStr + "T12:00:00");
+        const dateStr = tx.date ? tx.date.split("T")[0] : toLocalISODate();
 
-        // Detect installments
+        // Detect installments for Description Only
         const parsedMatch = baseDesc.match(/(\d+)\s*\/\s*(\d+)/);
         const descCurrent = parsedMatch ? Number(parsedMatch[1]) : undefined;
         const descTotal = parsedMatch ? Number(parsedMatch[2]) : undefined;
@@ -366,20 +359,14 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         const currentInstallment = installData?.number || installData?.current || installData?.currentNumber || tx.paymentData?.installmentsQuantity || descCurrent;
         const totalInstallments = installData?.total || installData?.quantity || installData?.totalNumber || descTotal;
 
-        const installmentsCount = Number(totalInstallments) > 1 ? Number(totalInstallments) : 1;
+        let finalDesc = baseDesc;
+        // Append (X/Y) if detected but not present in text
+        if (currentInstallment && totalInstallments && !parsedMatch) {
+             finalDesc = `${baseDesc} (${currentInstallment}/${totalInstallments})`;
+        }
 
-        for (let i = 1; i <= installmentsCount; i++) {
-          const installmentIndex = currentInstallment && currentInstallment > 0 ? i - currentInstallment : i - 1;
-          const dateObj = new Date(baseDate);
-          dateObj.setMonth(baseDate.getMonth() + installmentIndex);
-          const dateStr = toLocalISODate(dateObj);
-
-          const descWithParcel = installmentsCount > 1
-            ? `Parcela ${i}/${installmentsCount} - ${baseDesc}`
-            : baseDesc;
-
-          const newTx: Omit<Transaction, "id"> = {
-            description: descWithParcel,
+        const newTx: Omit<Transaction, "id"> = {
+            description: finalDesc,
             amount: absAmount,
             date: dateStr,
             type: isExpense ? "expense" : "income",
@@ -388,16 +375,12 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
             importSource: "pluggy",
             needsApproval: false,
             accountId: account.id,
-            accountType: account.subtype || account.type
-          };
+            accountType: account.subtype || account.type,
+            pluggyId: tx.id, // Use strict ID from Pluggy to prevent duplicates
+            pluggyItemId: itemId
+        };
 
-          const uniquePluggyId = installmentsCount > 1 && tx.id ? `${tx.id}-inst-${i}` : tx.id;
-          const txKey = uniquePluggyId || `${newTx.description}|${newTx.date}|${newTx.amount}|${newTx.type}`;
-          newTx.pluggyId = uniquePluggyId || txKey;
-          newTx.pluggyItemId = itemId;
-
-          resultTransactions.push(newTx);
-        }
+        resultTransactions.push(newTx);
       }
     }
 

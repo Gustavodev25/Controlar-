@@ -8,6 +8,7 @@ export interface User {
   salaryPaymentDay?: number;
   salaryAdvanceDay?: number;
   salaryAdvancePercent?: number;
+  salaryAdvanceValue?: number;
   valeDeductions?: { id: string; name: string; value: string; type: '%' | 'R$' }[];
   valeExemptFromDiscounts?: boolean;
   twoFactorEnabled?: boolean;
@@ -119,6 +120,7 @@ export interface DashboardStats {
   totalIncome: number;
   totalExpense: number;
   monthlySavings: number;
+  creditCardSpending?: number;
 }
 
 export interface AIAnalysisResult {

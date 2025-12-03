@@ -11,7 +11,7 @@ import {
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
-import { ConfirmationCard } from './UIComponents';
+import { ConfirmationCard, CurrencyInput } from './UIComponents';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
@@ -29,7 +29,7 @@ interface SettingsModalProps {
    reminders?: Reminder[];
    connectedAccounts?: ConnectedAccount[];
    onNavigateToSubscription: () => void;
-   initialTab?: 'profile' | 'plan' | 'badges' | 'data';
+   initialTab?: 'profile' | 'plan' | 'badges' | 'data' | 'finance';
 }
 
 const AVATAR_GRADIENTS = [
@@ -1212,17 +1212,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <label className="text-xs font-medium text-gray-400 ml-1">Salário Base</label>
                                     <div className="relative">
                                        <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
-                                       <input
-                                          type="text"
-                                          inputMode="decimal"
-                                          placeholder="0,00"
-                                          value={formData.baseSalary ? formData.baseSalary.toString().replace('.', ',') : ''}
-                                          onChange={(e) => {
-                                             const val = e.target.value.replace(',', '.');
-                                             const parsed = parseFloat(val);
-                                             setFormData({ ...formData, baseSalary: isNaN(parsed) ? 0 : parsed });
-                                          }}
+                                       <CurrencyInput
+                                          value={formData.baseSalary || 0}
+                                          onValueChange={(val) => setFormData({ ...formData, baseSalary: val })}
                                           className="input-primary pl-10 text-lg font-bold"
+                                          placeholder="0,00"
                                        />
                                     </div>
                                     <p className="text-xs text-gray-500 ml-1">Valor usado para cálculo de horas extras.</p>
@@ -1267,18 +1261,47 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                  <div className="space-y-4">
-                                    <div className="grid grid-cols-2 gap-4">
+                                    <div className="grid grid-cols-3 gap-4">
                                        <div className="space-y-2">
                                           <label className="text-xs font-medium text-gray-400 ml-1">% do Vale</label>
                                           <div className="relative">
                                              <input
                                                 type="number"
                                                 value={formData.salaryAdvancePercent || ''}
-                                                onChange={(e) => setFormData({ ...formData, salaryAdvancePercent: parseFloat(e.target.value) })}
+                                                onChange={(e) => {
+                                                   const percent = parseFloat(e.target.value);
+                                                   const base = formData.baseSalary || 0;
+                                                   const newVal = base * (percent / 100);
+                                                   setFormData({ 
+                                                      ...formData, 
+                                                      salaryAdvancePercent: percent,
+                                                      salaryAdvanceValue: parseFloat(newVal.toFixed(2))
+                                                   });
+                                                }}
                                                 placeholder="40"
                                                 className="input-primary pr-8 font-bold"
                                              />
                                              <span className="absolute right-3 top-3.5 text-gray-500 font-bold">%</span>
+                                          </div>
+                                       </div>
+                                       <div className="space-y-2">
+                                          <label className="text-xs font-medium text-gray-400 ml-1">Valor Fixo (R$)</label>
+                                          <div className="relative">
+                                             <span className="absolute left-2 top-3.5 text-gray-500 font-bold text-xs">R$</span>
+                                             <CurrencyInput
+                                                value={formData.salaryAdvanceValue || 0}
+                                                onValueChange={(val) => {
+                                                   const base = formData.baseSalary || 0;
+                                                   const newPercent = base > 0 ? (val / base) * 100 : 0;
+                                                   setFormData({ 
+                                                      ...formData, 
+                                                      salaryAdvanceValue: val,
+                                                      salaryAdvancePercent: parseFloat(newPercent.toFixed(1))
+                                                   });
+                                                }}
+                                                placeholder="0,00"
+                                                className="input-primary pl-7 font-bold"
+                                             />
                                           </div>
                                        </div>
                                        <div className="space-y-2">
@@ -1335,17 +1358,30 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 className="input-primary text-xs py-1.5 flex-1 min-w-0"
                                              />
                                              <div className="flex gap-1 w-24 shrink-0">
-                                                <input
-                                                   type="text"
-                                                   placeholder="Valor"
-                                                   value={deduction.value}
-                                                   onChange={e => {
-                                                      const newArr = [...(formData.valeDeductions || [])];
-                                                      newArr[index].value = e.target.value;
-                                                      setFormData({ ...formData, valeDeductions: newArr });
-                                                   }}
-                                                   className="input-primary text-xs py-1.5 w-full text-right"
-                                                />
+                                                {deduction.type === 'R$' ? (
+                                                   <CurrencyInput
+                                                      value={parseFloat(deduction.value.replace(',', '.') || '0')}
+                                                      onValueChange={(val) => {
+                                                         const newArr = [...(formData.valeDeductions || [])];
+                                                         newArr[index].value = val.toString();
+                                                         setFormData({ ...formData, valeDeductions: newArr });
+                                                      }}
+                                                      className="input-primary text-xs py-1.5 w-full text-right"
+                                                      placeholder="0,00"
+                                                   />
+                                                ) : (
+                                                   <input
+                                                      type="text"
+                                                      placeholder="%"
+                                                      value={deduction.value}
+                                                      onChange={e => {
+                                                         const newArr = [...(formData.valeDeductions || [])];
+                                                         newArr[index].value = e.target.value;
+                                                         setFormData({ ...formData, valeDeductions: newArr });
+                                                      }}
+                                                      className="input-primary text-xs py-1.5 w-full text-right"
+                                                   />
+                                                )}
                                              </div>
                                               <button 
                                                 onClick={() => {

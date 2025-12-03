@@ -1,11 +1,10 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, Sparkles, RefreshCw, ChevronDown, ChevronUp, Download, ChevronLeft, ChevronRight, Trash2, PieChart, FileText } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, RefreshCw, Download, ChevronLeft, ChevronRight, Trash2, PieChart, FileText } from "./Icons";
 import { triggerItemUpdate, syncPluggyData, deleteItem } from "../services/pluggyService";
 import { useToasts } from "./Toast";
 import { EmptyState } from "./EmptyState";
 import { ConfirmationCard } from "./UIComponents";
-import { AnimatePresence, motion } from "framer-motion";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -13,8 +12,8 @@ interface ConnectedAccountsProps {
   onRefresh?: () => void;
   onImport?: (account: ConnectedAccount) => Promise<number>;
   lastSynced?: Record<string, string>;
-  storageKey?: string; // persist expanded state
-  userId?: string | null; // Add userId prop for sync
+  storageKey?: string; // legacy prop, can be ignored or removed
+  userId?: string | null;
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
@@ -32,20 +31,16 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   onRefresh,
   onImport,
   lastSynced = {},
-  storageKey,
   userId
 }) => {
-  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
   const [deletingItems, setDeletingItems] = useState<Set<string>>(new Set());
-  const [limitView, setLimitView] = useState<Set<string>>(new Set()); // New state for toggle
+  const [limitView, setLimitView] = useState<Set<string>>(new Set());
   const [itemToDelete, setItemToDelete] = useState<{ id: string; name: string } | null>(null);
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const accountsPerPage = 3;
   const toast = useToasts();
-
-  const accountIds = useMemo(() => accounts.map((a) => a.id).join(","), [accounts]);
 
   // Lógica para Agrupar contas por Instituição (Banco) e ItemId
   const groupedAccounts = useMemo(() => {
@@ -60,41 +55,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     });
     return groups;
   }, [accounts]);
-
-  useEffect(() => {
-    if (storageKey && typeof window !== "undefined") {
-      try {
-        const raw = window.localStorage.getItem(storageKey);
-        if (raw) {
-          const arr = JSON.parse(raw);
-          if (Array.isArray(arr)) {
-            setExpanded(new Set(arr));
-            return;
-          }
-        }
-      } catch {
-        /* ignore */
-      }
-    }
-    const ids = new Set(accounts.map((a) => a.id));
-    setExpanded(ids); 
-  }, [accountIds, storageKey]);
-
-  const toggle = (id: string) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      if (storageKey && typeof window !== "undefined") {
-        try {
-          window.localStorage.setItem(storageKey, JSON.stringify(Array.from(next)));
-        } catch {
-          /* ignore */
-        }
-      }
-      return next;
-    });
-  };
 
   const toggleLimitView = (id: string) => {
       setLimitView(prev => {
@@ -116,7 +76,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (deletingItems.has(itemId)) return;
 
     setDeletingItems(prev => new Set(prev).add(itemId));
-    setItemToDelete(null); // Close modal immediately or keep it? Usually close it.
+    setItemToDelete(null);
 
     try {
       await toast.promise(
@@ -155,7 +115,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
        const success = await triggerItemUpdate(itemId);
        if (!success) throw new Error("O banco não respondeu a tempo ou houve erro na conexão.");
 
-       // Delay para garantir consistência da API do Pluggy (propagar transações)
        await new Promise(resolve => setTimeout(resolve, 3000));
 
        const count = await syncPluggyData(userId, itemId);
@@ -318,16 +277,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               {/* Lista de Contas dentro do Banco */}
               <div className="p-4 space-y-3 bg-gray-950 relative z-10 flex-1">
                 {paginatedInstitutionAccounts.map((acc) => {
-                  const expandedCard = expanded.has(acc.id);
                   const isCredit = isCardFromInstitution(acc);
                   const showLimit = limitView.has(acc.id);
 
                   // Calculate Credit details
                   const limit = acc.creditLimit || 0;
                   const available = acc.availableCreditLimit || 0;
-                  const used = limit - available; // Or acc.balance if positive
-                  // Sometimes balance is the used amount directly. Let's trust balance for "used" usually, but if we have limit/available we can calc.
-                  // Pluggy: balance is usually the current invoice amount (total debt).
+                  const used = limit - available; 
                   const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
 
                   return (
@@ -336,7 +292,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       <div className="p-4">
                           <div className="flex justify-between items-start mb-3">
                             <div className="flex gap-3">
-                                <div className={`mt-0.5 p-2 rounded-lg ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
+                                <div className={`p-1.5 rounded-lg ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
                                     {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
                                 </div>
                                 <div>
@@ -353,75 +309,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                 <p className={`text-base font-mono font-bold ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
                                     {formatCurrency(acc.balance, acc.currency)}
                                 </p>
-                                
-                                {isCredit ? (
-                                    <div 
-                                      onClick={() => toggleLimitView(acc.id)}
-                                      className="mt-1.5 cursor-pointer group/limit select-none relative pl-4"
-                                      title="Clique para alternar entre Fatura e Limite"
-                                    >
-                                        <div className="absolute left-0 top-1/2 -translate-y-1/2 opacity-0 group-hover/limit:opacity-100 transition-opacity text-gray-500">
-                                            {showLimit ? <FileText size={10} /> : <PieChart size={10} />}
-                                        </div>
-
-                                        {showLimit ? (
-                                            // Limit Consumption View
-                                            <div className="w-full animate-fade-in">
-                                                <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-700/50">
-                                                    <div 
-                                                        className={`h-full rounded-full transition-all duration-700 ease-out ${limitPercentage > 90 ? 'bg-red-500' : limitPercentage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                                        style={{ width: `${limitPercentage}%` }}
-                                                    ></div>
-                                                </div>
-                                                <div className="flex justify-between text-[8px] font-medium text-gray-400 uppercase tracking-wide">
-                                                    <span>{Math.round(limitPercentage)}% Uso</span>
-                                                    <span>Disp: {formatCurrency(available).replace('R$', '')}</span>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            // Invoice Dates View (Default)
-                                            <div className="flex flex-col items-end animate-fade-in gap-0.5">
-                                                {acc.balanceDueDate ? (
-                                                    <div className="flex items-center gap-1.5 bg-gray-800/40 hover:bg-gray-800/80 px-2 py-1 rounded-lg border border-gray-800/50 transition-colors">
-                                                        <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wide">
-                                                            Vence {new Date(acc.balanceDueDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
-                                                        </span>
-                                                    </div>
-                                                ) : (
-                                                    <span className="text-[9px] text-gray-500 italic">Sem data de vencimento</span>
-                                                )}
-                                                {acc.balanceCloseDate && (
-                                                    <span className="text-[8px] text-gray-600">
-                                                        Fecha {new Date(acc.balanceCloseDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    // Checking Account View
-                                    lastSynced[acc.id] && (
-                                        <p className="text-[9px] text-gray-600 mt-0.5 font-medium">
-                                            {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                    )
-                                )}
                             </div>
                           </div>
 
                           {/* Ações da Conta */}
-                          <div className="flex items-center justify-between pt-2">
-                            <button
-                              onClick={() => toggle(acc.id)}
-                              className="text-[11px] font-bold uppercase tracking-wider text-gray-500 hover:text-white flex items-center gap-1 transition-colors group/btn"
-                            >
-                              {expandedCard ? (
-                                <>Esconder <ChevronUp size={12} className="group-hover/btn:-translate-y-0.5 transition-transform" /></>
-                              ) : (
-                                <>Ver Extrato <ChevronDown size={12} className="group-hover/btn:translate-y-0.5 transition-transform" /></>
-                              )}
-                            </button>
-                            
+                          <div className="flex items-center justify-end pt-2">
                             {onImport && (
                                 <button
                                 onClick={() => handleImport(acc)}
@@ -441,48 +333,64 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                 </button>
                             )}
                           </div>
-                      </div>
 
-                      {/* Área Expandida (Extrato) */}
-                      <AnimatePresence>
-                        {expandedCard && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: "auto", opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.2, ease: "easeInOut" }}
-                            className="overflow-hidden"
-                          >
-                            <div className="bg-gray-950/50 border-t border-gray-800/50 p-3">
-                              <p className="text-[10px] font-bold text-gray-500 uppercase mb-3 flex items-center gap-1.5 pl-1">
-                                <Sparkles size={10} className="text-[#d97757]" /> Últimas movimentações
-                              </p>
-                              {acc.previewTransactions && acc.previewTransactions.length > 0 ? (
-                                <div className="space-y-1">
-                                  {acc.previewTransactions.map((tx) => {
-                                    const isExpense = tx.amount < 0;
-                                    return (
-                                      <div key={tx.id} className="flex justify-between items-center text-xs p-2 rounded-lg bg-gray-900 hover:bg-gray-800 transition-colors border border-gray-800/50">
-                                        <div className="flex flex-col w-2/3">
-                                            <span className="text-gray-300 truncate font-medium">{tx.description}</span>
-                                            <span className="text-[9px] text-gray-600">{tx.date ? new Date(tx.date).toLocaleDateString('pt-BR') : 'Data n/a'}</span>
+                          {/* Bottom Details */}
+                          {isCredit ? (
+                                <div 
+                                  onClick={() => toggleLimitView(acc.id)}
+                                  className="mt-3 pt-3 border-t border-gray-800/50 cursor-pointer group/limit select-none w-full"
+                                  title="Clique para alternar entre Fatura e Limite"
+                                >
+                                    {showLimit ? (
+                                        <div key="limit" className="w-full animate-fade-in">
+                                            <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-700/50">
+                                                <div 
+                                                    className={`h-full rounded-full transition-all duration-700 ease-out ${limitPercentage > 90 ? 'bg-red-500' : limitPercentage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                                                    style={{ width: `${limitPercentage}%` }}
+                                                ></div>
+                                            </div>
+                                            <div className="flex justify-between text-[8px] font-medium text-gray-400 uppercase tracking-wide">
+                                                <span>{Math.round(limitPercentage)}% Uso</span>
+                                                <span>Disp: {formatCurrency(available).replace('R$', '')}</span>
+                                            </div>
                                         </div>
-                                        <span className={`font-mono font-bold ${isExpense ? "text-gray-300" : "text-emerald-400"}`}>
-                                          {formatCurrency(tx.amount, tx.currency || acc.currency)}
-                                        </span>
-                                      </div>
-                                    );
-                                  })}
+                                    ) : (
+                                        <div key="invoice" className="flex items-center justify-between animate-fade-in">
+                                            <div className="flex items-center gap-1.5 text-gray-500">
+                                                <PieChart size={12} className="group-hover/limit:text-[#d97757] transition-colors" />
+                                                <span className="text-[9px] font-medium group-hover/limit:text-white transition-colors">Fatura Atual</span>
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-2">
+                                                {acc.balanceCloseDate && (
+                                                    <span className="text-[9px] text-gray-600 hidden sm:inline">
+                                                        Fecha {new Date(acc.balanceCloseDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
+                                                    </span>
+                                                )}
+                                                {acc.balanceDueDate ? (
+                                                    <div className="flex items-center gap-1.5 bg-gray-800/40 group-hover/limit:bg-gray-800 px-2 py-1 rounded-lg border border-gray-800/50 transition-colors">
+                                                        <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wide">
+                                                            Vence {new Date(acc.balanceDueDate).toLocaleDateString('pt-BR', {day: '2-digit', month: '2-digit'})}
+                                                        </span>
+                                                    </div>
+                                                ) : (
+                                                    <span className="text-[9px] text-gray-500 italic">Sem vencimento</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                              ) : (
-                                <div className="text-center py-4 bg-gray-900/30 rounded-lg border border-dashed border-gray-800">
-                                    <p className="text-[11px] text-gray-500 font-medium">Nenhuma movimentação recente.</p>
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                            ) : (
+                                lastSynced[acc.id] && (
+                                    <div className="mt-3 pt-2 border-t border-gray-800/50 flex justify-end">
+                                        <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
+                                            <RotateCcw size={8} />
+                                            {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                        </p>
+                                    </div>
+                                )
+                            )}
+                      </div>
                     </div>
                   );
                 })}
