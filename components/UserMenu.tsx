@@ -6,11 +6,23 @@ interface UserMenuProps {
   user: UserType;
   onLogout: () => void;
   onOpenSettings: () => void;
+  isAdminMode: boolean;
+  onToggleAdminMode: () => void;
 }
 
-export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettings }) => {
+export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettings, isAdminMode, onToggleAdminMode }) => {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Debug log to see if user.isAdmin is being received
+  useEffect(() => {
+    console.log('[UserMenu] User data:', {
+      name: user.name,
+      isAdmin: user.isAdmin,
+      hasIsAdminProp: 'isAdmin' in user,
+      userKeys: Object.keys(user)
+    });
+  }, [user, user.isAdmin]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -95,6 +107,29 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
               </div>
               <ChevronRight size={14} className="text-gray-600" />
             </button>
+
+            {(() => {
+              console.log('[UserMenu Render] Checking isAdmin condition:', {
+                isAdmin: user.isAdmin,
+                willRender: !!user.isAdmin
+              });
+              return user.isAdmin && (
+                <button
+                  onClick={() => {
+                    setIsOpen(false);
+                    onToggleAdminMode();
+                  }}
+                  className={`w-full flex items-center justify-between p-2 text-sm rounded-lg group transition-colors mt-1 ${isAdminMode ? 'bg-red-900/20 text-red-400' : 'text-gray-300 hover:bg-gray-800'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isAdminMode ? 'border-red-500 bg-red-500' : 'border-gray-500'}`}>
+                      {isAdminMode && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+                    </div>
+                    Modo Admin
+                  </div>
+                </button>
+              );
+            })()}
           </div>
 
           <div className="p-2 border-t border-gray-800 bg-gray-950/50">
