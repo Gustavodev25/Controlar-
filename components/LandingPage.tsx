@@ -580,7 +580,7 @@ const PricingSection = () => {
           </div>
           <ul className="space-y-4 mb-8 flex-1">
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> <span className="font-bold">IA Integrada ilimitada</span></li>
-             <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> Lançamentos por Texto</li>
+             <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> Conexão Open Finance</li>
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> Consultor Financeiro IA</li>
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> Metas e Lembretes</li>
           </ul>
