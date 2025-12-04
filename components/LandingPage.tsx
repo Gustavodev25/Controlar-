@@ -910,9 +910,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
            />
            
            {/* Desktop Menu */}
-           <div className="hidden md:flex items-center gap-8 text-sm font-medium text-gray-400">
+           <div className="hidden md:flex items-center gap-6 text-sm font-medium text-gray-400">
               <a href="#system" className="hover:text-white transition-colors">Sistema</a>
               <a href="#pricing" className="hover:text-white transition-colors">Planos</a>
+              <a href="#open-finance" className="hover:text-white transition-colors">Open Finance</a>
+              <a href="#clt-calculator" className="hover:text-white transition-colors">Calculadora CLT</a>
+              <a href="#fire-simulator" className="hover:text-white transition-colors">Simulador FIRE</a>
+              <a href="#testimonials" className="hover:text-white transition-colors">Depoimentos</a>
+              <a href="#faq" className="hover:text-white transition-colors">FAQ</a>
            </div>
 
            <div className="flex items-center gap-4">
@@ -949,23 +954,58 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
 
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-20 left-0 right-0 bg-[#2F302E] border-b border-gray-800 animate-fade-in shadow-2xl">
-            <div className="flex flex-col p-6 space-y-6">
-              <a 
-                href="#system" 
+          <div className="md:hidden absolute top-20 left-0 right-0 bg-[#2F302E] border-b border-gray-800 animate-fade-in shadow-2xl max-h-[80vh] overflow-y-auto">
+            <div className="flex flex-col p-6 space-y-4">
+              <a
+                href="#system"
                 onClick={() => setMobileMenuOpen(false)}
-                className="text-lg font-medium text-gray-300 hover:text-[#f17853]"
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
               >
                 Sistema
               </a>
-              <a 
-                href="#pricing" 
+              <a
+                href="#pricing"
                 onClick={() => setMobileMenuOpen(false)}
-                className="text-lg font-medium text-gray-300 hover:text-[#f17853]"
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
               >
                 Planos
               </a>
-              
+              <a
+                href="#open-finance"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
+              >
+                Open Finance
+              </a>
+              <a
+                href="#clt-calculator"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
+              >
+                Calculadora CLT
+              </a>
+              <a
+                href="#fire-simulator"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
+              >
+                Simulador FIRE
+              </a>
+              <a
+                href="#testimonials"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
+              >
+                Depoimentos
+              </a>
+              <a
+                href="#faq"
+                onClick={() => setMobileMenuOpen(false)}
+                className="text-base font-medium text-gray-300 hover:text-[#f17853]"
+              >
+                FAQ
+              </a>
+
               <div className="h-px bg-gray-800 my-2"></div>
               
               {isWaitlistVariant ? (
@@ -1106,7 +1146,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
              </AnimatedSection>
 
              {/* Feature 1: Open Finance - Mockup à esquerda, texto à direita */}
-             <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
+             <div id="open-finance" className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
                 {/* Mockup - Screenshot real do sistema */}
                 <AnimatedSection direction="left" className="order-2 lg:order-1">
                    <div className="bg-[#363735] rounded-2xl shadow-2xl overflow-hidden border border-gray-800 relative group">
@@ -1331,7 +1371,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
              </div>
 
              {/* Feature 2: Calculadora CLT - Texto à esquerda, mockup à direita */}
-             <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
+             <div id="clt-calculator" className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
                 {/* Texto */}
                 <AnimatedSection direction="left" delay={200}>
                    <div className="inline-block px-3 py-1 rounded-full bg-blue-900/30 border border-blue-700/30 text-blue-400 text-xs font-bold mb-4 uppercase tracking-wider">Calculadora CLT</div>
@@ -1498,7 +1538,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
              </div>
 
              {/* Feature 3: FIRE Calculator - Mockup à esquerda, texto à direita */}
-             <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
+             <div id="fire-simulator" className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center mb-32">
                 {/* Mockup */}
                 <AnimatedSection direction="left" className="order-2 lg:order-1">
                       <div className="bg-[#363735] rounded-2xl shadow-2xl overflow-hidden border border-gray-800 relative group">
@@ -1739,7 +1779,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
 
 
       {/* Testimonials Section */}
-      <section className="py-16 lg:py-24 relative overflow-hidden bg-[#2F302E]">
+      <section id="testimonials" className="py-16 lg:py-24 relative overflow-hidden bg-[#2F302E]">
          <div className="max-w-7xl mx-auto px-4 lg:px-6 relative z-10">
 
             <AnimatedSection className="flex flex-col items-center text-center max-w-2xl mx-auto mb-12 lg:mb-16">
@@ -1837,7 +1877,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </section>
 
       {/* FAQ Section */}
-      <section className="py-16 lg:py-24 bg-[#2F302E] border-t border-gray-900">
+      <section id="faq" className="py-16 lg:py-24 bg-[#2F302E] border-t border-gray-900">
          <div className="max-w-7xl mx-auto px-4 lg:px-6">
             <AnimatedSection className="text-center mb-12 lg:mb-16">
                <h2 className="text-2xl lg:text-3xl font-bold mb-4">Perguntas Frequentes</h2>
