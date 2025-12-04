@@ -568,7 +568,7 @@ const PricingSection = () => {
           <div className="mb-6">
              <div>
                <span className="text-4xl font-bold text-white">
-                 R$ <AnimatedNumber key={`pro-${billingCycle}`} value={getPrice(34.90, 399.00)} decimals={2} />
+                 R$ <AnimatedNumber key={`pro-${billingCycle}`} value={getPrice(35.90, 399.00)} decimals={2} />
                </span>
                <span className="text-gray-500">/mês</span>
              </div>
@@ -599,19 +599,19 @@ const PricingSection = () => {
           <div className="mb-6">
              <div>
                <span className="text-4xl font-bold text-white">
-                 R$ <AnimatedNumber key={`family-${billingCycle}`} value={getPrice(69.90, 749.00)} decimals={2} />
+                 R$ <AnimatedNumber key={`family-${billingCycle}`} value={getPrice(89.90, 999.00)} decimals={2} />
                </span>
                <span className="text-gray-500">/mês</span>
              </div>
              {billingCycle === 'annual' && (
                <span className="text-xs text-gray-500 block mt-1">
-                 cobrado R$ 749,00 /ano
+                 cobrado R$ 999,00 /ano
                </span>
              )}
           </div>
           <ul className="space-y-4 mb-8 flex-1">
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Tudo do Pro</li>
-             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Até 5 Membros</li>
+             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Até 3 Membros</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Metas Compartilhadas</li>
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Relatórios Unificados</li>
           </ul>
