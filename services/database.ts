@@ -46,11 +46,20 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
       const data = snap.data();
       const profile = { ...(data.profile as Partial<User> || {}) };
 
-      // Priority: profile.isAdmin > root isAdmin > false (default)
-      // This ensures isAdmin is always defined and returned
-      if (profile.isAdmin === undefined) {
-        profile.isAdmin = data.isAdmin !== undefined ? data.isAdmin : false;
+      console.log('[DB getUserProfile] Raw Firebase data:', {
+        hasProfile: !!data.profile,
+        profileIsAdmin: data.profile?.isAdmin,
+        rootIsAdmin: data.isAdmin,
+        userId
+      });
+
+      // Priority: profile.isAdmin > root isAdmin (always check root as fallback)
+      // IMPORTANT: We need to ALWAYS set isAdmin, even if it's false
+      if (profile.isAdmin === undefined || profile.isAdmin === null) {
+        profile.isAdmin = data.isAdmin === true; // Force boolean check
       }
+
+      console.log('[DB getUserProfile] Final profile.isAdmin:', profile.isAdmin);
 
       // If there was no profile at all but we have root isAdmin, still return it
       if (Object.keys(profile).length === 0 && data.isAdmin !== undefined) {
@@ -76,15 +85,16 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       const profile = { ...(data.profile as Partial<User> || {}) };
 
       console.log('[DB listenToUserProfile] Raw data:', {
+        hasProfile: !!data.profile,
         profileIsAdmin: data.profile?.isAdmin,
         rootIsAdmin: data.isAdmin,
         userId
       });
 
-      // Priority: profile.isAdmin > root isAdmin > false (default)
-      // This ensures isAdmin is always defined and returned
-      if (profile.isAdmin === undefined) {
-        profile.isAdmin = data.isAdmin !== undefined ? data.isAdmin : false;
+      // Priority: profile.isAdmin > root isAdmin (always check root as fallback)
+      // IMPORTANT: We need to ALWAYS set isAdmin, even if it's false
+      if (profile.isAdmin === undefined || profile.isAdmin === null) {
+        profile.isAdmin = data.isAdmin === true; // Force boolean check
       }
 
       console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
