@@ -46,10 +46,10 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
       const data = snap.data();
       const profile = { ...(data.profile as Partial<User> || {}) };
 
-      // Fallback/Merge: If isAdmin exists in root but not in profile, use root.
-      // Prioritize profile if exists.
-      if (profile.isAdmin === undefined && data.isAdmin !== undefined) {
-        profile.isAdmin = data.isAdmin;
+      // Priority: profile.isAdmin > root isAdmin > false (default)
+      // This ensures isAdmin is always defined and returned
+      if (profile.isAdmin === undefined) {
+        profile.isAdmin = data.isAdmin !== undefined ? data.isAdmin : false;
       }
 
       // If there was no profile at all but we have root isAdmin, still return it
@@ -73,13 +73,22 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
   return onSnapshot(userRef, (doc) => {
     if (doc.exists()) {
       const data = doc.data();
-      const profile = data.profile as Partial<User> || {};
-      
-      // Fallback for root isAdmin
-      if (profile.isAdmin === undefined && data.isAdmin !== undefined) {
-        profile.isAdmin = data.isAdmin;
+      const profile = { ...(data.profile as Partial<User> || {}) };
+
+      console.log('[DB listenToUserProfile] Raw data:', {
+        profileIsAdmin: data.profile?.isAdmin,
+        rootIsAdmin: data.isAdmin,
+        userId
+      });
+
+      // Priority: profile.isAdmin > root isAdmin > false (default)
+      // This ensures isAdmin is always defined and returned
+      if (profile.isAdmin === undefined) {
+        profile.isAdmin = data.isAdmin !== undefined ? data.isAdmin : false;
       }
-      
+
+      console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
+
       callback(profile);
     } else {
       callback({});

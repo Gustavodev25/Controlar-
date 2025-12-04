@@ -843,6 +843,13 @@ const App: React.FC = () => {
           const tokenResult = await firebaseUser.getIdTokenResult?.();
           adminFromClaims = !!(tokenResult?.claims?.admin || tokenResult?.claims?.isAdmin);
           const profile = await dbService.getUserProfile(firebaseUser.uid);
+
+          console.log('[Auth] Profile loaded:', {
+            profileIsAdmin: profile?.isAdmin,
+            adminFromClaims,
+            finalIsAdmin: profile?.isAdmin ?? adminFromClaims
+          });
+
           const baseProfile: User = {
             name: firebaseUser.displayName || profile?.name || 'Usuário',
             email: firebaseUser.email || '',
@@ -1066,7 +1073,25 @@ const App: React.FC = () => {
     });
 
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
-      setCurrentUser(prev => prev ? { ...prev, ...data } : null);
+      setCurrentUser(prev => {
+        if (!prev) return null;
+
+        console.log('[Profile Listener] Profile update received:', {
+          prevIsAdmin: prev.isAdmin,
+          dataIsAdmin: data.isAdmin,
+          willPreserve: data.isAdmin === undefined && prev.isAdmin !== undefined
+        });
+
+        // Preserve isAdmin if it was already set and new data doesn't have it
+        const updatedUser = { ...prev, ...data };
+        // If the new data doesn't have isAdmin defined but prev had it, keep prev's value
+        if (data.isAdmin === undefined && prev.isAdmin !== undefined) {
+          updatedUser.isAdmin = prev.isAdmin;
+        }
+
+        console.log('[Profile Listener] Final user isAdmin:', updatedUser.isAdmin);
+        return updatedUser;
+      });
     });
 
     const unsubMembers = dbService.listenToMembers(userId, (data) => {
