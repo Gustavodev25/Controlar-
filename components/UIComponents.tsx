@@ -1,6 +1,59 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X } from './Icons';
+
+// --- ESTILOS DAS ANIMAÇÕES ---
+// Você pode mover isso para o seu arquivo CSS global se preferir
+const styles = `
+  /* Animação de abertura vertical (Dropdowns) */
+  @keyframes expandVertical {
+    0% {
+      opacity: 0;
+      transform: scaleY(0.8) translateY(-10px);
+    }
+    100% {
+      opacity: 1;
+      transform: scaleY(1) translateY(0);
+    }
+  }
+  
+  .animate-dropdown-open {
+    transform-origin: top center;
+    animation: expandVertical 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Animação surgindo de baixo (Modal/Card) */
+  @keyframes expandUp {
+    0% {
+      opacity: 0;
+      transform: scaleY(0.8) translateY(20px);
+    }
+    100% {
+      opacity: 1;
+      transform: scaleY(1) translateY(0);
+    }
+  }
+
+  .animate-modal-up {
+    transform-origin: bottom center;
+    animation: expandUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 4px;
+  }
+`;
+
+// Helper para injetar estilos (opcional se você colocar no CSS global)
+const InjectStyles = () => <style>{styles}</style>;
 
 // --- CUSTOM AUTOCOMPLETE (Combobox) ---
 interface AutocompleteOption {
@@ -58,6 +111,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
+      <InjectStyles />
       <div 
         className={`
           w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 transition-all group focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)]
@@ -77,7 +131,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
       </div>
 
       {isOpen && (inputValue || filteredOptions.length > 0) && (
-        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
           {filteredOptions.length > 0 ? (
             filteredOptions.map((opt) => (
               <div
@@ -146,6 +200,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
+      <InjectStyles />
       <div 
         onClick={() => setIsOpen(!isOpen)}
         className={`
@@ -163,7 +218,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-fade-in">
+        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
           {normalizedOptions.map((opt) => (
             <div
               key={String(opt.value)}
@@ -255,6 +310,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
+       <InjectStyles />
        <div 
         onClick={() => setIsOpen(!isOpen)}
         className={`
@@ -279,7 +335,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-fade-in">
+        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open">
           
           {/* Year Navigation Header */}
           <div className="flex items-center justify-between mb-2 px-1">
@@ -305,27 +361,27 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
 
           {/* Month Grid */}
           <div className="grid grid-cols-4 gap-2 mb-4">
-             {months.map((m, i) => {
-               const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
-               const isCurrent = currentYear === viewYear && currentMonthIndex === i;
-               
-               return (
-                 <button
-                   key={m}
-                   onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
-                   className={`
-                     h-9 rounded-lg text-sm font-medium transition-all
-                     ${isSelected 
-                       ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30 scale-105' 
-                       : isCurrent 
-                         ? 'bg-gray-800 text-[#d97757] border border-[#d97757]/50'
-                         : 'text-gray-300 hover:bg-gray-700 hover:text-white'}
-                   `}
-                 >
-                   {m}
-                 </button>
-               );
-             })}
+              {months.map((m, i) => {
+                const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
+                const isCurrent = currentYear === viewYear && currentMonthIndex === i;
+                
+                return (
+                  <button
+                    key={m}
+                    onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
+                    className={`
+                      h-9 rounded-lg text-sm font-medium transition-all
+                      ${isSelected 
+                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30 scale-105' 
+                        : isCurrent 
+                          ? 'bg-gray-800 text-[#d97757] border border-[#d97757]/50'
+                          : 'text-gray-300 hover:bg-gray-700 hover:text-white'}
+                    `}
+                  >
+                    {m}
+                  </button>
+                );
+              })}
           </div>
 
           {/* Footer Actions */}
@@ -439,6 +495,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
+       <InjectStyles />
        <div 
         onClick={() => setIsOpen(!isOpen)}
         className={`
@@ -453,7 +510,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-fade-in">
+        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open">
           <div className="flex items-center justify-between mb-4">
             <button onClick={(e) => {e.preventDefault(); handlePrevMonth();}} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
               <ChevronLeft size={16} />
@@ -464,12 +521,12 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
             </button>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center mb-2">
-             {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-               <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
-             ))}
+              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
+              ))}
           </div>
           <div className="grid grid-cols-7 gap-1 place-items-center">
-             {renderCalendar()}
+              {renderCalendar()}
           </div>
         </div>
       )}
@@ -490,13 +547,7 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onValueChan
   // Update local state when the external value prop changes
   useEffect(() => {
     if (value !== undefined && !isNaN(value)) {
-      // Format as BRL string if not currently focusing/typing, OR if it's the initial load
-      // We check document.activeElement to avoid overwriting while typing if this effect runs
-      // But for simplicity, let's just set it. If user is typing, we rely on handleChange.
-      // To avoid jumping cursor, we might want to only format on blur or initial.
-      // Here: Initial set.
       const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      // Only update if the parsed number from current display is different, to avoid loop
       const currentNum = parseCurrency(displayValue);
       if (Math.abs(currentNum - value) > 0.001) { // float comparison
          setDisplayValue(formatted);
@@ -527,10 +578,6 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onValueChan
 
     setDisplayValue(val);
     
-    // We don't call onValueChange immediately with the partial number because
-    // "1" -> 1.00, "10" -> 10.00. But "10," -> is NaN or 10.
-    // We want to wait? No, real-time updates are usually good but parsing needs care.
-    // Strategy: Parse continuously.
     const num = parseCurrency(val);
     onValueChange(num);
   };
@@ -584,48 +631,51 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
     <div className={`
       fixed bottom-8 left-1/2 -translate-x-1/2 z-[200]
       w-[90%] max-w-sm
-      transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-      ${isOpen ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-10 opacity-0 scale-95'}
+      ${isOpen ? '' : 'pointer-events-none'}
     `}>
-       <div className="bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl p-6 relative overflow-hidden">
+       <InjectStyles />
+       <div className={`
+          bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl p-6 relative overflow-hidden
+          ${isOpen ? 'animate-modal-up' : 'opacity-0 translate-y-4 transition-all duration-300 ease-in'}
+       `}>
           {/* Decorative background blur based on type */}
           <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none ${isDestructive ? 'bg-red-500' : 'bg-[#d97757]'}`}></div>
 
           <div className="relative z-10">
-             <div className="flex flex-col items-center text-center mb-6">
-                 <div className={`
+              <div className="flex flex-col items-center text-center mb-6">
+                  <div className={`
                     w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg
                     ${isDestructive 
                         ? 'bg-red-500/10 text-red-500 ring-1 ring-red-500/20' 
                         : 'bg-[#d97757]/10 text-[#d97757] ring-1 ring-[#d97757]/20'}
-                 `}>
-                   <AlertTriangle size={28} strokeWidth={2} />
-                 </div>
-                 
-                 <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-                 <p className="text-sm text-gray-400 leading-relaxed max-w-[260px]">{description}</p>
-             </div>
+                  `}>
+                    <AlertTriangle size={28} strokeWidth={2} />
+                  </div>
+                  
+                  <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+                  <p className="text-sm text-gray-400 leading-relaxed max-w-[260px]">{description}</p>
+              </div>
 
-             <div className="grid grid-cols-2 gap-3">
-                 <button 
-                   onClick={onClose}
-                   className="px-4 py-3 rounded-xl text-sm font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all"
-                 >
-                   {cancelText}
-                 </button>
-                 <button 
-                   onClick={() => { onConfirm(); onClose(); }}
-                   className={`
-                     px-4 py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2
-                     ${isDestructive 
-                       ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20' 
-                       : 'bg-[#d97757] hover:bg-[#c56a4d] shadow-[#d97757]/20'}
-                   `}
-                 >
-                   {confirmText}
-                   {isDestructive ? null : <Check size={18} />}
-                 </button>
-             </div>
+              <div className="grid grid-cols-2 gap-3">
+                  <button 
+                    onClick={onClose}
+                    className="px-4 py-3 rounded-xl text-sm font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all"
+                  >
+                    {cancelText}
+                  </button>
+                  <button 
+                    onClick={() => { onConfirm(); onClose(); }}
+                    className={`
+                      px-4 py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2
+                      ${isDestructive 
+                        ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20' 
+                        : 'bg-[#d97757] hover:bg-[#c56a4d] shadow-[#d97757]/20'}
+                    `}
+                  >
+                    {confirmText}
+                    {isDestructive ? null : <Check size={18} />}
+                  </button>
+              </div>
           </div>
        </div>
     </div>

@@ -26,6 +26,7 @@ export interface Investment {
 interface InvestmentsProps {
   investments: Investment[];
   connectedSavingsAccounts?: ConnectedAccount[];
+  transactions?: Transaction[];
   onAdd: (investment: Omit<Investment, 'id'>) => void;
   onUpdate: (investment: Investment) => void;
   onDelete: (id: string) => void;
@@ -61,6 +62,7 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 export const Investments: React.FC<InvestmentsProps> = ({
   investments,
   connectedSavingsAccounts = [],
+  transactions = [],
   onAdd,
   onUpdate,
   onDelete,
@@ -579,6 +581,50 @@ export const Investments: React.FC<InvestmentsProps> = ({
           </>
         )}
       </div>
+
+      {/* Transactions List (Extrato de Poupança) */}
+      {transactions.length > 0 && (
+        <div className="mt-8 pt-8 border-t border-gray-800">
+          <div className="flex items-center gap-3 mb-6">
+            <div className="p-2.5 bg-gray-900 rounded-xl border border-gray-800 text-emerald-500">
+                <Sparkles size={20} />
+            </div>
+            <div>
+                <h3 className="font-bold text-white text-lg">Extrato de Caixinhas</h3>
+                <p className="text-xs text-gray-400">Histórico de movimentações em contas poupança conectadas</p>
+            </div>
+          </div>
+
+          <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
+             <table className="min-w-full border-collapse text-sm text-left">
+                <thead className="bg-gray-900 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    <tr>
+                        <th className="px-6 py-4 border-b border-gray-800">Data</th>
+                        <th className="px-6 py-4 border-b border-gray-800">Descrição</th>
+                        <th className="px-6 py-4 border-b border-gray-800 text-right">Valor</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-800/50">
+                    {transactions.map(t => (
+                        <tr key={t.id} className="hover:bg-gray-900/40 transition-colors">
+                            <td className="px-6 py-4 text-gray-400 font-mono text-xs">
+                                {new Date(t.date).toLocaleDateString('pt-BR')}
+                            </td>
+                            <td className="px-6 py-4 text-gray-200 font-medium">
+                                {t.description}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                                <span className={`font-bold font-mono ${t.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                    {formatCurrency(t.amount)}
+                                </span>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+             </table>
+          </div>
+        </div>
+      )}
 
       {/* Create/Edit Modal - VISUAL IGUAL REMINDERS */}
 

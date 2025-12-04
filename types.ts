@@ -70,6 +70,16 @@ export interface Subscription {
   provider?: string;
 }
 
+export interface WaitlistEntry {
+  id?: string;
+  name: string;
+  email: string;
+  phone?: string;
+  goal?: string;
+  source?: string;
+  createdAt: string;
+}
+
 export interface Transaction {
   id: string;
   memberId?: string;

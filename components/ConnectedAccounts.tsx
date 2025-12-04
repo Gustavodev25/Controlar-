@@ -236,13 +236,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               
               {/* Cabeçalho do Card do Banco */}
               <div className="bg-gray-950/80 backdrop-blur-sm p-5 border-b border-gray-800 flex items-center justify-between gap-3 relative z-10">
-                <div className="flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner">
+                <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
                         <Building size={20} />
                     </div>
-                    <div>
+                    <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
-                        <h4 className="text-base font-bold text-white leading-tight">
+                        <h4 className="text-base font-bold text-white leading-tight truncate">
                         {institution}
                         </h4>
                     </div>
@@ -290,23 +290,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     <div key={acc.id} className="bg-gray-900/30 border border-gray-800/60 rounded-xl hover:border-gray-700 transition-colors">
                       {/* Resumo da Conta */}
                       <div className="p-4">
-                          <div className="flex justify-between items-start mb-3">
-                            <div className="flex gap-3">
-                                <div className={`p-1.5 rounded-lg ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
+                          <div className="flex justify-between items-center gap-3 mb-3">
+                            <div className="flex gap-3 items-center flex-1 min-w-0">
+                                <div className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
                                     {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
                                 </div>
-                                <div>
-                                    <p className="text-sm font-bold text-gray-200">{acc.name}</p>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                        <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium">
-                                            {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
-                                        </p>
-                                    </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
+                                        {acc.type} {acc.subtype ? `· ${acc.subtype}` : ""}
+                                    </p>
                                 </div>
                             </div>
-                            
-                            <div className="text-right min-w-[120px]">
-                                <p className={`text-base font-mono font-bold ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
+
+                            <div className="text-right flex-shrink-0">
+                                <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
                                     {formatCurrency(acc.balance, acc.currency)}
                                 </p>
                             </div>
@@ -342,7 +340,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                   title="Clique para alternar entre Fatura e Limite"
                                 >
                                     {showLimit ? (
-                                        <div key="limit" className="w-full animate-fade-in">
+                                        <div key="limit" className="w-full animate-dropdown-open">
                                             <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-700/50">
                                                 <div 
                                                     className={`h-full rounded-full transition-all duration-700 ease-out ${limitPercentage > 90 ? 'bg-red-500' : limitPercentage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
@@ -355,7 +353,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                             </div>
                                         </div>
                                     ) : (
-                                        <div key="invoice" className="flex items-center justify-between animate-fade-in">
+                                        <div key="invoice" className="flex items-center justify-between animate-dropdown-open">
                                             <div className="flex items-center gap-1.5 text-gray-500">
                                                 <PieChart size={12} className="group-hover/limit:text-[#d97757] transition-colors" />
                                                 <span className="text-[9px] font-medium group-hover/limit:text-white transition-colors">Fatura Atual</span>

@@ -392,15 +392,11 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
 };
 
 /**
- * Busca contas e transacoes do item conectado e salva no Firestore.
+ * Importa automaticamente todas as transacoes do Item para o Firestore.
+ * Usado principalmente na primeira conexao para popular dados.
  */
-export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
+export const autoImportPluggyItem = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
   try {
-    /* 
-    // AUTOMATIC SYNC DISABLED BY USER REQUEST
-    // We intentionally do not save transactions automatically anymore.
-    // Users must manually click "Import" to review and add transactions.
-    
     const candidates = await fetchPluggyTransactionsForImport(userId, itemId);
     
     let importedCount = 0;
@@ -408,7 +404,7 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
     const insertedKeys = new Set<string>();
 
     for (const newTx of candidates) {
-       // Add memberId if provided (fetch doesn't know about it)
+       // Add memberId if provided
        if (memberId) newTx.memberId = memberId;
 
        const txKey = newTx.pluggyId!; 
@@ -435,13 +431,18 @@ export const syncPluggyData = async (userId: string, itemId: string, memberId?: 
 
     persistSavedTxIds(userId, itemId, savedIds);
     return importedCount;
-    */
-    
-    return 0;
   } catch (error) {
-    console.error("Error syncing Pluggy data:", error);
-    throw error;
+    console.error("Error auto-importing Pluggy data:", error);
+    return 0;
   }
+};
+
+/**
+ * Busca contas e transacoes do item conectado e salva no Firestore.
+ */
+export const syncPluggyData = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
+  // Re-enabled automatic sync via autoImportPluggyItem
+  return autoImportPluggyItem(userId, itemId, memberId);
 };
 
 export const markTransactionsAsImported = (userId: string, itemId: string, transactions: Omit<Transaction, "id">[]) => {

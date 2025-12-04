@@ -11,7 +11,7 @@ interface AuthModalProps {
   isTwoFactorPending?: boolean;
   onVerifyTwoFactor?: (code: string) => Promise<void>;
   onCancelTwoFactor?: () => void;
-  inviteContext?: { ownerName: string } | null;
+  inviteContext?: { ownerName: string } | null | undefined;
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ 

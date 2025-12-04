@@ -17,12 +17,14 @@ import {
   RotateCcw,
   Menu,
   Target,
-  Building
+  Building,
+  CreditCard
 } from './components/Icons';
 import { Flame, Vault, Lock, MessageCircle } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
+import { CreditCardTable } from './components/CreditCardTable';
 import { AIModal } from './components/AIModal';
 import { AuthModal } from './components/AuthModal';
 import { LandingPage } from './components/LandingPage';
@@ -223,6 +225,8 @@ const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   );
 };
 
+import { InviteLanding } from './components/InviteLanding';
+
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
@@ -233,6 +237,13 @@ const App: React.FC = () => {
   const [pendingInvite, setPendingInvite] = useState<{ token: string; familyId: string; ownerName?: string } | null>(null);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isProcessingInvite, setIsProcessingInvite] = useState(false);
+  const [showInviteLanding, setShowInviteLanding] = useState(() => {
+      if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          return !!params.get('inviteToken');
+      }
+      return false;
+  });
   const toast = useToasts();
 
   // Handle Family Invite Link & Context Loading
@@ -249,6 +260,7 @@ const App: React.FC = () => {
             if (token && familyId) {
                 localStorage.setItem('pending_invite_token', token);
                 localStorage.setItem('pending_invite_family_id', familyId);
+                // Clear URL params
                 window.history.replaceState({}, document.title, window.location.pathname);
             } else {
                 token = localStorage.getItem('pending_invite_token');
@@ -265,12 +277,35 @@ const App: React.FC = () => {
                     if (ownerProfile?.name) ownerName = ownerProfile.name;
                 }
                 setPendingInvite({ token, familyId, ownerName });
+                // Only show landing if no user is logged in yet.
+                // If logged in, logic further down handles it (showing InviteAcceptModal or auto-joining).
+                if (!auth.currentUser) {
+                    setShowInviteLanding(true);
+                }
             } catch (err) {
                 console.error("Erro ao carregar convite:", err);
             }
         }
       };
       loadInvite();
+  }, []);
+
+
+  // Landing variant selector (default waitlist, alt URL unlocks auth landing)
+  useEffect(() => {
+      if (typeof window === 'undefined') return;
+
+      const updateLandingVariant = () => {
+          const params = new URLSearchParams(window.location.search);
+          const landingParam = (params.get('landing') || '').toLowerCase();
+          const path = window.location.pathname.toLowerCase();
+          const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
+          setLandingVariant(isAltLanding ? 'auth' : 'waitlist');
+      };
+
+      updateLandingVariant();
+      window.addEventListener('popstate', updateLandingVariant);
+      return () => window.removeEventListener('popstate', updateLandingVariant);
   }, []);
 
   // Trigger Modal after Login
@@ -360,6 +395,14 @@ const App: React.FC = () => {
 
   // Landing Page State
   const [showLanding, setShowLanding] = useState(true);
+  const [landingVariant, setLandingVariant] = useState<'waitlist' | 'auth'>(() => {
+    if (typeof window === 'undefined') return 'waitlist';
+    const params = new URLSearchParams(window.location.search);
+    const landingParam = (params.get('landing') || '').toLowerCase();
+    const path = window.location.pathname.toLowerCase();
+    const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
+    return isAltLanding ? 'auth' : 'waitlist';
+  });
 
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -694,6 +737,7 @@ const App: React.FC = () => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser: any) => {
       if (firebaseUser) {
         setShowLanding(false); // Hide landing if user is logged in
+        setShowInviteLanding(false); // Hide invite landing if user logs in
 
         try {
           const profile = await dbService.getUserProfile(firebaseUser.uid);
@@ -818,7 +862,7 @@ const App: React.FC = () => {
               
               if (advance > 0) {
                    // Determine Vale Date
-                   let valeDateStr = dateStr;
+                   let valeDateStr = dateString;
                    const pDay = currentUser.salaryPaymentDay || 5;
                    const aDay = currentUser.salaryAdvanceDay;
                    
@@ -1108,6 +1152,28 @@ const App: React.FC = () => {
     return memberFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
   }, [memberFilteredTransactions]);
 
+  // Split transactions by Account Type for different tabs
+  const checkingTransactions = useMemo(() => {
+    return memberFilteredTransactions.filter(t => {
+        const type = (t.accountType || '').toUpperCase();
+        return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
+    });
+  }, [memberFilteredTransactions]);
+
+  const creditCardTransactions = useMemo(() => {
+    return memberFilteredTransactions.filter(t => {
+        const type = (t.accountType || '').toUpperCase();
+        return type.includes('CREDIT');
+    });
+  }, [memberFilteredTransactions]);
+
+  const savingsTransactions = useMemo(() => {
+    return memberFilteredTransactions.filter(t => {
+        const type = (t.accountType || '').toUpperCase();
+        return type.includes('SAVINGS') || t.isInvestment;
+    });
+  }, [memberFilteredTransactions]);
+
   const averageMonthlyExpense = useMemo(() => {
     const expensesByMonth: Record<string, number> = {};
     reviewedMemberTransactions.forEach(t => {
@@ -1343,16 +1409,15 @@ const App: React.FC = () => {
        // Pro: 2 Total (Admin + 1 profile).
        // Family: 5 Total.
 
-       if (plan === 'starter' && currentCount >= 1) {
-           toast.error("O plano Starter não permite criar perfis adicionais. Faça upgrade para Pro ou Família.", { duration: 5000 });
-           return;
-       }
-
-       if (plan === 'pro' && currentCount >= 2) {
-           toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.", { duration: 5000 });
-           return;
-       }
+                  if (plan === 'starter' && currentCount >= 1) {
+                      toast.error("O plano Starter não permite criar perfis adicionais. Faça upgrade para Pro ou Família.");
+                      return;
+                  }
        
+                  if (plan === 'pro' && currentCount >= 2) {
+                      toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.");
+                      return;
+                  }       
        if (plan === 'family' && currentCount >= 5) {
            toast.error("Limite de 5 perfis atingido no plano Família.");
            return;
@@ -1470,11 +1535,11 @@ const App: React.FC = () => {
     try {
       await dbService.deleteTransaction(userId, id);
       toast.message({
-        text: "Transação Removida",
-        action: "Desfazer",
-        onAction: async () => {
-          if (deleted) await dbService.restoreTransaction(userId, deleted);
-        }
+         text: "Transação excluída.",
+         actionLabel: "Desfazer",
+         onAction: () => {
+             if (userId) dbService.restoreTransaction(userId, t);
+         }
       });
     } catch (e) {
       toast.error("Erro ao remover.");
@@ -1681,11 +1746,23 @@ const App: React.FC = () => {
 
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
+    if (showInviteLanding) {
+        return (
+            <>
+                <ToastContainer />
+                <InviteLanding 
+                    ownerName={pendingInvite?.ownerName || 'Alguém'}
+                    onAccept={() => setShowInviteLanding(false)}
+                />
+            </>
+        );
+    }
+
     if (showLanding && !pendingTwoFactor) {
       return (
         <>
           <ToastContainer />
-          <LandingPage onLogin={() => setShowLanding(false)} />
+          <LandingPage variant={landingVariant} onLogin={() => setShowLanding(false)} />
         </>
       );
     }
@@ -1702,7 +1779,7 @@ const App: React.FC = () => {
             isTwoFactorPending={!!pendingTwoFactor}
             onVerifyTwoFactor={handleVerifyTwoFactor}
             onCancelTwoFactor={handleCancelTwoFactor}
-            inviteContext={pendingInvite}
+            inviteContext={pendingInvite ? { ...pendingInvite, ownerName: pendingInvite.ownerName || 'Alguém' } : null}
         />
       </>
     );
@@ -1792,6 +1869,13 @@ const App: React.FC = () => {
                   onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                   icon={<Table2 size={20} />}
                   label="Lançamentos"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
+                  active={activeTab === 'credit_cards'}
+                  onClick={() => { setActiveTab('credit_cards'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<CreditCard size={20} />}
+                  label="Cartão de Crédito"
                   isOpen={isSidebarOpen}
                 />
                 <NavItem
@@ -2011,7 +2095,7 @@ const App: React.FC = () => {
                     {showProjectionMenu && (
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setShowProjectionMenu(false)}></div>
-                        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-2 animate-slide-down">
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-2 animate-dropdown-open">
                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1.5 mb-1">
                               Incluir na Previsão
                            </div>
@@ -2292,7 +2376,17 @@ const App: React.FC = () => {
                 {activeTab === 'table' && (
                   <div className="h-[calc(100vh-140px)] animate-fade-in">
                     <ExcelTable
-                      transactions={memberFilteredTransactions}
+                      transactions={checkingTransactions}
+                      onDelete={handleDeleteTransaction}
+                      onUpdate={handleUpdateTransaction}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'credit_cards' && (
+                  <div className="h-[calc(100vh-140px)] animate-fade-in">
+                    <CreditCardTable
+                      transactions={creditCardTransactions}
                       onDelete={handleDeleteTransaction}
                       onUpdate={handleUpdateTransaction}
                     />
@@ -2324,6 +2418,7 @@ const App: React.FC = () => {
                     <Investments
                       investments={memberInvestments}
                       connectedSavingsAccounts={connectedSavingsAccounts}
+                      transactions={savingsTransactions}
                       onAdd={handleAddInvestment}
                       onUpdate={handleUpdateInvestment}
                       onDelete={handleDeleteInvestment}

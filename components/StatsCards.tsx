@@ -21,6 +21,8 @@ interface StatsCardsProps {
     setIncludeCredit: (v: boolean) => void;
     creditCardUseTotalLimit?: boolean;
     setCreditCardUseTotalLimit?: (v: boolean) => void;
+    creditCardUseFullLimit?: boolean;
+    setCreditCardUseFullLimit?: (v: boolean) => void;
   };
 }
 
@@ -115,7 +117,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                              />
                            </p>
                            <span className="text-xs text-gray-500 font-medium">
-                               {toggles.creditCardUseFullLimit ? 'limite total' : (toggles.creditCardUseTotalLimit ? 'fatura total' : 'fatura mês')}
+                               {toggles.creditCardUseFullLimit ? 'limite total' : 'fatura atual'}
                            </span>
                        </div>
                     </div>
@@ -146,7 +148,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                                     <div className={`p-1.5 rounded bg-orange-900/30 text-orange-400`}>
                                         <CreditCard size={14} />
                                     </div>
-                                    <span className="text-sm text-gray-300 group-hover:text-white">Fatura do mês</span>
+                                    <span className="text-sm text-gray-300 group-hover:text-white">Incluir nas Despesas</span>
                                 </div>
                                 <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.includeCredit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
                                     <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.includeCredit ? 'translate-x-5' : 'translate-x-1'}`} />
@@ -167,7 +169,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                                         <div className={`p-1.5 rounded bg-purple-900/30 text-purple-400`}>
                                             <Link size={14} />
                                         </div>
-                                        <span className="text-sm text-gray-300 group-hover:text-white">Limite Consumido</span>
+                                        <span className="text-sm text-gray-300 group-hover:text-white">Usar Saldo do Banco</span>
                                     </div>
                                     <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.creditCardUseTotalLimit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
                                         <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.creditCardUseTotalLimit ? 'translate-x-5' : 'translate-x-1'}`} />

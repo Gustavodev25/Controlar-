@@ -1,7 +1,8 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
+import { EmptyState } from './EmptyState';
 import { Transaction, Member, FamilyGoal, FamilyGroup, User } from '../types';
-import { Trophy, Target, TrendingUp, TrendingDown, Plus, Coins, Check, X, Users, Trash2, Edit2, Copy, Link as LinkIcon, UserPlus, LogOut } from './Icons';
+import { Trophy, Target, TrendingUp, TrendingDown, Plus, Coins, Check, X, Trash2, Edit2, Copy, Link as LinkIcon, UserPlus, LogOut } from './Icons';
 import { StatsCards } from './StatsCards';
 import { ConfirmationCard } from './UIComponents';
 import { toLocalISODate } from '../utils/dateUtils';
@@ -301,23 +302,21 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
 
              {/* If User has no family group yet */}
              {!familyGroup && !loadingFamily && (
-                 <div className="bg-gradient-to-r from-gray-900 to-gray-800 border border-gray-700 rounded-2xl p-8 text-center relative overflow-hidden">
-                     <div className="relative z-10">
-                         <Users size={48} className="mx-auto text-[#d97757] mb-4" />
-                         <h3 className="text-xl font-bold text-white mb-2">
-                            {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
-                                ? 'Configure sua Família' 
-                                : 'Crie sua Família'
-                            }
-                         </h3>
-                         <p className="text-gray-400 max-w-md mx-auto mb-6">
-                             {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
-                                ? 'Você já tem o plano ativo! Agora crie o grupo para convidar os membros.'
-                                : 'Compartilhe os benefícios Premium com quem você ama. Acompanhem metas juntos e gerenciem o orçamento doméstico.'
-                             }
-                         </p>
-                         <button 
-                            onClick={() => {
+                 <EmptyState
+                     image="/assets/familia.png"
+                     title={currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                        ? 'Configure sua Família' 
+                        : 'Crie sua Família'
+                     }
+                     description={currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                        ? 'Você já tem o plano ativo! Agora crie o grupo para convidar os membros.'
+                        : 'Compartilhe os benefícios Premium com quem você ama. Acompanhem metas juntos e gerenciem o orçamento doméstico.'
+                     }
+                     action={{
+                         label: currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
+                            ? 'Criar Grupo Familiar' 
+                            : 'Ativar Plano Familiar',
+                         onClick: () => {
                                 if (userId) {
                                     const currentPlan = currentUser?.subscription?.plan || 'starter';
                                     
@@ -326,12 +325,18 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                         return;
                                     }
 
+                                    const toastId = toast.loading("Criando grupo familiar...");
+
                                     // Initialize as Pro/Family based on subscription
                                     const plan = currentPlan === 'pro' ? 'pro' : 'family';
                                     
                                     familyService.initializeFamilyGroup(userId, plan)
-                                        .then(() => toast.success("Grupo familiar criado!"))
+                                        .then(() => {
+                                            toast.dismiss(toastId);
+                                            toast.success("Grupo familiar criado!");
+                                        })
                                         .catch((err) => {
+                                            toast.dismiss(toastId);
                                             console.error("Erro ao criar grupo:", err);
                                             if (err.code === 'permission-denied') {
                                                 toast.error("Permissão negada! Atualize as regras do Firestore no Firebase Console para permitir a coleção 'families'.");
@@ -340,16 +345,9 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                             }
                                         });
                                 }
-                            }}
-                            className="px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-transform hover:scale-105"
-                         >
-                             {currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro' 
-                                ? 'Criar Grupo Familiar' 
-                                : 'Ativar Plano Familiar'
-                             }
-                         </button>
-                     </div>
-                 </div>
+                         }
+                     }}
+                 />
              )}
 
              {/* Slots Grid */}

@@ -32,7 +32,11 @@ export const initializeFamilyGroup = async (userId: string, plan: 'pro' | 'famil
   const snapshot = await getDocs(q);
 
   if (!snapshot.empty) {
-    return snapshot.docs[0].id;
+    const existingGroupId = snapshot.docs[0].id;
+    // Ensure user profile is linked even if group exists
+    const userRef = doc(db, "users", userId);
+    await setDoc(userRef, { profile: { familyGroupId: existingGroupId, familyRole: 'owner' } }, { merge: true });
+    return existingGroupId;
   }
 
   // Create new group

@@ -15,7 +15,7 @@ import {
   limit
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry } from "../types";
 import { AppNotification } from "../types";
 
 // --- User Services ---
@@ -62,6 +62,23 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       callback({});
     }
   });
+};
+
+// --- Waitlist Services ---
+export const addWaitlistEntry = async (entry: Omit<WaitlistEntry, 'id'>) => {
+  if (!db) {
+    console.warn("Firestore nao configurado; ignorando cadastro na lista de espera");
+    return { id: null as string | null };
+  }
+
+  const waitlistRef = collection(db, "waitlist");
+  const payload = {
+    ...entry,
+    createdAt: entry.createdAt || new Date().toISOString()
+  };
+
+  const docRef = await addDoc(waitlistRef, payload);
+  return { id: docRef.id };
 };
 
 // --- Members Services ---

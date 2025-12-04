@@ -1,12 +1,16 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
+
     // Regras para Usuarios: Cada um acessa apenas seus proprios dados
-    match /users/{userId}/{document=**} {
+    match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
     
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
     // Regras para Familias
     match /families/{familyId} {
       // Leitura: Permitida se o usuario for membro ou dono
@@ -14,15 +18,21 @@ service cloud.firestore {
         resource.data.ownerId == request.auth.uid ||
         resource.data.members.hasAny([request.auth.uid])
       );
-      
+
       // Criacao: Permitida para qualquer usuario autenticado (que se defina como dono)
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
-      
+
       // Atualizacao: Permitida para membros (ex: entrar/sair) ou dono
       allow update: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
         resource.data.members.hasAny([request.auth.uid])
       );
+    }
+
+    // Regras para Lista de Espera: Permitir escrita publica (criar apenas)
+    match /waitlist/{document} {
+      allow create: if true; // Permite que qualquer pessoa adicione entrada na lista
+      allow read, update, delete: if false; // Apenas admins podem ler/atualizar/deletar (via console)
     }
   }
 }

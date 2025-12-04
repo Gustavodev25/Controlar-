@@ -77,6 +77,8 @@ export const useToasts = () => {
     warning: (text: string, description?: string) => toast.warning(text, { description }),
     error: (text: string, description?: string) => toast.error(text, { description }),
     info: (text: string, description?: string) => toast.info(text, { description }),
+    loading: (text: string, description?: string) => toast.loading(text, { description }),
+    dismiss: (id?: string | number) => toast.dismiss(id),
     promise,
   };
 };

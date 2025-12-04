@@ -91,7 +91,10 @@ import {
   RefreshCw,
   ArrowUpCircle,
   ArrowDownCircle,
-  UserPlus
+  UserPlus,
+  Phone,
+  Flame,
+  Percent
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -204,7 +207,10 @@ export {
   RefreshCw,
   ArrowUpCircle,
   ArrowDownCircle,
-  UserPlus
+  UserPlus,
+  Phone,
+  Flame,
+  Percent
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
