@@ -2,37 +2,45 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Regras para Usuarios: Cada um acessa apenas seus proprios dados
+    // Helper: Verifica se o usuario atual e admin
+    function isUserAdmin() {
+      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
+      return userDoc != null && userDoc.data.profile.isAdmin == true;
+    }
+
+    // Regras para Usuarios: Dono ou Admin
     match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isUserAdmin());
     }
     
     match /users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isUserAdmin());
     }
 
     // Regras para Familias
     match /families/{familyId} {
-      // Leitura: Permitida se o usuario for membro ou dono
+      // Leitura: Membro, Dono ou Admin
       allow read: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
-        resource.data.members.hasAny([request.auth.uid])
+        resource.data.members.hasAny([request.auth.uid]) ||
+        isUserAdmin()
       );
 
-      // Criacao: Permitida para qualquer usuario autenticado (que se defina como dono)
+      // Criacao: Qualquer um
       allow create: if request.auth != null && request.resource.data.ownerId == request.auth.uid;
 
-      // Atualizacao: Permitida para membros (ex: entrar/sair) ou dono
+      // Atualizacao: Membro, Dono ou Admin
       allow update: if request.auth != null && (
         resource.data.ownerId == request.auth.uid ||
-        resource.data.members.hasAny([request.auth.uid])
+        resource.data.members.hasAny([request.auth.uid]) ||
+        isUserAdmin()
       );
     }
 
-    // Regras para Lista de Espera: Permitir escrita publica (criar apenas)
+    // Regras para Lista de Espera
     match /waitlist/{document} {
-      allow create: if true; // Permite que qualquer pessoa adicione entrada na lista
-      allow read, update, delete: if false; // Apenas admins podem ler/atualizar/deletar (via console)
+      allow create: if true;  // Qualquer pessoa pode se cadastrar
+      allow read, update, delete: if request.auth != null && isUserAdmin();  // Apenas admins autenticados
     }
   }
 }

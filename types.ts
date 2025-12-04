@@ -27,6 +27,7 @@ export interface User {
   };
   familyGroupId?: string;
   familyRole?: 'owner' | 'member';
+  isAdmin?: boolean;
 }
 
 export interface FamilyGroup {

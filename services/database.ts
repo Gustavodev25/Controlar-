@@ -12,7 +12,8 @@ import {
   where,
   orderBy,
   getDocs,
-  limit
+  limit,
+  writeBatch
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry } from "../types";
@@ -42,7 +43,16 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
     const snap = await getDoc(userRef);
 
     if (snap.exists()) {
-      return snap.data().profile as Partial<User>;
+      const data = snap.data();
+      const profile = data.profile as Partial<User>;
+      
+      // Fallback/Merge: If isAdmin exists in root but not in profile, use root.
+      // Prioritize profile if exists.
+      if (profile && profile.isAdmin === undefined && data.isAdmin !== undefined) {
+        profile.isAdmin = data.isAdmin;
+      }
+      
+      return profile;
     }
     return null;
   } catch (error) {
@@ -57,11 +67,54 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
 
   return onSnapshot(userRef, (doc) => {
     if (doc.exists()) {
-      callback(doc.data().profile || {});
+      const data = doc.data();
+      const profile = data.profile as Partial<User> || {};
+      
+      // Fallback for root isAdmin
+      if (profile.isAdmin === undefined && data.isAdmin !== undefined) {
+        profile.isAdmin = data.isAdmin;
+      }
+      
+      callback(profile);
     } else {
       callback({});
     }
   });
+};
+
+export const migrateUsersAddAdminField = async () => {
+  if (!db) return 0;
+  try {
+    const usersRef = collection(db, "users");
+    const snapshot = await getDocs(usersRef);
+    
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let updatedCount = 0;
+
+    for (const d of snapshot.docs) {
+        const data = d.data();
+        if (data.profile && data.profile.isAdmin === undefined) {
+            batch.update(d.ref, { "profile.isAdmin": false });
+            operationCount++;
+            updatedCount++;
+
+            if (operationCount >= 450) {
+                await batch.commit();
+                batch = writeBatch(db);
+                operationCount = 0;
+            }
+        }
+    }
+
+    if (operationCount > 0) {
+        await batch.commit();
+    }
+    return updatedCount;
+  } catch (e) {
+    console.error("Migration failed:", e);
+    throw e;
+  }
 };
 
 // --- Waitlist Services ---
@@ -79,6 +132,44 @@ export const addWaitlistEntry = async (entry: Omit<WaitlistEntry, 'id'>) => {
 
   const docRef = await addDoc(waitlistRef, payload);
   return { id: docRef.id };
+};
+
+export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {
+  if (!db) {
+    console.warn("Database não inicializado");
+    return [];
+  }
+  try {
+    console.log("Buscando waitlist no Firebase...");
+    const waitlistRef = collection(db, "waitlist");
+
+    // Primeiro tentamos sem ordenação para ver se o problema é o índice
+    const snapshot = await getDocs(waitlistRef);
+
+    console.log("Snapshot recebido, total de docs:", snapshot.size);
+
+    const entries = snapshot.docs.map(doc => {
+      const data = doc.data();
+      console.log("Documento:", doc.id, data);
+      return {
+        id: doc.id,
+        ...data
+      } as WaitlistEntry;
+    });
+
+    // Ordenamos manualmente no lado do cliente
+    entries.sort((a, b) => {
+      const dateA = new Date(a.createdAt || 0).getTime();
+      const dateB = new Date(b.createdAt || 0).getTime();
+      return dateB - dateA;
+    });
+
+    console.log("Entries processados e ordenados:", entries);
+    return entries;
+  } catch (error) {
+    console.error("Error fetching waitlist:", error);
+    return [];
+  }
 };
 
 // --- Members Services ---

@@ -20,7 +20,7 @@ import {
   Building,
   CreditCard
 } from './components/Icons';
-import { Flame, Vault, Lock, MessageCircle } from 'lucide-react';
+import { Flame, Vault, Lock, MessageCircle, Users as UsersIcon } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -48,6 +48,7 @@ import { verifyTOTP } from './services/twoFactor';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter, SystemNotification } from './components/NotificationCenter';
 import { Logo } from './components/Logo';
+import { Analytics } from '@vercel/analytics/react';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
@@ -57,6 +58,8 @@ import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
 import { ImportReviewModal } from './components/ImportReviewModal';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
+import { AdminDashboard } from './components/AdminDashboard';
+import { AdminWaitlist } from './components/AdminWaitlist';
 
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
@@ -382,7 +385,8 @@ const App: React.FC = () => {
   });
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription' | 'subscriptions'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription' | 'subscriptions' | 'credit_cards' | 'admin_overview' | 'admin_waitlist'>('dashboard');
+  const [isAdminMode, setIsAdminMode] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
     // Check if mobile on initial load
@@ -842,7 +846,8 @@ const App: React.FC = () => {
             baseSalary: profile?.baseSalary || 0,
             avatarUrl: profile?.avatarUrl,
             twoFactorEnabled: profile?.twoFactorEnabled,
-            twoFactorSecret: profile?.twoFactorSecret
+            twoFactorSecret: profile?.twoFactorSecret,
+            isAdmin: profile?.isAdmin
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -1116,7 +1121,8 @@ const App: React.FC = () => {
         baseSalary: pendingTwoFactor.profile.baseSalary || 0,
         avatarUrl: pendingTwoFactor.profile.avatarUrl,
         twoFactorEnabled: true,
-        twoFactorSecret: pendingTwoFactor.profile.twoFactorSecret
+        twoFactorSecret: pendingTwoFactor.profile.twoFactorSecret,
+        isAdmin: pendingTwoFactor.profile.isAdmin
       });
       setPendingTwoFactor(null);
       toast.success("Identidade confirmada. Bem-vindo de volta!");
@@ -1926,6 +1932,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
+      <Analytics />
       <ToastContainer />
       <InviteAcceptModal 
           isOpen={showInviteModal} 
@@ -1984,88 +1991,108 @@ const App: React.FC = () => {
           <div className="space-y-1">
             {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Menu</p>}
 
-            {activeMemberId === 'FAMILY_OVERVIEW' ? (
-              <NavItem
-                active={true}
-                onClick={() => { }}
-                icon={<LayoutDashboard size={20} />}
-                label="Visão Geral"
-                isOpen={isSidebarOpen}
-              />
-            ) : (
+            {isAdminMode ? (
               <>
                 <NavItem
-                  active={activeTab === 'dashboard'}
-                  onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  active={activeTab === 'admin_overview'}
+                  onClick={() => { setActiveTab('admin_overview'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<LayoutDashboard size={20} />}
+                  label="Painel Admin"
+                  isOpen={isSidebarOpen}
+                />
+                <NavItem
+                  active={activeTab === 'admin_waitlist'}
+                  onClick={() => { setActiveTab('admin_waitlist'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                  icon={<UsersIcon size={20} />}
+                  label="Lista de Espera"
+                  isOpen={isSidebarOpen}
+                />
+                {/* Add more admin links here if needed */}
+              </>
+            ) : (
+              activeMemberId === 'FAMILY_OVERVIEW' ? (
+                <NavItem
+                  active={true}
+                  onClick={() => { }}
                   icon={<LayoutDashboard size={20} />}
                   label="Visão Geral"
                   isOpen={isSidebarOpen}
                 />
-                <NavItem
-                  active={activeTab === 'table'}
-                  onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Table2 size={20} />}
-                  label="Lançamentos"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'credit_cards'}
-                  onClick={() => { setActiveTab('credit_cards'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<CreditCard size={20} />}
-                  label="Cartão de Crédito"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'reminders'}
-                  onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Bell size={20} />}
-                  label="Lembretes"
-                  isOpen={isSidebarOpen}
-                  badge={overdueRemindersCount}
-                />
-                <NavItem
-                  active={activeTab === 'subscriptions'}
-                  onClick={() => { setActiveTab('subscriptions'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<RotateCcw size={20} />}
-                  label="Assinaturas"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'budgets'}
-                  onClick={() => { setActiveTab('budgets'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Target size={20} />}
-                  label="Orçamentos"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'connections'}
-                  onClick={() => { setActiveTab('connections'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Building size={20} />}
-                  label="Contas conectadas"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'investments'}
-                  onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Vault size={20} />}
-                  label="Caixinhas"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'fire'}
-                  onClick={() => { setActiveTab('fire'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<Flame size={20} />}
-                  label="FIRE"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'advisor'}
-                  onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<BrainCircuit size={20} />}
-                  label="Consultor IA"
-                  isOpen={isSidebarOpen}
-                />
-              </>
+              ) : (
+                <>
+                  <NavItem
+                    active={activeTab === 'dashboard'}
+                    onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<LayoutDashboard size={20} />}
+                    label="Visão Geral"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'table'}
+                    onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Table2 size={20} />}
+                    label="Lançamentos"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'credit_cards'}
+                    onClick={() => { setActiveTab('credit_cards'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<CreditCard size={20} />}
+                    label="Cartão de Crédito"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'reminders'}
+                    onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Bell size={20} />}
+                    label="Lembretes"
+                    isOpen={isSidebarOpen}
+                    badge={overdueRemindersCount}
+                  />
+                  <NavItem
+                    active={activeTab === 'subscriptions'}
+                    onClick={() => { setActiveTab('subscriptions'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<RotateCcw size={20} />}
+                    label="Assinaturas"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'budgets'}
+                    onClick={() => { setActiveTab('budgets'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Target size={20} />}
+                    label="Orçamentos"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'connections'}
+                    onClick={() => { setActiveTab('connections'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Building size={20} />}
+                    label="Contas conectadas"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'investments'}
+                    onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Vault size={20} />}
+                    label="Caixinhas"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'fire'}
+                    onClick={() => { setActiveTab('fire'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<Flame size={20} />}
+                    label="FIRE"
+                    isOpen={isSidebarOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'advisor'}
+                    onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
+                    icon={<BrainCircuit size={20} />}
+                    label="Consultor IA"
+                    isOpen={isSidebarOpen}
+                  />
+                </>
+              )
             )}
           </div>
 
@@ -2343,6 +2370,16 @@ const App: React.FC = () => {
               user={currentUser}
               onLogout={() => auth.signOut()}
               onOpenSettings={() => setIsSettingsOpen(true)}
+              isAdminMode={isAdminMode}
+              onToggleAdminMode={() => {
+                const nextMode = !isAdminMode;
+                setIsAdminMode(nextMode);
+                if (nextMode) {
+                  setActiveTab('admin_overview');
+                } else {
+                  setActiveTab('dashboard');
+                }
+              }}
             />
           </div>
         </header>
@@ -2436,6 +2473,10 @@ const App: React.FC = () => {
                       }}
                   />
               </div>
+          ) : activeTab === 'admin_overview' ? (
+              <AdminDashboard user={currentUser} />
+          ) : activeTab === 'admin_waitlist' ? (
+              <AdminWaitlist />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
