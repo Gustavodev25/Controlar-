@@ -446,8 +446,7 @@ const FAQSection = () => {
     { q: "Meus dados bancários estão seguros?", a: "Absolutamente. Utilizamos criptografia AES-256 de ponta a ponta. Seus dados são armazenados localmente no seu dispositivo quando possível e nunca vendemos suas informações para terceiros." },
     { q: "Como a IA categoriza meus gastos?", a: "Nossa IA analisa o texto natural que você digita (ex: 'Almoço R$ 40'). Ela identifica padrões, palavras-chave e contexto para atribuir a categoria correta (Alimentação), a data e o valor automaticamente." },
     { q: "Quais formas eu consigo lançar meus gastos e receitas?", a: "Você pode registrar tudo de forma manual, conectar suas contas pelo Open Finance para importação automática, enviar lançamentos pelo WhatsApp ou simplesmente falar com a Coinzinha, nossa IA que organiza tudo para você." },
-    { q: "Posso compartilhar com minha família?", a: "Sim! O plano Family permite incluir até 3 pessoas (incluindo o assinante). Cada membro tem sua própria conta individual, mas todos fazem parte da mesma assinatura. Assim, cada pessoa mantém seus dados privados, enquanto o grupo pode acompanhar gráficos e metas compartilhadas se desejar." },
-    { q: "Preciso conectar minha conta bancária?", a: "Não. O Controlar+ funciona com input manual inteligente. Isso garante maior privacidade e evita problemas de conexão com bancos. Você digita ou fala, e nós organizamos." }
+    { q: "Posso compartilhar com minha família?", a: "Sim! O plano Family permite incluir até 3 pessoas (incluindo o assinante). Cada membro tem sua própria conta individual, mas todos fazem parte da mesma assinatura. Assim, cada pessoa mantém seus dados privados, enquanto o grupo pode acompanhar gráficos e metas compartilhadas se desejar." }
   ];
 
   return (
