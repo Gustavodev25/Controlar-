@@ -838,7 +838,10 @@ const App: React.FC = () => {
         setShowLanding(false); // Hide landing if user is logged in
         setShowInviteLanding(false); // Hide invite landing if user logs in
 
+        let adminFromClaims = false;
         try {
+          const tokenResult = await firebaseUser.getIdTokenResult?.();
+          adminFromClaims = !!(tokenResult?.claims?.admin || tokenResult?.claims?.isAdmin);
           const profile = await dbService.getUserProfile(firebaseUser.uid);
           const baseProfile: User = {
             name: firebaseUser.displayName || profile?.name || 'Usuário',
@@ -847,7 +850,7 @@ const App: React.FC = () => {
             avatarUrl: profile?.avatarUrl,
             twoFactorEnabled: profile?.twoFactorEnabled,
             twoFactorSecret: profile?.twoFactorSecret,
-            isAdmin: profile?.isAdmin
+            isAdmin: profile?.isAdmin ?? adminFromClaims
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -855,7 +858,7 @@ const App: React.FC = () => {
               uid: firebaseUser.uid,
               email: firebaseUser.email || '',
               name: baseProfile.name,
-              profile: profile,
+              profile: { ...profile, isAdmin: profile?.isAdmin ?? adminFromClaims },
               secret: profile.twoFactorSecret
             });
             setCurrentUser(null);
@@ -878,7 +881,8 @@ const App: React.FC = () => {
           setCurrentUser({
             name: firebaseUser.displayName || 'Usuário',
             email: firebaseUser.email || '',
-            baseSalary: 0
+            baseSalary: 0,
+            isAdmin: adminFromClaims
           });
         }
       } else {
