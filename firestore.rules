@@ -4,8 +4,21 @@ service cloud.firestore {
 
     // Helper: Verifica se o usuario atual e admin
     function isUserAdmin() {
-      let userDoc = get(/databases/$(database)/documents/users/$(request.auth.uid));
-      return userDoc != null && userDoc.data.profile.isAdmin == true;
+      let userDoc = request.auth != null
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid))
+        : null;
+
+      return (
+        // Permite tanto custom claims quanto campos no documento
+        request.auth != null && (
+          request.auth.token.admin == true ||
+          request.auth.token.isAdmin == true
+        ) ||
+        userDoc != null && (
+          userDoc.data.profile.isAdmin == true ||  // Admin salvo dentro de profile
+          userDoc.data.isAdmin == true             // Fallback para admin na raiz
+        )
+      );
     }
 
     // Regras para Usuarios: Dono ou Admin

@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { User } from '../types';
 import { migrateUsersAddAdminField } from '../services/database';
 import { useToasts } from './Toast';
-import { AdminWaitlist } from './AdminWaitlist';
 
 interface AdminDashboardProps {
   user: User;
@@ -55,8 +54,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <p className="text-xs text-gray-500 mt-1">Status do servidor</p>
         </div>
       </div>
-
-      <AdminWaitlist />
     </div>
   );
 };
