@@ -271,17 +271,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                               <div className="flex items-center gap-2">
                                   <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">Fatura atual</span>
                               </div>
-
-                              <div className="flex items-center bg-gray-900 rounded-md border border-gray-700 px-2 py-1">
-                                  <input 
-                                    type="number" 
-                                    min="1" 
-                                    max="31"
-                                    value={closingDay}
-                                    onChange={(e) => setClosingDay(parseInt(e.target.value) || 1)}
-                                    className="w-8 bg-transparent text-white text-center text-xs font-bold focus:outline-none"
-                                  />
-                              </div>
                           </div>
                       </div>
                       
