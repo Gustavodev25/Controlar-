@@ -44,14 +44,19 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
 
     if (snap.exists()) {
       const data = snap.data();
-      const profile = data.profile as Partial<User>;
-      
+      const profile = { ...(data.profile as Partial<User> || {}) };
+
       // Fallback/Merge: If isAdmin exists in root but not in profile, use root.
       // Prioritize profile if exists.
-      if (profile && profile.isAdmin === undefined && data.isAdmin !== undefined) {
+      if (profile.isAdmin === undefined && data.isAdmin !== undefined) {
         profile.isAdmin = data.isAdmin;
       }
-      
+
+      // If there was no profile at all but we have root isAdmin, still return it
+      if (Object.keys(profile).length === 0 && data.isAdmin !== undefined) {
+        return { isAdmin: data.isAdmin };
+      }
+
       return profile;
     }
     return null;
