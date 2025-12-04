@@ -20,8 +20,6 @@ import {
   Car,
   Send,
   Instagram,
-  Twitter,
-  Linkedin,
   Check,
   MessageSquare,
   ChevronDown,
@@ -1921,52 +1919,32 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       {/* Footer */}
       <footer className="border-t border-gray-800 py-12 lg:py-16 bg-[#2F302E]">
          <div className="max-w-7xl mx-auto px-4 lg:px-6">
-            <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12 mb-8 lg:mb-12">
-               <div className="col-span-2">
-                  <div className="flex items-center gap-2 mb-6">
-                     <Logo
-                       size={32}
-                       className="gap-2"
-                       textClassName="font-bold text-xl"
-                       imgClassName="rounded-lg"
-                     />
-                  </div>
-                  <p className="text-gray-500 max-w-xs mb-6">
-                     A plataforma de gestão financeira pessoal mais inteligente do mercado. Simples, rápida e segura.
-                  </p>
-                  <div className="flex gap-4">
-                     <a href="#" className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"><Instagram size={18} /></a>
-                     <a href="#" className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"><Twitter size={18} /></a>
-                     <a href="#" className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"><Linkedin size={18} /></a>
-                  </div>
+            <div className="flex flex-col items-center text-center gap-6 mb-8 lg:mb-12">
+               <div className="flex items-center gap-2">
+                  <Logo
+                    size={32}
+                    className="gap-2"
+                    textClassName="font-bold text-xl"
+                    imgClassName="rounded-lg"
+                  />
                </div>
-               
-               <div>
-                  <h4 className="font-bold text-white mb-6">Produto</h4>
-                  <ul className="space-y-4 text-sm text-gray-500">
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Segurança</a></li>
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Planos</a></li>
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Changelog</a></li>
-                  </ul>
-               </div>
-
-               <div>
-                  <h4 className="font-bold text-white mb-6">Empresa</h4>
-                  <ul className="space-y-4 text-sm text-gray-500">
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Sobre nós</a></li>
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Carreiras</a></li>
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Blog</a></li>
-                     <li><a href="#" className="hover:text-[#f17853] transition-colors">Contato</a></li>
-                  </ul>
+               <p className="text-gray-500 max-w-md">
+                  A plataforma de gestão financeira pessoal mais inteligente do mercado. Simples, rápida e segura.
+               </p>
+               <div className="flex gap-4">
+                  <a
+                    href="https://www.instagram.com/controlarmaisoficial/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-full bg-gray-900 flex items-center justify-center text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                  >
+                    <Instagram size={18} />
+                  </a>
                </div>
             </div>
-            
+
             <div className="pt-8 border-t border-gray-900 flex flex-col md:flex-row justify-between items-center gap-4 text-sm text-gray-600">
                <div>© 2025 Controlar+ Pro. Todos os direitos reservados.</div>
-               <div className="flex gap-6">
-                  <a href="#" className="hover:text-gray-400">Privacidade</a>
-                  <a href="#" className="hover:text-gray-400">Termos</a>
-               </div>
             </div>
          </div>
       </footer>
