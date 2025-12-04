@@ -14,6 +14,7 @@ interface ConnectedAccountsProps {
   lastSynced?: Record<string, string>;
   storageKey?: string; // legacy prop, can be ignored or removed
   userId?: string | null;
+  memberId?: string;
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
@@ -31,7 +32,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   onRefresh,
   onImport,
   lastSynced = {},
-  userId
+  userId,
+  memberId
 }) => {
   const [importing, setImporting] = useState<Set<string>>(new Set());
   const [syncingItems, setSyncingItems] = useState<Set<string>>(new Set());
@@ -117,7 +119,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
        await new Promise(resolve => setTimeout(resolve, 3000));
 
-       const count = await syncPluggyData(userId, itemId);
+       const count = await syncPluggyData(userId, itemId, memberId);
        
        if (onRefresh) {
          onRefresh();
@@ -166,6 +168,43 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
+  const handleDevForceSave = async () => {
+    if (!userId) return;
+    // Get unique ItemIDs
+    const itemIds = Array.from(new Set(accounts.map(a => a.itemId).filter(Boolean)));
+    
+    if (itemIds.length === 0) {
+        toast.error("Nenhuma conta conectada para sincronizar.");
+        return;
+    }
+
+    toast.message({ text: "Dev: Forçando salvamento (sem atualização bancária)..." });
+    
+    let totalProcessed = 0;
+    
+    for (const itemId of itemIds) {
+        try {
+            // Calls syncPluggyData directly (skips triggerItemUpdate)
+            const count = await syncPluggyData(userId, itemId!, memberId);
+            totalProcessed += count;
+            if (count > 0) {
+                toast.success(`Item ${itemId?.slice(0,4)}: ${count} novos salvos.`);
+            }
+        } catch (e) {
+            console.error("Dev Sync Error:", e);
+            toast.error(`Erro ao salvar item ${itemId?.slice(0,4)}`);
+        }
+    }
+    
+    if (totalProcessed === 0) {
+        toast.success("Sincronização concluída. Nenhum dado novo encontrado no cache local.");
+    } else {
+        toast.success(`Processo finalizado. Total: ${totalProcessed} salvos.`);
+    }
+    
+    if (onRefresh) onRefresh();
+  };
+
   const isCardFromInstitution = (acc: ConnectedAccount) => {
     const type = (acc.type || "").toLowerCase();
     const subtype = (acc.subtype || "").toLowerCase();
@@ -184,13 +223,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           </div>
 
           {onRefresh && (
-            <button
-              onClick={onRefresh}
-              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-gray-800 hover:border-gray-700 shadow-lg"
-            >
-              <RotateCcw size={18} className={isLoading ? "animate-spin" : ""} />
-              <span className="hidden sm:inline font-bold text-sm">Atualizar</span>
-            </button>
+            <div className="flex items-center gap-2">
+                <button
+                  onClick={handleDevForceSave}
+                  className="bg-purple-900/30 hover:bg-purple-900/50 text-purple-300 border border-purple-500/30 px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg"
+                  title="Forçar salvar dados já baixados (Dev)"
+                >
+                  <FileText size={18} />
+                  <span className="hidden sm:inline font-bold text-sm">Dev: Enviar Novamente</span>
+                </button>
+
+                <button
+                  onClick={onRefresh}
+                  className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-gray-800 hover:border-gray-700 shadow-lg"
+                >
+                  <RotateCcw size={18} className={isLoading ? "animate-spin" : ""} />
+                  <span className="hidden sm:inline font-bold text-sm">Atualizar</span>
+                </button>
+            </div>
           )}
         </div>
       )}
@@ -310,30 +360,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             </div>
                           </div>
 
-                          {/* Ações da Conta */}
-                          <div className="flex items-center justify-end pt-2">
-                            {onImport && (
-                                <button
-                                onClick={() => handleImport(acc)}
-                                disabled={importing.has(acc.id)}
-                                className={`text-[10px] uppercase font-bold px-3 py-1.5 rounded-lg transition-all flex items-center gap-1.5 ${
-                                    importing.has(acc.id)
-                                    ? "text-gray-500 bg-gray-800 cursor-wait"
-                                    : "text-[#d97757] bg-[#d97757]/10 hover:bg-[#d97757]/20 border border-[#d97757]/20 hover:border-[#d97757]/40"
-                                }`}
-                                >
-                                {importing.has(acc.id) ? (
-                                    <RefreshCw size={10} className="animate-spin" />
-                                ) : (
-                                    <Download size={10} />
-                                )}
-                                {importing.has(acc.id) ? "Importando..." : "Importar"}
-                                </button>
-                            )}
-                          </div>
+                          {/* Ações da Conta - REMOVED per user request */}
+
 
                           {/* Bottom Details */}
-                          {isCredit ? (
+                          {isCredit && (
                                 <div 
                                   onClick={() => toggleLimitView(acc.id)}
                                   className="mt-3 pt-3 border-t border-gray-800/50 cursor-pointer group/limit select-none w-full"
@@ -378,16 +409,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                         </div>
                                     )}
                                 </div>
-                            ) : (
-                                lastSynced[acc.id] && (
-                                    <div className="mt-3 pt-2 border-t border-gray-800/50 flex justify-end">
-                                        <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
-                                            <RotateCcw size={8} />
-                                            {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                                        </p>
-                                    </div>
-                                )
-                            )}
+                          )}
+
+                          {/* Last Sync Info - Visible for ALL accounts */}
+                          {lastSynced[acc.id] && (
+                                <div className={`mt-2 pt-2 ${!isCredit ? 'border-t border-gray-800/50' : ''} flex justify-end`}>
+                                    <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
+                                        <RotateCcw size={8} />
+                                        {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                                    </p>
+                                </div>
+                          )}
                       </div>
                     </div>
                   );

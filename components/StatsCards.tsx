@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, CreditCard, Building, Link, Settings, Check, Info, X, Calendar } from './Icons';
-import { DashboardStats, Transaction } from '../types';
+import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import NumberFlow from '@number-flow/react';
 
 interface StatsCardsProps {
@@ -12,6 +12,7 @@ interface StatsCardsProps {
         used: number;
         available: number;
         limit: number;
+        accounts?: ConnectedAccount[];
     };
   };
   creditCardTransactions?: Transaction[];
@@ -31,36 +32,136 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
   const [isConfigOpen, setIsConfigOpen] = useState(false);
   const configRef = useRef<HTMLDivElement>(null);
 
+  const creditAccounts = accountBalances?.credit?.accounts || [];
+  const primaryAccount = creditAccounts[0];
+
   // Debug State
   const [showDebug, setShowDebug] = useState(false);
   const [closingDay, setClosingDay] = useState(1);
+  const [dueDay, setDueDay] = useState(10);
 
-  // Helper to calculate Invoice Month
-  const getInvoiceMonth = (dateStr: string, closeDay: number) => {
+  // Sync closing day and due day from API if available
+  useEffect(() => {
+      if (primaryAccount) {
+          if (primaryAccount.balanceCloseDate) {
+            const closeDatePart = primaryAccount.balanceCloseDate.split('-')[2];
+            if (closeDatePart) setClosingDay(parseInt(closeDatePart));
+          }
+          if (primaryAccount.balanceDueDate) {
+            const dueDatePart = primaryAccount.balanceDueDate.split('-')[2];
+            if (dueDatePart) setDueDay(parseInt(dueDatePart));
+          }
+      }
+  }, [primaryAccount]);
+
+  // Helper to calculate Invoice Due Date
+  const getInvoiceMonth = (dateStr: string, closeDay: number, dueDay: number) => {
     if (!dateStr) return 'Desconhecido';
     const date = new Date(dateStr + 'T12:00:00');
     const day = date.getDate();
     
-    let targetMonth = date.getMonth();
-    let targetYear = date.getFullYear();
+    let closingMonth = date.getMonth();
+    let closingYear = date.getFullYear();
 
+    // 1. Determine which Closing Cycle the transaction belongs to
     if (day >= closeDay) {
-      targetMonth++;
-      if (targetMonth > 11) {
-        targetMonth = 0;
-        targetYear++;
+      // Belongs to NEXT month's closing
+      closingMonth++;
+      if (closingMonth > 11) {
+        closingMonth = 0;
+        closingYear++;
       }
+    }
+    
+    // 2. Determine Due Date based on that Closing Cycle
+    // If Due Day < Close Day, it means the Due Date wraps to the NEXT month relative to the Closing Date
+    // e.g. Close 25th, Due 5th (Next Month)
+    // If Due Day >= Close Day, it usually means Same Month (e.g. Close 1st, Due 10th)
+    let dueMonth = closingMonth;
+    let dueYear = closingYear;
+
+    if (dueDay < closeDay) {
+        dueMonth++;
+        if (dueMonth > 11) {
+            dueMonth = 0;
+            dueYear++;
+        }
     }
 
     const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    return `${monthNames[targetMonth]}/${targetYear}`;
+    return `${monthNames[dueMonth]}/${dueYear}`;
   };
 
   const today = new Date().toISOString().split('T')[0];
-  const currentInvoiceLabel = getInvoiceMonth(today, closingDay);
+  const currentInvoiceLabel = getInvoiceMonth(today, closingDay, dueDay);
+
+  // Calculate Next Invoice Label
+  const getNextInvoiceLabel = (currentLabel: string) => {
+    const [month, year] = currentLabel.split('/');
+    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+    let monthIndex = monthNames.indexOf(month);
+    let yearNum = parseInt(year);
+    
+    monthIndex++;
+    if (monthIndex > 11) {
+      monthIndex = 0;
+      yearNum++;
+    }
+    return `${monthNames[monthIndex]}/${yearNum}`;
+  };
+
+  const nextInvoiceLabel = getNextInvoiceLabel(currentInvoiceLabel);
+  const isInvoiceClosed = new Date().getDate() >= closingDay;
+
   // Filter transactions that match the current simulated invoice
-  const simulatedInvoiceTransactions = creditCardTransactions.filter(t => getInvoiceMonth(t.date, closingDay) === currentInvoiceLabel);
+  const simulatedInvoiceTransactions = creditCardTransactions.filter(t => getInvoiceMonth(t.date, closingDay, dueDay) === currentInvoiceLabel);
   const simulatedInvoiceTotal = simulatedInvoiceTransactions.reduce((acc, t) => t.type === 'expense' ? acc + t.amount : acc - t.amount, 0);
+
+  const nextInvoiceTransactions = creditCardTransactions.filter(t => getInvoiceMonth(t.date, closingDay, dueDay) === nextInvoiceLabel);
+  const nextInvoiceTotal = nextInvoiceTransactions.reduce((acc, t) => t.type === 'expense' ? acc + t.amount : acc - t.amount, 0);
+
+  // --- API Bill Integration ---
+  let displayCurrentTotal = simulatedInvoiceTotal;
+  let displayNextTotal = nextInvoiceTotal;
+  let isApiCurrent = false;
+  let isApiNext = false;
+
+  if (primaryAccount?.bills?.length) {
+      const monthMap: Record<string, number> = {
+          'Janeiro': 0, 'Fevereiro': 1, 'Março': 2, 'Abril': 3, 'Maio': 4, 'Junho': 5,
+          'Julho': 6, 'Agosto': 7, 'Setembro': 8, 'Outubro': 9, 'Novembro': 10, 'Dezembro': 11
+      };
+
+      const getBillMonthYear = (dateStr: string) => {
+          const d = new Date(dateStr);
+          return { month: d.getMonth(), year: d.getFullYear() };
+      };
+
+      // Helper: matches a Label (Due Date Month) to a Bill (Due Date)
+      // Label is now the Due Date Month/Year, so we match directly.
+      const findBillForLabel = (label: string) => {
+          const [lblMonthName, lblYearStr] = label.split('/');
+          const lblMonth = monthMap[lblMonthName];
+          const lblYear = parseInt(lblYearStr);
+
+          return primaryAccount.bills?.find(b => {
+              const { month, year } = getBillMonthYear(b.dueDate);
+              return month === lblMonth && year === lblYear;
+          });
+      };
+
+      const currentBill = findBillForLabel(currentInvoiceLabel);
+      if (currentBill) {
+          displayCurrentTotal = currentBill.totalAmount;
+          isApiCurrent = true;
+      }
+
+      const nextBill = findBillForLabel(nextInvoiceLabel);
+      if (nextBill) {
+          displayNextTotal = nextBill.totalAmount;
+          isApiNext = true;
+      }
+  }
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -269,36 +370,85 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                       <div className="flex flex-col gap-2 mb-3">
                           <div className="flex justify-between items-center">
                               <div className="flex items-center gap-2">
-                                  <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">Fatura atual</span>
+                                  <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">Status da Fatura</span>
+                                  <div className="group relative">
+                                      <Info size={12} className="text-gray-500 cursor-help" />
+                                      <div className="absolute left-0 bottom-full mb-2 hidden group-hover:block w-48 bg-black/90 text-gray-300 text-[10px] p-2 rounded border border-gray-700 z-50">
+                                          Altere o dia de fechamento para ver a fatura fechada e a próxima em aberto.
+                                      </div>
+                                  </div>
+                              </div>
+                              
+                              <div className="flex items-center bg-gray-900 rounded-md border border-gray-700 px-2 py-1">
+                                  {primaryAccount ? (
+                                    <span className="text-[9px] text-emerald-400 font-bold uppercase mr-1">Via API</span>
+                                  ) : null}
+                                  <input 
+                                    type="number" 
+                                    min="1" 
+                                    max="31"
+                                    value={closingDay}
+                                    disabled={!!primaryAccount}
+                                    onChange={(e) => setClosingDay(parseInt(e.target.value) || 1)}
+                                    className={`w-8 bg-transparent text-white text-center text-xs font-bold focus:outline-none ${primaryAccount ? 'opacity-70 cursor-not-allowed' : ''}`}
+                                  />
                               </div>
                           </div>
                       </div>
                       
-                      <div className="grid grid-cols-2 gap-3 mb-3 bg-gray-900/50 p-2 rounded-md border border-gray-800/50">
-                          <div>
-                              <p className="text-gray-500 text-[10px] uppercase tracking-wide">Mês de Referência</p>
-                              <p className="text-blue-300 font-mono font-bold text-sm">{currentInvoiceLabel}</p>
+                      {/* Invoices Summary */}
+                      <div className="grid grid-cols-1 gap-2 mb-3">
+                          {/* Current/Closed Invoice */}
+                          <div className={`flex justify-between items-center p-2 rounded border ${isInvoiceClosed ? 'bg-blue-900/20 border-blue-500/30' : 'bg-gray-900/50 border-gray-800/50'}`}>
+                              <div>
+                                  <p className={`text-[10px] font-bold uppercase tracking-wide ${isInvoiceClosed ? 'text-blue-400' : 'text-gray-400'}`}>
+                                      {isInvoiceClosed ? 'Fatura Fechada' : 'Fatura Atual'}
+                                  </p>
+                                  <p className="text-xs text-gray-500">{currentInvoiceLabel}</p>
+                              </div>
+                              <div className="text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                      {isApiCurrent && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 rounded border border-emerald-500/30">API</span>}
+                                      <p className={`font-mono font-bold text-sm ${isInvoiceClosed ? 'text-white' : 'text-gray-300'}`}>
+                                          {formatCurrency(displayCurrentTotal)}
+                                      </p>
+                                  </div>
+                              </div>
                           </div>
-                          <div className="text-right">
-                               <p className="text-gray-500 text-[10px] uppercase tracking-wide">Total Simulado</p>
-                               <p className="text-white font-mono font-bold text-sm">{formatCurrency(simulatedInvoiceTotal)}</p>
+
+                          {/* Next Invoice */}
+                          <div className="flex justify-between items-center p-2 rounded bg-gray-900/30 border border-gray-800/30">
+                              <div>
+                                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">
+                                      {isInvoiceClosed ? 'Fatura Atual (Em Aberto)' : 'Próxima Fatura'}
+                                  </p>
+                                  <p className="text-xs text-gray-600">{nextInvoiceLabel}</p>
+                              </div>
+                              <div className="text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                      {isApiNext && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 rounded border border-emerald-500/30">API</span>}
+                                      <p className="text-gray-400 font-mono font-bold text-sm">
+                                          {formatCurrency(displayNextTotal)}
+                                      </p>
+                                  </div>
+                              </div>
                           </div>
                       </div>
 
                       <div className="space-y-1">
                           <div className="flex justify-between text-[9px] text-gray-500 px-1 uppercase tracking-wider">
-                              <span>Lançamentos ({creditCardTransactions.length})</span>
+                              <span>Lançamentos na Fatura ({simulatedInvoiceTransactions.length})</span>
                               <span>Valor</span>
                           </div>
                           <div className="max-h-32 overflow-y-auto custom-scrollbar bg-gray-900 p-1 rounded border border-gray-800">
-                              {creditCardTransactions.length === 0 && <p className="text-gray-600 text-center text-[10px] py-2">Nenhuma transação encontrada</p>}
-                              {creditCardTransactions.map((t) => {
-                                  const inv = getInvoiceMonth(t.date, closingDay);
-                                  const isCurrent = inv === currentInvoiceLabel;
+                              {simulatedInvoiceTransactions.length === 0 && <p className="text-gray-600 text-center text-[10px] py-2">Nenhuma transação encontrada</p>}
+                              {simulatedInvoiceTransactions
+                                  .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                  .map((t) => {
                                   return (
-                                      <div key={t.id} className={`flex justify-between items-center p-1.5 rounded text-[10px] border-b border-gray-800/50 last:border-0 ${isCurrent ? 'bg-blue-500/5' : 'opacity-40 grayscale'}`}>
+                                      <div key={t.id} className="flex justify-between items-center p-1.5 rounded text-[10px] border-b border-gray-800/50 last:border-0 bg-blue-500/5">
                                           <div className="flex items-center gap-2 overflow-hidden">
-                                              <div className={`w-1 h-1 rounded-full shrink-0 ${isCurrent ? 'bg-blue-400' : 'bg-gray-600'}`}></div>
+                                              <div className="w-1 h-1 rounded-full shrink-0 bg-blue-400"></div>
                                               <span className="text-gray-400 font-mono whitespace-nowrap">{t.date.slice(8)}/{t.date.slice(5,7)}</span>
                                               <span className="truncate text-gray-300" title={t.description}>{t.description}</span>
                                           </div>

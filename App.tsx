@@ -51,7 +51,7 @@ import { Logo } from './components/Logo';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
-import { fetchPluggyAccounts, syncPluggyData, fetchPluggyTransactionsForImport, markTransactionsAsImported } from './services/pluggyService';
+import { fetchPluggyAccounts, syncPluggyData, fetchPluggyTransactionsForImport, markTransactionsAsImported, triggerItemUpdate } from './services/pluggyService';
 import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
@@ -524,14 +524,51 @@ const App: React.FC = () => {
   const pluggyStorageKey = (uid: string) => `pluggy_items_${uid}`;
   const pluggyAccountsKey = (uid: string) => `pluggy_accounts_${uid}`;
 
-  const refreshPluggyAccounts = async (itemIds: string[]) => {
+  const refreshPluggyAccounts = async (itemIds: string[], forceUpdate: boolean = false) => {
     if (!itemIds.length) {
       setPluggyAccounts([]);
       return;
     }
     setLoadingPluggyAccounts(true);
     try {
-      const results = await Promise.all(itemIds.map(id => fetchPluggyAccounts(id).catch(() => [])));
+      // If forceUpdate is true, trigger update for all items first
+      if (forceUpdate) {
+        console.log('[PLUGGY] Forcing update for all items before fetching accounts...');
+        await Promise.all(itemIds.map(async (id) => {
+          console.log(`[PLUGGY] Triggering update for item ${id}...`);
+          const success = await triggerItemUpdate(id);
+          console.log(`[PLUGGY] Item ${id} update ${success ? 'succeeded' : 'failed'}`);
+        }));
+        console.log('[PLUGGY] All items updated. Now fetching accounts...');
+      }
+
+      // Fetch accounts and detect invalid items
+      const validItems = new Set<string>();
+      const invalidItems: string[] = [];
+
+      const results = await Promise.all(itemIds.map(async (id) => {
+        try {
+          const accounts = await fetchPluggyAccounts(id);
+          validItems.add(id);
+          return accounts;
+        } catch (err: any) {
+          if (err?.message === 'ITEM_NOT_FOUND') {
+            console.warn(`[PLUGGY] Item ${id} is invalid (404), marking for removal`);
+            invalidItems.push(id);
+          }
+          return [];
+        }
+      }));
+
+      // Remove invalid items from storage
+      if (invalidItems.length > 0 && userId) {
+        const remainingItems = itemIds.filter(id => !invalidItems.includes(id));
+        localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(remainingItems));
+        setPluggyItemIds(remainingItems);
+        console.log(`[PLUGGY] Removed ${invalidItems.length} invalid items from storage`);
+        toast.message({ text: `${invalidItems.length} conexão(ões) inválida(s) foram removidas.` });
+      }
+
       const flattened = results.flat();
       const seen = new Set<string>();
       const unique = flattened.filter(acc => {
@@ -543,6 +580,53 @@ const App: React.FC = () => {
       if (userId) {
         localStorage.setItem(pluggyAccountsKey(userId), JSON.stringify(unique));
       }
+
+      // --- Auto-Sync Logic (Once per day) ---
+      if (!forceUpdate && userId) {
+         const todayStr = toLocalISODate();
+         const staleItems = new Set<string>();
+         
+         unique.forEach(acc => {
+             if (!acc.lastUpdated) {
+                 staleItems.add(acc.itemId);
+             } else {
+                 const lastDate = new Date(acc.lastUpdated);
+                 const accDateStr = toLocalISODate(lastDate);
+                 if (accDateStr < todayStr) {
+                     staleItems.add(acc.itemId);
+                 }
+             }
+         });
+
+         if (staleItems.size > 0) {
+             console.log(`[PLUGGY] Auto-Sync: Found ${staleItems.size} stale items. Triggering background sync...`);
+             // Find admin member ID for auto-sync (fallback to first member)
+             const autoSyncMemberId = members.find(m => m.role === 'admin')?.id || members[0]?.id;
+
+             staleItems.forEach(async (itemId) => {
+                 try {
+                    // 1. Trigger Update at Bank
+                    const triggered = await triggerItemUpdate(itemId);
+                    if (triggered) {
+                        // 2. Sync Data to Firebase
+                        await syncPluggyData(userId, itemId, autoSyncMemberId);
+                        console.log(`[PLUGGY] Auto-Sync: Item ${itemId} synced successfully.`);
+                        
+                        // Update local state lastSync for UI feedback (Map ItemID -> AccountIDs)
+                        const updatedAccounts = unique.filter(a => a.itemId === itemId);
+                        const nowIso = new Date().toISOString();
+                        setPluggyLastSync(prev => {
+                            const next = { ...prev };
+                            updatedAccounts.forEach(a => { next[a.id] = nowIso; });
+                            return next;
+                        });
+                    }
+                 } catch (e) {
+                    console.error(`[PLUGGY] Auto-Sync failed for item ${itemId}:`, e);
+                 }
+             });
+         }
+      }
     } catch (err) {
       console.error("Erro ao atualizar contas Pluggy:", err);
     } finally {
@@ -550,13 +634,24 @@ const App: React.FC = () => {
     }
   };
 
-  const handlePluggyItemConnected = (itemId: string) => {
+  const handlePluggyItemConnected = async (itemId: string) => {
     if (!userId) return;
-    toast.success("Open Finance conectado! Atualizando contas...");
+    toast.success("Open Finance conectado! Sincronizando transações...");
     const next = Array.from(new Set([...pluggyItemIds, itemId]));
     setPluggyItemIds(next);
     localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(next));
+    
+    // 1. Refresh Accounts List (Visual)
     refreshPluggyAccounts(next);
+
+    // 2. Trigger Auto-Import of Transactions (Database)
+    try {
+        await syncPluggyData(userId, itemId, syncMemberId);
+        toast.success("Transações importadas com sucesso!");
+    } catch (e) {
+        console.error("Erro ao sincronizar dados iniciais:", e);
+        toast.error("Erro ao importar transações iniciais.");
+    }
   };
 
   const handleImportAccount = async (account: ConnectedAccount) => {
@@ -1058,6 +1153,40 @@ const App: React.FC = () => {
     return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
   }, [memberInvestments]);
 
+  // Helper: Get current invoice amount from Bills API
+  const getCurrentInvoiceAmount = React.useCallback((account: ConnectedAccount): number => {
+    // Priority 1: Use account balance (most reliable for current invoice)
+    // The balance field represents the current outstanding amount on the card
+    if (account.balance !== undefined && account.balance !== null && account.balance > 0) {
+      return account.balance;
+    }
+
+    // Priority 2: Try to find upcoming bill from Bills API
+    if (account.bills && account.bills.length > 0) {
+      const today = new Date();
+
+      // Sort bills by due date (ascending)
+      const sortedByDue = [...account.bills].sort((a, b) =>
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
+
+      // Find the next bill to pay (due date is in the future)
+      const futureBills = sortedByDue.filter(bill => new Date(bill.dueDate) > today);
+
+      if (futureBills.length > 0) {
+        return futureBills[0].totalAmount;
+      }
+
+      // If no future bills, get the most recent one
+      if (sortedByDue.length > 0) {
+        return sortedByDue[sortedByDue.length - 1].totalAmount;
+      }
+    }
+
+    // Fallback to zero if nothing found
+    return 0;
+  }, []);
+
   // NEW: Calculate Account Balances
   const accountBalances = useMemo(() => {
     const checking = pluggyAccounts
@@ -1069,17 +1198,18 @@ const App: React.FC = () => {
           return a.type === 'BANK' && !subtype;
         })
         .reduce((sum, a) => sum + (a.balance || 0), 0);
-    
-    const credit = pluggyAccounts
-        .filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD')
-        .reduce((acc, a) => ({
-            used: acc.used + (a.balance || 0),
+
+    const creditAccounts = pluggyAccounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+
+    const credit = creditAccounts.reduce((acc, a) => ({
+            used: acc.used + getCurrentInvoiceAmount(a),
             available: acc.available + (a.availableCreditLimit || 0),
-            limit: acc.limit + (a.creditLimit || 0)
-        }), { used: 0, available: 0, limit: 0 });
-        
+            limit: acc.limit + (a.creditLimit || 0),
+            accounts: creditAccounts
+        }), { used: 0, available: 0, limit: 0, accounts: [] as ConnectedAccount[] });
+
     return { checking, credit };
-  }, [pluggyAccounts]);
+  }, [pluggyAccounts, getCurrentInvoiceAmount]);
 
   // NEW: Filter Savings Accounts
   const connectedSavingsAccounts = useMemo(() => {
@@ -1147,6 +1277,10 @@ const App: React.FC = () => {
   const reviewedDashboardTransactions = useMemo(() => {
     return dashboardFilteredTransactions.filter(t => !t.ignored);
   }, [dashboardFilteredTransactions]);
+
+  const dashboardCreditCardTransactions = useMemo(() => {
+      return reviewedDashboardTransactions.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
+  }, [reviewedDashboardTransactions]);
 
   const reviewedMemberTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => !t.ignored && t.status === 'completed');
@@ -1229,6 +1363,8 @@ const App: React.FC = () => {
         if (t.type !== 'income') return false;
         if (t.isInvestment) return false;
         if (t.category.startsWith('Caixinha')) return false;
+        // Exclude Savings Account transactions from Dashboard Income
+        if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
         
         // Salary Visibility Logic
         if (t.description === "Salário Mensal" && t.date > todayStr && !projectionSettings.salary) {
@@ -1245,7 +1381,8 @@ const App: React.FC = () => {
     const baseExpenses = reviewedDashboardTransactions.filter(t => 
         t.type === 'expense' && 
         !t.isInvestment && 
-        !t.category.startsWith('Caixinha') // Fallback for older txs
+        !t.category.startsWith('Caixinha') && // Fallback for older txs
+        !((t.accountType || '').toUpperCase().includes('SAVINGS')) // Exclude Savings
     );
     
     // Split Expenses by Type (Credit Card vs Others)
@@ -1259,14 +1396,14 @@ const App: React.FC = () => {
     // Calculate Account-level Credit Data (Debt & Limit)
     let ccBillsInView = 0;
     let ccTotalLimitInView = 0;
-    
+
     if (includeCreditCardInStats) {
         accountMap.forEach((acc) => {
             const type = (acc.subtype || acc.type || "").toUpperCase();
             const isCredit = type.includes('CREDIT');
-            
+
             if (isCredit) {
-                ccBillsInView += (acc.balance || 0);
+                ccBillsInView += getCurrentInvoiceAmount(acc);
                 ccTotalLimitInView += (acc.creditLimit || 0);
             }
         });
@@ -1388,7 +1525,7 @@ const App: React.FC = () => {
       monthlySavings: finalMonthlySavings,
       creditCardSpending: ccSpending
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -2344,12 +2481,12 @@ const App: React.FC = () => {
                         })()}
                       />
                     )}
-                    <StatsCards 
-                      stats={stats} 
-                      isLoading={isLoadingData} 
-                      accountBalances={accountBalances}
-                      toggles={{
-                        includeChecking: includeCheckingInStats,
+                                                          <StatsCards
+                                                            stats={stats}
+                                                            isLoading={isLoadingData}
+                                                            accountBalances={accountBalances}
+                                                            creditCardTransactions={creditCardTransactions}
+                                                            toggles={{                        includeChecking: includeCheckingInStats,
                         setIncludeChecking: setIncludeCheckingInStats,
                         includeCredit: includeCreditCardInStats,
                         setIncludeCredit: setIncludeCreditCardInStats,
@@ -2473,11 +2610,12 @@ const App: React.FC = () => {
                     <ConnectedAccounts
                       accounts={pluggyAccounts}
                       isLoading={loadingPluggyAccounts}
-                      onRefresh={() => refreshPluggyAccounts(pluggyItemIds)}
+                      onRefresh={() => refreshPluggyAccounts(pluggyItemIds, true)}
                       onImport={handleImportAccount}
                       lastSynced={pluggyLastSync}
                       storageKey={userId ? `pluggy_expand_${userId}` : undefined}
                       userId={userId}
+                      memberId={syncMemberId}
                     />
                   </div>
                 )}

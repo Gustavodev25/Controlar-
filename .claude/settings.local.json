@@ -9,7 +9,12 @@
       "Bash(git push)",
       "Bash(npm run dev:*)",
       "Bash(npm run build:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx firebase-tools:*)",
+      "Bash(vercel --version:*)",
+      "Bash(dir /b c:UsersdeDesktopFinance)",
+      "Bash(findstr:*)"
     ],
     "deny": [],
     "ask": []

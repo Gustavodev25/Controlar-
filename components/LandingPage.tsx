@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
+import NumberFlow from '@number-flow/react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import {
   Sparkles,
@@ -127,6 +128,26 @@ const AnimatedSection: React.FC<{
     >
       {children}
     </div>
+  );
+};
+
+// --- ANIMATED NUMBER COMPONENT (Using NumberFlow) ---
+const AnimatedNumber = ({
+  value,
+  decimals = 2
+}: {
+  value: number;
+  decimals?: number;
+}) => {
+  return (
+    <NumberFlow
+      value={value}
+      format={{
+        minimumFractionDigits: decimals,
+        maximumFractionDigits: decimals
+      }}
+      locales="pt-BR"
+    />
   );
 };
 
@@ -424,7 +445,8 @@ const FAQSection = () => {
   const faqs = [
     { q: "Meus dados bancários estão seguros?", a: "Absolutamente. Utilizamos criptografia AES-256 de ponta a ponta. Seus dados são armazenados localmente no seu dispositivo quando possível e nunca vendemos suas informações para terceiros." },
     { q: "Como a IA categoriza meus gastos?", a: "Nossa IA analisa o texto natural que você digita (ex: 'Almoço R$ 40'). Ela identifica padrões, palavras-chave e contexto para atribuir a categoria correta (Alimentação), a data e o valor automaticamente." },
-    { q: "Posso compartilhar com minha família?", a: "Sim! O modo 'Family' está incluso no plano gratuito: adicione múltiplos membros, veja gráficos consolidados e crie metas em conjunto mantendo os gastos individuais privados." },
+    { q: "Quais formas eu consigo lançar meus gastos e receitas?", a: "Você pode registrar tudo de forma manual, conectar suas contas pelo Open Finance para importação automática, enviar lançamentos pelo WhatsApp ou simplesmente falar com a Coinzinha, nossa IA que organiza tudo para você." },
+    { q: "Posso compartilhar com minha família?", a: "Sim! O plano Family permite incluir até 3 pessoas (incluindo o assinante). Cada membro tem sua própria conta individual, mas todos fazem parte da mesma assinatura. Assim, cada pessoa mantém seus dados privados, enquanto o grupo pode acompanhar gráficos e metas compartilhadas se desejar." },
     { q: "Preciso conectar minha conta bancária?", a: "Não. O Controlar+ funciona com input manual inteligente. Isso garante maior privacidade e evita problemas de conexão com bancos. Você digita ou fala, e nós organizamos." }
   ];
 
@@ -466,8 +488,51 @@ const FAQSection = () => {
 
 // --- COMPONENTE: PLANOS (PRICING) ---
 const PricingSection = () => {
+  const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+
+  const getPrice = (monthly: number, annual: number) => {
+    if (billingCycle === 'monthly') return monthly;
+    return annual / 12;
+  };
+
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto">
+    <div className="space-y-12">
+      {/* Billing Toggle */}
+      <div className="flex justify-center">
+        <div className="bg-[#363735] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
+          <button
+            onClick={() => setBillingCycle('monthly')}
+            className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            {billingCycle === 'monthly' && (
+              <motion.div
+                layoutId="billing-pill-landing"
+                className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
+            )}
+            <span className="relative z-10">Mensal</span>
+          </button>
+          <button
+            onClick={() => setBillingCycle('annual')}
+            className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 flex items-center gap-2 ${billingCycle === 'annual' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
+          >
+            {billingCycle === 'annual' && (
+              <motion.div
+                layoutId="billing-pill-landing"
+                className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
+                transition={{ type: "spring", stiffness: 300, damping: 30 }}
+              />
+            )}
+            <span className="relative z-10">Anual</span>
+            <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
+              -5%
+            </span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto">
        {/* Free */}
        <div className="bg-[#363735] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors">
           <div className="flex justify-center mb-4">
@@ -502,8 +567,17 @@ const PricingSection = () => {
           </h3>
           <p className="text-gray-400 text-sm mb-6">Todos os recursos avançados.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 34,90</span>
-             <span className="text-gray-500">/mês</span>
+             <div>
+               <span className="text-4xl font-bold text-white">
+                 R$ <AnimatedNumber key={`pro-${billingCycle}`} value={getPrice(34.90, 399.00)} decimals={2} />
+               </span>
+               <span className="text-gray-500">/mês</span>
+             </div>
+             {billingCycle === 'annual' && (
+               <span className="text-xs text-gray-500 block mt-1">
+                 cobrado R$ 399,00 /ano
+               </span>
+             )}
           </div>
           <ul className="space-y-4 mb-8 flex-1">
              <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]"/> <span className="font-bold">IA Integrada ilimitada</span></li>
@@ -524,8 +598,17 @@ const PricingSection = () => {
           <h3 className="text-xl font-bold text-white mb-2">Family</h3>
           <p className="text-gray-500 text-sm mb-6">Gestão completa para toda a casa.</p>
           <div className="mb-6">
-             <span className="text-4xl font-bold text-white">R$ 69,90</span>
-             <span className="text-gray-500">/mês</span>
+             <div>
+               <span className="text-4xl font-bold text-white">
+                 R$ <AnimatedNumber key={`family-${billingCycle}`} value={getPrice(69.90, 749.00)} decimals={2} />
+               </span>
+               <span className="text-gray-500">/mês</span>
+             </div>
+             {billingCycle === 'annual' && (
+               <span className="text-xs text-gray-500 block mt-1">
+                 cobrado R$ 749,00 /ano
+               </span>
+             )}
           </div>
           <ul className="space-y-4 mb-8 flex-1">
              <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-[#f17853]"/> Tudo do Pro</li>
@@ -537,6 +620,7 @@ const PricingSection = () => {
              Em Breve
           </button>
        </div>
+      </div>
     </div>
   );
 };
@@ -553,6 +637,8 @@ const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isOpen) {
       setIsVisible(true);
+      // Bloquear scroll do body
+      document.body.style.overflow = 'hidden';
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
@@ -560,12 +646,35 @@ const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
       });
     } else {
       setIsAnimating(false);
+      // Restaurar scroll do body
+      document.body.style.overflow = '';
       timeoutId = setTimeout(() => {
         setIsVisible(false);
       }, 300);
     }
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      // Garantir que o scroll seja restaurado ao desmontar
+      document.body.style.overflow = '';
+    };
   }, [isOpen]);
+
+  // Handler para fechar com ESC
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        onClose();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleEscape);
+    }
+
+    return () => {
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen, onClose]);
 
   const handleWaitlistSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -603,12 +712,17 @@ const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
   if (!isVisible) return null;
 
   return createPortal(
-    <div className={`
-      fixed inset-0 z-[120] flex items-center justify-center p-4
-      transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-      ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
-    `}>
-      <div className="absolute inset-0" onClick={onClose}></div>
+    <div
+      className={`
+        fixed inset-0 z-[120] flex items-center justify-center p-4
+        transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+        ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
+      `}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="waitlist-modal-title"
+    >
+      <div className="absolute inset-0" onClick={onClose} aria-hidden="true"></div>
       <div className={`
         bg-[#363735] rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800
         flex flex-col max-h-[90vh] relative
@@ -617,11 +731,11 @@ const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
       `}>
 
         {/* Banner Image */}
-        <div className="relative w-full">
+        <div className="relative w-full h-32 sm:h-40 overflow-hidden">
           <img
             src={bannerImg}
             alt="Lista de espera"
-            className="w-full h-auto object-cover rounded-t-3xl"
+            className="w-full h-full object-cover rounded-t-3xl"
           />
           <button
             onClick={onClose}
@@ -894,7 +1008,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </nav>
 
       {/* Hero Section - REMOVED BACKGROUND BLURS */}
-      <section className="relative pt-20 pb-14 lg:pt-48 lg:pb-32 px-4 lg:px-6 overflow-hidden bg-[#2F302E]">
+      <section className="relative pt-24 pb-14 lg:pt-28 lg:pb-24 px-4 lg:px-6 overflow-hidden bg-[#2F302E]">
          <div className="max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-2 gap-10 lg:gap-16 items-center relative z-10">
 
             {/* Left: Content */}
@@ -948,7 +1062,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
 
                 <div className="mt-6 lg:mt-8 flex flex-wrap items-center justify-center lg:justify-start gap-4 lg:gap-6 text-xs lg:text-sm text-gray-500 animate-fade-in-up" style={{animationDelay: '0.4s'}}>
                    <div className="flex items-center gap-2"><CheckCircle size={16} className="text-gray-600" /> Sem cartão necessário</div>
-                   <div className="flex items-center gap-2"><Users size={16} className="text-gray-600" /> +10k Usuários</div>
+                   <div className="flex items-center gap-2">
+                     <Users size={16} className="text-gray-600" />
+                     +<AnimatedNumber value={10} decimals={0} />k Usuários
+                   </div>
                 </div>
             </div>
 
@@ -1059,7 +1176,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                       </div>
                                     </div>
                                     <div className="text-right">
-                                      <p className="text-base font-mono font-bold text-emerald-400">R$ 4.488,21</p>
+                                      <p className="text-base font-mono font-bold text-emerald-400">
+                                        R$ <AnimatedNumber value={4488.21} decimals={2} />
+                                      </p>
                                     </div>
                                   </div>
                                   
@@ -1090,7 +1209,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                       </div>
                                     </div>
                                     <div className="text-right">
-                                      <p className="text-base font-mono font-bold text-emerald-400">R$ 2.845,90</p>
+                                      <p className="text-base font-mono font-bold text-emerald-400">
+                                        R$ <AnimatedNumber value={2845.90} decimals={2} />
+                                      </p>
                                     </div>
                                   </div>
                                   <div className="flex items-center justify-end pt-1">
@@ -1144,7 +1265,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                       </div>
                                     </div>
                                     <div className="text-right">
-                                      <p className="text-base font-mono font-bold text-emerald-400">R$ 1.567,45</p>
+                                      <p className="text-base font-mono font-bold text-emerald-400">
+                                        R$ <AnimatedNumber value={1567.45} decimals={2} />
+                                      </p>
                                     </div>
                                   </div>
                                   <div className="flex items-center justify-end pt-1">
@@ -1337,22 +1460,30 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                               
                               <div className="flex justify-between items-center text-xs pt-2 mt-2 border-t border-gray-800/50 border-dashed">
                                 <span className="text-gray-400">Valor Bruto</span>
-                                <span className="text-gray-300 font-mono">R$ 2.500,00</span>
+                                <span className="text-gray-300 font-mono">
+                                  R$ <AnimatedNumber value={2500} decimals={2} />
+                                </span>
                               </div>
                               <div className="flex justify-between items-center text-xs">
                                 <span className="text-gray-400">INSS (~11%)</span>
-                                <span className="text-red-400 font-mono">- R$ 275,00</span>
+                                <span className="text-red-400 font-mono">
+                                  - R$ <AnimatedNumber value={275} decimals={2} />
+                                </span>
                               </div>
                               <div className="flex justify-between items-center text-xs">
                                 <span className="text-gray-400">IRRF (~7,5%)</span>
-                                <span className="text-red-400 font-mono">- R$ 187,50</span>
+                                <span className="text-red-400 font-mono">
+                                  - R$ <AnimatedNumber value={187.5} decimals={2} />
+                                </span>
                               </div>
                             </div>
 
                             <div className="relative z-0">
                               <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 transition-colors mb-4 shadow-inner flex flex-col items-center justify-center">
                                 <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Valor Total</p>
-                                <p className="text-3xl font-bold text-green-400">R$ 2.037,50</p>
+                                <p className="text-3xl font-bold text-green-400">
+                                  R$ <AnimatedNumber value={2037.5} decimals={2} />
+                                </p>
                               </div>
                             </div>
                          </div>
@@ -1381,7 +1512,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                             <p className="text-gray-400 text-xs mt-1">Planejamento de Independência Financeira</p>
                           </div>
                           <div className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20 flex items-center gap-2">
-                            <Sparkles size={12} /> Premium
+                            <Sparkles size={12} /> Plano Pro e Family
                           </div>
                       </div>
 
@@ -1453,7 +1584,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                           <Target size={14} className="text-[#d97757]" />
                                           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Meta FIRE</p>
                                       </div>
-                                      <p className="text-xl font-mono font-bold text-white tracking-tight">R$ 900.000</p>
+                                      <p className="text-xl font-mono font-bold text-white tracking-tight">
+                                        R$ <AnimatedNumber value={900000} decimals={0} />
+                                      </p>
                                       <p className="text-[10px] text-gray-500 mt-1">Patrimônio necessário</p>
                                   </div>
                                   <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-4">
@@ -1497,13 +1630,20 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                               <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" vertical={false} />
                                               <XAxis dataKey="label" tick={{ fill: '#6b7280', fontSize: 9 }} axisLine={false} tickLine={false} dy={10} />
                                               <YAxis hide />
-                                              <Tooltip 
+                                              <Tooltip
                                                 contentStyle={{ backgroundColor: '#18181b', borderColor: '#27272a', borderRadius: '8px', fontSize: '12px' }}
                                                 itemStyle={{ color: '#fff' }}
+                                                formatter={(value: any, name: string) => {
+                                                  const labels: { [key: string]: string } = {
+                                                    patrimony: 'Patrimônio',
+                                                    target: 'Meta'
+                                                  };
+                                                  return [new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), labels[name] || name];
+                                                }}
                                               />
                                               <ReferenceLine y={900000} stroke="#4b5563" strokeDasharray="3 3" />
-                                              <Line type="monotone" dataKey="patrimony" stroke="#d97757" strokeWidth={3} dot={false} />
-                                              <Line type="linear" dataKey="target" stroke="#4b5563" strokeWidth={1} strokeDasharray="4 4" dot={false} />
+                                              <Line type="monotone" dataKey="patrimony" stroke="#d97757" strokeWidth={3} dot={false} name="Patrimônio" />
+                                              <Line type="linear" dataKey="target" stroke="#4b5563" strokeWidth={1} strokeDasharray="4 4" dot={false} name="Meta" />
                                           </LineChart>
                                       </ResponsiveContainer>
                                   </div>

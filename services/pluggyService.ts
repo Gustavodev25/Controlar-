@@ -297,34 +297,57 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
     }
 
     const today = new Date();
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(today.getDate() - 30);
-    const fromDate = toLocalISODate(thirtyDaysAgo);
+    const searchDate = new Date();
+    // CHANGE 1: Increase range to 6 months (180 days) to get full history as requested
+    searchDate.setDate(today.getDate() - 180);
+    const fromDate = toLocalISODate(searchDate);
 
     // 2. Iterate accounts
     for (const account of accounts) {
-      let transactions = [];
-      try {
-        const txRes = await fetch(`${API_URL}/transactions?accountId=${account.id}&from=${fromDate}`, {
-          headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
-        });
+      console.log(`[PLUGGY] Fetching transactions for account ${account.name} (${account.type} / ${account.subtype})`);
 
-        if (!txRes.ok) {
-          console.error(`Erro ao buscar transacoes da conta ${account.name} (${account.id}): ${txRes.status}`);
-          continue;
-        }
-        
-        const txData = await txRes.json();
-        transactions = txData.results || [];
+      let transactions: any[] = [];
+      let page = 1;
+      let totalPages = 1;
+
+      // CHANGE 2: Pagination Loop to fetch ALL transactions
+      try {
+        do {
+            const url = `${API_URL}/transactions?accountId=${account.id}&from=${fromDate}&page=${page}&pageSize=500`;
+            const txRes = await fetch(url, {
+                headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
+            });
+
+            if (!txRes.ok) {
+                console.error(`[PLUGGY] Erro ao buscar transacoes (Pagina ${page}) da conta ${account.name}: ${txRes.status}`);
+                break;
+            }
+
+            const txData = await txRes.json();
+            const pageResults = txData.results || [];
+            transactions.push(...pageResults);
+            
+            totalPages = txData.totalPages || 1;
+            console.log(`[PLUGGY] Account ${account.name}: Fetched page ${page}/${totalPages} (${pageResults.length} items)`);
+            
+            page++;
+        } while (page <= totalPages);
+
+        console.log(`[PLUGGY] Found TOTAL ${transactions.length} transactions for ${account.name}`);
       } catch (err) {
-        console.error(`Excecao ao buscar transacoes da conta ${account.name}:`, err);
+        console.error(`[PLUGGY] Excecao ao buscar transacoes da conta ${account.name}:`, err);
         continue;
       }
 
       const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
+      console.log(`[PLUGGY] Account ${account.name} is${isCreditCard ? '' : ' NOT'} a credit card`);
 
+      let processedCount = 0;
       for (const tx of transactions) {
-        if (shouldSkipTx(tx, account)) continue;
+        if (shouldSkipTx(tx, account)) {
+          console.log(`[PLUGGY] Skipped transaction: ${tx.description} (balance/saldo)`);
+          continue;
+        }
 
         const category = mapCategory(tx.category, tx.description);
         let isExpense;
@@ -352,7 +375,7 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         const dateStr = tx.date ? tx.date.split("T")[0] : toLocalISODate();
 
         // Detect installments for Description Only
-        const parsedMatch = baseDesc.match(/(\d+)\s*\/\s*(\d+)/);
+        const parsedMatch = baseDesc.match(/(\d+)\s*[\/|de]\s*(\d+)/i);
         const descCurrent = parsedMatch ? Number(parsedMatch[1]) : undefined;
         const descTotal = parsedMatch ? Number(parsedMatch[2]) : undefined;
         const installData = tx.installment || tx.installments || tx.paymentData?.installments;
@@ -381,9 +404,13 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
         };
 
         resultTransactions.push(newTx);
+        processedCount++;
       }
+
+      console.log(`[PLUGGY] Processed ${processedCount} transactions for account ${account.name}`);
     }
 
+    console.log(`[PLUGGY] Total transactions to import: ${resultTransactions.length}`);
     return resultTransactions;
   } catch (error) {
     console.error("Error fetching Pluggy transactions:", error);
@@ -392,13 +419,45 @@ export const fetchPluggyTransactionsForImport = async (userId: string, itemId: s
 };
 
 /**
+ * Helper: Generate all installment transactions from a base transaction
+ */
+const generateInstallmentTransactions = (baseTx: Omit<Transaction, "id">, currentInstallment: number, totalInstallments: number): Omit<Transaction, "id">[] => {
+  const transactions: Omit<Transaction, "id">[] = [];
+  const baseDate = new Date(baseTx.date + 'T00:00:00');
+  const baseAmount = baseTx.amount;
+
+  // Remove the installment info from description to get clean name
+  const cleanDesc = baseTx.description.replace(/\s*\(?\d+\s*[\/|de]\s*\d+\)?/gi, '').trim();
+
+  for (let i = 1; i <= totalInstallments; i++) {
+    // Calculate date: add (i - currentInstallment) months
+    const installmentDate = new Date(baseDate);
+    installmentDate.setMonth(installmentDate.getMonth() + (i - currentInstallment));
+
+    const dateStr = installmentDate.toISOString().split('T')[0];
+
+    transactions.push({
+      ...baseTx,
+      description: `${cleanDesc} (${i}/${totalInstallments})`,
+      date: dateStr,
+      // Use a unique pluggyId for each installment
+      pluggyId: `${baseTx.pluggyId}_inst_${i}`
+    });
+  }
+
+  return transactions;
+};
+
+/**
  * Importa automaticamente todas as transacoes do Item para o Firestore.
  * Usado principalmente na primeira conexao para popular dados.
  */
 export const autoImportPluggyItem = async (userId: string, itemId: string, memberId?: string): Promise<number> => {
   try {
+    console.log(`[PLUGGY] Starting auto-import for item ${itemId}`);
     const candidates = await fetchPluggyTransactionsForImport(userId, itemId);
-    
+    console.log(`[PLUGGY] Fetched ${candidates.length} candidate transactions`);
+
     let importedCount = 0;
     const savedIds = loadSavedTxIds(userId, itemId);
     const insertedKeys = new Set<string>();
@@ -407,32 +466,86 @@ export const autoImportPluggyItem = async (userId: string, itemId: string, membe
        // Add memberId if provided
        if (memberId) newTx.memberId = memberId;
 
-       const txKey = newTx.pluggyId!; 
+       // Check if this is an installment transaction
+       // Regex handles "1/12", "1 / 12", "1 de 12"
+       const installmentMatch = newTx.description.match(/(\d+)\s*[\/|de]\s*(\d+)/i);
+       const currentInstallment = installmentMatch ? parseInt(installmentMatch[1]) : null;
+       const totalInstallments = installmentMatch ? parseInt(installmentMatch[2]) : null;
 
-       // Skip if we already saved this transaction
-       if (savedIds.has(txKey)) {
-         const stillExists = await transactionExists(userId, newTx);
-         if (stillExists) continue;
-         savedIds.delete(txKey);
+       let transactionsToSave: Omit<Transaction, "id">[] = [];
+
+       if (currentInstallment && totalInstallments && totalInstallments > 1) {
+         console.log(`[PLUGGY] Detected installment ${currentInstallment}/${totalInstallments} for ${newTx.description}`);
+         
+         // STRATEGY: To avoid duplicates (exponential growth of transactions), 
+         // we only generate FUTURE installments if we are processing the FIRST installment (1/X).
+         // If we are processing 2/X, 3/X, etc., we assume the future ones were already projected 
+         // when 1/X was processed (or we skip projection to avoid duplicates if 1/X was missed).
+         // We ALWAYS save the current one (which is the real one from the bank).
+
+         if (currentInstallment === 1) {
+            // Generate all future installments (2 to Total)
+            // The current one (1/Total) is added by default below as 'newTx'? 
+            // No, generateInstallmentTransactions usually generates ALL. 
+            // Let's use a custom logic here to be safe.
+            
+            // 1. Add the Current One (1/X) - explicitly ensuring it keeps the original pluggyId
+            transactionsToSave.push(newTx);
+
+            // 2. Generate Future Ones (2..Total)
+            const futureInstallments = generateInstallmentTransactions(newTx, currentInstallment, totalInstallments);
+            // Filter out the first one since we just added the real 'newTx'
+            // generateInstallmentTransactions creates 1..Total.
+            // We want only 2..Total
+            const futureOnly = futureInstallments.filter(t => {
+                const match = t.description.match(/(\d+)\s*[\/|de]\s*(\d+)/i);
+                const inst = match ? parseInt(match[1]) : 0;
+                return inst > 1;
+            });
+            
+            transactionsToSave.push(...futureOnly);
+            console.log(`[PLUGGY] Generated ${futureOnly.length} future installment transactions (Projected)`);
+
+         } else {
+            // Current > 1. Only save the current one (Real).
+            // Do not generate future ones to avoid duplicates.
+            transactionsToSave.push(newTx);
+         }
+
+       } else {
+         transactionsToSave = [newTx];
        }
 
-       if (insertedKeys.has(txKey)) continue;
-       insertedKeys.add(txKey);
+       // Save all generated transactions
+       for (const txToSave of transactionsToSave) {
+         const txKey = txToSave.pluggyId!;
 
-       const firestoreId = `pluggy_${txKey}`;
+         // Skip if we already saved this transaction
+         if (savedIds.has(txKey)) {
+           const stillExists = await transactionExists(userId, txToSave);
+           if (stillExists) continue;
+           savedIds.delete(txKey);
+         }
 
-       const exists = await transactionExists(userId, newTx);
-       if (exists) continue;
+         if (insertedKeys.has(txKey)) continue;
+         insertedKeys.add(txKey);
 
-       await addTransaction(userId, newTx, firestoreId);
-       importedCount++;
-       savedIds.add(txKey);
+         const firestoreId = `pluggy_${txKey}`;
+
+         const exists = await transactionExists(userId, txToSave);
+         if (exists) continue;
+
+         await addTransaction(userId, txToSave, firestoreId);
+         importedCount++;
+         savedIds.add(txKey);
+       }
     }
 
     persistSavedTxIds(userId, itemId, savedIds);
+    console.log(`[PLUGGY] Auto-import completed: ${importedCount} transactions imported`);
     return importedCount;
   } catch (error) {
-    console.error("Error auto-importing Pluggy data:", error);
+    console.error("[PLUGGY] Error auto-importing Pluggy data:", error);
     return 0;
   }
 };
@@ -469,6 +582,9 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
     const itemData = await itemRes.json();
     // O nome do banco geralmente vem dentro de 'connector'
     itemInstitutionName = itemData.connector?.name || itemData.institution?.name || "Outros";
+  } else if (itemRes.status === 404) {
+    console.error(`[PLUGGY] Item ${itemId} not found (404). This item should be removed.`);
+    throw new Error('ITEM_NOT_FOUND');
   } else {
     console.warn(`Could not fetch item details for ${itemId}. Using 'Outros' as fallback institution name.`);
   }
@@ -497,6 +613,11 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
   for (const account of accounts) {
     // Buscar poucas transacoes recentes para mostrar no painel
     let previewTransactions: ConnectedTransactionPreview[] = [];
+    let bills: any[] = [];
+
+    // Verifica tipo para preview também
+    const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
+
     try {
       const txRes = await fetch(`${API_URL}/transactions?accountId=${account.id}&from=${fromDate}&pageSize=5&sort=date`, {
         headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
@@ -504,9 +625,6 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       if (txRes.ok) {
         const txData = await txRes.json();
         const txs = txData.results || [];
-
-        // Verifica tipo para preview também
-        const isCreditCard = (account.type === "CREDIT" || account.subtype === "CREDIT_CARD");
 
         previewTransactions = txs.slice(0, 5).map((tx: any) => {
           // Aplica mesma lógica corrigida no preview
@@ -538,6 +656,39 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       console.warn("Erro ao buscar preview de transacoes Pluggy:", err);
     }
 
+    // Fetch Bills if Credit Card
+    if (isCreditCard) {
+        try {
+            // Request more bills with pageSize parameter to get all available invoices
+            const billsRes = await fetch(`${API_URL}/bills?accountId=${account.id}&pageSize=100`, {
+                headers: { "X-API-KEY": apiKey, "Accept": "application/json" }
+            });
+
+            console.log(`[PLUGGY] Fetching bills for account ${account.id}...`);
+
+            if (billsRes.ok) {
+                const billsData = await billsRes.json();
+                console.log(`[PLUGGY] Bills Response:`, billsData);
+
+                bills = (billsData.results || []).map((b: any) => ({
+                    id: b.id,
+                    dueDate: b.dueDate,
+                    totalAmount: b.totalAmount,
+                    balanceCloseDate: b.balanceCloseDate
+                }));
+
+                console.log(`[PLUGGY] Parsed ${bills.length} bills for account ${account.id}`);
+                console.log(`[PLUGGY] Bills:`, bills);
+            } else {
+                console.error(`[PLUGGY] Failed to fetch bills: ${billsRes.status}`);
+                const errorText = await billsRes.text();
+                console.error(`[PLUGGY] Error details:`, errorText);
+            }
+        } catch (err) {
+            console.error(`[PLUGGY] Exception fetching bills for account ${account.id}:`, err);
+        }
+    }
+
     connectedAccounts.push({
       id: account.id,
       itemId: account.itemId || itemId,
@@ -554,7 +705,8 @@ export const fetchPluggyAccounts = async (itemId: string): Promise<ConnectedAcco
       balanceCloseDate: account.creditData?.balanceCloseDate,
       balanceDueDate: account.creditData?.balanceDueDate,
       minimumPayment: account.creditData?.minimumPayment,
-      previewTransactions
+      previewTransactions,
+      bills
     });
   }
 

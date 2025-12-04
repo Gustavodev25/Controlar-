@@ -180,6 +180,13 @@ export interface ConnectedTransactionPreview {
   currency?: string;
 }
 
+export interface PluggyBill {
+  id: string;
+  dueDate: string;
+  totalAmount: number;
+  balanceCloseDate: string;
+}
+
 export interface ConnectedAccount {
   id: string;
   itemId: string;
@@ -197,6 +204,7 @@ export interface ConnectedAccount {
   balanceCloseDate?: string;
   balanceDueDate?: string;
   minimumPayment?: number;
+  bills?: PluggyBill[];
 }
 
 export interface AppNotification {

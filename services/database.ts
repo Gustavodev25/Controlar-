@@ -176,14 +176,16 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
     const txRef = collection(db, "users", userId, "transactions");
 
     // 1. Check by strict Pluggy ID (globally unique for the provider)
+    // If we have a pluggyId, we TRUST it. If it exists, it's a duplicate.
+    // If it doesn't exist, it's NEW. We do NOT fall back to fuzzy matching 
+    // because that causes false positives (e.g. matching a manual transaction with same amount).
     if (data.pluggyId) {
-      // Removed pluggyItemId check as it might change on reconnection but the transaction is the same
       const pluggyFilters = [where("pluggyId", "==", data.pluggyId)];
       const pluggySnap = await getDocs(query(txRef, ...pluggyFilters, limit(1)));
-      if (!pluggySnap.empty) return true;
+      return !pluggySnap.empty;
     }
 
-    // 2. Fallback: Fuzzy Match
+    // 2. Fallback: Fuzzy Match (Only for Manual/OFX transactions)
     // We only check Date, Amount, Type.
     const filters = [
       where("date", "==", data.date),
@@ -202,6 +204,11 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
 
     return snap.docs.some(doc => {
       const d = doc.data() as any;
+      // If the existing transaction has a pluggyId, we should NOT match it loosely
+      // against a manual transaction (unlikely case, but good safety).
+      // Actually, if we are here, 'data' (incoming) has NO pluggyId.
+      // So we are comparing a Manual Candidate vs Existing DB entries.
+      
       const desc = normalize(d.description);
       // If normalized descriptions match, it's a duplicate.
       return desc === targetDesc;
