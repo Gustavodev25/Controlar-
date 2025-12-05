@@ -1,5 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 
+// Ensure Node runtime (not Edge) so the SDK works properly
+export const runtime = "nodejs20.x";
+
 export const config = {
   api: {
     bodyParser: {
@@ -11,6 +14,17 @@ export const config = {
 const DEFAULT_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-pro";
 
 const getApiKey = () => (process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || "").trim();
+
+const extractText = async (result) => {
+  if (result?.response?.text) return await result.response.text();
+  if (typeof result?.text === "function") return await result.text();
+  if (typeof result?.text === "string") return result.text;
+  const parts = result?.response?.candidates?.[0]?.content?.parts;
+  if (Array.isArray(parts)) {
+    return parts.map((p) => p.text || "").join("");
+  }
+  return "";
+};
 
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", process.env.CORS_ALLOW_ORIGIN || "*");
@@ -41,18 +55,17 @@ export default async function handler(req, res) {
       config: generationConfig,
     });
 
-    // Some SDK versions expose text() under response, others as text.
-    const text =
-      result?.response?.text?.() ??
-      result?.text ??
-      result?.response?.candidates?.[0]?.content?.parts?.map((p) => p.text || "").join("") ||
-      "";
-
+    const text = await extractText(result);
     return res.status(200).json({ text });
   } catch (error) {
-    console.error("Gemini proxy error:", error);
     const statusCode = error?.status || error?.response?.status || 500;
     const message = error?.message || "GEMINI_REQUEST_FAILED";
-    return res.status(statusCode).json({ error: message });
+    console.error("Gemini proxy error:", {
+      message,
+      statusCode,
+      stack: error?.stack,
+      details: error?.response?.data || error?.response?.error,
+    });
+    return res.status(statusCode).json({ error: message, statusCode });
   }
 }
