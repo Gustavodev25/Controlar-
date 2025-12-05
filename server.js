@@ -15,7 +15,7 @@ app.use(express.json());
 
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const apiKey = process.env.VITE_GEMINI_API_KEY;
+const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';
 
 // Initialize Clients

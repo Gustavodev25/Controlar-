@@ -1,28 +1,45 @@
-﻿
-import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { Transaction, AIParsedTransaction, Reminder, Budget, Investment } from "../types";
+
+import { Type, Schema } from "@google/genai";
+import { Transaction, AIParsedTransaction, Budget, Investment } from "../types";
 import { getCurrentLocalMonth, toLocalISODate } from "../utils/dateUtils";
 
-// API key read from environment or fallback to provided key
-const API_KEY =
-  (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GEMINI_API_KEY) ||
-  (typeof process !== "undefined" ? process.env.VITE_GEMINI_API_KEY : "") ||
-  "AIzaSyB0fUWsdsOzAuS5Cw9gnB_JYoXc3Uv-coA";
-
-export const hasGeminiKey = !!API_KEY;
-
-// Initialize client
-const ai = API_KEY ? new GoogleGenAI({ apiKey: API_KEY }) : null;
-
-const ensureClient = () => {
-  if (!ai) {
-    throw new Error("MISSING_GEMINI_API_KEY");
-  }
-  return ai;
-};
-
-// Modelo atualizado
 const MODEL_NAME = "gemini-2.5-pro";
+const GEMINI_API_URL =
+  (
+    (typeof import.meta !== "undefined" && (import.meta as any).env?.VITE_GEMINI_API_URL) ||
+    (typeof process !== "undefined" ? process.env.VITE_GEMINI_API_URL : "") ||
+    "/api/gemini"
+  ).trim();
+
+const MISSING_KEY_MESSAGE = "Configure a variavel GEMINI_API_KEY no backend (/api/gemini).";
+
+const isMissingKeyError = (error: any) =>
+  String(error?.message || "").includes("MISSING_GEMINI_API_KEY");
+
+async function callGemini(params: any) {
+  const endpoint = GEMINI_API_URL || "/api/gemini";
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: MODEL_NAME, ...params }),
+  });
+
+  let data: any = null;
+  const raw = await res.text();
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = null;
+  }
+
+  if (!res.ok) {
+    const error = new Error((data && data.error) || raw || "GEMINI_REQUEST_FAILED");
+    (error as any).status = res.status;
+    throw error;
+  }
+
+  return data;
+}
 
 export interface AIParsedReminder {
   description: string;
@@ -30,98 +47,85 @@ export interface AIParsedReminder {
   category: string;
   dueDate: string;
   isRecurring: boolean;
-  frequency?: 'monthly' | 'weekly' | 'yearly';
-  type: 'income' | 'expense';
+  frequency?: "monthly" | "weekly" | "yearly";
+  type: "income" | "expense";
 }
 
 // Helper function to handle 503 Overloaded errors with exponential backoff
 async function generateWithRetry(params: any, retries = 3) {
-  const client = ensureClient();
+  let lastError: any;
   for (let i = 0; i < retries; i++) {
     try {
-      // Adicionando thinkingConfig se o modelo suportar (2.5-pro geralmente suporta)
-      // Nota: @google/genai pode passar configs adicionais no objeto config
-      const config = {
-          ...params.config,
-          // thinkingConfig: { thinkingBudget: 1024 }, // Opcional, removido por segurança se a lib não tipar
-      };
-      
-      return await client.models.generateContent({
-          ...params,
-          config
-      });
+      return await callGemini(params);
     } catch (error: any) {
-      let statusCode = error.status || error.response?.status;
-      if (!statusCode && error.error?.code) {
-        statusCode = error.error.code;
-      }
-
-      const msg = (error.message || JSON.stringify(error)).toLowerCase();
-
+      lastError = error;
+      const statusCode = error?.status || error?.response?.status;
+      const msg = String(error?.message || "").toLowerCase();
       const isOverloaded =
         statusCode === 503 ||
-        msg.includes('overloaded') ||
-        msg.includes('unavailable') ||
-        msg.includes('503');
-
-      if (isOverloaded) {
-        if (i < retries - 1) {
-          const delay = 2000 * Math.pow(2, i);
-          console.warn(`Gemini overloaded (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
-          continue;
-        }
+        statusCode === 429 ||
+        msg.includes("overloaded") ||
+        msg.includes("unavailable") ||
+        msg.includes("503");
+      if (isOverloaded && i < retries - 1) {
+        const delay = 2000 * Math.pow(2, i);
+        console.warn(`Gemini overloaded (Attempt ${i + 1}/${retries}). Retrying in ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
       }
-      throw error;
+      break;
     }
   }
-  throw new Error("Failed to generate content after retries");
+  throw lastError || new Error("Failed to generate content after retries");
 }
 
 /**
  * Analyzes financial data to provide insights.
  */
-export const analyzeFinances = async (transactions: Transaction[], focus: 'general' | 'savings' | 'future' = 'general'): Promise<{ analysis: string }> => {
-  if (!transactions.length) return { analysis: "Adicione transações para receber uma análise da IA." };
-  if (!API_KEY) return { analysis: "Configure a VITE_GEMINI_API_KEY para usar o consultor IA." };
+export const analyzeFinances = async (
+  transactions: Transaction[],
+  focus: "general" | "savings" | "future" = "general"
+): Promise<{ analysis: string }> => {
+  if (!transactions.length) return { analysis: "Adicione transacoes para receber uma analise da IA." };
 
   const today = new Date();
-  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayStr = today.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const recentTx = transactions.slice(0, 50).map(t =>
     `${t.date}: ${t.description} (${t.category}) - R$ ${t.amount} [${t.type}]`
-  ).join("\n");
+  ).join("
+");
 
   let focusInstruction = "";
-  if (focus === 'savings') {
-    focusInstruction = "Foque EXCLUSIVAMENTE em encontrar gastos desnecessários e sugerir cortes práticos. Seja rigoroso.";
-  } else if (focus === 'future') {
-    focusInstruction = "Foque em projeção. Baseado no gasto atual, diga se o usuário vai fechar o mês no positivo e sugira metas de investimento.";
+  if (focus === "savings") {
+    focusInstruction = "Foque em achar gastos desnecessarios e sugerir cortes praticos. Seja direto.";
+  } else if (focus === "future") {
+    focusInstruction = "Foque em projecao: se vai fechar o mes no positivo e metas de investimento.";
   } else {
-    focusInstruction = "Faça uma análise geral: saúde financeira, categorias mais pesadas e um elogio ou alerta.";
+    focusInstruction = "Faca uma analise geral: saude financeira, categorias pesadas e um elogio ou alerta.";
   }
 
   const prompt = `
-    Hoje é: ${todayStr}.
-    Você é um consultor financeiro pessoal.
-    
-    Analise as seguintes transações recentes do usuário:
+    Hoje eh: ${todayStr}.
+    Voce eh um consultor financeiro pessoal.
+
+    Analise as seguintes transacoes recentes do usuario:
     ${recentTx}
 
-    Instrução Específica: ${focusInstruction}
+    Instrucao Especifica: ${focusInstruction}
 
-    Responda com um texto curto, direto e útil (máx 3 parágrafos). Use Markdown.
+    Responda com um texto curto, direto e util (max 3 paragrafos). Use Markdown.
   `;
 
   try {
-    const response = await generateWithRetry({
-      model: MODEL_NAME,
-      contents: prompt,
-    });
-    return { analysis: response.text || "Não foi possível gerar análise no momento." };
+    const response = await generateWithRetry({ contents: prompt });
+    return { analysis: response?.text || "Nao foi possivel gerar analise no momento." };
   } catch (error: any) {
-    console.error("Erro ao analisar finanças:", error);
-    return { analysis: "O consultor IA está indisponível no momento. Tente novamente." };
+    console.error("Erro ao analisar financas:", error);
+    if (isMissingKeyError(error)) {
+      return { analysis: MISSING_KEY_MESSAGE };
+    }
+    return { analysis: "O consultor IA esta indisponivel no momento. Tente novamente." };
   }
 };
 
@@ -129,20 +133,19 @@ export const analyzeFinances = async (transactions: Transaction[], focus: 'gener
  * Parses natural language text into a structured transaction object.
  */
 export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
-  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = new Date();
-  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayStr = today.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const prompt = `
-    Hoje é: ${todayStr}.
-    Você é um assistente que extrai dados de transações financeiras a partir de texto natural.
-    
-    Texto do usuário: "${text}"
-    
-    Identifique se é uma DESPESA (expense) ou RECEITA (income).
-    Extraia: descrição, valor, categoria, data (YYYY-MM-DD), parcelas e se é uma assinatura (isSubscription).
-    Se a data não for informada, use a data de hoje.
-    
+    Hoje eh: ${todayStr}.
+    Voce eh um assistente que extrai dados de transacoes financeiras a partir de texto natural.
+
+    Texto do usuario: "${text}"
+
+    Identifique se eh uma DESPESA (expense) ou RECEITA (income).
+    Extraia: descricao, valor, categoria, data (YYYY-MM-DD), parcelas e se eh uma assinatura (isSubscription).
+    Se a data nao for informada, use a data de hoje.
+
     Retorne APENAS JSON seguindo o schema.
   `;
 
@@ -154,22 +157,21 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
       category: { type: Type.STRING },
       date: { type: Type.STRING, description: "YYYY-MM-DD" },
       type: { type: Type.STRING, enum: ["income", "expense"] },
-      installments: { type: Type.INTEGER, description: "Quantidade de parcelas (1 se à vista)" },
-      isSubscription: { type: Type.BOOLEAN, description: "True se for assinatura/serviço recorrente" }
+      installments: { type: Type.INTEGER, description: "Quantidade de parcelas (1 se a vista)" },
+      isSubscription: { type: Type.BOOLEAN, description: "True se for assinatura/servico recorrente" }
     },
     required: ["description", "amount", "category", "type", "date"]
   };
 
   try {
     const response = await generateWithRetry({
-      model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
 
-    const result = JSON.parse(response.text || "{}") as AIParsedTransaction;
+    const result = JSON.parse(response?.text || "{}") as AIParsedTransaction;
 
-    if (!result.description) result.description = "Nova Transação";
+    if (!result.description) result.description = "Nova Transacao";
     if (result.amount === undefined || result.amount === null) result.amount = 0;
     if (!result.category) result.category = "Outros";
     if (!result.type) result.type = "expense";
@@ -179,6 +181,7 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
     return result;
   } catch (error) {
     console.error("Erro ao interpretar texto:", error);
+    if (isMissingKeyError(error)) throw error;
     return null;
   }
 };
@@ -187,16 +190,15 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
  * Parses natural language text into a Reminder object.
  */
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
-  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const today = toLocalISODate();
-  
+
   const prompt = `
-    Hoje é: ${today}.
+    Hoje eh: ${today}.
     Extraia dados de um lembrete financeiro (conta a pagar ou receber) do texto abaixo.
-    
+
     Texto: "${text}"
-    
-    Identifique: Descrição, Valor, Data de Vencimento (YYYY-MM-DD), Categoria, Recorrência.
+
+    Identifique: Descricao, Valor, Data de Vencimento (YYYY-MM-DD), Categoria, Recorrencia.
     Retorne JSON.
   `;
 
@@ -216,11 +218,10 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
 
   try {
     const response = await generateWithRetry({
-      model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
-    const result = JSON.parse(response.text || "{}") as AIParsedReminder;
+    const result = JSON.parse(response?.text || "{}") as AIParsedReminder;
 
     if (!result.description) result.description = "Lembrete";
     if (!result.amount) result.amount = 0;
@@ -232,6 +233,7 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
     return result;
   } catch (error) {
     console.error("Erro ao interpretar lembrete:", error);
+    if (isMissingKeyError(error)) throw error;
     return null;
   }
 };
@@ -239,17 +241,15 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
 /**
  * Parses natural language text into a Subscription object.
  */
-export const parseSubscriptionFromText = async (text: string): Promise<{ name: string, amount: number, billingCycle: 'monthly' | 'yearly', category: string } | null> => {
-  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
-  
+export const parseSubscriptionFromText = async (text: string): Promise<{ name: string, amount: number, billingCycle: "monthly" | "yearly", category: string } | null> => {
   const prompt = `
-    Extraia dados de uma assinatura/serviço recorrente do texto: "${text}"
-    
+    Extraia dados de uma assinatura/servico recorrente do texto: "${text}"
+
     Identifique:
-    - Nome do Serviço (ex: Netflix, Spotify)
+    - Nome do Servico (ex: Netflix, Spotify)
     - Valor (amount)
-    - Ciclo de Cobrança (billingCycle): 'monthly' (mensal) ou 'yearly' (anual). Se não especificado, assuma 'monthly'.
-    - Categoria (ex: Lazer, Trabalho, Educação)
+    - Ciclo de Cobranca (billingCycle): 'monthly' (mensal) ou 'yearly' (anual). Se nao especificado, assuma 'monthly'.
+    - Categoria (ex: Lazer, Trabalho, Educacao)
 
     Retorne JSON.
   `;
@@ -267,33 +267,32 @@ export const parseSubscriptionFromText = async (text: string): Promise<{ name: s
 
   try {
     const response = await generateWithRetry({
-      model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
-    const result = JSON.parse(response.text || "{}");
+    const result = JSON.parse(response?.text || "{}");
 
     if (!result.name) result.name = "Assinatura";
     if (!result.amount) result.amount = 0;
-    if (!result.billingCycle) result.billingCycle = 'monthly';
-    if (!result.category) result.category = 'Outros';
+    if (!result.billingCycle) result.billingCycle = "monthly";
+    if (!result.category) result.category = "Outros";
 
     return result;
   } catch (error) {
     console.error("Erro ao interpretar assinatura:", error);
+    if (isMissingKeyError(error)) throw error;
     return null;
   }
 };
 
 export const parseStatementFile = async (base64Data: string, mimeType: string): Promise<AIParsedTransaction[] | null> => {
-  if (!API_KEY) throw new Error("MISSING_GEMINI_API_KEY");
   const todayStr = toLocalISODate();
 
   const prompt = `
-    Analise este documento (extrato bancário/fatura).
-    Extraia todas as transações financeiras encontradas.
-    Hoje é ${todayStr}. Se o ano não estiver explícito, assuma o ano atual ou recente.
-    Ignore saldos acumulados, foque em movimentações individuais.
+    Analise este documento (extrato bancario/fatura).
+    Extraia todas as transacoes financeiras encontradas.
+    Hoje eh ${todayStr}. Se o ano nao estiver explicito, assuma o ano atual ou recente.
+    Ignore saldos acumulados, foque em movimentacoes individuais.
     Retorne um array JSON.
     - isSubscription: true se for assinatura
   `;
@@ -316,7 +315,6 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
 
   try {
     const response = await generateWithRetry({
-      model: MODEL_NAME,
       contents: {
         parts: [
           {
@@ -334,10 +332,10 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
       }
     });
 
-    const results = JSON.parse(response.text || "[]") as AIParsedTransaction[];
+    const results = JSON.parse(response?.text || "[]") as AIParsedTransaction[];
     return results.map(r => ({
       ...r,
-      description: r.description || "Transação",
+      description: r.description || "Transacao",
       amount: r.amount || 0,
       category: r.category || "Outros",
       type: r.type || "expense",
@@ -345,14 +343,14 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
     }));
   } catch (error) {
     console.error("Erro ao processar extrato:", error);
+    if (isMissingKeyError(error)) throw error;
     return null;
   }
 };
 
-
 export type AssistantResponse =
-  | { type: 'text'; content: string }
-  | { type: 'transaction'; data: AIParsedTransaction };
+  | { type: "text"; content: string }
+  | { type: "transaction"; data: AIParsedTransaction };
 
 export const processAssistantMessage = async (
   text: string,
@@ -360,56 +358,57 @@ export const processAssistantMessage = async (
   contextBudgets: Budget[] = [],
   contextInvestments: Investment[] = []
 ): Promise<AssistantResponse> => {
-  if (!API_KEY) return { type: 'text', content: "Configure a VITE_GEMINI_API_KEY para usar o assistente." };
-
   const today = new Date();
-  const todayStr = today.toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayStr = today.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
   const recentTx = contextTransactions.slice(0, 15).map(t =>
     `${t.date}: ${t.description} (${t.amount})`
-  ).join("\n");
+  ).join("
+");
 
   const currentMonth = getCurrentLocalMonth();
   const budgetsSummary = contextBudgets.slice(0, 5).map(b => {
     const spent = contextTransactions
-      .filter(t => t.type === 'expense' && t.category === b.category && t.date.startsWith(currentMonth))
+      .filter(t => t.type === "expense" && t.category === b.category && t.date.startsWith(currentMonth))
       .reduce((sum, t) => sum + t.amount, 0);
     return `${b.category}: gasto R$ ${spent.toFixed(2)} de R$ ${Number(b.limitAmount || 0).toFixed(2)}`;
-  }).join("\n");
+  }).join("
+");
 
   const investmentsSummary = contextInvestments.slice(0, 5).map(inv => {
     return `${inv.name}: R$ ${Number(inv.currentAmount || 0).toFixed(2)}`;
-  }).join("\n");
+  }).join("
+");
 
   const prompt = `
-    Hoje é: ${todayStr}.
-    Você é um assistente financeiro pessoal inteligente.
-    
-    O usuário enviou: "${text}"
-    
+    Hoje eh: ${todayStr}.
+    Voce eh um assistente financeiro pessoal inteligente.
+
+    O usuario enviou: "${text}"
+
     Contexto recente (Resumo):
-    Transações:
+    Transacoes:
     ${recentTx}
 
-    Orçamentos:
+    Orcamentos:
     ${budgetsSummary || 'Nenhum.'}
 
     Investimentos:
     ${investmentsSummary || 'Nenhum.'}
 
     Tarefa:
-    1. Se for um LANÇAMENTO (ex: "gastei 50"), extraia os dados.
-    2. Se for uma PERGUNTA/CONVERSA, responda de forma útil.
+    1. Se for um LANCAMENTO (ex: "gastei 50"), extraia os dados.
+    2. Se for uma PERGUNTA/CONVERSA, responda de forma util.
 
     Retorne JSON.
-    
+
     Para transactionData, siga as regras:
-    - amount: número positivo
+    - amount: numero positivo
     - type: 'income' ou 'expense'
     - category: escolha a melhor categoria
-    - date: YYYY-MM-DD (hoje se não especificado)
-    - description: título curto
-    - installments: 1 se à vista
+    - date: YYYY-MM-DD (hoje se nao especificado)
+    - description: titulo curto
+    - installments: 1 se a vista
     - isSubscription: true se for assinatura
   `;
 
@@ -437,27 +436,29 @@ export const processAssistantMessage = async (
 
   try {
     const response = await generateWithRetry({
-      model: MODEL_NAME,
       contents: prompt,
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
 
-    const result = JSON.parse(response.text || "{}");
+    const result = JSON.parse(response?.text || "{}");
 
-    if (result.intent === 'transaction' && result.transactionData) {
+    if (result.intent === "transaction" && result.transactionData) {
       const data = result.transactionData as AIParsedTransaction;
       if (!data.date) data.date = toLocalISODate();
       if (!data.installments || data.installments < 1) data.installments = 1;
-      if (!data.description) data.description = 'Transação';
-      if (!data.category) data.category = 'Outros';
-      if (!data.type) data.type = 'expense';
+      if (!data.description) data.description = "Transacao";
+      if (!data.category) data.category = "Outros";
+      if (!data.type) data.type = "expense";
       if (!data.amount) data.amount = 0;
-      return { type: 'transaction', data };
+      return { type: "transaction", data };
     }
 
-    return { type: 'text', content: result.chatResponse || "Entendido." };
+    return { type: "text", content: result.chatResponse || "Entendido." };
   } catch (error) {
     console.error("Erro ao processar mensagem do assistente:", error);
-    return { type: 'text', content: "Estou com dificuldades técnicas no momento. Tente novamente." };
+    if (isMissingKeyError(error)) {
+      return { type: "text", content: MISSING_KEY_MESSAGE };
+    }
+    return { type: "text", content: "Estou com dificuldades tecnicas no momento. Tente novamente." };
   }
 };

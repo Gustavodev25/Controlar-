@@ -77,7 +77,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm }) 
     } catch (err: any) {
       const msg = err?.message || "";
       if (msg.includes("MISSING_GEMINI_API_KEY")) {
-        setError("Configure a VITE_GEMINI_API_KEY para usar a IA de lançamentos.");
+        setError("Configure a variavel GEMINI_API_KEY no backend (/api/gemini) para usar a IA de lancamentos.");
       } else {
         setError("Erro ao conectar com a IA. O serviço pode estar sobrecarregado.");
       }
