@@ -93,8 +93,7 @@ export const analyzeFinances = async (
 
   const recentTx = transactions.slice(0, 50).map(t =>
     `${t.date}: ${t.description} (${t.category}) - R$ ${t.amount} [${t.type}]`
-  ).join("
-");
+  ).join("\n");
 
   let focusInstruction = "";
   if (focus === "savings") {
@@ -363,8 +362,7 @@ export const processAssistantMessage = async (
 
   const recentTx = contextTransactions.slice(0, 15).map(t =>
     `${t.date}: ${t.description} (${t.amount})`
-  ).join("
-");
+  ).join("\n");
 
   const currentMonth = getCurrentLocalMonth();
   const budgetsSummary = contextBudgets.slice(0, 5).map(b => {
@@ -372,13 +370,11 @@ export const processAssistantMessage = async (
       .filter(t => t.type === "expense" && t.category === b.category && t.date.startsWith(currentMonth))
       .reduce((sum, t) => sum + t.amount, 0);
     return `${b.category}: gasto R$ ${spent.toFixed(2)} de R$ ${Number(b.limitAmount || 0).toFixed(2)}`;
-  }).join("
-");
+  }).join("\n");
 
   const investmentsSummary = contextInvestments.slice(0, 5).map(inv => {
     return `${inv.name}: R$ ${Number(inv.currentAmount || 0).toFixed(2)}`;
-  }).join("
-");
+  }).join("\n");
 
   const prompt = `
     Hoje eh: ${todayStr}.
