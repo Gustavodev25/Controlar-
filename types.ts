@@ -95,8 +95,8 @@ export interface Transaction {
   needsApproval?: boolean;
   ignored?: boolean;
   isSubscription?: boolean;
-  pluggyId?: string;
-  pluggyItemId?: string;
+  providerId?: string;
+  providerItemId?: string;
   accountId?: string;
   accountType?: string; // 'CHECKING_ACCOUNT', 'CREDIT_CARD', 'SAVINGS_ACCOUNT'
   isInvestment?: boolean;
@@ -181,7 +181,7 @@ export interface ConnectedTransactionPreview {
   currency?: string;
 }
 
-export interface PluggyBill {
+export interface ProviderBill {
   id: string;
   dueDate: string;
   totalAmount: number;
@@ -205,7 +205,7 @@ export interface ConnectedAccount {
   balanceCloseDate?: string;
   balanceDueDate?: string;
   minimumPayment?: number;
-  bills?: PluggyBill[];
+  bills?: ProviderBill[];
 }
 
 export interface AppNotification {

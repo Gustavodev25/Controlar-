@@ -1,4 +1,6 @@
-const fs=require('fs');const path='App.tsx';let t=fs.readFileSync(path,'utf8');const find=`            <BankConnect
+// Disabled patch.cjs
+// const fs=require('fs');const path='App.tsx';let t=fs.readFileSync(path,'utf8');const find=`            <BankConnect
+// ...
               userId={userId}
               memberId={syncMemberId}
               isSidebar

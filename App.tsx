@@ -52,11 +52,9 @@ import { Analytics } from '@vercel/analytics/react';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
-import { fetchPluggyAccounts, syncPluggyData, fetchPluggyTransactionsForImport, markTransactionsAsImported, triggerItemUpdate } from './services/pluggyService';
 import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
-import { ImportReviewModal } from './components/ImportReviewModal';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
@@ -90,7 +88,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
       onMouseLeave={() => setIsHovered(false)}
       className={`
         flex items-center transition-all duration-200 group relative rounded-lg
-        ${isOpen 
+        ${isOpen
           ? 'w-full gap-3 p-2.5 justify-start' // Expandido: alinhado à esquerda
           : 'w-full py-3 justify-center'       // Colapsado: largura total, centralizado (removido w-10/h-10 rounded-full)
         }
@@ -164,66 +162,66 @@ const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   }, [isOpen]);
 
   if (!isVisible) return null;
-  
+
   return (
-    <div 
+    <div
       className={`
         fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
         ${isAnimating ? 'bg-black/60 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
       `}
     >
-       <div 
-         className={`
+      <div
+        className={`
             bg-gray-900 border border-gray-800 rounded-2xl w-full max-w-md overflow-hidden relative shadow-2xl transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
             ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
          `}
-       >
-          <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors z-10">
-             <X size={20} />
-          </button>
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-500 hover:text-white transition-colors z-10">
+          <X size={20} />
+        </button>
 
-          <div className="p-6 flex flex-col items-center text-center relative">
-             {/* Background Glow */}
-             <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-[#25D366]/10 rounded-full blur-3xl pointer-events-none"></div>
+        <div className="p-6 flex flex-col items-center text-center relative">
+          {/* Background Glow */}
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-[#25D366]/10 rounded-full blur-3xl pointer-events-none"></div>
 
-             <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mb-4 text-[#25D366] ring-1 ring-[#25D366]/20 relative z-10">
-                <MessageCircle size={32} />
-             </div>
-             
-             <h2 className="text-xl font-bold text-white mb-2 relative z-10">Coinzinha no WhatsApp</h2>
-             <p className="text-gray-400 text-sm mb-6 leading-relaxed relative z-10">
-               Converse com sua IA financeira diretamente pelo WhatsApp. Envie áudios de gastos, fotos de notas fiscais ou peça conselhos.
-             </p>
-
-             <div className="bg-gray-800/50 rounded-xl p-4 w-full mb-6 border border-gray-800 text-left relative z-10">
-                <p className="text-xs text-gray-500 font-bold uppercase mb-2">Como funciona:</p>
-                <ul className="text-sm text-gray-300 space-y-2">
-                   <li className="flex gap-2 items-start">
-                      <span className="text-[#25D366] font-bold">1.</span>
-                      <span>Clique no botão abaixo para abrir o chat.</span>
-                   </li>
-                   <li className="flex gap-2 items-start">
-                      <span className="text-[#25D366] font-bold">2.</span>
-                      <span>Se for sua primeira vez, envie o código de conexão (ex: <code>join stomach-event</code>).</span>
-                   </li>
-                   <li className="flex gap-2 items-start">
-                      <span className="text-[#25D366] font-bold">3.</span>
-                      <span>Pronto! O Coinzinha vai processar tudo e sincronizar aqui.</span>
-                   </li>
-                </ul>
-             </div>
-
-             <a 
-               href="https://wa.me/14155238886?text=join%20stomach-event" 
-               target="_blank" 
-               rel="noreferrer"
-               className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,211,102,0.3)] relative z-10"
-             >
-               <MessageCircle size={20} />
-               Abrir WhatsApp
-             </a>
+          <div className="w-16 h-16 bg-[#25D366]/10 rounded-full flex items-center justify-center mb-4 text-[#25D366] ring-1 ring-[#25D366]/20 relative z-10">
+            <MessageCircle size={32} />
           </div>
-       </div>
+
+          <h2 className="text-xl font-bold text-white mb-2 relative z-10">Coinzinha no WhatsApp</h2>
+          <p className="text-gray-400 text-sm mb-6 leading-relaxed relative z-10">
+            Converse com sua IA financeira diretamente pelo WhatsApp. Envie áudios de gastos, fotos de notas fiscais ou peça conselhos.
+          </p>
+
+          <div className="bg-gray-800/50 rounded-xl p-4 w-full mb-6 border border-gray-800 text-left relative z-10">
+            <p className="text-xs text-gray-500 font-bold uppercase mb-2">Como funciona:</p>
+            <ul className="text-sm text-gray-300 space-y-2">
+              <li className="flex gap-2 items-start">
+                <span className="text-[#25D366] font-bold">1.</span>
+                <span>Clique no botão abaixo para abrir o chat.</span>
+              </li>
+              <li className="flex gap-2 items-start">
+                <span className="text-[#25D366] font-bold">2.</span>
+                <span>Se for sua primeira vez, envie o código de conexão (ex: <code>join stomach-event</code>).</span>
+              </li>
+              <li className="flex gap-2 items-start">
+                <span className="text-[#25D366] font-bold">3.</span>
+                <span>Pronto! O Coinzinha vai processar tudo e sincronizar aqui.</span>
+              </li>
+            </ul>
+          </div>
+
+          <a
+            href="https://wa.me/14155238886?text=join%20stomach-event"
+            target="_blank"
+            rel="noreferrer"
+            className="w-full bg-[#25D366] hover:bg-[#20bd5a] text-black font-bold py-3.5 rounded-xl transition-all flex items-center justify-center gap-2 shadow-[0_0_20px_rgba(37,211,102,0.3)] relative z-10"
+          >
+            <MessageCircle size={20} />
+            Abrir WhatsApp
+          </a>
+        </div>
+      </div>
     </div>
   );
 };
@@ -241,143 +239,161 @@ const App: React.FC = () => {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [isProcessingInvite, setIsProcessingInvite] = useState(false);
   const [showInviteLanding, setShowInviteLanding] = useState(() => {
-      if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          return !!params.get('inviteToken');
-      }
-      return false;
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return !!params.get('inviteToken');
+    }
+    return false;
   });
   const toast = useToasts();
 
   // Handle Family Invite Link & Context Loading
   useEffect(() => {
-      const loadInvite = async () => {
-        let token: string | null = null;
-        let familyId: string | null = null;
+    const loadInvite = async () => {
+      let token: string | null = null;
+      let familyId: string | null = null;
 
-        if (typeof window !== 'undefined') {
-            const params = new URLSearchParams(window.location.search);
-            token = params.get('inviteToken');
-            familyId = params.get('familyId');
-
-            if (token && familyId) {
-                localStorage.setItem('pending_invite_token', token);
-                localStorage.setItem('pending_invite_family_id', familyId);
-                // Clear URL params
-                window.history.replaceState({}, document.title, window.location.pathname);
-            } else {
-                token = localStorage.getItem('pending_invite_token');
-                familyId = localStorage.getItem('pending_invite_family_id');
-            }
-        }
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        token = params.get('inviteToken');
+        familyId = params.get('familyId');
 
         if (token && familyId) {
-            try {
-                const group = await familyService.getFamilyGroup(familyId);
-                let ownerName = 'Alguém';
-                if (group && group.ownerId) {
-                    const ownerProfile = await dbService.getUserProfile(group.ownerId);
-                    if (ownerProfile?.name) ownerName = ownerProfile.name;
-                }
-                setPendingInvite({ token, familyId, ownerName });
-                // Only show landing if no user is logged in yet.
-                // If logged in, logic further down handles it (showing InviteAcceptModal or auto-joining).
-                if (!auth.currentUser) {
-                    setShowInviteLanding(true);
-                }
-            } catch (err) {
-                console.error("Erro ao carregar convite:", err);
-            }
+          localStorage.setItem('pending_invite_token', token);
+          localStorage.setItem('pending_invite_family_id', familyId);
+          // Clear URL params
+          window.history.replaceState({}, document.title, window.location.pathname);
+        } else {
+          token = localStorage.getItem('pending_invite_token');
+          familyId = localStorage.getItem('pending_invite_family_id');
         }
-      };
-      loadInvite();
+      }
+
+      if (token && familyId) {
+        try {
+          const group = await familyService.getFamilyGroup(familyId);
+          let ownerName = 'Alguém';
+          if (group && group.ownerId) {
+            const ownerProfile = await dbService.getUserProfile(group.ownerId);
+            if (ownerProfile?.name) ownerName = ownerProfile.name;
+          }
+          setPendingInvite({ token, familyId, ownerName });
+          // Only show landing if no user is logged in yet.
+          // If logged in, logic further down handles it (showing InviteAcceptModal or auto-joining).
+          if (!auth.currentUser) {
+            setShowInviteLanding(true);
+          }
+        } catch (err) {
+          console.error("Erro ao carregar convite:", err);
+        }
+      }
+    };
+    loadInvite();
   }, []);
 
 
   // Landing variant selector (default waitlist, alt URL unlocks auth landing)
   useEffect(() => {
-      if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined') return;
 
-      const updateLandingVariant = () => {
-          const params = new URLSearchParams(window.location.search);
-          const landingParam = (params.get('landing') || '').toLowerCase();
-          const path = window.location.pathname.toLowerCase();
-          const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
-          setLandingVariant(isAltLanding ? 'auth' : 'waitlist');
-      };
+    const updateLandingVariant = () => {
+      const params = new URLSearchParams(window.location.search);
+      const landingParam = (params.get('landing') || '').toLowerCase();
+      const path = window.location.pathname.toLowerCase();
+      const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
+      setLandingVariant(isAltLanding ? 'auth' : 'waitlist');
+    };
 
-      updateLandingVariant();
-      window.addEventListener('popstate', updateLandingVariant);
-      return () => window.removeEventListener('popstate', updateLandingVariant);
+    updateLandingVariant();
+    window.addEventListener('popstate', updateLandingVariant);
+    return () => window.removeEventListener('popstate', updateLandingVariant);
+  }, []);
+
+  // Handle Klavi Callback (Popup Mode)
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      // Klavi docs say it returns 'link_id' and 'external_info' on success
+      // We also keep 'item_id' and 'code' for backward compatibility/other providers
+      const itemId = params.get('link_id') || params.get('item_id') || params.get('code');
+
+      if (itemId && window.opener) {
+        console.log("[Popup] Klavi success detected. ID:", itemId);
+        // We are inside the popup. Send message to main window and close.
+        // Use '*' to allow communication between Localhost (Opener) and Ngrok (Popup)
+        window.opener.postMessage({ type: 'KLAVI_SUCCESS', itemId }, '*');
+        window.close();
+      }
+    }
   }, []);
 
   // Trigger Modal after Login
   useEffect(() => {
-      if (userId && currentUser && pendingInvite) {
-          // Check if already in *this* family or another
-          if (currentUser.familyGroupId) {
-              if (currentUser.familyGroupId === pendingInvite.familyId) {
-                  toast.success("Você já faz parte desta família!");
-                  setPendingInvite(null);
-                  localStorage.removeItem('pending_invite_token');
-                  localStorage.removeItem('pending_invite_family_id');
-              } else {
-                  // If in another family, we might still show the modal but warn them they need to leave first?
-                  // Or just show the modal and let the join fail or handle logic there.
-                  // For simplicity: Show modal, let user confirm.
-                  setShowInviteModal(true);
-              }
-          } else {
-              setShowInviteModal(true);
-          }
+    if (userId && currentUser && pendingInvite) {
+      // Check if already in *this* family or another
+      if (currentUser.familyGroupId) {
+        if (currentUser.familyGroupId === pendingInvite.familyId) {
+          toast.success("Você já faz parte desta família!");
+          setPendingInvite(null);
+          localStorage.removeItem('pending_invite_token');
+          localStorage.removeItem('pending_invite_family_id');
+        } else {
+          // If in another family, we might still show the modal but warn them they need to leave first?
+          // Or just show the modal and let the join fail or handle logic there.
+          // For simplicity: Show modal, let user confirm.
+          setShowInviteModal(true);
+        }
+      } else {
+        setShowInviteModal(true);
       }
+    }
   }, [userId, currentUser, pendingInvite]);
 
   const handleAcceptInvite = async () => {
-      if (!userId || !pendingInvite) return;
-      setIsProcessingInvite(true);
-      try {
-          await familyService.joinFamily(userId, pendingInvite.familyId, pendingInvite.token);
-          toast.success("Bem-vindo à família! Acesso liberado.");
-          
-          // Cleanup
-          localStorage.removeItem('pending_invite_token');
-          localStorage.removeItem('pending_invite_family_id');
-          setPendingInvite(null);
-          setShowInviteModal(false);
-          
-          // Refresh profile immediately
-          const profile = await dbService.getUserProfile(userId);
-          if (profile) setCurrentUser(prev => ({ ...prev!, ...profile }));
-      } catch (err: any) {
-          toast.error(err.message || "Erro ao entrar na família.");
-          // If user is already in another family, the service throws an error.
-          // If the error is specifically about leaving the current family, we could offer that option here.
-      } finally {
-          setIsProcessingInvite(false);
-      }
-  };
+    if (!userId || !pendingInvite) return;
+    setIsProcessingInvite(true);
+    try {
+      await familyService.joinFamily(userId, pendingInvite.familyId, pendingInvite.token);
+      toast.success("Bem-vindo à família! Acesso liberado.");
 
-  const handleDeclineInvite = () => {
+      // Cleanup
       localStorage.removeItem('pending_invite_token');
       localStorage.removeItem('pending_invite_family_id');
       setPendingInvite(null);
       setShowInviteModal(false);
-      toast.info("Convite recusado.");
+
+      // Refresh profile immediately
+      const profile = await dbService.getUserProfile(userId);
+      if (profile) setCurrentUser(prev => ({ ...prev!, ...profile }));
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao entrar na família.");
+      // If user is already in another family, the service throws an error.
+      // If the error is specifically about leaving the current family, we could offer that option here.
+    } finally {
+      setIsProcessingInvite(false);
+    }
+  };
+
+  const handleDeclineInvite = () => {
+    localStorage.removeItem('pending_invite_token');
+    localStorage.removeItem('pending_invite_family_id');
+    setPendingInvite(null);
+    setShowInviteModal(false);
+    toast.info("Convite recusado.");
   };
 
   // Handle Stripe Payment Return
   usePaymentStatus(async (planId) => {
     if (userId && currentUser) {
       // Update local state
-      const updatedUser = { 
-          ...currentUser, 
-          subscription: { 
-              plan: planId as any, 
-              status: 'active' as const, 
-              billingCycle: 'monthly' as const, // Simplified assumption or pass via URL
-              nextBillingDate: toLocalISOString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
-          }
+      const updatedUser = {
+        ...currentUser,
+        subscription: {
+          plan: planId as any,
+          status: 'active' as const,
+          billingCycle: 'monthly' as const, // Simplified assumption or pass via URL
+          nextBillingDate: toLocalISOString(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
+        }
       };
       setCurrentUser(updatedUser);
       await dbService.updateUserProfile(userId, updatedUser);
@@ -416,17 +432,9 @@ const App: React.FC = () => {
   const [familyGoals, setFamilyGoals] = useState<FamilyGoal[]>([]);
   const [budgets, setBudgets] = useState<Budget[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
-  const [pluggyAccounts, setPluggyAccounts] = useState<ConnectedAccount[]>([]);
-  const [pluggyItemIds, setPluggyItemIds] = useState<string[]>([]);
-  const [loadingPluggyAccounts, setLoadingPluggyAccounts] = useState(false);
-  const [pluggyLastSync, setPluggyLastSync] = useState<Record<string, string>>({});
+  const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
+  const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
-  
-  // Import Review State
-  const [isImportReviewOpen, setIsImportReviewOpen] = useState(false);
-  const [importReviewTransactions, setImportReviewTransactions] = useState<Omit<Transaction, 'id'>[]>([]);
-  const [importReviewAccountName, setImportReviewAccountName] = useState('');
-  const [importReviewItemId, setImportReviewItemId] = useState('');
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -436,7 +444,7 @@ const App: React.FC = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
   });
   const [dashboardYear, setDashboardYear] = useState<number>(new Date().getFullYear());
-  
+
   // Projections State
   const [showProjectionMenu, setShowProjectionMenu] = useState(false);
   const [projectionSettings, setProjectionSettings] = useState(() => {
@@ -450,7 +458,7 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
   }, [projectionSettings]);
-  
+
   // Stats Toggles
   const [includeCheckingInStats, setIncludeCheckingInStats] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -525,241 +533,6 @@ const App: React.FC = () => {
     return members.find(m => m.role === 'admin')?.id || members[0]?.id;
   }, [activeMemberId, members]);
 
-  const pluggyStorageKey = (uid: string) => `pluggy_items_${uid}`;
-  const pluggyAccountsKey = (uid: string) => `pluggy_accounts_${uid}`;
-
-  const refreshPluggyAccounts = async (itemIds: string[], forceUpdate: boolean = false) => {
-    if (!itemIds.length) {
-      setPluggyAccounts([]);
-      return;
-    }
-    setLoadingPluggyAccounts(true);
-    try {
-      // If forceUpdate is true, trigger update for all items first
-      if (forceUpdate) {
-        console.log('[PLUGGY] Forcing update for all items before fetching accounts...');
-        await Promise.all(itemIds.map(async (id) => {
-          console.log(`[PLUGGY] Triggering update for item ${id}...`);
-          const success = await triggerItemUpdate(id);
-          console.log(`[PLUGGY] Item ${id} update ${success ? 'succeeded' : 'failed'}`);
-        }));
-        console.log('[PLUGGY] All items updated. Now fetching accounts...');
-      }
-
-      // Fetch accounts and detect invalid items
-      const validItems = new Set<string>();
-      const invalidItems: string[] = [];
-
-      const results = await Promise.all(itemIds.map(async (id) => {
-        try {
-          const accounts = await fetchPluggyAccounts(id);
-          validItems.add(id);
-          return accounts;
-        } catch (err: any) {
-          if (err?.message === 'ITEM_NOT_FOUND') {
-            console.warn(`[PLUGGY] Item ${id} is invalid (404), marking for removal`);
-            invalidItems.push(id);
-          }
-          return [];
-        }
-      }));
-
-      // Remove invalid items from storage
-      if (invalidItems.length > 0 && userId) {
-        const remainingItems = itemIds.filter(id => !invalidItems.includes(id));
-        localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(remainingItems));
-        setPluggyItemIds(remainingItems);
-        console.log(`[PLUGGY] Removed ${invalidItems.length} invalid items from storage`);
-        toast.message({ text: `${invalidItems.length} conexão(ões) inválida(s) foram removidas.` });
-      }
-
-      const flattened = results.flat();
-      const seen = new Set<string>();
-      const unique = flattened.filter(acc => {
-        if (seen.has(acc.id)) return false;
-        seen.add(acc.id);
-        return true;
-      });
-      setPluggyAccounts(unique);
-      if (userId) {
-        localStorage.setItem(pluggyAccountsKey(userId), JSON.stringify(unique));
-      }
-
-      // --- Auto-Sync Logic (Once per day) ---
-      if (!forceUpdate && userId) {
-         const todayStr = toLocalISODate();
-         const staleItems = new Set<string>();
-         
-         unique.forEach(acc => {
-             if (!acc.lastUpdated) {
-                 staleItems.add(acc.itemId);
-             } else {
-                 const lastDate = new Date(acc.lastUpdated);
-                 const accDateStr = toLocalISODate(lastDate);
-                 if (accDateStr < todayStr) {
-                     staleItems.add(acc.itemId);
-                 }
-             }
-         });
-
-         if (staleItems.size > 0) {
-             console.log(`[PLUGGY] Auto-Sync: Found ${staleItems.size} stale items. Triggering background sync...`);
-             // Find admin member ID for auto-sync (fallback to first member)
-             const autoSyncMemberId = members.find(m => m.role === 'admin')?.id || members[0]?.id;
-
-             staleItems.forEach(async (itemId) => {
-                 try {
-                    // 1. Trigger Update at Bank
-                    const triggered = await triggerItemUpdate(itemId);
-                    if (triggered) {
-                        // 2. Sync Data to Firebase
-                        await syncPluggyData(userId, itemId, autoSyncMemberId);
-                        console.log(`[PLUGGY] Auto-Sync: Item ${itemId} synced successfully.`);
-                        
-                        // Update local state lastSync for UI feedback (Map ItemID -> AccountIDs)
-                        const updatedAccounts = unique.filter(a => a.itemId === itemId);
-                        const nowIso = new Date().toISOString();
-                        setPluggyLastSync(prev => {
-                            const next = { ...prev };
-                            updatedAccounts.forEach(a => { next[a.id] = nowIso; });
-                            return next;
-                        });
-                    }
-                 } catch (e) {
-                    console.error(`[PLUGGY] Auto-Sync failed for item ${itemId}:`, e);
-                 }
-             });
-         }
-      }
-    } catch (err) {
-      console.error("Erro ao atualizar contas Pluggy:", err);
-    } finally {
-      setLoadingPluggyAccounts(false);
-    }
-  };
-
-  const handlePluggyItemConnected = async (itemId: string) => {
-    if (!userId) return;
-    toast.success("Open Finance conectado! Sincronizando transações...");
-    const next = Array.from(new Set([...pluggyItemIds, itemId]));
-    setPluggyItemIds(next);
-    localStorage.setItem(pluggyStorageKey(userId), JSON.stringify(next));
-    
-    // 1. Refresh Accounts List (Visual)
-    refreshPluggyAccounts(next);
-
-    // 2. Trigger Auto-Import of Transactions (Database)
-    try {
-        await syncPluggyData(userId, itemId, syncMemberId);
-        toast.success("Transações importadas com sucesso!");
-    } catch (e) {
-        console.error("Erro ao sincronizar dados iniciais:", e);
-        toast.error("Erro ao importar transações iniciais.");
-    }
-  };
-
-  const handleImportAccount = async (account: ConnectedAccount) => {
-    if (!userId) {
-      toast.error("Precisa estar logado para salvar lancamentos.");
-      return 0;
-    }
-    try {
-      // 1. Fetch candidates instead of auto-saving
-      const candidates = await fetchPluggyTransactionsForImport(userId, account.itemId, account.id);
-
-      // Filter out transactions that already exist
-      const newCandidates = [];
-      for (const tx of candidates) {
-          const exists = await dbService.transactionExists(userId, tx);
-          if (!exists) {
-              newCandidates.push(tx);
-          }
-      }
-
-      if (newCandidates.length === 0) {
-        toast.message({ text: "Nenhuma transação nova para importar." });
-        setPluggyLastSync(prev => ({ ...prev, [account.id]: toLocalISOString() }));
-        return 0;
-      }
-
-      // 2. Open Modal
-      setImportReviewTransactions(newCandidates);
-      setImportReviewAccountName(account.name);
-      setImportReviewItemId(account.itemId);
-      setIsImportReviewOpen(true);
-      
-      return newCandidates.length; // Return count found (not necessarily saved yet)
-    } catch (err) {
-      console.error("Erro ao buscar transacoes Pluggy:", err);
-      toast.error("Nao foi possivel buscar os lancamentos.");
-      return 0;
-    }
-  };
-
-  const handleConfirmImport = async (selectedTransactions: Omit<Transaction, 'id'>[]) => {
-    if (!userId || !importReviewItemId) return;
-    setIsImportReviewOpen(false);
-
-    try {
-       let count = 0;
-       for (const tx of selectedTransactions) {
-          // Add memberId context
-          const txWithMember = { ...tx, memberId: syncMemberId };
-          
-          // Ensure deterministic ID for consistency and sanitize
-          const safePluggyId = tx.pluggyId ? tx.pluggyId.replace(/\//g, '_') : undefined;
-          const firestoreId = safePluggyId ? `pluggy_${safePluggyId}` : undefined;
-          
-          // Save
-          await dbService.addTransaction(userId, txWithMember, firestoreId);
-          count++;
-
-          // Check/Add Subscription Logic (Moved from old handleImport)
-          if (tx.type === 'expense') {
-              if (tx.isSubscription) {
-                 const exists = await subscriptionService.checkSubscriptionExists(userId, tx.description);
-                 if (!exists) {
-                     await subscriptionService.addSubscription(userId, {
-                         userId,
-                         name: tx.description,
-                         amount: tx.amount,
-                         category: tx.category,
-                         billingCycle: 'monthly',
-                         status: 'active'
-                     });
-                 }
-              } else {
-                 const detection = detectSubscriptionService(tx.description);
-                 if (detection.isSubscription) {
-                     const exists = await subscriptionService.checkSubscriptionExists(userId, detection.name || tx.description);
-                     if (!exists) {
-                         await subscriptionService.addSubscription(userId, {
-                             userId,
-                             name: detection.name || tx.description,
-                             amount: tx.amount,
-                             category: detection.category || tx.category,
-                             billingCycle: 'monthly',
-                             status: 'active'
-                         });
-                     }
-                 }
-              }
-          }
-       }
-
-       // Mark as imported in local cache to prevent re-appearing
-       markTransactionsAsImported(userId, importReviewItemId, selectedTransactions);
-
-       toast.success(`${count} lançamentos importados com sucesso!`);
-       
-       // Update last sync visual
-       // (Find account ID if possible or just refresh state)
-    } catch (e) {
-       console.error("Erro ao salvar importacao:", e);
-       toast.error("Erro ao salvar transações selecionadas.");
-    }
-  };
-
   const handleArchiveNotification = async (id: string) => {
     if (!userId) return;
     const note = notifications.find(n => n.id === id);
@@ -785,32 +558,8 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (!userId) {
-      setPluggyItemIds([]);
-      setPluggyAccounts([]);
-      return;
-    }
-    try {
-      const storedRaw = localStorage.getItem(pluggyStorageKey(userId));
-      const stored = storedRaw ? JSON.parse(storedRaw) : [];
-      setPluggyItemIds(stored);
-      const cachedAccountsRaw = localStorage.getItem(pluggyAccountsKey(userId));
-      if (cachedAccountsRaw) {
-        try {
-          const cachedParsed = JSON.parse(cachedAccountsRaw);
-          setPluggyAccounts(cachedParsed || []);
-        } catch {
-          setPluggyAccounts([]);
-        }
-      } else {
-        setPluggyAccounts([]);
-      }
-      if (stored.length) {
-        refreshPluggyAccounts(stored);
-      } else {
-        setPluggyAccounts([]);
-      }
-    } catch (err) {
-      console.warn("Nao foi possivel carregar contas Pluggy salvas:", err);
+      setConnectedAccounts([]);
+      setLastSyncMap({});
     }
   }, [userId]);
 
@@ -923,93 +672,93 @@ const App: React.FC = () => {
 
       // Only proceed if today is on or after the payment day
       if (currentDay >= targetDay) {
-         const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
-         const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
+        const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
+        const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
 
-         // Check if exists in loaded transactions
-         // We check for "Salário Mensal" description AND the current month prefix in date
-         const exists = transactions.some(t =>
-           t.type === 'income' &&
-           t.description === "Salário Mensal" &&
-           t.date.startsWith(monthPrefix)
-         );
+        // Check if exists in loaded transactions
+        // We check for "Salário Mensal" description AND the current month prefix in date
+        const exists = transactions.some(t =>
+          t.type === 'income' &&
+          t.description === "Salário Mensal" &&
+          t.date.startsWith(monthPrefix)
+        );
 
-         if (!exists) {
-           // Calculate Advance
-           let advance = currentUser.salaryAdvanceValue || 0;
-           
-           // Sanity Check
-           if (advance >= currentUser.baseSalary!) {
-               advance = 0;
-           }
-           
-           if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-               advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
-           }
-           advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+        if (!exists) {
+          // Calculate Advance
+          let advance = currentUser.salaryAdvanceValue || 0;
 
-           const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
+          // Sanity Check
+          if (advance >= currentUser.baseSalary!) {
+            advance = 0;
+          }
 
-           const newTx: Omit<Transaction, 'id'> = {
-              description: "Salário Mensal",
-              amount: salaryAmount,
-              type: 'income',
-              category: 'Trabalho',
-              date: dateString,
-              status: 'completed',
-              memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
-           };
+          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+          }
+          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
 
-           try {
-              await dbService.addTransaction(userId, newTx);
-              
-              // Check/Add Vale separately if needed
-              // Note: This auto-register only runs when "Salário Mensal" day arrives.
-              // If the user wants Vale to be auto-registered on its own day, we should have a separate check.
-              // But for now, we register it together or skip if already exists?
-              // Ideally, Vale should be registered on ITS day. 
-              // If we register it here (on Salary day), it might be late.
-              // But if we register it here, let's check if it exists first.
-              
-              if (advance > 0) {
-                   // Determine Vale Date
-                   let valeDateStr = dateString;
-                   const pDay = currentUser.salaryPaymentDay || 5;
-                   const aDay = currentUser.salaryAdvanceDay;
-                   
-                   if (aDay) {
-                       const vDate = new Date(currentYear, currentMonth, 1); // Start with current month of Salary logic
-                       vDate.setDate(aDay);
-                       valeDateStr = `${vDate.getFullYear()}-${String(vDate.getMonth() + 1).padStart(2, '0')}-${String(vDate.getDate()).padStart(2, '0')}`;
-                   }
+          const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
 
-                   // Check if Vale exists
-                   const valePrefix = valeDateStr.slice(0, 7);
-                   const valeExists = transactions.some(t =>
-                       t.type === 'income' &&
-                       t.description === "Vale / Adiantamento" &&
-                       t.date.startsWith(valePrefix)
-                   );
-                   
-                   if (!valeExists) {
-                      const advanceTx: Omit<Transaction, 'id'> = {
-                          description: "Vale / Adiantamento",
-                          amount: advance,
-                          type: 'income',
-                          category: 'Trabalho',
-                          date: valeDateStr,
-                          status: 'completed',
-                          memberId: newTx.memberId
-                      };
-                      await dbService.addTransaction(userId, advanceTx);
-                   }
+          const newTx: Omit<Transaction, 'id'> = {
+            description: "Salário Mensal",
+            amount: salaryAmount,
+            type: 'income',
+            category: 'Trabalho',
+            date: dateString,
+            status: 'completed',
+            memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
+          };
+
+          try {
+            await dbService.addTransaction(userId, newTx);
+
+            // Check/Add Vale separately if needed
+            // Note: This auto-register only runs when "Salário Mensal" day arrives.
+            // If the user wants Vale to be auto-registered on its own day, we should have a separate check.
+            // But for now, we register it together or skip if already exists?
+            // Ideally, Vale should be registered on ITS day. 
+            // If we register it here (on Salary day), it might be late.
+            // But if we register it here, let's check if it exists first.
+
+            if (advance > 0) {
+              // Determine Vale Date
+              let valeDateStr = dateString;
+              const pDay = currentUser.salaryPaymentDay || 5;
+              const aDay = currentUser.salaryAdvanceDay;
+
+              if (aDay) {
+                const vDate = new Date(currentYear, currentMonth, 1); // Start with current month of Salary logic
+                vDate.setDate(aDay);
+                valeDateStr = `${vDate.getFullYear()}-${String(vDate.getMonth() + 1).padStart(2, '0')}-${String(vDate.getDate()).padStart(2, '0')}`;
               }
 
-              toast.success("Salário mensal registrado automaticamente!");
-           } catch (err) {
-              console.error("Erro ao registrar salario automatico:", err);
-           }
-         }
+              // Check if Vale exists
+              const valePrefix = valeDateStr.slice(0, 7);
+              const valeExists = transactions.some(t =>
+                t.type === 'income' &&
+                t.description === "Vale / Adiantamento" &&
+                t.date.startsWith(valePrefix)
+              );
+
+              if (!valeExists) {
+                const advanceTx: Omit<Transaction, 'id'> = {
+                  description: "Vale / Adiantamento",
+                  amount: advance,
+                  type: 'income',
+                  category: 'Trabalho',
+                  date: valeDateStr,
+                  status: 'completed',
+                  memberId: newTx.memberId
+                };
+                await dbService.addTransaction(userId, advanceTx);
+              }
+            }
+
+            toast.success("Salário mensal registrado automaticamente!");
+          } catch (err) {
+            console.error("Erro ao registrar salario automatico:", err);
+          }
+        }
       }
     };
 
@@ -1119,6 +868,10 @@ const App: React.FC = () => {
       setFamilyGoals(data);
     });
 
+    const unsubAccounts = dbService.listenToConnectedAccounts(userId, (data) => {
+      setConnectedAccounts(data);
+    });
+
     return () => {
       unsubTx();
       unsubRem();
@@ -1127,6 +880,7 @@ const App: React.FC = () => {
       unsubGoals();
       unsubBudgets();
       unsubSubs();
+      unsubAccounts();
     };
   }, [userId, currentUser?.name]);
 
@@ -1176,7 +930,8 @@ const App: React.FC = () => {
   // 1. Filter by Member (Base filtering)
   const memberFilteredTransactions = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return transactions;
-    return transactions.filter(t => t.memberId === activeMemberId);
+    // Keep unassigned transactions visible for any member (e.g., Pluggy imports before members exist)
+    return transactions.filter(t => !t.memberId || t.memberId === activeMemberId);
   }, [transactions, activeMemberId]);
 
   const memberInvestments = useMemo(() => {
@@ -1224,39 +979,65 @@ const App: React.FC = () => {
 
   // NEW: Calculate Account Balances
   const accountBalances = useMemo(() => {
-    const checking = pluggyAccounts
-        .filter(a => {
-          const subtype = (a.subtype || '').toUpperCase();
-          if (subtype === 'SAVINGS_ACCOUNT') return false; // savings ficam nas caixinhas
-          if (subtype === 'CHECKING_ACCOUNT') return true;
-          // se for banco sem subtype, assume conta corrente para n�o somar poupan�a
-          return a.type === 'BANK' && !subtype;
-        })
-        .reduce((sum, a) => sum + (a.balance || 0), 0);
+    const checkingAccounts = connectedAccounts
+      .filter(a => {
+        const subtype = (a.subtype || '').toUpperCase();
+        const type = (a.type || '').toUpperCase();
 
-    const creditAccounts = pluggyAccounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+        // Excluir poupança (vai para caixinhas) e cartões de crédito
+        if (subtype === 'SAVINGS_ACCOUNT' || subtype === 'SAVINGS') return false;
+        if (type === 'CREDIT' || type === 'CREDIT_CARD' || subtype === 'CREDIT_CARD' || subtype.includes('CREDIT')) return false;
+
+        // Incluir conta corrente (type=CHECKING ou type=BANK com subtype=CHECKING_ACCOUNT)
+        if (type === 'CHECKING') return true;
+        if (subtype === 'CHECKING_ACCOUNT') return true;
+        if (subtype === 'CHECKING') return true;
+
+        // Incluir conta salário e outras contas bancárias
+        if (subtype === 'SALARY_ACCOUNT' || subtype === 'SALARY') return true;
+        if (subtype === 'PAYMENT_ACCOUNT' || subtype === 'PAYMENT') return true;
+        if (subtype === 'INDIVIDUAL') return true; // Conta individual
+
+        // Se for banco sem subtype específico, assume conta corrente
+        if (type === 'BANK' && !subtype) return true;
+
+        // Incluir qualquer outro tipo de conta bancária que não foi excluído
+        if (type === 'BANK') return true;
+
+        return false;
+      });
+
+    const checking = checkingAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
+
+    const creditAccounts = connectedAccounts.filter(a =>
+      a.type === 'CREDIT' ||
+      a.type === 'CREDIT_CARD' ||
+      a.subtype === 'CREDIT_CARD' ||
+      (a.subtype || '').toUpperCase().includes('CREDIT')
+    );
+
 
     const credit = creditAccounts.reduce((acc, a) => ({
-            used: acc.used + getCurrentInvoiceAmount(a),
-            available: acc.available + (a.availableCreditLimit || 0),
-            limit: acc.limit + (a.creditLimit || 0),
-            accounts: creditAccounts
-        }), { used: 0, available: 0, limit: 0, accounts: [] as ConnectedAccount[] });
+      used: acc.used + getCurrentInvoiceAmount(a),
+      available: acc.available + (a.availableCreditLimit || 0),
+      limit: acc.limit + (a.creditLimit || 0),
+      accounts: creditAccounts
+    }), { used: 0, available: 0, limit: 0, accounts: [] as ConnectedAccount[] });
 
-    return { checking, credit };
-  }, [pluggyAccounts, getCurrentInvoiceAmount]);
+    return { checking, checkingAccounts, credit };
+  }, [connectedAccounts, getCurrentInvoiceAmount]);
 
   // NEW: Filter Savings Accounts
   const connectedSavingsAccounts = useMemo(() => {
-    return pluggyAccounts.filter(a => a.subtype === 'SAVINGS_ACCOUNT');
-  }, [pluggyAccounts]);
+    return connectedAccounts.filter(a => a.subtype === 'SAVINGS_ACCOUNT');
+  }, [connectedAccounts]);
 
   // NEW: Account Map for Lookups
   const accountMap = useMemo(() => {
-      const map = new Map<string, ConnectedAccount>();
-      pluggyAccounts.forEach(a => map.set(a.id, a));
-      return map;
-  }, [pluggyAccounts]);
+    const map = new Map<string, ConnectedAccount>();
+    connectedAccounts.forEach(a => map.set(a.id, a));
+    return map;
+  }, [connectedAccounts]);
 
   // Extract available categories from the filtered transactions
   const availableCategories = useMemo(() => {
@@ -1314,7 +1095,7 @@ const App: React.FC = () => {
   }, [dashboardFilteredTransactions]);
 
   const dashboardCreditCardTransactions = useMemo(() => {
-      return reviewedDashboardTransactions.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
+    return reviewedDashboardTransactions.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
   }, [reviewedDashboardTransactions]);
 
   const reviewedMemberTransactions = useMemo(() => {
@@ -1324,22 +1105,29 @@ const App: React.FC = () => {
   // Split transactions by Account Type for different tabs
   const checkingTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
-        const type = (t.accountType || '').toUpperCase();
-        return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
+      const type = (t.accountType || '').toUpperCase();
+      return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
     });
   }, [memberFilteredTransactions]);
 
   const creditCardTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
-        const type = (t.accountType || '').toUpperCase();
-        return type.includes('CREDIT');
+      const type = (t.accountType || '').toUpperCase();
+      const sourceType = (t as any).sourceType || '';
+      const tags = (t as any).tags || [];
+
+      // Match by accountType (legacy/manual entries) OR sourceType/tags (Klavi entries)
+      return type.includes('CREDIT') ||
+        sourceType === 'credit_card' ||
+        tags.includes('Cartão de Crédito');
     });
   }, [memberFilteredTransactions]);
 
+
   const savingsTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
-        const type = (t.accountType || '').toUpperCase();
-        return type.includes('SAVINGS') || t.isInvestment;
+      const type = (t.accountType || '').toUpperCase();
+      return type.includes('SAVINGS') || t.isInvestment;
     });
   }, [memberFilteredTransactions]);
 
@@ -1393,82 +1181,82 @@ const App: React.FC = () => {
   // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
     const todayStr = toLocalISODate();
-    
+
     const incomes = reviewedDashboardTransactions.filter(t => {
-        if (t.type !== 'income') return false;
-        if (t.isInvestment) return false;
-        if (t.category.startsWith('Caixinha')) return false;
-        // Exclude Savings Account transactions from Dashboard Income
-        if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
-        
-        // Salary Visibility Logic
-        if (t.description === "Salário Mensal" && t.date > todayStr && !projectionSettings.salary) {
-            return false;
-        }
-        // Vale Visibility Logic
-        if (t.description === "Vale / Adiantamento" && t.date > todayStr && !projectionSettings.vale) {
-            return false;
-        }
-        return true;
+      if (t.type !== 'income') return false;
+      if (t.isInvestment) return false;
+      if (t.category.startsWith('Caixinha')) return false;
+      // Exclude Savings Account transactions from Dashboard Income
+      if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
+
+      // Salary Visibility Logic
+      if (t.description === "Salário Mensal" && t.date > todayStr && !projectionSettings.salary) {
+        return false;
+      }
+      // Vale Visibility Logic
+      if (t.description === "Vale / Adiantamento" && t.date > todayStr && !projectionSettings.vale) {
+        return false;
+      }
+      return true;
     });
 
     // Base Expenses (All types)
-    const baseExpenses = reviewedDashboardTransactions.filter(t => 
-        t.type === 'expense' && 
-        !t.isInvestment && 
-        !t.category.startsWith('Caixinha') && // Fallback for older txs
-        !((t.accountType || '').toUpperCase().includes('SAVINGS')) // Exclude Savings
+    const baseExpenses = reviewedDashboardTransactions.filter(t =>
+      t.type === 'expense' &&
+      !t.isInvestment &&
+      !t.category.startsWith('Caixinha') && // Fallback for older txs
+      !((t.accountType || '').toUpperCase().includes('SAVINGS')) // Exclude Savings
     );
-    
+
     // Split Expenses by Type (Credit Card vs Others)
     const ccTransactions = baseExpenses.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
     const nonCCTransactions = baseExpenses.filter(t => !(t.accountType || '').toUpperCase().includes('CREDIT'));
-    
+
     const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
     const nonCCSpending = nonCCTransactions.reduce((acc, t) => acc + t.amount, 0);
     const ccSpending = ccTransactions.reduce((acc, t) => acc + t.amount, 0);
-    
+
     // Calculate Account-level Credit Data (Debt & Limit)
     let ccBillsInView = 0;
     let ccTotalLimitInView = 0;
 
     if (includeCreditCardInStats) {
-        accountMap.forEach((acc) => {
-            const type = (acc.subtype || acc.type || "").toUpperCase();
-            const isCredit = type.includes('CREDIT');
+      accountMap.forEach((acc) => {
+        const type = (acc.subtype || acc.type || "").toUpperCase();
+        const isCredit = type.includes('CREDIT');
 
-            if (isCredit) {
-                ccBillsInView += getCurrentInvoiceAmount(acc);
-                ccTotalLimitInView += (acc.creditLimit || 0);
-            }
-        });
+        if (isCredit) {
+          ccBillsInView += getCurrentInvoiceAmount(acc);
+          ccTotalLimitInView += (acc.creditLimit || 0);
+        }
+      });
     }
 
     // Determine Final Credit Card Expense Value for Stats
     let finalCCExpense = 0;
-    
+
     if (includeCreditCardInStats) {
-        if (creditCardUseFullLimit) {
-            finalCCExpense = ccTotalLimitInView;
-        } else if (creditCardUseTotalLimit) {
-            finalCCExpense = ccBillsInView;
-        } else {
-            finalCCExpense = ccSpending;
-        }
+      if (creditCardUseFullLimit) {
+        finalCCExpense = ccTotalLimitInView;
+      } else if (creditCardUseTotalLimit) {
+        finalCCExpense = ccBillsInView;
+      } else {
+        finalCCExpense = ccSpending;
+      }
     }
 
     // Final Totals
     const totalExpense = nonCCSpending + finalCCExpense;
-    
+
     // Calculate Balance
     let calculatedBalance = 0;
     if (includeCheckingInStats) {
-       calculatedBalance += accountBalances.checking;
+      calculatedBalance += accountBalances.checking;
     }
-    
+
     // Subtract CC Liability from Balance (if enabled)
     if (includeCreditCardInStats) {
-        calculatedBalance -= finalCCExpense;
+      calculatedBalance -= finalCCExpense;
     }
 
     // Period Flow (Savings)
@@ -1498,52 +1286,52 @@ const App: React.FC = () => {
 
       // Subscriptions
       if (projectionSettings.subscriptions) {
-        const activeSubscriptions = subscriptions.filter(s => 
-            s.status === 'active' && 
-            s.billingCycle === 'monthly' && 
-            (!dashboardCategory || s.category === dashboardCategory)
+        const activeSubscriptions = subscriptions.filter(s =>
+          s.status === 'active' &&
+          s.billingCycle === 'monthly' &&
+          (!dashboardCategory || s.category === dashboardCategory)
         );
 
         activeSubscriptions.forEach(s => {
-           const alreadyPaid = reviewedDashboardTransactions.some(t => 
-               t.type === 'expense' && 
-               t.amount === s.amount && 
-               t.description.toLowerCase().includes(s.name.toLowerCase())
-           );
+          const alreadyPaid = reviewedDashboardTransactions.some(t =>
+            t.type === 'expense' &&
+            t.amount === s.amount &&
+            t.description.toLowerCase().includes(s.name.toLowerCase())
+          );
 
-           if (!alreadyPaid) {
-               projectedExpense += s.amount;
-           }
+          if (!alreadyPaid) {
+            projectedExpense += s.amount;
+          }
         });
       }
-      
+
       // Salary Projection
       if (projectionSettings.salary && currentUser?.baseSalary) {
-           const salaryTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
-           if (!salaryTx || (salaryTx.amount === 0 && currentUser.baseSalary > 0)) {
-               let advance = currentUser.salaryAdvanceValue || 0;
-               if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-                   advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
-               }
-               advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-               const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
-               projectedIncome += salaryAmount;
-           }
+        const salaryTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
+        if (!salaryTx || (salaryTx.amount === 0 && currentUser.baseSalary > 0)) {
+          let advance = currentUser.salaryAdvanceValue || 0;
+          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+          }
+          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+          const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
+          projectedIncome += salaryAmount;
+        }
       }
 
       // Vale Projection
       if (projectionSettings.vale && currentUser?.baseSalary) {
-           const valeTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
-           if (!valeTx || (valeTx.amount === 0 && currentUser.baseSalary > 0)) {
-               let advance = currentUser.salaryAdvanceValue || 0;
-               if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-                   advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
-               }
-               advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-               if (advance > 0) {
-                   projectedIncome += advance;
-               }
-           }
+        const valeTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
+        if (!valeTx || (valeTx.amount === 0 && currentUser.baseSalary > 0)) {
+          let advance = currentUser.salaryAdvanceValue || 0;
+          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+          }
+          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+          if (advance > 0) {
+            projectedIncome += advance;
+          }
+        }
       }
     }
 
@@ -1573,27 +1361,27 @@ const App: React.FC = () => {
 
   const handleAddMember = async (name: string, avatarUrl: string) => {
     if (userId) {
-       const plan = currentUser?.subscription?.plan || 'starter';
-       const currentCount = members.length;
-       
-       // Limits:
-       // Starter: 1 Total (Admin only) -> Cannot add.
-       // Pro: 2 Total (Admin + 1 profile).
-       // Family: 5 Total.
+      const plan = currentUser?.subscription?.plan || 'starter';
+      const currentCount = members.length;
 
-                  if (plan === 'starter' && currentCount >= 1) {
-                      toast.error("O plano Starter não permite criar perfis adicionais. Faça upgrade para Pro ou Família.");
-                      return;
-                  }
-       
-                  if (plan === 'pro' && currentCount >= 2) {
-                      toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.");
-                      return;
-                  }       
-       if (plan === 'family' && currentCount >= 5) {
-           toast.error("Limite de 5 perfis atingido no plano Família.");
-           return;
-       }
+      // Limits:
+      // Starter: 1 Total (Admin only) -> Cannot add.
+      // Pro: 2 Total (Admin + 1 profile).
+      // Family: 5 Total.
+
+      if (plan === 'starter' && currentCount >= 1) {
+        toast.error("O plano Starter não permite criar perfis adicionais. Faça upgrade para Pro ou Família.");
+        return;
+      }
+
+      if (plan === 'pro' && currentCount >= 2) {
+        toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.");
+        return;
+      }
+      if (plan === 'family' && currentCount >= 5) {
+        toast.error("Limite de 5 perfis atingido no plano Família.");
+        return;
+      }
 
       await dbService.addMember(userId, { name, avatarUrl, role: 'member' });
       toast.success("Membro adicionado!");
@@ -1647,42 +1435,42 @@ const App: React.FC = () => {
 
     try {
       await dbService.addTransaction(userId, { ...data, memberId: finalMemberId });
-      
+
       // Auto-detect subscription
       if (data.type === 'expense') {
-          // 1. Check explicit flag from AI
-          if (data.isSubscription) {
-             const exists = await subscriptionService.checkSubscriptionExists(userId, data.description);
-             if (!exists) {
-                 await subscriptionService.addSubscription(userId, {
-                     userId,
-                     name: data.description,
-                     amount: data.amount,
-                     category: data.category,
-                     billingCycle: 'monthly',
-                     status: 'active'
-                 });
-                 toast.success(`Assinatura "${data.description}" detectada e criada!`);
-             }
-          } 
-          // 2. Check by keyword/regex
-          else {
-             const detection = detectSubscriptionService(data.description);
-             if (detection.isSubscription) {
-                 const exists = await subscriptionService.checkSubscriptionExists(userId, detection.name || data.description);
-                 if (!exists) {
-                     await subscriptionService.addSubscription(userId, {
-                         userId,
-                         name: detection.name || data.description,
-                         amount: data.amount,
-                         category: detection.category || data.category,
-                         billingCycle: 'monthly',
-                         status: 'active'
-                     });
-                     toast.success(`Assinatura "${detection.name}" identificada!`);
-                 }
-             }
+        // 1. Check explicit flag from AI
+        if (data.isSubscription) {
+          const exists = await subscriptionService.checkSubscriptionExists(userId, data.description);
+          if (!exists) {
+            await subscriptionService.addSubscription(userId, {
+              userId,
+              name: data.description,
+              amount: data.amount,
+              category: data.category,
+              billingCycle: 'monthly',
+              status: 'active'
+            });
+            toast.success(`Assinatura "${data.description}" detectada e criada!`);
           }
+        }
+        // 2. Check by keyword/regex
+        else {
+          const detection = detectSubscriptionService(data.description);
+          if (detection.isSubscription) {
+            const exists = await subscriptionService.checkSubscriptionExists(userId, detection.name || data.description);
+            if (!exists) {
+              await subscriptionService.addSubscription(userId, {
+                userId,
+                name: detection.name || data.description,
+                amount: data.amount,
+                category: detection.category || data.category,
+                billingCycle: 'monthly',
+                status: 'active'
+              });
+              toast.success(`Assinatura "${detection.name}" identificada!`);
+            }
+          }
+        }
       }
 
       toast.success("Transação Adicionada!");
@@ -1707,11 +1495,11 @@ const App: React.FC = () => {
     try {
       await dbService.deleteTransaction(userId, id);
       toast.message({
-         text: "Transação excluída.",
-         actionLabel: "Desfazer",
-         onAction: () => {
-             if (userId) dbService.restoreTransaction(userId, t);
-         }
+        text: "Transação excluída.",
+        actionLabel: "Desfazer",
+        onAction: () => {
+          if (userId) dbService.restoreTransaction(userId, t);
+        }
       });
     } catch (e) {
       toast.error("Erro ao remover.");
@@ -1720,12 +1508,12 @@ const App: React.FC = () => {
 
   const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }) => {
     if (userId) {
-      await dbService.updateUserProfile(userId, { 
-          baseSalary: newSalary, 
-          salaryPaymentDay: paymentDay, 
-          salaryAdvanceValue: advanceOptions?.advanceValue,
-          salaryAdvancePercent: advanceOptions?.advancePercent,
-          salaryAdvanceDay: advanceOptions?.advanceDay
+      await dbService.updateUserProfile(userId, {
+        baseSalary: newSalary,
+        salaryPaymentDay: paymentDay,
+        salaryAdvanceValue: advanceOptions?.advanceValue,
+        salaryAdvancePercent: advanceOptions?.advancePercent,
+        salaryAdvanceDay: advanceOptions?.advanceDay
       });
       toast.success("Configurações de renda atualizadas.");
     }
@@ -1919,15 +1707,18 @@ const App: React.FC = () => {
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
     if (showInviteLanding) {
-        return (
-            <>
-                <ToastContainer />
-                <InviteLanding 
-                    ownerName={pendingInvite?.ownerName || 'Alguém'}
-                    onAccept={() => setShowInviteLanding(false)}
-                />
-            </>
-        );
+      return (
+        <>
+          <ToastContainer />
+          <InviteLanding
+            ownerName={pendingInvite?.ownerName || 'Alguém'}
+            onAccept={() => {
+              setShowInviteLanding(false);
+              setShowLanding(false);
+            }}
+          />
+        </>
+      );
     }
 
     if (showLanding && !pendingTwoFactor) {
@@ -1941,17 +1732,17 @@ const App: React.FC = () => {
     return (
       <>
         <ToastContainer />
-        <AuthModal 
-            onLogin={(u) => { 
-                // Explicit trigger handled by AuthModal calling this, 
-                // but we rely on onAuthStateChanged for main logic. 
-                // This callback can be used for immediate UI feedback if needed.
-            }} 
-            onBack={pendingTwoFactor ? undefined : () => setShowLanding(true)}
-            isTwoFactorPending={!!pendingTwoFactor}
-            onVerifyTwoFactor={handleVerifyTwoFactor}
-            onCancelTwoFactor={handleCancelTwoFactor}
-            inviteContext={pendingInvite ? { ...pendingInvite, ownerName: pendingInvite.ownerName || 'Alguém' } : null}
+        <AuthModal
+          onLogin={(u) => {
+            // Explicit trigger handled by AuthModal calling this, 
+            // but we rely on onAuthStateChanged for main logic. 
+            // This callback can be used for immediate UI feedback if needed.
+          }}
+          onBack={pendingTwoFactor ? undefined : () => setShowLanding(true)}
+          isTwoFactorPending={!!pendingTwoFactor}
+          onVerifyTwoFactor={handleVerifyTwoFactor}
+          onCancelTwoFactor={handleCancelTwoFactor}
+          inviteContext={pendingInvite ? { ...pendingInvite, ownerName: pendingInvite.ownerName || 'Alguém' } : null}
         />
       </>
     );
@@ -1963,12 +1754,12 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
       <Analytics />
       <ToastContainer />
-      <InviteAcceptModal 
-          isOpen={showInviteModal} 
-          onAccept={handleAcceptInvite} 
-          onDecline={handleDeclineInvite} 
-          ownerName={pendingInvite?.ownerName || 'Alguém'} 
-          isProcessing={isProcessingInvite}
+      <InviteAcceptModal
+        isOpen={showInviteModal}
+        onAccept={handleAcceptInvite}
+        onDecline={handleDeclineInvite}
+        ownerName={pendingInvite?.ownerName || 'Alguém'}
+        isProcessing={isProcessingInvite}
       />
 
       {/* Sidebar */}
@@ -2131,14 +1922,7 @@ const App: React.FC = () => {
               userId={userId}
               memberId={syncMemberId}
               isSidebar
-              isOpen={isSidebarOpen} // Passado a propriedade para controlar a visibilidade do texto
-              onItemConnected={handlePluggyItemConnected}
-              onSyncComplete={(count) => {
-                if (count > 0) {
-                  setActiveTab('table');
-                }
-              }}
-              existingAccountsCount={pluggyAccounts.length}
+              isOpen={isSidebarOpen}
               userPlan={currentUser?.subscription?.plan || 'starter'}
             />
           </div>
@@ -2147,11 +1931,11 @@ const App: React.FC = () => {
             {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
 
             <NavItem
-                active={false}
-                onClick={() => setIsWhatsAppOpen(true)}
-                icon={<MessageCircle size={20} className="text-[#25D366]" />}
-                label="Coinzinha WhatsApp"
-                isOpen={isSidebarOpen}
+              active={false}
+              onClick={() => setIsWhatsAppOpen(true)}
+              icon={<MessageCircle size={20} className="text-[#25D366]" />}
+              label="Coinzinha WhatsApp"
+              isOpen={isSidebarOpen}
             />
 
             <button
@@ -2182,14 +1966,14 @@ const App: React.FC = () => {
 
           {isSidebarOpen && (
             <div className="px-3 pb-6 mt-auto animate-fade-in">
-                <div className="bg-[#363735] border border-[#3A3B39] rounded-xl p-4 flex items-center gap-3 shadow-sm">
-                    <div className="text-[#d97757] shrink-0">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" /></svg>
-                    </div>
-                    <p className="text-xs text-gray-300 leading-snug text-left font-medium">
-                        Você está navegando na versão Beta (0.1.0) do Controlar<span className="text-[#d97757] font-bold">+</span>
-                    </p>
+              <div className="bg-[#363735] border border-[#3A3B39] rounded-xl p-4 flex items-center gap-3 shadow-sm">
+                <div className="text-[#d97757] shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" /></svg>
                 </div>
+                <p className="text-xs text-gray-300 leading-snug text-left font-medium">
+                  Você está navegando na versão Beta (0.1.0) do Controlar<span className="text-[#d97757] font-bold">+</span>
+                </p>
+              </div>
             </div>
           )}
         </div>
@@ -2207,13 +1991,13 @@ const App: React.FC = () => {
 
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
         <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
-            {/* Mobile Menu Button */}
-            <button
-              onClick={() => setSidebarOpen(!isSidebarOpen)}
-              className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
-            >
-              <Menu size={20} />
-            </button>
+          {/* Mobile Menu Button */}
+          <button
+            onClick={() => setSidebarOpen(!isSidebarOpen)}
+            className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
+          >
+            <Menu size={20} />
+          </button>
 
           <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
             <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
@@ -2273,7 +2057,7 @@ const App: React.FC = () => {
                       className={`
                         h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border
                         ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
-                          ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]' 
+                          ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
                           : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
                         }
                       `}
@@ -2289,65 +2073,65 @@ const App: React.FC = () => {
                       <>
                         <div className="fixed inset-0 z-40" onClick={() => setShowProjectionMenu(false)}></div>
                         <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-2 animate-dropdown-open">
-                           <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1.5 mb-1">
-                              Incluir na Previsão
-                           </div>
-                           
-                           {/* Toggle Lembretes */}
-                           <div 
-                              onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                           >
-                              <div className="flex items-center gap-2">
-                                 <Bell size={14} className="text-gray-400 group-hover:text-white" />
-                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
-                              </div>
-                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.reminders ? 'translate-x-4' : ''}`}></div>
-                              </div>
-                           </div>
+                          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1.5 mb-1">
+                            Incluir na Previsão
+                          </div>
 
-                           {/* Toggle Assinaturas */}
-                           <div 
-                              onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                           >
-                              <div className="flex items-center gap-2">
-                                 <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
-                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
-                              </div>
-                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.subscriptions ? 'translate-x-4' : ''}`}></div>
-                              </div>
-                           </div>
+                          {/* Toggle Lembretes */}
+                          <div
+                            onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <Bell size={14} className="text-gray-400 group-hover:text-white" />
+                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
+                            </div>
+                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.reminders ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                          </div>
 
-                           {/* Toggle Salário */}
-                           <div 
-                              onClick={() => setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                           >
-                              <div className="flex items-center gap-2">
-                                 <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
-                              </div>
-                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.salary ? 'translate-x-4' : ''}`}></div>
-                              </div>
-                           </div>
-                           
-                           {/* Toggle Vale */}
-                           <div 
-                              onClick={() => setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
-                              className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                           >
-                              <div className="flex items-center gap-2">
-                                 <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                                 <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
-                              </div>
-                              <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.vale ? 'translate-x-4' : ''}`}></div>
-                              </div>
-                           </div>
+                          {/* Toggle Assinaturas */}
+                          <div
+                            onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
+                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
+                            </div>
+                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.subscriptions ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                          </div>
+
+                          {/* Toggle Salário */}
+                          <div
+                            onClick={() => setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
+                            </div>
+                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.salary ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                          </div>
+
+                          {/* Toggle Vale */}
+                          <div
+                            onClick={() => setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
+                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
+                          >
+                            <div className="flex items-center gap-2">
+                              <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
+                            </div>
+                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.vale ? 'translate-x-4' : ''}`}></div>
+                            </div>
+                          </div>
                         </div>
                       </>
                     )}
@@ -2445,46 +2229,46 @@ const App: React.FC = () => {
 
             {filterMode === 'year' && (
               <div className="shrink-0 w-24 snap-start">
-                 <CustomSelect
-                    value={dashboardYear}
-                    onChange={(v) => setDashboardYear(Number(v))}
-                    options={Array.from({ length: 5 }, (_, i) => {
-                      const y = new Date().getFullYear() - i;
-                      return { value: y, label: String(y) };
-                    })}
-                    icon={<Calendar size={14} />}
-                    className="text-xs h-10"
-                 />
+                <CustomSelect
+                  value={dashboardYear}
+                  onChange={(v) => setDashboardYear(Number(v))}
+                  options={Array.from({ length: 5 }, (_, i) => {
+                    const y = new Date().getFullYear() - i;
+                    return { value: y, label: String(y) };
+                  })}
+                  icon={<Calendar size={14} />}
+                  className="text-xs h-10"
+                />
               </div>
             )}
 
             {/* Forecast Toggle */}
             {filterMode === 'month' && (
-               <div className="relative shrink-0 snap-start">
-                 <button
-                    onClick={() => setShowProjectionMenu(!showProjectionMenu)}
-                    className={`
+              <div className="relative shrink-0 snap-start">
+                <button
+                  onClick={() => setShowProjectionMenu(!showProjectionMenu)}
+                  className={`
                       h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border
-                      ${(projectionSettings.reminders || projectionSettings.subscriptions) 
-                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]' 
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
-                      }
+                      ${(projectionSettings.reminders || projectionSettings.subscriptions)
+                      ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
+                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
+                    }
                     `}
-                 >
-                    <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions) ? "animate-pulse" : ""} />
-                    Previsão
-                 </button>
-               </div>
+                >
+                  <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions) ? "animate-pulse" : ""} />
+                  Previsão
+                </button>
+              </div>
             )}
 
             {/* Clear Filters */}
             {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
-                <button
-                  onClick={handleResetFilters}
-                  className="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0 snap-start"
-                >
-                  <RotateCcw size={14} />
-                </button>
+              <button
+                onClick={handleResetFilters}
+                className="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0 snap-start"
+              >
+                <RotateCcw size={14} />
+              </button>
             )}
           </div>
         )}
@@ -2493,19 +2277,19 @@ const App: React.FC = () => {
 
           {/* Subscription Page - High Priority Render */}
           {activeTab === 'subscription' && currentUser ? (
-              <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
-                  <SubscriptionPage 
-                      user={currentUser}
-                      onBack={() => setActiveTab('dashboard')}
-                      onUpdateUser={async (u) => {
-                          if (userId) await dbService.updateUserProfile(userId, u);
-                      }}
-                  />
-              </div>
+            <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
+              <SubscriptionPage
+                user={currentUser}
+                onBack={() => setActiveTab('dashboard')}
+                onUpdateUser={async (u) => {
+                  if (userId) await dbService.updateUserProfile(userId, u);
+                }}
+              />
+            </div>
           ) : activeTab === 'admin_overview' ? (
-              <AdminDashboard user={currentUser} />
+            <AdminDashboard user={currentUser} />
           ) : activeTab === 'admin_waitlist' ? (
-              <AdminWaitlist />
+            <AdminWaitlist />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
@@ -2541,22 +2325,23 @@ const App: React.FC = () => {
                           setIsSettingsOpen(true);
                         }}
                         isSalaryLaunched={(() => {
-                            const today = new Date();
-                            const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-                            return memberFilteredTransactions.some(t => 
-                                t.description === "Salário Mensal" && 
-                                t.date.startsWith(currentMonth) &&
-                                !t.ignored
-                            );
+                          const today = new Date();
+                          const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                          return memberFilteredTransactions.some(t =>
+                            t.description === "Salário Mensal" &&
+                            t.date.startsWith(currentMonth) &&
+                            !t.ignored
+                          );
                         })()}
                       />
                     )}
-                                                          <StatsCards
-                                                            stats={stats}
-                                                            isLoading={isLoadingData}
-                                                            accountBalances={accountBalances}
-                                                            creditCardTransactions={creditCardTransactions}
-                                                            toggles={{                        includeChecking: includeCheckingInStats,
+                    <StatsCards
+                      stats={stats}
+                      isLoading={isLoadingData}
+                      accountBalances={accountBalances}
+                      creditCardTransactions={creditCardTransactions}
+                      toggles={{
+                        includeChecking: includeCheckingInStats,
                         setIncludeChecking: setIncludeCheckingInStats,
                         includeCredit: includeCreditCardInStats,
                         setIncludeCredit: setIncludeCreditCardInStats,
@@ -2658,34 +2443,10 @@ const App: React.FC = () => {
 
                 {activeTab === 'connections' && (
                   <div className="flex-1 space-y-6 animate-fade-in">
-                    <div className="">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <h2 className="text-xl font-bold text-white">Contas conectadas</h2>
-                          <p className="text-sm text-gray-400">Visualize saldos e movimentacoes dos bancos vinculados.</p>
-                        </div>
-                        <BankConnect
-                          userId={userId}
-                          memberId={syncMemberId}
-                          onItemConnected={handlePluggyItemConnected}
-                          onSyncComplete={(count) => {
-                            if (count > 0) setActiveTab('table');
-                          }}
-                          existingAccountsCount={pluggyAccounts.length}
-                          userPlan={currentUser?.subscription?.plan || 'starter'}
-                        />
-                      </div>
-                    </div>
-
                     <ConnectedAccounts
-                      accounts={pluggyAccounts}
-                      isLoading={loadingPluggyAccounts}
-                      onRefresh={() => refreshPluggyAccounts(pluggyItemIds, true)}
-                      onImport={handleImportAccount}
-                      lastSynced={pluggyLastSync}
-                      storageKey={userId ? `pluggy_expand_${userId}` : undefined}
+                      accounts={connectedAccounts}
+                      lastSynced={lastSyncMap}
                       userId={userId}
-                      memberId={syncMemberId}
                     />
                   </div>
                 )}
@@ -2725,14 +2486,6 @@ const App: React.FC = () => {
         onConfirm={handleAddTransaction}
       />
 
-      <ImportReviewModal
-        isOpen={isImportReviewOpen}
-        onClose={() => setIsImportReviewOpen(false)}
-        onConfirm={handleConfirmImport}
-        transactions={importReviewTransactions}
-        accountName={importReviewAccountName}
-      />
-
       <SettingsModal
         isOpen={isSettingsOpen}
         onClose={() => {
@@ -2747,17 +2500,17 @@ const App: React.FC = () => {
         familyGoals={familyGoals}
         investments={investments}
         reminders={reminders}
-        connectedAccounts={pluggyAccounts}
+        connectedAccounts={connectedAccounts}
         onNavigateToSubscription={() => {
-            setIsSettingsOpen(false);
-            setActiveTab('subscription');
+          setIsSettingsOpen(false);
+          setActiveTab('subscription');
         }}
         initialTab={settingsInitialTab}
       />
 
-      <WhatsAppConnect 
-        isOpen={isWhatsAppOpen} 
-        onClose={() => setIsWhatsAppOpen(false)} 
+      <WhatsAppConnect
+        isOpen={isWhatsAppOpen}
+        onClose={() => setIsWhatsAppOpen(false)}
       />
     </div>
   );

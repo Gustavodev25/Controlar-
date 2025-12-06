@@ -14,7 +14,11 @@
       "Bash(npx firebase-tools:*)",
       "Bash(vercel --version:*)",
       "Bash(dir /b c:UsersdeDesktopFinance)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(npm i:*)",
+      "Bash(node test-klavi-auth.js:*)",
+      "Bash(cat:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []

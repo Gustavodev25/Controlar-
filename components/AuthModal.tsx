@@ -105,7 +105,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           await updateUserProfile(userCredential.user.uid, {
             name: formData.name,
             email: formData.email,
-            baseSalary: 0
+            baseSalary: 0,
+            isAdmin: false
           });
           if (onLogin) onLogin(userCredential.user);
         }
@@ -141,7 +142,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           name: user.displayName || 'Usuário',
           email: user.email || '',
           baseSalary: 0,
-          avatarUrl: user.photoURL || undefined
+          avatarUrl: user.photoURL || undefined,
+          isAdmin: false
         });
       } else {
         await updateUserProfile(user.uid, {

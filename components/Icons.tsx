@@ -94,7 +94,9 @@ import {
   UserPlus,
   Phone,
   Flame,
-  Percent
+  Percent,
+  ExternalLink,
+  Loader2
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -210,7 +212,9 @@ export {
   UserPlus,
   Phone,
   Flame,
-  Percent
+  Percent,
+  ExternalLink,
+  Loader2
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (

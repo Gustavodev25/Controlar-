@@ -16,14 +16,14 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount } from "../types";
 import { AppNotification } from "../types";
 
 // --- User Services ---
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
   if (!db) return;
   const userRef = doc(db, "users", userId);
-  
+
   // Sanitize data: remove keys with undefined values
   const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
     if (value !== undefined) {
@@ -111,28 +111,28 @@ export const migrateUsersAddAdminField = async () => {
   try {
     const usersRef = collection(db, "users");
     const snapshot = await getDocs(usersRef);
-    
+
     let batch = writeBatch(db);
     let operationCount = 0;
     let updatedCount = 0;
 
     for (const d of snapshot.docs) {
-        const data = d.data();
-        if (data.profile && data.profile.isAdmin === undefined) {
-            batch.update(d.ref, { "profile.isAdmin": false });
-            operationCount++;
-            updatedCount++;
+      const data = d.data();
+      if (data.profile && data.profile.isAdmin === undefined) {
+        batch.update(d.ref, { "profile.isAdmin": false });
+        operationCount++;
+        updatedCount++;
 
-            if (operationCount >= 450) {
-                await batch.commit();
-                batch = writeBatch(db);
-                operationCount = 0;
-            }
+        if (operationCount >= 450) {
+          await batch.commit();
+          batch = writeBatch(db);
+          operationCount = 0;
         }
+      }
     }
 
     if (operationCount > 0) {
-        await batch.commit();
+      await batch.commit();
     }
     return updatedCount;
   } catch (e) {
@@ -290,14 +290,14 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
   try {
     const txRef = collection(db, "users", userId, "transactions");
 
-    // 1. Check by strict Pluggy ID (globally unique for the provider)
-    // If we have a pluggyId, we TRUST it. If it exists, it's a duplicate.
+    // 1. Check by strict Provider ID (globally unique for the provider)
+    // If we have a providerId, we TRUST it. If it exists, it's a duplicate.
     // If it doesn't exist, it's NEW. We do NOT fall back to fuzzy matching 
     // because that causes false positives (e.g. matching a manual transaction with same amount).
-    if (data.pluggyId) {
-      const pluggyFilters = [where("pluggyId", "==", data.pluggyId)];
-      const pluggySnap = await getDocs(query(txRef, ...pluggyFilters, limit(1)));
-      return !pluggySnap.empty;
+    if (data.providerId) {
+      const providerFilters = [where("providerId", "==", data.providerId)];
+      const providerSnap = await getDocs(query(txRef, ...providerFilters, limit(1)));
+      return !providerSnap.empty;
     }
 
     // 2. Fallback: Fuzzy Match (Only for Manual/OFX transactions)
@@ -319,11 +319,11 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
 
     return snap.docs.some(doc => {
       const d = doc.data() as any;
-      // If the existing transaction has a pluggyId, we should NOT match it loosely
+      // If the existing transaction has a providerId, we should NOT match it loosely
       // against a manual transaction (unlikely case, but good safety).
-      // Actually, if we are here, 'data' (incoming) has NO pluggyId.
+      // Actually, if we are here, 'data' (incoming) has NO providerId.
       // So we are comparing a Manual Candidate vs Existing DB entries.
-      
+
       const desc = normalize(d.description);
       // If normalized descriptions match, it's a duplicate.
       return desc === targetDesc;
@@ -472,6 +472,35 @@ export const listenToBudgets = (userId: string, callback: (budgets: Budget[]) =>
     callback(budgets);
   });
 };
+
+// --- Connected Accounts Services ---
+export const addConnectedAccount = async (userId: string, account: ConnectedAccount) => {
+  if (!db) return;
+  const accountsRef = collection(db, "users", userId, "accounts");
+  // Use account.id as doc ID to prevent duplicates
+  const docRef = doc(accountsRef, account.id);
+  await setDoc(docRef, account, { merge: true });
+};
+
+export const listenToConnectedAccounts = (userId: string, callback: (accounts: ConnectedAccount[]) => void) => {
+  if (!db) return () => { };
+  const accountsRef = collection(db, "users", userId, "accounts");
+
+  return onSnapshot(accountsRef, (snapshot) => {
+    const accounts: ConnectedAccount[] = [];
+    snapshot.forEach(doc => {
+      accounts.push({ id: doc.id, ...doc.data() } as ConnectedAccount);
+    });
+    callback(accounts);
+  });
+};
+
+export const deleteConnectedAccount = async (userId: string, accountId: string) => {
+  if (!db) return;
+  const accountRef = doc(db, "users", userId, "accounts", accountId);
+  await deleteDoc(accountRef);
+};
+
 
 // --- Notifications ---
 export const addNotification = async (userId: string, notification: Omit<AppNotification, 'id'>) => {
