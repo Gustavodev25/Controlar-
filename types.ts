@@ -91,11 +91,11 @@ export interface Transaction {
   type: TransactionType;
   status: 'completed' | 'pending';
   // Optional flags
-  importSource?: string; // e.g. "pluggy"
+  importSource?: string; // e.g. "klavi", "pluggy" - identifies auto-imported transactions
   needsApproval?: boolean;
   ignored?: boolean;
   isSubscription?: boolean;
-  providerId?: string;
+  providerId?: string; // e.g. "klavi" - legacy field, importSource preferred
   providerItemId?: string;
   accountId?: string;
   accountType?: string; // 'CHECKING_ACCOUNT', 'CREDIT_CARD', 'SAVINGS_ACCOUNT'
@@ -206,6 +206,8 @@ export interface ConnectedAccount {
   balanceDueDate?: string;
   minimumPayment?: number;
   bills?: ProviderBill[];
+  connectionMode?: 'AUTO' | 'MANUAL';
+  initialBalance?: number;
 }
 
 export interface AppNotification {

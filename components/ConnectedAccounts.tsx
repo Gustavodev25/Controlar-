@@ -1,18 +1,19 @@
-import React, { useMemo, useState } from "react";
-import { ConnectedAccount, Transaction } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Loader2, Plus } from "./Icons";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import { ConnectedAccount } from "../types";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Loader2, Plus, Settings, Lock, RefreshCw } from "./Icons";
 
 import { EmptyState } from "./EmptyState";
 import axios from "axios";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
 import { BankConnectModal } from "./BankConnectModal";
-
-interface SyncProgress {
-  step: string;
-  current: number;
-  total: number;
-}
+import {
+  SyncProgress,
+  clearSyncProgress,
+  isRecentSyncProgress,
+  readSyncProgress,
+  saveSyncProgress,
+} from "../utils/syncProgress";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -22,6 +23,7 @@ interface ConnectedAccountsProps {
   storageKey?: string;
   userId?: string | null;
   memberId?: string;
+  isProMode?: boolean;
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
@@ -33,10 +35,15 @@ const formatCurrency = (value?: number, currency: string = "BRL") => {
   }
 };
 
-// Sync Progress Tooltip Component
+// Sync Progress Tooltip Component - Now appears BELOW to avoid topbar cutoff
 const SyncProgressTooltip: React.FC<{ progress: SyncProgress }> = ({ progress }) => (
-  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 z-50 pointer-events-none">
-    <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 shadow-xl min-w-[200px]">
+  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[100] pointer-events-none">
+    {/* Arrow pointing up */}
+    <div className="absolute left-1/2 -translate-x-1/2 -top-2">
+      <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-gray-700" />
+      <div className="absolute top-[1px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-b-[7px] border-b-gray-900" />
+    </div>
+    <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 shadow-xl min-w-[220px]">
       <p className="text-white text-sm font-medium text-center whitespace-nowrap">
         {progress.step}
       </p>
@@ -52,11 +59,6 @@ const SyncProgressTooltip: React.FC<{ progress: SyncProgress }> = ({ progress })
         </span>
       </div>
     </div>
-    {/* Arrow pointing down */}
-    <div className="absolute left-1/2 -translate-x-1/2 -bottom-2">
-      <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[8px] border-t-gray-700" />
-      <div className="absolute top-0 left-1/2 -translate-x-1/2 -translate-y-[1px] w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-t-[7px] border-t-gray-900" />
-    </div>
   </div>
 );
 
@@ -65,7 +67,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   isLoading = false,
   onRefresh,
   lastSynced = {},
-  userId
+  userId,
+  isProMode = true
 }) => {
   const [limitView, setLimitView] = useState<Set<string>>(new Set());
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
@@ -76,6 +79,53 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const accountsPerPage = 3;
   const toast = useToasts();
+  
+  // Track Pro Mode for interrupting sync
+  const isProModeRef = useRef(isProMode);
+  
+  useEffect(() => {
+    isProModeRef.current = isProMode;
+  }, [isProMode]);
+
+  // Persist sync progress to local state + storage
+  const persistSyncProgress = useCallback((progress: SyncProgress) => {
+    setSyncProgress(progress);
+    saveSyncProgress(progress);
+  }, []);
+
+  // Restore sync state on mount
+  useEffect(() => {
+    const stored = readSyncProgress();
+    if (stored) {
+      if (isRecentSyncProgress(stored)) {
+        setSyncProgress(stored);
+        if (!stored.isComplete && !stored.error) {
+          setIsSyncing(true);
+        }
+      } else {
+        clearSyncProgress();
+      }
+    }
+  }, []);
+
+  // Send notification to notification center
+  const sendSyncNotification = useCallback(async (success: boolean, accountCount: number, txCount: number) => {
+    if (!userId) return;
+
+    try {
+      await dbService.addNotification(userId, {
+        type: success ? 'system' : 'alert',
+        title: success ? 'Sincronização Concluída' : 'Erro na Sincronização',
+        message: success
+          ? `${accountCount} conta(s) e ${txCount} transação(ões) sincronizadas com sucesso.`
+          : 'Não foi possível sincronizar os dados do banco. Tente novamente.',
+        date: new Date().toISOString(),
+        read: false
+      });
+    } catch (error) {
+      console.error('Error sending notification:', error);
+    }
+  }, [userId]);
 
 
   // Agrupa contas por instituicao e itemId
@@ -107,6 +157,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return type.includes("credit") || subtype.includes("credit") || subtype.includes("card");
   };
 
+
+
   const handleDeleteInstitution = async (institutionAccounts: ConnectedAccount[], institutionName: string) => {
     if (!userId) return;
 
@@ -131,50 +183,141 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
   const handleConnectSuccess = async (data: any) => {
     if (!userId) return;
-    
+
+    let accountCount = 0;
+    let txCount = 0;
+
     setIsSyncing(true);
-    setSyncProgress({ step: 'Iniciando sincronização...', current: 0, total: 100 });
-    
+
+    const initialProgress: SyncProgress = {
+      step: 'Conectando ao banco...',
+      current: 0,
+      total: 100,
+      startedAt: Date.now()
+    };
+    persistSyncProgress(initialProgress);
+
     try {
-        const response = await axios.post('/api/klavi/sync', {
-            itemId: data.itemId,
-            userId
-        });
-        
-        const { accounts, transactions, creditCardTransactions } = response.data;
-        
-        if (accounts && accounts.length > 0) {
-            setSyncProgress({ step: 'Salvando contas...', current: 0, total: accounts.length });
-            let saved = 0;
-            for (const acc of accounts) {
-                await dbService.addConnectedAccount(userId, acc);
-                saved++;
-                setSyncProgress(prev => ({ ...prev, current: saved }));
-            }
+      const globalMode = localStorage.getItem('finances_pro_mode');
+      if (!isProModeRef.current || globalMode === 'false') {
+         throw new Error("Modo manual ativado. Sincronização interrompida.");
+      }
+
+      // Update progress: fetching data
+      const fetchingProgress: SyncProgress = {
+        step: 'Buscando dados do banco...',
+        current: 10,
+        total: 100,
+        startedAt: initialProgress.startedAt
+      };
+      persistSyncProgress(fetchingProgress);
+
+      const response = await axios.post('/api/klavi/sync', {
+        itemId: data.itemId,
+        userId
+      });
+
+      if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
+         throw new Error("Modo manual ativado. Sincronização interrompida.");
+      }
+
+      const { accounts: syncedAccounts, transactions, creditCardTransactions } = response.data;
+      accountCount = syncedAccounts?.length || 0;
+      const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
+      txCount = allTxs.length;
+
+      // Save accounts
+      if (syncedAccounts && syncedAccounts.length > 0) {
+        for (let i = 0; i < syncedAccounts.length; i++) {
+          if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
+             throw new Error("Modo manual ativado. Sincronização interrompida.");
+          }
+          const progress: SyncProgress = {
+            step: `Salvando conta ${i + 1}/${syncedAccounts.length}...`,
+            current: i + 1,
+            total: syncedAccounts.length + allTxs.length,
+            startedAt: initialProgress.startedAt
+          };
+          persistSyncProgress(progress);
+
+          await dbService.addConnectedAccount(userId, syncedAccounts[i]);
         }
-        
-        const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
-        
-        if (allTxs.length > 0) {
-             setSyncProgress({ step: 'Salvando transações...', current: 0, total: allTxs.length });
-             let saved = 0;
-             for (const tx of allTxs) {
-                 // Check if exists to avoid duplicates (dbService handles it usually, but we can be safe)
-                 await dbService.addTransaction(userId, tx, tx.id); // Pass tx.id as customId
-                 saved++;
-                 setSyncProgress(prev => ({ ...prev, current: saved }));
-             }
+      }
+
+      // Save transactions
+      if (allTxs.length > 0) {
+        for (let i = 0; i < allTxs.length; i++) {
+          if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
+             throw new Error("Modo manual ativado. Sincronização interrompida.");
+          }
+          const progress: SyncProgress = {
+            step: `Salvando transação ${i + 1}/${allTxs.length}...`,
+            current: accountCount + i + 1,
+            total: accountCount + allTxs.length,
+            startedAt: initialProgress.startedAt
+          };
+          persistSyncProgress(progress);
+
+          await dbService.addTransaction(userId, allTxs[i], allTxs[i].id);
         }
-        
-        toast.success("Contas e transações sincronizadas com sucesso!");
-        if (onRefresh) onRefresh();
-        
-    } catch (error) {
-        console.error("Erro na sincronização:", error);
-        toast.error("Erro ao sincronizar os dados do banco.");
-    } finally {
-        setIsSyncing(false);
+      }
+
+      // Success!
+      const completeProgress: SyncProgress = {
+        step: `${accountCount} contas e ${txCount} transações sincronizadas!`,
+        current: accountCount + txCount,
+        total: accountCount + txCount,
+        isComplete: true,
+        startedAt: initialProgress.startedAt
+      };
+      persistSyncProgress(completeProgress);
+
+      // Send notification to notification center
+      await sendSyncNotification(true, accountCount, txCount);
+
+      toast.success("Sincronização concluída com sucesso!");
+      if (onRefresh) onRefresh();
+
+      // Auto-dismiss toast after 5 seconds
+      setTimeout(() => {
         setSyncProgress({ step: '', current: 0, total: 0 });
+        clearSyncProgress();
+      }, 5000);
+
+    } catch (error: any) {
+      console.error("Erro na sincronização:", error);
+      
+      const isInterrupted = error.message === "Modo manual ativado. Sincronização interrompida.";
+      
+      if (isInterrupted) {
+         setSyncProgress({ step: '', current: 0, total: 0 });
+         clearSyncProgress();
+         setIsSyncing(false);
+         return; // Don't show error toast for intentional interruption
+      }
+
+      const errorProgress: SyncProgress = {
+        step: 'Erro ao sincronizar',
+        current: 0,
+        total: 0,
+        error: 'Não foi possível sincronizar os dados do banco.',
+        startedAt: initialProgress.startedAt
+      };
+      persistSyncProgress(errorProgress);
+
+      // Send error notification
+      await sendSyncNotification(false, 0, 0);
+
+      toast.error("Erro ao sincronizar os dados do banco.");
+
+      // Auto-dismiss error toast after 5 seconds
+      setTimeout(() => {
+        setSyncProgress({ step: '', current: 0, total: 0 });
+        clearSyncProgress();
+      }, 5000);
+
+    } finally {
+      setIsSyncing(false);
     }
   };
 
@@ -196,6 +339,27 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           </div>
         ))}
       </div>
+    );
+  }
+
+  // --- MANUAL MODE BLOCK ---
+  if (!isProMode) {
+    return (
+        <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h2 className="text-2xl font-bold text-white tracking-tight">Open Finance Bloqueado</h2>
+                    <p className="text-gray-400 text-sm mt-1">Sincronização bancária desativada</p>
+                </div>
+            </div>
+
+            <EmptyState
+                title="Modo Manual Ativado"
+                description="Para conectar seus bancos e sincronizar transações automaticamente, ative o Modo Automático na Visão Geral."
+                icon={<Lock size={48} className="text-[#d97757]" />}
+            />
+        </div>
     );
   }
 
@@ -252,12 +416,14 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
       {/* Modal */}
       {userId && (
-        <BankConnectModal
-          isOpen={isConnectModalOpen}
-          onClose={() => setIsConnectModalOpen(false)}
-          onSuccess={handleConnectSuccess}
-          userId={userId}
-        />
+        <>
+          <BankConnectModal
+            isOpen={isConnectModalOpen}
+            onClose={() => setIsConnectModalOpen(false)}
+            onSuccess={handleConnectSuccess}
+            userId={userId}
+          />
+        </>
       )}
 
 
@@ -346,9 +512,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     const available = acc.availableCreditLimit || 0;
                     const used = limit - available;
                     const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+                    const isManual = acc.connectionMode === 'MANUAL';
 
                     return (
-                      <div key={acc.id} className="bg-gray-900/30 border border-gray-800/60 rounded-xl hover:border-gray-700 transition-colors">
+                      <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
                         <div className="p-4">
                           <div className="flex justify-between items-center gap-3 mb-3">
                             <div className="flex gap-3 items-center flex-1 min-w-0">
@@ -356,14 +523,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                 {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
                               </div>
                               <div className="flex-1 min-w-0">
-                                <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                <div className="flex items-center gap-2">
+                                   <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                   {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
+                                </div>
                                 <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
                                   {acc.type} {acc.subtype ? `- ${acc.subtype}` : ""}
                                 </p>
                               </div>
                             </div>
 
-                            <div className="text-right flex-shrink-0">
+                            <div className="text-right flex-shrink-0 flex flex-col items-end">
                               <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
                                 {formatCurrency(acc.balance, acc.currency)}
                               </p>
@@ -417,7 +587,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             </div>
                           )}
 
-                          {lastSynced[acc.id] && (
+                          {lastSynced[acc.id] && !isManual && (
                             <div className={`mt-2 pt-2 ${!isCredit ? 'border-t border-gray-800/50' : ''} flex justify-end`}>
                               <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
                                 <RotateCcw size={8} />
@@ -465,6 +635,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           })}
         </div>
       )}
+
     </div>
   );
 };

@@ -8,10 +8,11 @@ import {
    Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
    Puzzle, Rocket, Wallet, Plus
 } from 'lucide-react';
-import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount } from '../types';
+import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
 import { ConfirmationCard, CurrencyInput } from './UIComponents';
+import { FamilyDashboard } from './FamilyDashboard';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
@@ -22,6 +23,8 @@ interface SettingsModalProps {
    isOpen: boolean;
    onClose: () => void;
    user: UserType;
+   userId?: string; // Optional for compatibility, but needed for FamilyDashboard
+   members?: Member[]; // New
    onUpdateUser: (user: UserType) => Promise<void> | void;
    transactions?: Transaction[];
    familyGoals?: FamilyGoal[];
@@ -29,7 +32,12 @@ interface SettingsModalProps {
    reminders?: Reminder[];
    connectedAccounts?: ConnectedAccount[];
    onNavigateToSubscription: () => void;
-   initialTab?: 'profile' | 'plan' | 'badges' | 'data' | 'finance';
+   onAddGoal?: (goal: Omit<FamilyGoal, 'id'>) => void;
+   onUpdateGoal?: (goal: FamilyGoal) => void;
+   onDeleteGoal?: (id: string) => void;
+   onAddTransaction?: (t: Omit<Transaction, 'id'>) => void;
+   onUpgrade?: () => void; // New
+   initialTab?: 'profile' | 'plan' | 'badges' | 'data' | 'finance' | 'family';
 }
 
 const AVATAR_GRADIENTS = [
@@ -53,7 +61,7 @@ interface BadgeDefinition {
    requirement: string;
 }
 
-type SettingsTab = 'account' | 'finance' | 'security' | 'plan' | 'notifications' | 'data';
+type SettingsTab = 'account' | 'finance' | 'security' | 'plan' | 'notifications' | 'data' | 'family';
 
 // --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
@@ -495,6 +503,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    isOpen,
    onClose,
    user,
+   userId,
+   members = [],
    onUpdateUser,
    transactions = [],
    familyGoals = [],
@@ -502,6 +512,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    reminders = [],
    connectedAccounts = [],
    onNavigateToSubscription,
+   onAddGoal,
+   onUpdateGoal,
+   onDeleteGoal,
+   onAddTransaction,
+   onUpgrade,
    initialTab = 'account'
 }) => {
    const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab as SettingsTab);
@@ -516,6 +531,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    const tabs = [
       { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
+      { id: 'family', label: 'Família', icon: <Users size={18} /> },
       { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
       { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
       { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
@@ -1047,6 +1063,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                </h2>
                <div className="space-y-1 flex-1">
                   {renderSidebarItem('account', 'Minha Conta', <User size={18} />)}
+                  {renderSidebarItem('family', 'Família', <Users size={18} />)}
                   {renderSidebarItem('finance', 'Financeiro', <Coins size={18} />)}
                   {renderSidebarItem('security', 'Segurança', <Shield size={18} />)}
                   {renderSidebarItem('plan', 'Planos e Assinatura', <CreditCard size={18} />)}
@@ -1190,6 +1207,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               ))}
                            </div>
                         </div>
+                     </div>
+                  )}
+
+                  {/* --- TAB: FAMILY --- */}
+                  {activeTab === 'family' && (
+                     <div className="animate-fade-in max-w-4xl mx-auto">
+                        <FamilyDashboard
+                           transactions={transactions}
+                           members={members}
+                           goals={familyGoals}
+                           onAddGoal={onAddGoal || (() => {})}
+                           onUpdateGoal={onUpdateGoal || (() => {})}
+                           onDeleteGoal={onDeleteGoal || (() => {})}
+                           onAddTransaction={onAddTransaction || (() => {})}
+                           currentUser={user}
+                           userId={userId}
+                           onUpgrade={onUpgrade}
+                        />
                      </div>
                   )}
 
@@ -1567,6 +1602,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   )}
 
                   {/* --- TAB: PLANS (REDESIGNED) --- */}
+                  {/* --- TAB: PLANS (REDESIGNED) --- */}
                   {activeTab === 'plan' && (
                      <div className="space-y-8 animate-fade-in max-w-3xl mx-auto">
                         <div>
@@ -1574,7 +1610,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            <p className="text-gray-400">Gerencie seu plano e método de pagamento.</p>
                         </div>
 
-                        <div className="space-y-6">
+                        {formData.familyRole === 'member' ? (
+                           // MEMBER VIEW
+                           <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8 text-center space-y-6">
+                              <div className="w-20 h-20 mx-auto bg-[#d97757]/10 rounded-full flex items-center justify-center ring-1 ring-[#d97757]/20">
+                                 <img src={familiaImg} alt="Family" className="w-10 h-10 object-contain" />
+                              </div>
+                              <div>
+                                 <h2 className="text-2xl font-bold text-white mb-2">Plano Familiar</h2>
+                                 <p className="text-gray-400 max-w-md mx-auto">
+                                    Você faz parte de um plano familiar. A assinatura e o pagamento são gerenciados pelo administrador da família.
+                                 </p>
+                              </div>
+                              <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-full border border-gray-700 text-sm text-gray-300">
+                                 <CheckCircle size={16} className="text-green-500" />
+                                 Benefícios Premium Ativos
+                              </div>
+                           </div>
+                        ) : (
+                           // OWNER / INDIVIDUAL VIEW
+                           <div className="space-y-6">
                                  {/* 1. Plan Status Card */}
                                  <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
                                     <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
@@ -1764,7 +1819,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                        Cancelar assinatura
                                      </button>
                                  </div>
-                              </div>
+                           </div>
+                        )}
                      </div>
                   )}
 

@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building } from './Icons';
 import { useToasts } from './Toast';
 import NumberFlow from '@number-flow/react';
 
 interface SalaryManagerProps {
   baseSalary: number;
   currentIncome: number;
+  estimatedSalary?: number; // Estimated salary from Open Finance transactions (Pro Mode)
   paymentDay?: number;
   advanceValue?: number;
   advancePercent?: number;
@@ -15,19 +16,32 @@ interface SalaryManagerProps {
   onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
   onEditClick?: () => void;
   isSalaryLaunched?: boolean;
+  isProMode?: boolean;
+  onToggleProMode?: (value: boolean) => void;
+  userPlan?: 'starter' | 'pro' | 'family';
+  onUpgradeClick?: () => void;
+  includeOpenFinance?: boolean;
+  onToggleOpenFinance?: (value: boolean) => void;
 }
 
-export const SalaryManager: React.FC<SalaryManagerProps> = ({ 
-    baseSalary, 
-    currentIncome, 
-    paymentDay, 
-    advanceValue, 
-    advancePercent, 
-    advanceDay, 
-    onUpdateSalary, 
-    onAddExtra, 
+export const SalaryManager: React.FC<SalaryManagerProps> = ({
+    baseSalary,
+    currentIncome,
+    estimatedSalary = 0,
+    paymentDay,
+    advanceValue,
+    advancePercent,
+    advanceDay,
+    onUpdateSalary,
+    onAddExtra,
     onEditClick,
-    isSalaryLaunched
+    isSalaryLaunched,
+    isProMode = false,
+    onToggleProMode,
+    userPlan = 'starter',
+    onUpgradeClick,
+    includeOpenFinance = true,
+    onToggleOpenFinance
 }) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
@@ -46,7 +60,35 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
+  // State for Config Dropdown
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const configRef = useRef<HTMLDivElement>(null);
+  
+  const [showConfigTooltip, setShowConfigTooltip] = useState(() => {
+      if (typeof window !== 'undefined') {
+          return !localStorage.getItem('hasSeenConfigTooltip_v2');
+      }
+      return false;
+  });
+
+  const dismissTooltip = (e: React.MouseEvent) => {
+      e.stopPropagation();
+      setShowConfigTooltip(false);
+      localStorage.setItem('hasSeenConfigTooltip_v2', 'true');
+  };
+
   const toast = useToasts();
+
+  // Close config dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (configRef.current && !configRef.current.contains(event.target as Node)) {
+        setIsConfigOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Modal Logic State
   const [activeTab, setActiveTab] = useState<'simple' | 'calculator' | 'clt'>('simple');
@@ -314,6 +356,117 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
   return (
     <>
+      {/* Header com título e switch */}
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <h2 className="text-lg font-semibold text-white">Controle de Renda</h2>
+          <p className="text-xs text-gray-500">Gerencie seus ganhos mensais</p>
+        </div>
+
+        {/* Switch Modo Manual / Modo Pro */}
+        <div className="flex items-center gap-2">
+           {/* Config Dropdown Trigger */}
+           {onToggleOpenFinance && (
+            <div className="relative" ref={configRef}>
+              <button
+                onClick={() => setIsConfigOpen(!isConfigOpen)}
+                className={`p-2 px-3 rounded-xl border transition-all flex items-center gap-2 ${
+                  isConfigOpen || includeOpenFinance
+                    ? 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
+                    : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-400'
+                }`}
+                title="Configurações globais"
+              >
+                <Settings size={16} />
+                <span className="text-xs font-medium">Configuração Global</span>
+              </button>
+
+              {/* Tooltip */}
+              {showConfigTooltip && (
+                <div className="absolute right-full top-1/2 -translate-y-1/2 mr-3 w-48 bg-[#363735] border border-[#3A3B39] text-white p-3 rounded-xl shadow-xl animate-fade-in z-50 flex items-start gap-2">
+                   {/* Arrow */}
+                   <div className="absolute top-1/2 -translate-y-1/2 right-[-6px] w-3 h-3 bg-[#363735] border-r border-t border-[#3A3B39] rotate-45"></div>
+                   
+                   <div className="flex-1">
+                     <p className="text-[10px] font-bold uppercase opacity-80 mb-0.5 text-[#d97757]">Configuração Global</p>
+                     <p className="text-xs font-medium leading-tight text-gray-200">Configure o Open Finance por aqui.</p>
+                   </div>
+                   <button onClick={dismissTooltip} className="text-gray-500 hover:text-white transition-colors">
+                     <X size={14} />
+                   </button>
+                </div>
+              )}
+
+              {isConfigOpen && createPortal(
+                <div
+                  className="fixed inset-0 z-[9999]"
+                  onMouseDown={(e) => {
+                    if (e.target === e.currentTarget) setIsConfigOpen(false);
+                  }}
+                >
+                  <div
+                    className="absolute w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 animate-dropdown-open"
+                    style={{
+                      top: (configRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
+                      right: window.innerWidth - (configRef.current?.getBoundingClientRect().right ?? 0),
+                    }}
+                    onMouseDown={(e) => e.stopPropagation()}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50">
+                      <div className="p-1.5 rounded bg-orange-900/30 text-orange-400">
+                        <Settings size={12} />
+                      </div>
+                      <p className="text-xs text-gray-400 font-medium">Configuração Global</p>
+                    </div>
+                    <div
+                      onClick={() => {
+                        onToggleOpenFinance(!includeOpenFinance);
+                      }}
+                      className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
+                    >
+                      <div className="flex items-center gap-2">
+                        <div className={`p-1.5 rounded bg-blue-900/30 text-blue-400`}>
+                          <Building size={14} />
+                        </div>
+                        <span className="text-sm text-gray-300 group-hover:text-white">Incluir Open Finance</span>
+                      </div>
+                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${includeOpenFinance ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${includeOpenFinance ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </div>
+                    </div>
+                  </div>
+                </div>,
+                document.body
+              )}
+            </div>
+          )}
+
+          <div className="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2">
+            <span className={`text-xs font-medium transition-colors ${!isProMode ? 'text-white' : 'text-gray-500'}`}>
+              Manual
+            </span>
+          <button
+            onClick={() => {
+              onToggleProMode?.(!isProMode);
+            }}
+            className={`relative w-12 h-6 rounded-full transition-colors ${
+              isProMode
+                ? 'bg-[#d97757]'
+                : 'bg-gray-700'
+            }`}
+          >
+            <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${isProMode ? 'translate-x-7' : 'translate-x-1'}`} />
+          </button>
+          <div className="flex items-center gap-1">
+            <span className={`text-xs font-medium transition-colors ${isProMode ? 'text-[#d97757]' : 'text-gray-500'}`}>
+              Auto
+            </span>
+          </div>
+        </div>
+        </div>
+      </div>
+
       {/* Widget Principal do Dashboard */}
       <div className="bg-gray-900 rounded-xl border border-gray-800 shadow-sm overflow-hidden mb-6 flex flex-col lg:flex-row animate-fade-in">
 
@@ -325,9 +478,16 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           <div className="flex justify-between items-start mb-2 relative z-10">
             <div className="flex items-center gap-2">
               <Coins size={18} className="text-[#d97757]" />
-              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">Salário Base</h3>
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
+                {isProMode ? 'Renda Estimada' : 'Salário Base'}
+              </h3>
+              {isProMode && (
+                <span className="text-[9px] bg-[#d97757]/20 text-[#d97757] px-1.5 py-0.5 rounded font-medium">
+                  AUTO
+                </span>
+              )}
             </div>
-            {!isEditing && baseSalary > 0 && (
+            {!isEditing && baseSalary > 0 && !isProMode && (
               <button
                 onClick={() => {
                   if (onEditClick) {
@@ -475,7 +635,38 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   </p>
                 )}
               </div>
+            ) : isProMode ? (
+              // Modo Pro: Exibição somente leitura da estimativa
+              <div className="p-2 -ml-2 w-full">
+                {estimatedSalary > 0 ? (
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-bold text-white">
+                        {formatCurrency(estimatedSalary)}
+                      </span>
+                      <span className="text-sm text-gray-500 font-medium">/mês</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className="text-xs text-emerald-400 flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
+                        <TrendingUp size={10} /> Baseado em transações
+                      </span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <span className="text-xl font-medium text-gray-400 flex items-center gap-2">
+                      <AlertCircle size={20} className="text-gray-500" />
+                      Aguardando dados
+                    </span>
+                    <span className="text-xs text-gray-500 ml-7">
+                      Conecte suas contas para ver a estimativa
+                    </span>
+                  </div>
+                )}
+              </div>
             ) : (
+              // Modo Manual: Editável por clique
               <div
                 onClick={() => {
                   if (onEditClick) {
@@ -499,15 +690,15 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                         </span>
                         <span className="text-sm text-gray-500 font-medium">/mês</span>
                       </div>
-                      
+
                       <div className="flex flex-wrap gap-2 mt-2">
                           <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border border-gray-700/50">
                             <Clock size={10} /> Recebe dia {paymentDay || 5}
                           </span>
-                          
+
                           {(advancePercent || (advanceValue && advanceValue > 0)) && (
                               <span className="text-xs text-[#eab3a3] flex items-center gap-1 bg-[#d97757]/10 px-2 py-1 rounded border border-[#d97757]/20">
-                                <PieChart size={10} /> 
+                                <PieChart size={10} />
                                 Vale {advancePercent}% (Dia {advanceDay || 20})
                               </span>
                           )}
@@ -586,19 +777,13 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           )}
         </div>
 
-        {/* Lado Direito: Botão de Ação */}
+        {/* Lado Direito: Botão de Ação - Apenas no Modo Manual */}
+        {!isProMode && (
         <div className="p-6 lg:w-80 bg-gray-900/30 flex flex-col justify-center gap-3 border-t lg:border-t-0 border-gray-800">
           <div className="text-center mb-1">
             <p className="text-base font-medium text-gray-200">Gerenciar Renda</p>
             <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
           </div>
-
-          {baseSalary <= 0 && (
-            <div className="w-full py-2.5 px-3 bg-gray-800/50 border border-gray-700 border-dashed rounded-xl flex items-center justify-center gap-2 text-gray-500 mb-1">
-              <AlertCircle size={14} />
-              <span className="text-xs font-medium text-center">Defina seu salário nas Configurações do Perfil</span>
-            </div>
-          )}
 
           <div className="grid grid-cols-2 gap-2 mt-1 w-full">
             <button
@@ -684,6 +869,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           </button>
         </div>
       </div>
+        )}
     </div >
 
       {/* MODAL DE INSERÇÃO DE RENDA */ }

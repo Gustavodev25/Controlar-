@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Reminder } from '../types';
 import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2 } from './Icons';
@@ -9,7 +9,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 import { CoinzinhaGreeting } from './CoinzinhaGreeting';
 import NumberFlow from '@number-flow/react';
 import { toLocalISODate } from '../utils/dateUtils';
-import { CheckSquare, Square } from 'lucide-react';
+import { CheckSquare, Square, Settings } from 'lucide-react';
 
 interface RemindersProps {
   reminders: Reminder[];
@@ -101,7 +101,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
   return (
     <div
       className={`
-        bg-gray-950 rounded-2xl p-4 hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20
+        bg-gray-950 rounded-xl p-4 border hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20
         ${selected ? 'border-[#d97757]/70 ring-2 ring-[#d97757]/30' : 'border-gray-800'}
         ${selectionMode ? 'cursor-pointer' : ''}
       `}
@@ -110,22 +110,45 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
       {/* Luz de fundo decorativa suave */}
       <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${statusConfig.glowColor}`}></div>
       
-      {/* Barra lateral colorida sutil */}
-      <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${statusConfig.barColor}`} />
       {selectionMode && (
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(item.id); }}
-          className={`absolute top-3 right-3 w-9 h-9 rounded-xl border transition-colors flex items-center justify-center ${
+          className={`absolute top-1/2 -translate-y-1/2 right-4 w-9 h-9 rounded-xl border transition-all duration-300 flex items-center justify-center z-20 active:scale-90 group-hover/btn:scale-110 ${
             selected
               ? 'bg-[#d97757]/20 border-[#d97757]/50 text-[#d97757]'
               : 'bg-gray-900 border-gray-800 text-gray-500 hover:border-[#d97757]/50 hover:text-[#d97757]'
           }`}
           title={selected ? 'Remover da seleção' : 'Selecionar'}
         >
-          {selected ? <CheckSquare size={18} /> : <Square size={18} />}
+          {selected ? (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-circle-dashed-check animate-scale-in">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+              <path d="M8.56 3.69a9 9 0 0 0 -2.92 1.95" />
+              <path d="M3.69 8.56a9 9 0 0 0 -.69 3.44" />
+              <path d="M3.69 15.44a9 9 0 0 0 1.95 2.92" />
+              <path d="M8.56 20.31a9 9 0 0 0 3.44 .69" />
+              <path d="M15.44 20.31a9 9 0 0 0 2.92 -1.95" />
+              <path d="M20.31 15.44a9 9 0 0 0 .69 -3.44" />
+              <path d="M20.31 8.56a9 9 0 0 0 -1.95 -2.92" />
+              <path d="M15.44 3.69a9 9 0 0 0 -3.44 -.69" />
+              <path d="M9 12l2 2l4 -4" />
+            </svg>
+          ) : (
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-circle-dashed transition-transform duration-300 hover:rotate-90">
+              <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+              <path d="M8.56 3.69a9 9 0 0 0 -2.92 1.95" />
+              <path d="M3.69 8.56a9 9 0 0 0 -.69 3.44" />
+              <path d="M3.69 15.44a9 9 0 0 0 1.95 2.92" />
+              <path d="M8.56 20.31a9 9 0 0 0 3.44 .69" />
+              <path d="M15.44 20.31a9 9 0 0 0 2.92 -1.95" />
+              <path d="M20.31 15.44a9 9 0 0 0 .69 -3.44" />
+              <path d="M20.31 8.56a9 9 0 0 0 -1.95 -2.92" />
+              <path d="M15.44 3.69a9 9 0 0 0 -3.44 -.69" />
+            </svg>
+          )}
         </button>
       )}
-      <div className="flex flex-col sm:flex-row items-center gap-4 pl-3 relative z-10">
+      <div className="flex flex-col sm:flex-row items-center gap-4 relative z-10">
         {/* Ícone */}
         <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/5 shadow-inner ${statusConfig.iconBg}`}>
           {item.type === 'income' ? <TrendingUp size={20} /> : (daysDiff < 0 ? <AlertCircle size={20} /> : <CalendarClock size={20} />)}
@@ -226,8 +249,46 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [bulkDate, setBulkDate] = useState('');
   const [perReminderDates, setPerReminderDates] = useState<Record<string, string>>({});
   const [isApplyingBulk, setIsApplyingBulk] = useState(false);
+  
+  // New States for Redesign
+  const [isOptionsOpen, setIsOptionsOpen] = useState(false);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+
+  // Animation state for bottom bar
+  const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
+  const [shouldRenderBottomBar, setShouldRenderBottomBar] = useState(false);
+
+  const [isDateModalVisible, setIsDateModalVisible] = useState(false);
+  const [shouldRenderDateModal, setShouldRenderDateModal] = useState(false);
+
+  useEffect(() => {
+    if (selectionMode) {
+      setShouldRenderBottomBar(true);
+      // Small delay to allow mount before triggering animation
+      const timer = setTimeout(() => setIsBottomBarVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsBottomBarVisible(false);
+      const timer = setTimeout(() => setShouldRenderBottomBar(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [selectionMode]);
+
+  useEffect(() => {
+    if (showBulkEditModal) {
+      setShouldRenderDateModal(true);
+      const timer = setTimeout(() => setIsDateModalVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsDateModalVisible(false);
+      const timer = setTimeout(() => setShouldRenderDateModal(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showBulkEditModal]);
+
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const selectionButtonRef = useRef<HTMLButtonElement>(null);
 
   const categories = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Investimentos', 'Trabalho', 'Outros'];
   const frequencies = [
@@ -420,20 +481,21 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     } finally {
       setIsApplyingBulk(false);
       resetBulkSelection();
+      setShowBulkEditModal(false);
     }
   };
   const allSelected = reminders.length > 0 && selectedIds.length === reminders.length;
   const applyDisabled = selectedReminders.length === 0 || (bulkMode === 'single' && !bulkDate) || isApplyingBulk;
   const selectedLabel = selectedReminders.length === 1 ? '1 item' : `${selectedReminders.length} itens`;
   return (
-    <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
+    <div className="w-full space-y-8 animate-fade-in font-sans pb-10 relative">
 
       {/* HEADER PADRONIZADO */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Contas & Previsões</h2>
-            <p className="text-gray-400 text-sm mt-1">Organize seus pagamentos futuros</p>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Lembretes</h2>
+            <p className="text-gray-400 text-sm mt-1">Organize seus lembretes</p>
           </div>
 
           {/* Balloon Hint */}
@@ -450,13 +512,38 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         </div>
 
         <div className="flex items-center gap-3">
-            <button
-                onClick={() => selectionMode ? resetBulkSelection() : setSelectionMode(true)}
-                className={`px-4 py-2.5 rounded-xl border flex items-center gap-2 transition-all text-sm font-semibold ${selectionMode ? 'border-[#d97757]/60 bg-[#d97757]/10 text-[#d97757]' : 'border-gray-800 text-gray-300 hover:border-[#d97757]/50 hover:text-white'}`}
-            >
-                {selectionMode ? <X size={18} /> : <CheckSquare size={18} />}
-                {selectionMode ? 'Cancelar seleção' : 'Selecionar'}
-            </button>
+            <div className="relative">
+                <button
+                    ref={selectionButtonRef}
+                    onClick={() => setIsOptionsOpen(!isOptionsOpen)}
+                    className={`p-2 rounded-lg transition-colors ${isOptionsOpen ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white hover:bg-gray-800/50'}`}
+                    title="Opções"
+                >
+                    <Settings size={20} />
+                </button>
+
+                {isOptionsOpen && (
+                    <>
+                        <div 
+                            className="fixed inset-0 z-40" 
+                            onClick={() => setIsOptionsOpen(false)}
+                        ></div>
+                        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-1 animate-dropdown-open">
+                            <button
+                                onClick={() => {
+                                    setSelectionMode(true);
+                                    setIsOptionsOpen(false);
+                                }}
+                                className="w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-gray-800 transition-colors text-sm text-gray-300 hover:text-white group"
+                            >
+                                <CalendarClock size={16} className="text-gray-500 group-hover:text-[#d97757] transition-colors" />
+                                Alterar datas em massa
+                            </button>
+                        </div>
+                    </>
+                )}
+            </div>
+
             <button
                 onClick={() => setIsModalOpen(true)}
                 className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
@@ -520,7 +607,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       {reminders.length > 0 && (
         <div className="flex justify-between items-end border-b border-gray-800 pb-4">
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Calendar size={18} className="text-[#d97757]" /> Próximos Itens
+                <Calendar size={18} className="text-[#d97757]" /> Próximos Lembretes
             </h3>
             <div className="flex bg-gray-950 p-1 rounded-xl border border-gray-800">
                 <button
@@ -538,98 +625,6 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     <LayoutDashboard size={18} />
                 </button>
             </div>
-        </div>
-      )}
-      {selectionMode && (
-        <div className="rounded-2xl border border-[#d97757]/40 bg-[#d97757]/5 p-4 space-y-4">
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/40">
-                <CalendarClock size={18} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-white">Editar datas de lembretes</p>
-                <p className="text-xs text-gray-300">
-                  Selecionados: {selectedLabel}. Escolha uma data única ou personalize cada um.
-                </p>
-              </div>
-            </div>
-            <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={handleSelectAll}
-                className="px-3 py-2 rounded-lg border border-gray-800 text-xs font-semibold text-gray-200 hover:border-[#d97757]/50 hover:text-white transition-colors"
-              >
-                {allSelected ? 'Limpar seleção' : 'Selecionar todos'}
-              </button>
-              <button
-                onClick={resetBulkSelection}
-                className="px-3 py-2 rounded-lg border border-gray-800 text-xs font-semibold text-gray-400 hover:text-white transition-colors"
-              >
-                Sair
-              </button>
-            </div>
-          </div>
-          <div className="flex bg-gray-900/60 border border-gray-800 rounded-xl p-1.5 w-fit">
-            <button
-              onClick={() => setBulkMode('single')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${bulkMode === 'single' ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 ring-1 ring-[#d97757]/50' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-            >
-              Mesma data
-            </button>
-            <button
-              onClick={() => setBulkMode('per-item')}
-              className={`px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wider transition-all ${bulkMode === 'per-item' ? 'bg-gray-800 text-white ring-1 ring-gray-700' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
-            >
-              Uma por uma
-            </button>
-          </div>
-          {bulkMode === 'single' ? (
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <CustomDatePicker
-                value={bulkDate}
-                onChange={setBulkDate}
-                className="w-full sm:w-64"
-              />
-              <button
-                onClick={handleBulkApplyDates}
-                disabled={applyDisabled}
-                className="w-full sm:w-auto px-4 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-semibold shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isApplyingBulk ? 'Aplicando...' : `Aplicar para ${selectedLabel}`}
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
-                {selectedReminders.length === 0 ? (
-                  <p className="text-xs text-gray-400 px-1">Selecione lembretes para definir datas individualmente.</p>
-                ) : (
-                  selectedReminders.map((reminder) => (
-                    <div key={reminder.id} className="flex items-center gap-3 bg-gray-950/70 border border-gray-800 rounded-xl p-3">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white truncate">{reminder.description}</p>
-                        <p className="text-[11px] text-gray-500">Atual: {formatDate(reminder.dueDate)}</p>
-                      </div>
-                      <CustomDatePicker
-                        value={perReminderDates[reminder.id] || reminder.dueDate}
-                        onChange={(val) => setPerReminderDates((prev) => ({ ...prev, [reminder.id]: val }))}
-                        className="w-[170px]"
-                      />
-                    </div>
-                  ))
-                )}
-              </div>
-              <div className="flex justify-end">
-                <button
-                  onClick={handleBulkApplyDates}
-                  disabled={applyDisabled}
-                  className="px-4 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-semibold shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {isApplyingBulk ? 'Aplicando...' : 'Aplicar datas selecionadas'}
-                </button>
-              </div>
-            </div>
-          )}
         </div>
       )}
       {/* LISTA DE CONTEÚDO */}
@@ -736,7 +731,6 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
             {/* Content Modal */}
             <div className="p-6 overflow-y-auto custom-scrollbar relative z-10">
-
               {/* --- AI MODE --- */}
               {modalMode === 'ai' && (
                 <div className="space-y-6 animate-fade-in">
@@ -996,13 +990,117 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         document.body
       )}
 
+      {/* NEW MINIMALIST FLOATING BOTTOM BAR (ACTIONS) */}
+      {shouldRenderBottomBar && createPortal(
+        <div 
+            className={`
+                fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] 
+                transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
+                ${isBottomBarVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-24 opacity-0 scale-90'}
+            `}
+        >
+           <div className="bg-gray-950 border border-gray-800 shadow-2xl rounded-2xl flex items-center p-2 gap-4 relative overflow-hidden">
+              {/* Decorative Glow */}
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none"></div>
+
+              <div className="pl-4 pr-2 flex items-center gap-3 border-r border-gray-800 relative z-10">
+                 <div className="bg-[#d97757] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-lg shadow-[#d97757]/30">
+                    {selectedReminders.length}
+                 </div>
+                 <span className="text-sm font-bold text-white">Selecionados</span>
+              </div>
+              
+              <div className="flex items-center gap-1 relative z-10">
+                 <button 
+                    onClick={handleSelectAll}
+                    className="p-2 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider"
+                    title="Selecionar Todos"
+                 >
+                    {allSelected ? 'Limpar' : 'Todos'}
+                 </button>
+
+                 <div className="w-px h-6 bg-gray-800 mx-1"></div>
+
+                 <button 
+                    onClick={() => setShowBulkEditModal(true)}
+                    disabled={selectedReminders.length === 0}
+                    className="px-4 py-2 bg-white text-black hover:bg-gray-200 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-white/5"
+                 >
+                    <Calendar size={14} strokeWidth={2.5} />
+                    Alterar Data
+                 </button>
+
+                 <button 
+                    onClick={resetBulkSelection}
+                    className="p-2 hover:bg-gray-800 rounded-xl text-gray-500 hover:text-red-400 transition-colors ml-1"
+                    title="Cancelar"
+                 >
+                    <X size={18} />
+                 </button>
+              </div>
+           </div>
+        </div>,
+        document.body
+      )}
+
+      {/* NEW MINIMALIST BULK EDIT MODAL - FLOATING CARD */}
+      {shouldRenderDateModal && createPortal(
+         <div 
+            className={`
+                fixed bottom-6 left-1/2 -translate-x-1/2 z-[90] w-max max-w-[90vw]
+                transition-all duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] origin-bottom
+                ${isDateModalVisible ? '-translate-y-[84px] opacity-100 scale-100' : 'translate-y-0 opacity-0 scale-95'}
+            `}
+         >
+            <div className="bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl relative overflow-hidden w-[340px]">
+                {/* Decorative Glow */}
+                <div className="absolute top-0 right-0 w-32 h-32 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none"></div>
+                
+                {/* Header */}
+                <div className="px-5 pt-5 pb-2 flex justify-between items-center relative z-10">
+                   <div>
+                      <h3 className="text-base font-bold text-white tracking-tight">Nova Data</h3>
+                      <p className="text-[11px] font-medium text-gray-400">Para {selectedReminders.length} itens selecionados</p>
+                   </div>
+                   <button 
+                      onClick={() => setShowBulkEditModal(false)} 
+                      className="w-8 h-8 flex items-center justify-center rounded-full bg-gray-800/50 text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
+                   >
+                      <X size={16} />
+                   </button>
+                </div>
+
+                <div className="p-5 pt-2 space-y-5 relative z-10">
+                   {/* Content - Single Date Picker only */}
+                   <CustomDatePicker
+                      value={bulkDate}
+                      onChange={setBulkDate}
+                      className="w-full text-sm"
+                      dropdownMode="relative"
+                   />
+
+                   {/* Actions */}
+                   <button
+                      onClick={handleBulkApplyDates}
+                      disabled={applyDisabled}
+                      className="w-full h-10 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 text-sm"
+                   >
+                      <Check size={18} strokeWidth={3} />
+                      Aplicar Mudanças
+                   </button>
+                </div>
+            </div>
+         </div>,
+         document.body
+      )}
+
       {/* Delete Confirmation (Mantendo seu card original) */}
       <ConfirmationCard
         isOpen={!!deleteId}
         onClose={() => setDeleteId(null)}
         onConfirm={() => deleteId && onDeleteReminder(deleteId)}
-        title="Excluir Item?"
-        description="Esta ação removerá o item da sua agenda permanentemente."
+        title="Excluir Lembrete?"
+        description="Esta ação removerá o lembrete da sua agenda permanentemente."
         isDestructive={true}
         confirmText="Sim, excluir"
         cancelText="Cancelar"

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
-import { getWaitlistEntries } from '../services/database';
+import { getWaitlistEntries, deleteWaitlistEntry } from '../services/database';
 import { WaitlistEntry } from '../types';
-import { toLocalISODate } from '../utils/dateUtils';
+import { Trash2 } from './Icons';
 
 export const AdminWaitlist: React.FC = () => {
   const [entries, setEntries] = useState<WaitlistEntry[]>([]);
@@ -23,6 +23,18 @@ export const AdminWaitlist: React.FC = () => {
     };
     loadData();
   }, []);
+
+  const handleDelete = async (id: string, name: string) => {
+    if (window.confirm(`Tem certeza que deseja excluir ${name} da lista de espera?`)) {
+      try {
+        await deleteWaitlistEntry(id);
+        setEntries(prev => prev.filter(e => e.id !== id));
+      } catch (error) {
+        console.error('Erro ao excluir:', error);
+        alert('Erro ao excluir registro.');
+      }
+    }
+  };
 
   if (isLoading) {
     return (
@@ -56,12 +68,13 @@ export const AdminWaitlist: React.FC = () => {
                 <th className="px-6 py-4 font-medium">Telefone</th>
                 <th className="px-6 py-4 font-medium">Origem</th>
                 <th className="px-6 py-4 font-medium">Objetivo</th>
+                <th className="px-6 py-4 font-medium text-right">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-800">
               {entries.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                  <td colSpan={7} className="px-6 py-8 text-center text-gray-500">
                     Nenhum registro encontrado.
                   </td>
                 </tr>
@@ -92,6 +105,15 @@ export const AdminWaitlist: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 text-gray-400 truncate max-w-xs">
                       {entry.goal || '-'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                      <button
+                        onClick={() => handleDelete(entry.id, entry.name)}
+                        className="text-gray-500 hover:text-red-500 transition-colors p-1 rounded hover:bg-red-500/10"
+                        title="Excluir"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))

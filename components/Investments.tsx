@@ -32,6 +32,8 @@ interface InvestmentsProps {
   onDelete: (id: string) => void;
   onAddTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   userPlan?: 'starter' | 'pro' | 'family';
+  title?: string;
+  subtitle?: string;
 }
 
 const TEMPLATES = [
@@ -67,7 +69,9 @@ export const Investments: React.FC<InvestmentsProps> = ({
   onUpdate,
   onDelete,
   onAddTransaction,
-  userPlan = 'starter'
+  userPlan = 'starter',
+  title = 'Caixinhas',
+  subtitle = 'Organize seus sonhos e metas'
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -321,8 +325,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
       {/* HEADER PADRONIZADO (Igual Reminders) */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold text-white tracking-tight">Caixinhas</h2>
-          <p className="text-gray-400 text-sm mt-1">Organize seus sonhos e metas</p>
+          <h2 className="text-2xl font-bold text-white tracking-tight">{title}</h2>
+          <p className="text-gray-400 text-sm mt-1">{subtitle}</p>
         </div>
         <button
           onClick={() => handleOpenModal()}

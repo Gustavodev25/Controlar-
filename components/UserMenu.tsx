@@ -45,6 +45,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
   };
 
   const getPlanDisplay = () => {
+    if (user.familyRole === 'member') return 'Convidado';
+
     const plan = user.subscription?.plan || 'starter';
     if (plan === 'starter') return 'Plano Gratuito';
 
@@ -80,7 +82,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-gray-900 rounded-xl shadow-2xl border border-gray-800 overflow-hidden z-50 animate-fade-in">
+        <div className="absolute right-0 mt-2 w-64 bg-gray-900 rounded-xl shadow-2xl border border-gray-800 overflow-hidden z-50 animate-dropdown-open">
           <div className="p-4 border-b border-gray-800 bg-gray-900">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-full ${avatarBg} flex items-center justify-center text-white font-bold shadow-inner`}>

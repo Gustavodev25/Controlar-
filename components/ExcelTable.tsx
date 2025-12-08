@@ -4,6 +4,7 @@ import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, Arr
 import { CustomSelect, CustomDatePicker, ConfirmationCard } from './UIComponents';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
+import { EmptyState } from './EmptyState';
 
 interface ExcelTableProps {
   transactions: Transaction[];
@@ -135,10 +136,15 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
-                <Calendar size={20} className="text-[#d97757]" />
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-refresh-dot">
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                  <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                  <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                  <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                </svg>
             </div>
             <div>
-                <h3 className="font-bold text-white text-lg">Histórico de Lançamentos</h3>
+                <h3 className="font-bold text-white text-lg">Histórico de Movimentações</h3>
                 <p className="text-xs text-gray-400">{filteredTransactions.length} registros encontrados</p>
             </div>
           </div>
@@ -147,7 +153,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
             <input
               type="text"
-              placeholder="Buscar lançamentos..."
+              placeholder="Buscar movimentações..."
               className="w-full pl-11 pr-4 py-3 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-sm text-white transition-all placeholder-gray-600"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -200,7 +206,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       {/* Spreadsheet Grid */}
       <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-gray-950">
         {/* Desktop Table View */}
-        <table className="hidden lg:table min-w-full border-collapse text-sm text-left">
+        <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
           <thead className="bg-gray-900 sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
               <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
@@ -284,17 +290,14 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               </tr>
             ))}
             {filteredTransactions.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center text-gray-600">
-                            <Search size={32} />
-                        </div>
-                        <div>
-                            <p className="text-gray-300 font-bold text-lg">Nenhum lançamento encontrado</p>
-                            <p className="text-gray-500 text-sm mt-1">Tente ajustar os filtros de data ou busca.</p>
-                        </div>
-                    </div>
+              <tr className="h-full">
+                <td colSpan={6} className="p-4 h-full">
+                  <EmptyState
+                    title="Nenhum lançamento encontrado"
+                    description="Tente ajustar os filtros de data ou busca."
+                    className="!border-0 !bg-transparent !shadow-none"
+                    minHeight="h-full"
+                  />
                 </td>
               </tr>
             )}
@@ -302,7 +305,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         </table>
 
         {/* Mobile Card View - REDESIGNED */}
-        <div className="lg:hidden p-4 space-y-4">
+        <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
           {filteredTransactions.map((t) => (
             <div key={t.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 relative overflow-hidden shadow-lg group">
               {/* Left Colored Bar */}
@@ -361,9 +364,12 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           ))}
 
           {filteredTransactions.length === 0 && (
-            <div className="py-12 text-center text-gray-400">
-              Nenhuma transação encontrada.
-            </div>
+            <EmptyState
+              title="Nenhum lançamento encontrado"
+              description="Tente ajustar os filtros de data ou busca."
+              className="!border-0 !bg-transparent !shadow-none flex-1"
+              minHeight="h-full"
+            />
           )}
         </div>
       </div>

@@ -126,7 +126,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
       </button>
 
       {isOpen && (
-        <div className="absolute right-0 mt-3 w-80 md:w-96 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-fade-in origin-top-right">
+        <div className="absolute right-0 mt-3 w-80 md:w-96 bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl overflow-hidden z-50 animate-dropdown-open origin-top-right">
           <div className="p-4 border-b border-gray-800 flex justify-between items-center bg-gray-950/50 backdrop-blur-sm">
             <h3 className="font-bold text-white">Central de Notificações</h3>
             {unreadCount > 0 && (

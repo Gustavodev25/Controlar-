@@ -53,17 +53,20 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
         userId
       });
 
-      // Priority: profile.isAdmin > root isAdmin (always check root as fallback)
-      // IMPORTANT: We need to ALWAYS set isAdmin, even if it's false
-      if (profile.isAdmin === undefined || profile.isAdmin === null) {
-        profile.isAdmin = data.isAdmin === true; // Force boolean check
-      }
+      // ALWAYS check both profile.isAdmin AND root isAdmin
+      // Priority: root isAdmin (most reliable) > profile.isAdmin
+      // This is because isAdmin is often stored at root level, not inside profile
+      const rootIsAdmin = data.isAdmin === true;
+      const profileIsAdmin = data.profile?.isAdmin === true;
+
+      // Use root isAdmin if it's true, otherwise use profile isAdmin
+      profile.isAdmin = rootIsAdmin || profileIsAdmin;
 
       console.log('[DB getUserProfile] Final profile.isAdmin:', profile.isAdmin);
 
       // If there was no profile at all but we have root isAdmin, still return it
-      if (Object.keys(profile).length === 0 && data.isAdmin !== undefined) {
-        return { isAdmin: data.isAdmin };
+      if (Object.keys(profile).length === 1 && profile.isAdmin !== undefined) {
+        return { isAdmin: profile.isAdmin };
       }
 
       return profile;
@@ -79,9 +82,9 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
   if (!db) return () => { };
   const userRef = doc(db, "users", userId);
 
-  return onSnapshot(userRef, (doc) => {
-    if (doc.exists()) {
-      const data = doc.data();
+  return onSnapshot(userRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
       const profile = { ...(data.profile as Partial<User> || {}) };
 
       console.log('[DB listenToUserProfile] Raw data:', {
@@ -91,11 +94,14 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
         userId
       });
 
-      // Priority: profile.isAdmin > root isAdmin (always check root as fallback)
-      // IMPORTANT: We need to ALWAYS set isAdmin, even if it's false
-      if (profile.isAdmin === undefined || profile.isAdmin === null) {
-        profile.isAdmin = data.isAdmin === true; // Force boolean check
-      }
+      // ALWAYS check both profile.isAdmin AND root isAdmin
+      // Priority: root isAdmin (most reliable) > profile.isAdmin
+      // This is because isAdmin is often stored at root level, not inside profile
+      const rootIsAdmin = data.isAdmin === true;
+      const profileIsAdmin = data.profile?.isAdmin === true;
+
+      // Use root isAdmin if it's true, otherwise use profile isAdmin
+      profile.isAdmin = rootIsAdmin || profileIsAdmin;
 
       console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
 
@@ -196,6 +202,12 @@ export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {
   }
 };
 
+export const deleteWaitlistEntry = async (id: string) => {
+  if (!db) return;
+  const entryRef = doc(db, "waitlist", id);
+  await deleteDoc(entryRef);
+};
+
 // --- Members Services ---
 export const addMember = async (userId: string, member: Omit<Member, 'id'>) => {
   if (!db) return "";
@@ -220,6 +232,13 @@ export const listenToMembers = (userId: string, callback: (members: Member[]) =>
   });
 };
 
+export const updateMember = async (userId: string, member: Member) => {
+  if (!db) return;
+  const memberRef = doc(db, "users", userId, "members", member.id);
+  const { id, ...data } = member;
+  await updateDoc(memberRef, data);
+};
+
 export const deleteMember = async (userId: string, memberId: string) => {
   if (!db) return;
   const memberRef = doc(db, "users", userId, "members", memberId);
@@ -234,6 +253,9 @@ export const restoreMember = async (userId: string, member: Member) => {
 };
 
 // --- Family Goals Services ---
+// NOTE: These functions now support both user-based storage (legacy) and family-based storage (new)
+
+// Legacy: Store goals under user's subcollection (for users without family)
 export const addFamilyGoal = async (userId: string, goal: Omit<FamilyGoal, 'id'>) => {
   if (!db) return;
   const goalsRef = collection(db, "users", userId, "goals");
@@ -265,6 +287,43 @@ export const listenToGoals = (userId: string, callback: (goals: FamilyGoal[]) =>
     callback(goals);
   });
 }
+
+// NEW: Store goals under family's subcollection (for family members)
+export const addFamilyGoalByGroupId = async (familyGroupId: string, goal: Omit<FamilyGoal, 'id'>) => {
+  if (!db) return;
+  const goalsRef = collection(db, "families", familyGroupId, "goals");
+  await addDoc(goalsRef, goal);
+};
+
+export const updateFamilyGoalByGroupId = async (familyGroupId: string, goal: FamilyGoal) => {
+  if (!db) return;
+  const goalRef = doc(db, "families", familyGroupId, "goals", goal.id);
+  const { id, ...data } = goal;
+  await updateDoc(goalRef, data);
+};
+
+export const deleteFamilyGoalByGroupId = async (familyGroupId: string, goalId: string) => {
+  if (!db) return;
+  const goalRef = doc(db, "families", familyGroupId, "goals", goalId);
+  await deleteDoc(goalRef);
+};
+
+export const listenToGoalsByGroupId = (familyGroupId: string, callback: (goals: FamilyGoal[]) => void) => {
+  if (!db) return () => { };
+  const goalsRef = collection(db, "families", familyGroupId, "goals");
+
+  return onSnapshot(goalsRef, (snapshot) => {
+    const goals: FamilyGoal[] = [];
+    snapshot.forEach(doc => {
+      goals.push({ id: doc.id, ...doc.data() } as FamilyGoal);
+    });
+    callback(goals);
+  }, (error) => {
+    console.error("[Family Goals] Error listening to goals:", error);
+    callback([]);
+  });
+}
+
 
 // --- Transactions Services ---
 export const addTransaction = async (userId: string, transaction: Omit<Transaction, 'id'>, customId?: string) => {
@@ -482,7 +541,164 @@ export const addConnectedAccount = async (userId: string, account: ConnectedAcco
   await setDoc(docRef, account, { merge: true });
 };
 
-export const listenToConnectedAccounts = (userId: string, callback: (accounts: ConnectedAccount[]) => void) => {
+export const updateConnectedAccountMode = async (userId: string, accountId: string, mode: 'AUTO' | 'MANUAL', initialBalance?: number) => {
+  try {
+    const accountRef = doc(db, "users", userId, "accounts", accountId);
+    const updateData: any = { connectionMode: mode };
+    if (initialBalance !== undefined) {
+      updateData.initialBalance = initialBalance;
+      updateData.balance = initialBalance;
+    }
+    await updateDoc(accountRef, updateData);
+    console.log(`Account ${accountId} mode updated to ${mode}`);
+  } catch (error) {
+    console.error("Error updating account mode:", error);
+    throw error;
+  }
+};
+
+export const deleteManualTransactionsForAccount = async (userId: string, accountId: string) => {
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const q = query(txRef, where("accountId", "==", accountId));
+    const snapshot = await getDocs(q);
+
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      if (!data.importSource) {
+        batch.delete(doc.ref);
+      }
+    });
+    await batch.commit();
+  } catch (error) {
+    console.error("Error deleting manual transactions:", error);
+    throw error;
+  }
+};
+
+// Delete imported (auto) transactions for an account - used for "Start from Zero" option
+export const deleteImportedTransactionsForAccount = async (userId: string, accountId: string) => {
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const q = query(txRef, where("accountId", "==", accountId));
+    const snapshot = await getDocs(q);
+
+    const batch = writeBatch(db);
+    let deletedCount = 0;
+    snapshot.docs.forEach((doc) => {
+      const data = doc.data();
+      // Delete transactions that were imported (have importSource)
+      if (data.importSource) {
+        batch.delete(doc.ref);
+        deletedCount++;
+      }
+    });
+
+    if (deletedCount > 0) {
+      await batch.commit();
+      console.log(`Deleted ${deletedCount} imported transactions for account ${accountId}`);
+    }
+  } catch (error) {
+    console.error("Error deleting imported transactions:", error);
+    throw error;
+  }
+};
+
+// Delete ALL imported (auto) transactions for a user - used for global "Start from Zero" option
+// This catches any transactions that may not have accountId but do have importSource
+export const deleteAllImportedTransactions = async (userId: string) => {
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const snapshot = await getDocs(txRef);
+
+    // Firestore batch has a limit of 500 operations, so we need to split into multiple batches
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let totalDeleted = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      const data = docSnapshot.data();
+      // Delete transactions that were imported (have importSource)
+      if (data.importSource) {
+        batch.delete(docSnapshot.ref);
+        operationCount++;
+        totalDeleted++;
+
+        // Commit current batch if we reach the limit
+        if (operationCount >= batchSize) {
+          await batch.commit();
+          batch = writeBatch(db);
+          operationCount = 0;
+        }
+      }
+    }
+
+    // Commit remaining operations
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Deleted ${totalDeleted} total imported transactions for user ${userId}`);
+    return totalDeleted;
+  } catch (error) {
+    console.error("Error deleting all imported transactions:", error);
+    throw error;
+  }
+};
+
+export const deleteAllUserTransactions = async (userId: string) => {
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const snapshot = await getDocs(txRef);
+
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let totalDeleted = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      batch.delete(docSnapshot.ref);
+      operationCount++;
+      totalDeleted++;
+
+      if (operationCount >= batchSize) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
+      }
+    }
+
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Deleted ${totalDeleted} transactions (ALL) for user ${userId}`);
+    return totalDeleted;
+  } catch (error) {
+    console.error("Error deleting all user transactions:", error);
+    throw error;
+  }
+};
+
+export const resetAccountData = async (userId: string, accountId: string, initialBalance: number, deleteImportedHistory: boolean = true) => {
+  try {
+    // If deleteImportedHistory is true (default for "Start from Zero"), delete imported transactions
+    // This will make income/expense from Open Finance become zero
+    if (deleteImportedHistory) {
+      await deleteImportedTransactionsForAccount(userId, accountId);
+    }
+
+    await updateConnectedAccountMode(userId, accountId, 'MANUAL', initialBalance);
+  } catch (error) {
+    console.error("Error resetting account data:", error);
+    throw error;
+  }
+};
+
+// Listen to Connected Accounts (Real-time)
+export const listenToConnectedAccounts = (userId: string, callback: (accounts: any[]) => void) => {
   if (!db) return () => { };
   const accountsRef = collection(db, "users", userId, "accounts");
 
@@ -499,6 +715,25 @@ export const deleteConnectedAccount = async (userId: string, accountId: string) 
   if (!db) return;
   const accountRef = doc(db, "users", userId, "accounts", accountId);
   await deleteDoc(accountRef);
+};
+
+export const deleteAllConnectedAccounts = async (userId: string) => {
+  if (!db) return;
+  try {
+    const accountsRef = collection(db, "users", userId, "accounts");
+    const snapshot = await getDocs(accountsRef);
+    
+    const batch = writeBatch(db);
+    snapshot.docs.forEach((doc) => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
+    console.log(`Deleted ${snapshot.size} connected accounts for user ${userId}`);
+  } catch (error) {
+    console.error("Error deleting all connected accounts:", error);
+    throw error;
+  }
 };
 
 
@@ -535,5 +770,44 @@ export const listenToNotifications = (userId: string, callback: (notifications: 
     // Optionally sort by date desc
     notes.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
     callback(notes);
+  });
+};
+
+// --- Audit Log Services ---
+export interface AuditLogEntry {
+  id?: string;
+  timestamp: string;
+  action: 'MODE_CHANGE_TO_MANUAL' | 'MODE_CHANGE_TO_AUTO' | 'ACCOUNT_CONNECTED' | 'ACCOUNT_DISCONNECTED';
+  accountId?: string;
+  accountName?: string;
+  details: {
+    previousMode?: 'AUTO' | 'MANUAL';
+    newMode?: 'AUTO' | 'MANUAL';
+    keepHistory?: boolean;
+    initialBalance?: number;
+    isGlobal?: boolean;
+  };
+}
+
+export const addAuditLog = async (userId: string, entry: Omit<AuditLogEntry, 'id'>) => {
+  if (!db) return "";
+  const auditRef = collection(db, "users", userId, "auditLogs");
+  const docRef = await addDoc(auditRef, entry);
+  console.log(`[Audit] ${entry.action} - Account: ${entry.accountName || 'Global'} - Details:`, entry.details);
+  return docRef.id;
+};
+
+export const listenToAuditLogs = (userId: string, callback: (logs: AuditLogEntry[]) => void) => {
+  if (!db) return () => { };
+  const auditRef = collection(db, "users", userId, "auditLogs");
+
+  return onSnapshot(auditRef, (snapshot) => {
+    const logs: AuditLogEntry[] = [];
+    snapshot.forEach(docSnap => {
+      logs.push({ id: docSnap.id, ...(docSnap.data() as AuditLogEntry) });
+    });
+    // Sort by timestamp desc
+    logs.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+    callback(logs);
   });
 };

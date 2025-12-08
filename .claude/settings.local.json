@@ -18,7 +18,9 @@
       "Bash(npm i:*)",
       "Bash(node test-klavi-auth.js:*)",
       "Bash(cat:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(git push:*)",
+      "Bash(curl:*)"
     ],
     "deny": [],
     "ask": []

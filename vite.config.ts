@@ -9,7 +9,7 @@ const expressPlugin = () => {
     name: 'express-plugin',
     configureServer(server) {
       const app = express();
-      
+
       // Middleware needed for API parsing
       app.use(express.json({ limit: '50mb' }));
       app.use(express.urlencoded({ extended: true, limit: '50mb' }));
@@ -24,27 +24,27 @@ const expressPlugin = () => {
 };
 
 export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, '.', '');
-    return {
-      server: {
-        port: 3000,
-        host: '0.0.0.0',
-        allowedHosts: ['toney-nonreversing-cedrick.ngrok-free.dev'],
-        proxy: {
-          // Proxies to external services only
-          '/api/asaas': {
-            target: 'https://sandbox.asaas.com/api/v3',
-            changeOrigin: true,
-            rewrite: (path) => path.replace(/^\/api\/asaas/, ''),
-            secure: false
-          }
-        }
-      },
-      plugins: [react(), expressPlugin()],
-      resolve: {
-        alias: {
-          '@': path.resolve(__dirname, '.'),
+  const env = loadEnv(mode, '.', '');
+  return {
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+      allowedHosts: ['schematically-oscitant-herbert.ngrok-free.dev'],
+      proxy: {
+        // Proxies to external services only
+        '/api/asaas': {
+          target: 'https://sandbox.asaas.com/api/v3',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/api\/asaas/, ''),
+          secure: false
         }
       }
-    };
+    },
+    plugins: [react(), expressPlugin()],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      }
+    }
+  };
 });

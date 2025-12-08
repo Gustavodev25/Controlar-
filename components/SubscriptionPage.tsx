@@ -66,7 +66,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
       description: 'Gestão completa para toda a casa.',
       features: [
         'Tudo incluso no plano gratuito',
-        'Até 5 Membros',
+        'Até 3 Membros',
         'Metas Compartilhadas',
         'Relatórios Unificados'
       ],

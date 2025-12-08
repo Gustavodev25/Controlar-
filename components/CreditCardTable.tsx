@@ -4,6 +4,7 @@ import { Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check, ArrowUpCirc
 import { CustomSelect, CustomDatePicker, ConfirmationCard } from './UIComponents';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
+import { EmptyState } from './EmptyState';
 
 interface CreditCardTableProps {
   transactions: Transaction[];
@@ -134,8 +135,16 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
       <div className="p-4 lg:p-6 border-b border-gray-800 flex flex-col gap-4 bg-gray-950/50 backdrop-blur-xl relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-orange-900/10 rounded-xl border border-orange-500/20">
-                <CreditCard size={20} className="text-orange-500" />
+            <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-credit-card-pay">
+                  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                  <path d="M12 19h-6a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4.5" />
+                  <path d="M3 10h18" />
+                  <path d="M16 19h6" />
+                  <path d="M19 16l3 3l-3 3" />
+                  <path d="M7.005 15h.005" />
+                  <path d="M11 15h2" />
+                </svg>
             </div>
             <div>
                 <h3 className="font-bold text-white text-lg">Fatura do Cartão</h3>
@@ -200,7 +209,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
       {/* Spreadsheet Grid */}
       <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-gray-950">
         {/* Desktop Table View */}
-        <table className="hidden lg:table min-w-full border-collapse text-sm text-left">
+        <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
           <thead className="bg-gray-900 sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
               <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
@@ -284,17 +293,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
               </tr>
             ))}
             {filteredTransactions.length === 0 && (
-              <tr>
-                <td colSpan={6} className="px-6 py-20 text-center">
-                    <div className="flex flex-col items-center gap-4">
-                        <div className="w-16 h-16 bg-gray-900 rounded-full flex items-center justify-center text-gray-600">
-                            <Search size={32} />
-                        </div>
-                        <div>
-                            <p className="text-gray-300 font-bold text-lg">Nenhum lançamento de cartão encontrado</p>
-                            <p className="text-gray-500 text-sm mt-1">Seus gastos com cartão aparecerão aqui.</p>
-                        </div>
-                    </div>
+              <tr className="h-full">
+                <td colSpan={6} className="p-4 h-full">
+                  <EmptyState
+                    title="Nenhum lançamento de cartão encontrado"
+                    description="Seus gastos com cartão aparecerão aqui."
+                    className="!border-0 !bg-transparent !shadow-none"
+                    minHeight="h-full"
+                  />
                 </td>
               </tr>
             )}
@@ -302,7 +308,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
         </table>
 
         {/* Mobile Card View - REDESIGNED */}
-        <div className="lg:hidden p-4 space-y-4">
+        <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
           {filteredTransactions.map((t) => (
             <div key={t.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 relative overflow-hidden shadow-lg group">
               {/* Left Colored Bar */}
@@ -361,9 +367,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
           ))}
 
           {filteredTransactions.length === 0 && (
-            <div className="py-12 text-center text-gray-400">
-              Nenhuma transação encontrada.
-            </div>
+            <EmptyState
+              title="Nenhum lançamento de cartão encontrado"
+              description="Seus gastos com cartão aparecerão aqui."
+              className="!border-0 !bg-transparent !shadow-none flex-1"
+              minHeight="h-full"
+            />
           )}
         </div>
       </div>

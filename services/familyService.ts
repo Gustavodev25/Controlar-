@@ -20,7 +20,7 @@ import { FamilyGroup, User } from "../types";
 export const PLAN_LIMITS = {
   starter: 0,
   pro: 2,
-  family: 5
+  family: 3
 };
 
 // Create or get existing family group for a user
@@ -142,12 +142,11 @@ export const createInvite = async (groupId: string, email?: string) => {
 
   const limit = PLAN_LIMITS[group.plan] || 0;
   // Count members + pending invites
-  // We need to be careful about "ghost" invites. 
-  // For now, let's just count active members for the hard limit, 
-  // and maybe cap pending invites reasonably.
+  const pendingInvites = group.invites ? group.invites.filter(i => i.status === 'pending').length : 0;
+  const usedSlots = group.members.length + pendingInvites;
   
-  if (group.members.length >= limit) {
-     throw new Error("Limite de membros atingido.");
+  if (usedSlots >= limit) {
+     throw new Error("Limite de membros e convites atingido.");
   }
 
   const token = Math.random().toString(36).substring(2, 15);
@@ -216,15 +215,19 @@ export const joinFamily = async (userId: string, groupId: string, token: string)
     invites: updatedInvites
   });
 
-  // 2. Update User Profile
+  // 2. Update User Profile & Subscription
   const userRef = doc(db, "users", userId);
   await setDoc(userRef, { 
       profile: { 
           familyGroupId: groupId, 
-          familyRole: 'member',
-          // Inherit plan status conceptually, though subscription might be separate
-          // For now, we just link them. The app logic should check familyGroupId to unlock features.
-      } 
+          familyRole: 'member'
+      },
+      subscription: {
+          plan: group.plan, // 'family' or 'pro'
+          status: 'active',
+          billingCycle: 'monthly', // Inherited/Dummy
+          source: 'family_group' // Marker to know they don't pay
+      }
   }, { merge: true });
 };
 

@@ -63,7 +63,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       description: 'Gestão completa para toda a casa.',
       features: [
         'Tudo do Plus',
-        'Até 5 perfis familiares',
+        'Até 3 perfis familiares',
         'Visão consolidada',
         'Metas compartilhadas',
         'Suporte prioritário'

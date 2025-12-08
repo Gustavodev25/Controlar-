@@ -1,9 +1,9 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { TrendingUp, TrendingDown, Wallet, Sparkles, CreditCard, Building, Link, Settings, Check, Info, X, Calendar } from './Icons';
+import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import NumberFlow from '@number-flow/react';
-import { motion, useMotionValue, useTransform, AnimatePresence } from 'framer-motion';
 
 interface StatsCardsProps {
   stats: DashboardStats;
@@ -19,6 +19,7 @@ interface StatsCardsProps {
     };
   };
   creditCardTransactions?: Transaction[];
+  dashboardDate?: string; // YYYY-MM
   toggles?: {
     includeChecking: boolean;
     setIncludeChecking: (v: boolean) => void;
@@ -28,19 +29,231 @@ interface StatsCardsProps {
     setCreditCardUseTotalLimit?: (v: boolean) => void;
     creditCardUseFullLimit?: boolean;
     setCreditCardUseFullLimit?: (v: boolean) => void;
+    includeOpenFinance?: boolean;
+    setIncludeOpenFinance?: (v: boolean) => void;
+    enabledCreditCardIds?: string[];
+    setEnabledCreditCardIds?: (ids: string[]) => void;
+  };
+  isProMode?: boolean;
+  onActivateProMode?: () => void;
+  userPlan?: 'starter' | 'pro' | 'family';
+  onUpgradeClick?: () => void;
+  hideCards?: boolean;
+  labels?: {
+    balance?: string;
+    income?: string;
+    expense?: string;
+    savings?: string;
   };
 }
 
-export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false, accountBalances, toggles, creditCardTransactions = [] }) => {
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
+export const StatsCards: React.FC<StatsCardsProps> = ({ 
+  stats, 
+  isLoading = false, 
+  accountBalances, 
+  toggles, 
+  creditCardTransactions = [], 
+  dashboardDate, 
+  isProMode = true, 
+  onActivateProMode, 
+  userPlan = 'starter', 
+  onUpgradeClick,
+  hideCards = false,
+  labels
+}) => {
   const [isCheckingConfigOpen, setIsCheckingConfigOpen] = useState(false);
-  const configRef = useRef<HTMLDivElement>(null);
+  const [isBalanceConfigOpen, setIsBalanceConfigOpen] = useState(false);
+  const [isCreditCardConfigOpen, setIsCreditCardConfigOpen] = useState(false);
+  const [cardsIncludedInExpenses, setCardsIncludedInExpenses] = useState<Set<string>>(() => {
+    // Load persisted selection from localStorage
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('cardsIncludedInExpenses');
+      if (stored) {
+        try {
+          const arr: string[] = JSON.parse(stored);
+          return new Set(arr);
+        } catch (e) {
+          console.error('Failed to parse persisted cardsIncludedInExpenses', e);
+        }
+      }
+    }
+    return new Set();
+  });
+  // Persist changes to localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const arr = Array.from(cardsIncludedInExpenses);
+      localStorage.setItem('cardsIncludedInExpenses', JSON.stringify(arr));
+    }
+  }, [cardsIncludedInExpenses]);
   const checkingConfigRef = useRef<HTMLDivElement>(null);
+  const balanceConfigRef = useRef<HTMLDivElement>(null);
+  const creditCardConfigRef = useRef<HTMLDivElement>(null);
+  const creditCardConfigButtonRef = useRef<HTMLButtonElement>(null);
 
-  const creditAccounts = accountBalances?.credit?.accounts || [];
   const checkingAccounts = accountBalances?.checkingAccounts || [];
-  const [activeCardIndex, setActiveCardIndex] = useState(0);
   const [selectedCheckingAccountId, setSelectedCheckingAccountId] = useState<string | null>(null);
+  const [activeCardIndex, setActiveCardIndex] = useState(0);
+
+  // Calculate credit card invoice for the filtered month
+  // This calculates the total expenses on credit cards for the displayed period
+  const creditCardInvoice = useMemo(() => {
+    if (!dashboardDate || creditCardTransactions.length === 0) {
+      // If no month filter or no transactions, show total from accountBalances
+      return accountBalances?.credit?.used || 0;
+    }
+
+    // Filter transactions that belong to the selected month
+    // Only count expenses (positive amounts or expense type transactions)
+    const monthTransactions = creditCardTransactions.filter(tx => {
+      // Check if transaction date starts with the dashboard month (YYYY-MM)
+      if (!tx.date.startsWith(dashboardDate)) return false;
+      // Only count completed transactions
+      if (tx.status !== 'completed' && tx.status !== 'pending') return false;
+      // Only count non-ignored transactions
+      if ((tx as any).ignored) return false;
+      return true;
+    });
+
+    // Sum up the amounts
+    // Convention: expenses are positive amounts with type 'expense'
+    const total = monthTransactions.reduce((sum, tx) => {
+      // For credit card transactions, expenses increase the invoice
+      if (tx.type === 'expense') {
+        return sum + Math.abs(tx.amount);
+      }
+      // Payments/credits decrease the invoice (these would be type 'income' on credit cards)
+      if (tx.type === 'income') {
+        return sum - Math.abs(tx.amount);
+      }
+      return sum;
+    }, 0);
+
+    return Math.max(0, total); // Invoice can't be negative
+  }, [creditCardTransactions, dashboardDate, accountBalances?.credit?.used]);
+
+  // Get credit card accounts for display
+  const creditAccounts = accountBalances?.credit?.accounts || [];
+  const creditLimit = accountBalances?.credit?.limit || 0;
+  const creditAvailable = accountBalances?.credit?.available || 0;
+
+  // Calculate invoice per individual card - matches transactions to cards and filters by month
+  const cardInvoices = useMemo(() => {
+    // Get unique accountIds from transactions for fallback matching strategy
+    const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId).filter(Boolean))];
+
+    return creditAccounts.map((card, cardIndex) => {
+      // Try to match transactions by accountId first
+      let cardTransactions = creditCardTransactions.filter(tx =>
+        tx.accountId === card.id
+      );
+
+      // If no match by accountId, try alternative matching strategies
+      if (cardTransactions.length === 0) {
+        // Strategy 1: If there are exactly N unique accountIds for N cards, map by index
+        if (uniqueAccountIds.length === creditAccounts.length && uniqueAccountIds.length > 0) {
+          const sortedAccountIds = [...uniqueAccountIds].sort();
+          const targetAccountId = sortedAccountIds[cardIndex];
+          cardTransactions = creditCardTransactions.filter(tx => tx.accountId === targetAccountId);
+        }
+
+        // Strategy 2: If still no match, and this is the only card, use all transactions
+        if (cardTransactions.length === 0 && creditAccounts.length === 1) {
+          cardTransactions = creditCardTransactions;
+        }
+      }
+
+      // Filter by dashboard date (month) if specified
+      let filteredTransactions = cardTransactions;
+      if (dashboardDate) {
+        filteredTransactions = cardTransactions.filter(tx =>
+          tx.date && tx.date.startsWith(dashboardDate)
+        );
+      }
+
+      // Calculate invoice from filtered transactions (simple sum for the month)
+      let invoiceValue = 0;
+
+      if (filteredTransactions.length > 0) {
+        // Sum up expenses for the selected month
+        invoiceValue = filteredTransactions.reduce((sum, tx) => {
+          if ((tx as any).ignored) return sum;
+          // For credit cards: expenses add to invoice, income/payments reduce it
+          if (tx.type === 'expense') {
+            return sum + Math.abs(tx.amount);
+          } else if (tx.type === 'income') {
+            return sum - Math.abs(tx.amount);
+          }
+          return sum;
+        }, 0);
+        invoiceValue = Math.max(0, invoiceValue); // Invoice can't be negative
+      } else {
+        // Fallback to card balance (from API)
+        invoiceValue = Math.abs(card.balance || 0);
+      }
+
+      // Calculate limit and available for this card
+      // If card has its own values, use them. Otherwise, estimate proportionally
+      let cardLimit = card.creditLimit || 0;
+      let cardAvailable = card.availableCreditLimit || 0;
+
+      // If this card doesn't have its own limit data,
+      // estimate proportionally from the global totals
+      if (cardLimit === 0 && creditLimit > 0) {
+        const totalBalance = creditAccounts.reduce((sum, c) => sum + Math.abs(c.balance || 0), 0);
+        const cardProportion = totalBalance > 0 ? Math.abs(card.balance || 0) / totalBalance : 1 / creditAccounts.length;
+        cardLimit = creditLimit * cardProportion;
+      }
+
+      // IMPORTANT: Calculate available based on the CURRENT month's invoice, not the fixed balance
+      // This makes the available value change when the month filter changes
+      if (cardLimit > 0) {
+        cardAvailable = Math.max(0, cardLimit - invoiceValue);
+      }
+
+      return {
+        cardId: card.id,
+        invoice: invoiceValue,
+        limit: cardLimit,
+        available: cardAvailable
+      };
+    });
+  }, [creditAccounts, creditCardTransactions, dashboardDate, creditLimit]);
+
+  // Navigation functions for credit card carousel
+  const goToNextCard = () => {
+    if (creditAccounts.length > 0) {
+      setActiveCardIndex(prev => (prev + 1) % creditAccounts.length);
+    }
+  };
+
+  const goToPrevCard = () => {
+    if (creditAccounts.length > 0) {
+      setActiveCardIndex(prev => (prev - 1 + creditAccounts.length) % creditAccounts.length);
+    }
+  };
+
+  // Get current card data
+  const currentCard = creditAccounts[activeCardIndex];
+  const currentCardInvoice = cardInvoices[activeCardIndex] || { invoice: 0, limit: 0, available: 0 };
+
+  // Drag state for card carousel
+  const [isDragging, setIsDragging] = useState(false);
+  const constraintsRef = useRef<HTMLDivElement>(null);
+
+  // Handle drag end to switch cards
+  const handleDragEnd = (_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+    setIsDragging(false);
+    const threshold = 50; // Minimum drag distance to trigger card change
+
+    if (info.offset.x < -threshold) {
+      // Swiped left - go to next card
+      goToNextCard();
+    } else if (info.offset.x > threshold) {
+      // Swiped right - go to previous card
+      goToPrevCard();
+    }
+  };
 
   // Calculate displayed checking balance based on selection
   const displayedCheckingBalance = selectedCheckingAccountId
@@ -69,185 +282,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
     return subtype || type || 'Conta Corrente';
   };
 
-  // Determine which account to show details for
-  const currentAccount = creditAccounts.length > 0
-    ? creditAccounts[activeCardIndex]
-    : undefined;
-
-  // Helper to get display values for a specific account
-  const getAccountDisplayValues = (account: ConnectedAccount | undefined) => {
-    if (!account) {
-      // Fallback to aggregate if no account
-      return {
-        used: accountBalances?.credit?.used || 0,
-        limit: accountBalances?.credit?.limit || 0,
-        available: accountBalances?.credit?.available || 0,
-        name: 'Cartão de Crédito'
-      };
-    }
-    // Calculate per-account values
-    const limit = account.creditLimit || 0;
-    const available = account.availableCreditLimit || 0;
-
-    // Priority: Use actual balance (current invoice amount) if available
-    // Balance is the real invoice value from the bank
-    let used = 0;
-    if (account.balance !== undefined && account.balance !== null) {
-      // Use absolute value since balance might be negative
-      used = Math.abs(account.balance);
-    } else {
-      // Fallback: Calculate from limit - available
-      used = limit - available;
-    }
-
-    return {
-      used,
-      limit,
-      available,
-      name: account.name || account.brand || 'Cartão de Crédito'
-    };
-  };
-
-
-  const activeCardValues = getAccountDisplayValues(currentAccount);
-
-  // Debug State
-  const [showDebug, setShowDebug] = useState(false);
-  const [closingDay, setClosingDay] = useState(1);
-  const [dueDay, setDueDay] = useState(10);
-
-  // Reset debug state when switching cards
-  useEffect(() => {
-    setShowDebug(false);
-  }, [activeCardIndex]);
-
-  // Sync closing day and due day from API if available
-  useEffect(() => {
-    if (currentAccount) {
-      if (currentAccount.balanceCloseDate) {
-        const closeDatePart = currentAccount.balanceCloseDate.split('-')[2];
-        if (closeDatePart) setClosingDay(parseInt(closeDatePart));
-      }
-      if (currentAccount.balanceDueDate) {
-        const dueDatePart = currentAccount.balanceDueDate.split('-')[2];
-        if (dueDatePart) setDueDay(parseInt(dueDatePart));
-      }
-    }
-  }, [currentAccount]);
-
-  // Helper to calculate Invoice Due Date
-  const getInvoiceMonth = (dateStr: string, closeDay: number, dueDay: number) => {
-    if (!dateStr) return 'Desconhecido';
-    const date = new Date(dateStr + 'T12:00:00');
-    const day = date.getDate();
-
-    let closingMonth = date.getMonth();
-    let closingYear = date.getFullYear();
-
-    // 1. Determine which Closing Cycle the transaction belongs to
-    if (day >= closeDay) {
-      // Belongs to NEXT month's closing
-      closingMonth++;
-      if (closingMonth > 11) {
-        closingMonth = 0;
-        closingYear++;
-      }
-    }
-
-    // 2. Determine Due Date based on that Closing Cycle
-    // If Due Day < Close Day, it means the Due Date wraps to the NEXT month relative to the Closing Date
-    // e.g. Close 25th, Due 5th (Next Month)
-    // If Due Day >= Close Day, it usually means Same Month (e.g. Close 1st, Due 10th)
-    let dueMonth = closingMonth;
-    let dueYear = closingYear;
-
-    if (dueDay < closeDay) {
-      dueMonth++;
-      if (dueMonth > 11) {
-        dueMonth = 0;
-        dueYear++;
-      }
-    }
-
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    return `${monthNames[dueMonth]}/${dueYear}`;
-  };
-
-  const today = new Date().toISOString().split('T')[0];
-  const currentInvoiceLabel = getInvoiceMonth(today, closingDay, dueDay);
-
-  // Calculate Next Invoice Label
-  const getNextInvoiceLabel = (currentLabel: string) => {
-    const [month, year] = currentLabel.split('/');
-    const monthNames = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
-    let monthIndex = monthNames.indexOf(month);
-    let yearNum = parseInt(year);
-
-    monthIndex++;
-    if (monthIndex > 11) {
-      monthIndex = 0;
-      yearNum++;
-    }
-    return `${monthNames[monthIndex]}/${yearNum}`;
-  };
-
-  const nextInvoiceLabel = getNextInvoiceLabel(currentInvoiceLabel);
-  const isInvoiceClosed = new Date().getDate() >= closingDay;
-
-  // Filter transactions that match the current simulated invoice
-  const simulatedInvoiceTransactions = creditCardTransactions.filter(t => getInvoiceMonth(t.date, closingDay, dueDay) === currentInvoiceLabel);
-  const simulatedInvoiceTotal = simulatedInvoiceTransactions.reduce((acc, t) => t.type === 'expense' ? acc + t.amount : acc - t.amount, 0);
-
-  const nextInvoiceTransactions = creditCardTransactions.filter(t => getInvoiceMonth(t.date, closingDay, dueDay) === nextInvoiceLabel);
-  const nextInvoiceTotal = nextInvoiceTransactions.reduce((acc, t) => t.type === 'expense' ? acc + t.amount : acc - t.amount, 0);
-
-  // --- API Bill Integration ---
-  let displayCurrentTotal = simulatedInvoiceTotal;
-  let displayNextTotal = nextInvoiceTotal;
-  let isApiCurrent = false;
-  let isApiNext = false;
-
-  if (currentAccount?.bills?.length) {
-    const monthMap: Record<string, number> = {
-      'Janeiro': 0, 'Fevereiro': 1, 'Março': 2, 'Abril': 3, 'Maio': 4, 'Junho': 5,
-      'Julho': 6, 'Agosto': 7, 'Setembro': 8, 'Outubro': 9, 'Novembro': 10, 'Dezembro': 11
-    };
-
-    const getBillMonthYear = (dateStr: string) => {
-      const d = new Date(dateStr);
-      return { month: d.getMonth(), year: d.getFullYear() };
-    };
-
-    // Helper: matches a Label (Due Date Month) to a Bill (Due Date)
-    // Label is now the Due Date Month/Year, so we match directly.
-    const findBillForLabel = (label: string) => {
-      const [lblMonthName, lblYearStr] = label.split('/');
-      const lblMonth = monthMap[lblMonthName];
-      const lblYear = parseInt(lblYearStr);
-
-      return currentAccount.bills?.find(b => {
-        const { month, year } = getBillMonthYear(b.dueDate);
-        return month === lblMonth && year === lblYear;
-      });
-    };
-
-    const currentBill = findBillForLabel(currentInvoiceLabel);
-    if (currentBill) {
-      displayCurrentTotal = currentBill.totalAmount;
-      isApiCurrent = true;
-    }
-
-    const nextBill = findBillForLabel(nextInvoiceLabel);
-    if (nextBill) {
-      displayNextTotal = nextBill.totalAmount;
-      isApiNext = true;
-    }
-  }
-
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (configRef.current && !configRef.current.contains(event.target as Node)) {
-        setIsConfigOpen(false);
+      if (checkingConfigRef.current && !checkingConfigRef.current.contains(event.target as Node)) {
+        setIsCheckingConfigOpen(false);
+      }
+      if (balanceConfigRef.current && !balanceConfigRef.current.contains(event.target as Node)) {
+        setIsBalanceConfigOpen(false);
+      }
+      if (creditCardConfigRef.current && !creditCardConfigRef.current.contains(event.target as Node)) {
+        setIsCreditCardConfigOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -255,14 +299,20 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
   }, []);
 
   // Close dropdowns on scroll to prevent position mismatch
+  // But ignore scroll inside the dropdown itself
   useEffect(() => {
-    const handleScroll = () => {
+    const handleScroll = (e: Event) => {
+      // If scrolling inside the credit card config dropdown, don't close it
+      if (creditCardConfigRef.current && creditCardConfigRef.current.contains(e.target as Node)) {
+        return;
+      }
       if (isCheckingConfigOpen) setIsCheckingConfigOpen(false);
-      if (isConfigOpen) setIsConfigOpen(false);
+      if (isBalanceConfigOpen) setIsBalanceConfigOpen(false);
+      if (isCreditCardConfigOpen) setIsCreditCardConfigOpen(false);
     };
     window.addEventListener('scroll', handleScroll, true);
     return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isCheckingConfigOpen, isConfigOpen]);
+  }, [isCheckingConfigOpen, isBalanceConfigOpen, isCreditCardConfigOpen]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -284,21 +334,32 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
     );
   }
 
-  // Drag / Swipe Logic
-  const handleDragEnd = (event: any, info: any) => {
-    if (info.offset.x > 100 || info.offset.x < -100) {
-      // Swipe threshold met
-      setActiveCardIndex((prev) => (prev + 1) % creditAccounts.length);
-    }
-  };
-
   return (
     <div className="space-y-4 mb-6 animate-fade-in">
       {/* Account Balances & Toggles Row */}
-      {(accountBalances && toggles) && (
+      {!hideCards && accountBalances && toggles && (isProMode || userPlan === 'starter') && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Checking Account */}
-          <div className={`p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-gray-900 border-gray-800' : 'bg-gray-900/50 border-gray-800/50'}`}>
+          <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-gray-900 border-gray-800' : 'bg-gray-900/50 border-gray-800/50'}`}>
+            {/* Blur overlay for Manual Mode */}
+            {!isProMode && userPlan === 'starter' && (
+              <div
+                onClick={userPlan === 'starter' ? onUpgradeClick : onActivateProMode}
+                className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-gray-900/70"
+              >
+                <div className="p-3 bg-[#d97757]/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+                  {userPlan === 'starter' ? <Lock size={24} className="text-[#d97757]" /> : <Building size={24} className="text-[#d97757]" />}
+                </div>
+                <p className="text-sm font-bold text-white">Modo Auto</p>
+                {userPlan === 'starter' ? (
+                  <span className="mt-2 text-xs text-amber-500 font-medium">
+                    Funcionalidade Pro
+                  </span>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">Ative para ver saldo automático</p>
+                )}
+              </div>
+            )}
             <div className="flex items-start justify-between">
               <div className={`flex items-center gap-3 ${!toggles.includeChecking ? 'opacity-50' : ''}`}>
                 <div className="p-2.5 bg-emerald-900/20 rounded-lg text-emerald-400">
@@ -351,7 +412,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                       }}
                     >
                       <div
-                        className="absolute w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 max-h-[300px] overflow-auto no-scrollbar"
+                        className="absolute w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 max-h-[300px] overflow-auto no-scrollbar animate-dropdown-open"
                         style={{
                           top: (checkingConfigRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
                           right: window.innerWidth - (checkingConfigRef.current?.getBoundingClientRect().right ?? 0),
@@ -390,11 +451,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                               {checkingAccounts.length > 1 && (
                                 <div
                                   onClick={() => setSelectedCheckingAccountId(null)}
-                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                                    selectedCheckingAccountId === null
-                                      ? 'bg-emerald-900/30 border border-emerald-500/30'
-                                      : 'bg-gray-800/30 hover:bg-gray-800'
-                                  }`}
+                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === null
+                                    ? 'bg-emerald-900/30 border border-emerald-500/30'
+                                    : 'bg-gray-800/30 hover:bg-gray-800'
+                                    }`}
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
@@ -421,11 +481,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
                                 <div
                                   key={acc.id}
                                   onClick={() => setSelectedCheckingAccountId(acc.id)}
-                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${
-                                    selectedCheckingAccountId === acc.id
-                                      ? 'bg-emerald-900/30 border border-emerald-500/30'
-                                      : 'bg-gray-800/50 hover:bg-gray-800'
-                                  }`}
+                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === acc.id
+                                    ? 'bg-emerald-900/30 border border-emerald-500/30'
+                                    : 'bg-gray-800/50 hover:bg-gray-800'
+                                    }`}
                                 >
                                   <div className="flex items-center gap-2 min-w-0">
                                     <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
@@ -458,399 +517,385 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
             </div>
           </div>
 
-          {/* Credit Card Stack Container */}
-          <div className="relative h-[120px] w-full" style={{ perspective: 1000 }}>
-            {creditAccounts.length === 0 ? (
-              // No Accounts (or just aggregate view) - Render Single Static Card
-              <div className={`absolute inset-0 p-4 rounded-xl shadow-sm border transition-all duration-200 flex flex-col justify-between ${toggles.includeCredit ? 'bg-gray-900 border-gray-800' : 'bg-gray-900/50 border-gray-800/50'}`}>
-                <div className="flex items-start justify-between mb-3">
-                  <div className={`flex items-center gap-3 ${!toggles.includeCredit ? 'opacity-50' : ''}`}>
-                    <div className="p-2.5 bg-orange-900/20 rounded-lg text-orange-400">
-                      <CreditCard size={20} />
-                    </div>
-                    <div>
-                      <p className="text-sm text-gray-400 font-medium">Cartão de Crédito</p>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-bold text-white mt-0.5">
-                          <NumberFlow
-                            value={
-                              toggles.creditCardUseFullLimit
-                                ? accountBalances.credit.limit
-                                : accountBalances.credit.used
-                            }
-                            format={{ style: 'currency', currency: 'BRL' }}
-                            locales="pt-BR"
-                          />
-                        </p>
-                        <span className="text-xs text-gray-500 font-medium">
-                          {toggles.creditCardUseFullLimit ? 'limite total' : 'fatura atual'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                  {/* ... (Keep Config Button Logic for Empty State if needed, or simplify) ... */}
-                  <div className="flex items-center gap-1">
-                    <div className="relative" ref={configRef}>
-                      <button
-                        onClick={() => setIsConfigOpen(!isConfigOpen)}
-                        className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}`}
-                      >
-                        <Settings size={16} />
-                      </button>
-                      {/* Dropdown Menu (Simplified for brevity in replacement, assuming same structure) */}
-                      {isConfigOpen && (
-                        <div className="absolute top-full right-0 mt-2 w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl z-50 p-2 overflow-hidden animate-scale-in origin-top-right">
-                          <div className="px-2 py-1.5 border-b border-gray-800 mb-1">
-                            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Configuração do Cartão</span>
-                          </div>
-                          <div
-                            onClick={() => toggles.setIncludeCredit(!toggles.includeCredit)}
-                            className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div className={`p-1.5 rounded bg-orange-900/30 text-orange-400`}>
-                                <CreditCard size={14} />
-                              </div>
-                              <span className="text-sm text-gray-300 group-hover:text-white">Incluir nas Despesas</span>
-                            </div>
-                            <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.includeCredit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                              <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.includeCredit ? 'translate-x-5' : 'translate-x-1'}`} />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
+          {/* Credit Card Carousel - Improved Fluid Stack */}
+          <div
+            ref={constraintsRef}
+            className="relative h-[120px] perspective-[1000px]"
+          >
+            {/* Blur overlay for Manual Mode */}
+            {!isProMode && userPlan === 'starter' && (
+              <div
+                onClick={userPlan === 'starter' ? onUpgradeClick : onActivateProMode}
+                className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-gray-900/70"
+              >
+                <div className="p-3 bg-[#d97757]/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
+                  {userPlan === 'starter' ? <Lock size={24} className="text-[#d97757]" /> : <CreditCard size={24} className="text-[#d97757]" />}
                 </div>
-                <div className={`w-full ${!toggles.includeCredit ? 'opacity-50' : ''}`}>
-                  <div className="w-full bg-gray-800 rounded-full h-1.5 mb-2 overflow-hidden">
-                    <div
-                      className="bg-orange-500 h-1.5 rounded-full transition-all duration-500"
-                      style={{ width: `${accountBalances.credit.limit > 0 ? Math.min((accountBalances.credit.used / accountBalances.credit.limit) * 100, 100) : 0}%` }}
-                    ></div>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-emerald-400 font-medium">
-                      Disp: {formatCurrency(accountBalances.credit.available)}
-                    </span>
-                    <span className="text-gray-500">
-                      Lim: {formatCurrency(accountBalances.credit.limit)}
-                    </span>
-                  </div>
-                </div>
+                <p className="text-sm font-bold text-white">Modo Auto</p>
+                {userPlan === 'starter' ? (
+                  <span className="mt-2 text-xs text-amber-500 font-medium">
+                    Funcionalidade Pro
+                  </span>
+                ) : (
+                  <p className="text-xs text-gray-400 mt-1">Ative para ver cartões conectados</p>
+                )}
               </div>
-            ) : (
-              // Multiple Accounts - Stack View
-              creditAccounts.map((account, index) => {
-                // Determine position in stack
-                // 0 = active/top, 1 = behind 1, 2 = behind 2
-                let offset = (index - activeCardIndex + creditAccounts.length) % creditAccounts.length;
+            )}
+            <AnimatePresence mode="popLayout">
+              {creditAccounts.length > 0 ? (
+                creditAccounts.map((card, index) => {
+                  // We only render the active card and the next 2 cards for the stack effect
+                  // But to make it truly fluid with AnimatePresence, we can render them all 
+                  // and control visibility via variants, OR simpler:
+                  // Render the stack conceptually.
 
-                // We only want to render the top 3 cards visually for performance/clarity
-                if (offset > 2 && creditAccounts.length > 3) return null;
+                  // Actually, to get the "popLayout" working for the active card replacement,
+                  // we should structure it as:
+                  // 1. Background Stack (Static items animating to new positions)
+                  // 2. Active Card (The one draggable)
 
-                const isTop = offset === 0;
-                const values = getAccountDisplayValues(account);
+                  // Let's use the approach where we map all cards but style them based on offset
+                  const offset = (index - activeCardIndex + creditAccounts.length) % creditAccounts.length;
 
-                return (
-                  <motion.div
-                    key={account.id}
-                    layout
-                    drag={isTop ? "x" : false}
-                    dragConstraints={{ left: 0, right: 0 }}
-                    onDragEnd={handleDragEnd}
-                    initial={false}
-                    animate={{
-                      scale: 1 - offset * 0.05,
-                      y: offset * 8, // Stack vertically slightly
-                      zIndex: creditAccounts.length - offset,
-                      opacity: 1 - offset * 0.2,
-                      rotate: isTop ? 0 : (offset % 2 === 0 ? 2 : -2) // Slight rotation for messy stack look
-                    }}
-                    transition={{
-                      type: "spring",
-                      stiffness: 300,
-                      damping: 30
-                    }}
-                    style={{
-                      position: 'absolute',
-                      width: '100%',
-                      height: '100%',
-                      top: 0,
-                      left: 0,
-                      cursor: isTop ? 'grab' : 'default',
-                    }}
-                    whileTap={isTop ? { cursor: 'grabbing', scale: 1.02 } : {}}
-                    className={`p-4 rounded-xl shadow-xl border flex flex-col justify-between ${isTop
-                      ? (toggles.includeCredit ? 'bg-gray-900 border-gray-800' : 'bg-gray-900/50 border-gray-800/50')
-                      : 'bg-gray-800 border-gray-700' // Darker background for cards behind
-                      }`}
-                  >
-                    <div className="flex items-start justify-between">
-                      <div className={`flex items-center gap-3 ${!toggles.includeCredit ? 'opacity-50' : ''}`}>
-                        <div className="p-2.5 bg-orange-900/20 rounded-lg text-orange-400">
-                          <CreditCard size={20} />
+                  // We only want to render the top 3 cards visually to avoid DOM clutter and z-fighting
+                  // But we need to render the "exiting" card too.
+                  // Since we are mapping ALL cards, we can just control opacity/z-index.
+
+                  if (offset > 2 && offset !== creditAccounts.length - 1) {
+                    // Hide cards that are deep in the stack, unless it's the one that might be "previous" (for reverse anims)
+                    // For simplicity in this specific requested flow "swiping", we focus on the forward stack.
+                    return null;
+                  }
+
+                  const cardInvoice = cardInvoices[index] || { invoice: 0, limit: 0, available: 0 };
+                  const isCurrent = offset === 0;
+                  const isNext = offset === 1;
+                  const isNextNext = offset === 2;
+
+                  // Dynamic z-index
+                  const zIndex = creditAccounts.length - offset;
+
+                  return (
+                    <motion.div
+                      key={card.id}
+                      layoutId={isCurrent ? undefined : `card-${card.id}`} // Only layout animate background cards
+                      initial={false}
+                      animate={{
+                        scale: isCurrent ? 1 : 1 - (offset * 0.05),
+                        y: isCurrent ? 0 : offset * 10, // Stack effect downwards
+                        z: isCurrent ? 0 : -offset, // slight depth
+                        opacity: isCurrent ? 1 : 1 - (offset * 0.2),
+                        zIndex: zIndex,
+                        x: 0
+                      }}
+                      // Only the current card gets the drag/swipe logic
+                      drag={isCurrent && creditAccounts.length > 1 ? "x" : false}
+                      dragConstraints={{ left: 0, right: 0 }} // We want it to snap back or fly away
+                      dragElastic={0.2}
+                      onDragStart={() => setIsDragging(true)}
+                      onDragEnd={(e, { offset: swipeOffset, velocity }) => {
+                        setIsDragging(false);
+                        if (!isCurrent) return;
+                        const swipeThreshold = 100;
+                        if (swipeOffset.x < -swipeThreshold || velocity.x < -500) {
+                          // Swipe Left -> Next Card
+                          goToNextCard();
+                        } else if (swipeOffset.x > swipeThreshold || velocity.x > 500) {
+                          // Swipe Right -> Prev Card
+                          goToPrevCard();
+                        }
+                      }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 400,
+                        damping: 30
+                      }}
+                      className={`absolute inset-0 p-4 rounded-xl border flex flex-col justify-between h-[120px] shadow-lg ${isCurrent
+                        ? 'bg-gradient-to-br from-gray-900 to-gray-800 border-gray-700 cursor-grab active:cursor-grabbing'
+                        : 'bg-gradient-to-br from-gray-800 to-gray-900 border-gray-700/50 pointer-events-none'
+                        }`}
+                      style={{
+                        transformStyle: 'preserve-3d',
+                        boxShadow: isCurrent
+                          ? '0 8px 30px -10px rgba(0, 0, 0, 0.5)'
+                          : '0 4px 15px -5px rgba(0, 0, 0, 0.3)'
+                      }}
+                    >
+                      {/* Card Content */}
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-orange-900/20 text-orange-400' : 'bg-gray-700/20 text-gray-500'}`}>
+                            <CreditCard size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {card.institution || card.name || 'Cartão'}
+                              </p>
+                              {isCurrent && creditAccounts.length > 1 && (
+                                <span className="text-[10px] text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded font-mono border border-orange-500/30">
+                                  {index + 1}/{creditAccounts.length}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                              <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
+                                <NumberFlow
+                                  value={cardInvoice.invoice}
+                                  format={{ style: 'currency', currency: 'BRL' }}
+                                  locales="pt-BR"
+                                />
+                              </p>
+                              {isCurrent && (
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {dashboardDate ? 'mês' : 'atual'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                        <div>
+                        {/* Settings button and Swipe Hint (only on current) */}
+                        {isCurrent && (
                           <div className="flex items-center gap-2">
-                            <p className="text-sm text-gray-400 font-medium truncate max-w-[100px]">{values.name}</p>
-                            {creditAccounts.length > 1 && (
-                              <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono">
-                                {activeCardIndex + 1}/{creditAccounts.length}
-                              </span>
+                            {/* Settings Button */}
+                            <motion.button
+                              ref={creditCardConfigButtonRef}
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setIsCreditCardConfigOpen(!isCreditCardConfigOpen);
+                              }}
+                              className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
+                                ? 'bg-orange-900/50 text-orange-400'
+                                : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-orange-400'
+                                }`}
+                              title="Configurações do cartão"
+                            >
+                              <Settings size={14} />
+                            </motion.button>
+                            {/* Swipe Hint */}
+                            {creditAccounts.length > 1 && !isDragging && (
+                              <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                className="flex items-center gap-0.5 text-gray-500"
+                              >
+                                <ChevronLeft size={14} className="text-gray-600" />
+                                <ChevronRight size={14} className="text-gray-600" />
+                              </motion.div>
                             )}
                           </div>
-                          <div className="flex items-baseline gap-2">
-                            <p className="text-2xl font-bold text-white mt-0.5">
-                              <NumberFlow
-                                value={
-                                  toggles.creditCardUseFullLimit
-                                    ? values.limit
-                                    : values.used
-                                }
-                                format={{ style: 'currency', currency: 'BRL' }}
-                                locales="pt-BR"
+                        )}
+                      </div>
+
+                      <div className="w-full">
+                        {/* Progress bar track - always visible */}
+                        <div className={`w-full rounded-full h-2.5 mb-2 overflow-hidden ${isCurrent ? 'bg-gray-700' : 'bg-gray-800/40'}`}>
+                          {(() => {
+                            // Use the card's calculated limit (may be proportional)
+                            const limit = cardInvoice.limit || 0;
+                            // Use absolute value as extra safety for progress bar
+                            const invoice = Math.abs(cardInvoice.invoice || 0);
+
+                            // Calculate percentage width
+                            let widthPercentage = 0;
+                            if (limit > 0) {
+                              widthPercentage = Math.min((invoice / limit) * 100, 100);
+                              // Ensure a minimal visibility slice if there's any invoice
+                              if (invoice > 0 && widthPercentage < 3) widthPercentage = 3;
+                            } else if (invoice > 0) {
+                              // Fallback if no limit is known but there is an invoice
+                              widthPercentage = 100;
+                            }
+
+                            // Calculate color based on ratio (if limit exists)
+                            let colorClass = 'from-orange-500 to-orange-400';
+                            if (limit > 0) {
+                              const ratio = invoice / limit;
+                              if (ratio > 0.8) colorClass = 'from-red-600 to-red-400';
+                              else if (ratio > 0.5) colorClass = 'from-yellow-500 to-yellow-400';
+                            } else if (invoice > 0) {
+                              // No limit but has invoice - use a neutral or caution color
+                              colorClass = 'from-blue-500 to-blue-400';
+                            }
+
+                            return (
+                              <motion.div
+                                className={`h-full rounded-full bg-gradient-to-r ${colorClass}`}
+                                initial={{ width: 0 }}
+                                animate={{ width: `${widthPercentage}%` }}
+                                transition={{ duration: 0.6, ease: "easeOut" }}
+                                style={{
+                                  opacity: isCurrent ? 1 : 0.5,
+                                  minWidth: invoice > 0 ? '8px' : '0px' // Garantir visibilidade mínima
+                                }}
                               />
-                            </p>
-                            <span className="text-xs text-gray-500 font-medium">
-                              {toggles.creditCardUseFullLimit ? 'limite total' : 'fatura atual'}
+                            );
+                          })()}
+                        </div>
+                        {isCurrent && (
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="text-emerald-400 font-medium">
+                              Disp: {formatCurrency(cardInvoice.available || 0)}
+                            </span>
+                            {/* Dot indicators */}
+                            {creditAccounts.length > 1 && (
+                              <div className="flex gap-1.5">
+                                {creditAccounts.map((_, idx) => (
+                                  <motion.div
+                                    key={idx}
+                                    animate={{
+                                      width: idx === activeCardIndex ? 16 : 6,
+                                      backgroundColor: idx === activeCardIndex ? '#fb923c' : '#4b5563'
+                                    }}
+                                    className="h-1.5 rounded-full"
+                                  />
+                                ))}
+                              </div>
+                            )}
+                            <span className="text-gray-500">
+                              Lim: {formatCurrency(cardInvoice.limit || 0)}
                             </span>
                           </div>
+                        )}
+                      </div>
+                    </motion.div>
+                  );
+                })
+              ) : (
+                /* Empty State (Same as before) */
+                <div className="absolute inset-0 p-4 rounded-xl shadow-sm border bg-gray-900/50 border-gray-800/50 flex flex-col justify-between h-[120px]">
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3 opacity-50">
+                      <div className="p-2.5 bg-orange-900/20 rounded-lg text-orange-400">
+                        <CreditCard size={20} />
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-400 font-medium">Cartão de Crédito</p>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-bold text-white mt-0.5">
+                            <NumberFlow
+                              value={creditCardInvoice}
+                              format={{ style: 'currency', currency: 'BRL' }}
+                              locales="pt-BR"
+                            />
+                          </p>
+                          <span className="text-xs text-gray-500 font-medium">
+                            {dashboardDate ? 'fatura do mês' : 'fatura atual'}
+                          </span>
                         </div>
                       </div>
-
-                      {/* Only show controls on top card */}
-                      {isTop && (
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setShowDebug(!showDebug); }}
-                            className={`p-2 rounded-lg transition-colors ${showDebug ? 'bg-blue-500/20 text-blue-400' : 'text-gray-500 hover:text-blue-400 hover:bg-gray-800/50'}`}
-                            title="Debug Fatura"
-                          >
-                            <Info size={16} />
-                          </button>
-
-                          <div className="relative" ref={configRef}>
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setIsConfigOpen(!isConfigOpen); }}
-                              className={`p-2 rounded-lg transition-colors ${isConfigOpen ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}`}
-                            >
-                              <Settings size={16} />
-                            </button>
-
-                            {/* Dropdown Portal */}
-                            {isConfigOpen && createPortal(
-                              <div
-                                className="fixed inset-0 z-[9999]"
-                                onMouseDown={(e) => {
-                                  if (e.target === e.currentTarget) {
-                                    setIsConfigOpen(false);
-                                  }
-                                }}
-                              >
-                                <div
-                                  className="absolute w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2"
-                                  style={{
-                                    top: (configRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
-                                    right: window.innerWidth - (configRef.current?.getBoundingClientRect().right ?? 0),
-                                  }}
-                                  onMouseDown={(e) => e.stopPropagation()}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <div className="px-2 py-1.5 border-b border-gray-800 mb-1">
-                                    <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Configuração do Cartão</span>
-                                  </div>
-
-                                  {/* Switch 1: Include in Balance */}
-                                  <div
-                                    onClick={(e) => { e.stopPropagation(); toggles.setIncludeCredit(!toggles.includeCredit); }}
-                                    className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <div className={`p-1.5 rounded bg-orange-900/30 text-orange-400`}>
-                                        <CreditCard size={14} />
-                                      </div>
-                                      <span className="text-sm text-gray-300 group-hover:text-white">Incluir nas Despesas</span>
-                                    </div>
-                                    <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.includeCredit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                      <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.includeCredit ? 'translate-x-5' : 'translate-x-1'}`} />
-                                    </div>
-                                  </div>
-
-                                  {/* Switch 2: Use Total Debt (Pluggy) vs Monthly Spending */}
-                                  {toggles.setCreditCardUseTotalLimit && (
-                                    <div
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const newValue = !toggles.creditCardUseTotalLimit;
-                                        toggles.setCreditCardUseTotalLimit!(newValue);
-                                        if (newValue && toggles.setCreditCardUseFullLimit) toggles.setCreditCardUseFullLimit(false);
-                                      }}
-                                      className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className={`p-1.5 rounded bg-purple-900/30 text-purple-400`}>
-                                          <Link size={14} />
-                                        </div>
-                                        <span className="text-sm text-gray-300 group-hover:text-white">Considerar Fatura Total</span>
-                                      </div>
-                                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.creditCardUseTotalLimit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.creditCardUseTotalLimit ? 'translate-x-5' : 'translate-x-1'}`} />
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {/* Switch 3: Use Full Limit (Comprometido) */}
-                                  {toggles.setCreditCardUseFullLimit && (
-                                    <div
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const newValue = !toggles.creditCardUseFullLimit;
-                                        toggles.setCreditCardUseFullLimit!(newValue);
-                                        if (newValue && toggles.setCreditCardUseTotalLimit) toggles.setCreditCardUseTotalLimit(false);
-                                      }}
-                                      className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <div className={`p-1.5 rounded bg-red-900/30 text-red-400`}>
-                                          <TrendingDown size={14} />
-                                        </div>
-                                        <span className="text-sm text-gray-300 group-hover:text-white">Considerar Valor Total</span>
-                                      </div>
-                                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.creditCardUseFullLimit ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.creditCardUseFullLimit ? 'translate-x-5' : 'translate-x-1'}`} />
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>,
-                              document.body
-                            )}
-                          </div>
-                        </div>
-                      )}
                     </div>
+                  </div>
 
-                    {/* Credit Limit Progress or Debug Panel */}
-                    {isTop && showDebug ? (
-                      /* Debug Panel - Fatura atual */
-                      <div className="w-full bg-gray-800/40 rounded-lg p-3 border border-blue-500/10 animate-fade-in absolute left-0 top-full mt-2 z-50 shadow-xl backdrop-blur-md">
-                        <div className="flex flex-col gap-2 mb-3">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              <span className="text-blue-400 font-bold text-xs uppercase tracking-wider">Status da Fatura</span>
-                            </div>
-
-                            <div className="flex items-center bg-gray-900 rounded-md border border-gray-700 px-2 py-1">
-                              {currentAccount ? (
-                                <span className="text-[9px] text-emerald-400 font-bold uppercase mr-1">Via API</span>
-                              ) : null}
-                              <input
-                                type="number"
-                                min="1"
-                                max="31"
-                                value={closingDay}
-                                disabled={!!currentAccount}
-                                onChange={(e) => setClosingDay(parseInt(e.target.value) || 1)}
-                                className={`w-8 bg-transparent text-white text-center text-xs font-bold focus:outline-none ${currentAccount ? 'opacity-70 cursor-not-allowed' : ''}`}
-                              />
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Invoices Summary */}
-                        <div className="grid grid-cols-1 gap-2 mb-3">
-                          {/* Current/Closed Invoice */}
-                          <div className={`flex justify-between items-center p-2 rounded border ${isInvoiceClosed ? 'bg-blue-900/20 border-blue-500/30' : 'bg-gray-900/50 border-gray-800/50'}`}>
-                            <div>
-                              <p className={`text-[10px] font-bold uppercase tracking-wide ${isInvoiceClosed ? 'text-blue-400' : 'text-gray-400'}`}>
-                                {isInvoiceClosed ? 'Fatura Fechada' : 'Fatura Atual'}
-                              </p>
-                              <p className="text-xs text-gray-500">{currentInvoiceLabel}</p>
-                            </div>
-                            <div className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                {isApiCurrent && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 rounded border border-emerald-500/30">API</span>}
-                                <p className={`font-mono font-bold text-sm ${isInvoiceClosed ? 'text-white' : 'text-gray-300'}`}>
-                                  {formatCurrency(displayCurrentTotal)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-
-                          {/* Next Invoice */}
-                          <div className="flex justify-between items-center p-2 rounded bg-gray-900/30 border border-gray-800/30">
-                            <div>
-                              <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wide">
-                                {isInvoiceClosed ? 'Fatura Atual (Em Aberto)' : 'Próxima Fatura'}
-                              </p>
-                              <p className="text-xs text-gray-600">{nextInvoiceLabel}</p>
-                            </div>
-                            <div className="text-right">
-                              <div className="flex items-center justify-end gap-1">
-                                {isApiNext && <span className="text-[8px] bg-emerald-500/20 text-emerald-400 px-1 rounded border border-emerald-500/30">API</span>}
-                                <p className="text-gray-400 font-mono font-bold text-sm">
-                                  {formatCurrency(displayNextTotal)}
-                                </p>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Transactions list only shows for the first card/aggregate for now as transaction mapping is complex per card without filtering */}
-                        <div className="text-[9px] text-gray-500 text-center italic">
-                          Detalhes de transações disponíveis no extrato completo.
-                        </div>
-                      </div>
-                    ) : (
-                      <div className={`w-full ${!toggles.includeCredit ? 'opacity-50' : ''}`}>
-                        <div className="w-full bg-gray-800 rounded-full h-1.5 mb-2 overflow-hidden">
-                          <div
-                            className="bg-orange-500 h-1.5 rounded-full transition-all duration-500"
-                            style={{ width: `${values.limit > 0 ? Math.min((values.used / values.limit) * 100, 100) : 0}%` }}
-                          ></div>
-                        </div>
-                        <div className="flex justify-between items-center text-xs">
-                          <span className="text-emerald-400 font-medium">
-                            Disp: {formatCurrency(values.available)}
-                          </span>
-                          <span className="text-gray-500">
-                            Lim: {formatCurrency(values.limit)}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </motion.div>
-                );
-              })
-            )}
-
-            {/* Card Navigation Dots */}
-            {creditAccounts.length > 1 && (
-              <div className="absolute -bottom-1 left-1/2 -translate-x-1/2 flex items-center gap-2 z-[100]">
-                <div className="flex gap-1.5 bg-gray-900/90 backdrop-blur-sm px-2.5 py-1 rounded-full border border-gray-700 shadow-lg">
-                  {creditAccounts.map((_, index) => (
-                    <button
-                      key={index}
-                      onClick={() => setActiveCardIndex(index)}
-                      className={`w-2 h-2 rounded-full transition-all duration-200 ${index === activeCardIndex
-                        ? 'bg-[#d97757]'
-                        : 'bg-gray-600 hover:bg-gray-500'
-                        }`}
-                    />
-                  ))}
+                  <div className="w-full opacity-50">
+                    <div className="w-full bg-gray-800 rounded-full h-1.5 mb-2 overflow-hidden">
+                      <div
+                        className="bg-orange-500 h-1.5 rounded-full"
+                        style={{
+                          width: creditLimit > 0
+                            ? `${Math.min((creditCardInvoice / creditLimit) * 100, 100)}%`
+                            : '0%'
+                        }}
+                      />
+                    </div>
+                    <div className="flex justify-between items-center text-xs">
+                      <span className="text-emerald-400 font-medium">
+                        Disp: {formatCurrency(creditAvailable)}
+                      </span>
+                      <span className="text-gray-500">
+                        Lim: {formatCurrency(creditLimit)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
+            </AnimatePresence>
           </div>
 
         </div>
       )}
 
+      {/* Credit Card Config Dropdown */}
+      {isCreditCardConfigOpen && creditCardConfigButtonRef.current && createPortal(
+        <div
+          ref={creditCardConfigRef}
+          className="fixed z-[9999] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-3 w-[300px] animate-dropdown-open max-h-[400px] overflow-y-auto scrollbar-hide"
+          style={{
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            top: creditCardConfigButtonRef.current.getBoundingClientRect().bottom + 8,
+            left: Math.max(
+              10,
+              creditCardConfigButtonRef.current.getBoundingClientRect().right - 300
+            ),
+          }}
+        >
+          {/* Header */}
+          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-700/50">
+            <div className="p-1.5 rounded bg-orange-900/30 text-orange-400">
+              <CreditCard size={14} />
+            </div>
+            <p className="text-xs text-gray-400 font-medium">Configurações do Cartão</p>
+          </div>
+
+          {/* Section 1: Invoice in Expenses */}
+          <div className="mb-3">
+            <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2 font-medium">Fatura nas Despesas</p>
+            <div className="space-y-1.5">
+              {creditAccounts.map((card, index) => {
+                const cardInvoice = cardInvoices[index];
+                const isEnabled = cardsIncludedInExpenses.has(card.id);
+
+                const toggleCard = () => {
+                  const newSet = new Set(cardsIncludedInExpenses);
+                  if (isEnabled) newSet.delete(card.id);
+                  else newSet.add(card.id);
+                  setCardsIncludedInExpenses(newSet);
+                };
+
+                return (
+                  <div
+                    key={`expense-${card.id}`}
+                    onClick={toggleCard}
+                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isEnabled ? 'bg-orange-900/30 border border-orange-500/30' : 'bg-gray-800/50 hover:bg-gray-800'
+                      }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className={`p-1 rounded ${isEnabled ? 'bg-orange-900/30 text-orange-400' : 'bg-gray-700/50 text-gray-500'}`}>
+                        <TrendingDown size={10} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-white font-medium truncate">{card.institution || card.name || 'Cartão'}</p>
+                      </div>
+                      <p className="text-[10px] text-gray-500 font-mono">{formatCurrency(cardInvoice?.invoice || 0)}</p>
+                    </div>
+                    {isEnabled && <Check size={12} className="text-orange-400 ml-1" />}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Summary */}
+          {cardsIncludedInExpenses.size > 0 && (
+            <div className="mt-3 pt-2 border-t border-gray-700/50">
+              <p className="text-orange-400 text-xs">
+                + {formatCurrency(cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0))} será somado às despesas
+              </p>
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+
+
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-400 font-medium">Saldo Total</p>
+            <p className="text-sm text-gray-400 font-medium">{labels?.balance || 'Saldo Total'}</p>
             <p className={`text-2xl font-bold mt-1 ${stats.totalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
               <NumberFlow
                 value={stats.totalBalance}
@@ -866,7 +911,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
 
         <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
-            <p className="text-sm text-gray-400 font-medium">Receitas</p>
+            <p className="text-sm text-gray-400 font-medium">{labels?.income || 'Receitas'}</p>
             <p className="text-2xl font-bold mt-1 text-green-400">
               <NumberFlow
                 value={stats.totalIncome}
@@ -880,12 +925,19 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
           </div>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
+        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative">
           <div>
-            <p className="text-sm text-gray-400 font-medium">Despesas</p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm text-gray-400 font-medium">{labels?.expense || 'Despesas'}</p>
+              {!hideCards && cardsIncludedInExpenses.size > 0 && (
+                <span className="text-[10px] text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded font-medium">
+                  + {cardsIncludedInExpenses.size} cartão{cardsIncludedInExpenses.size > 1 ? 'es' : ''}
+                </span>
+              )}
+            </div>
             <p className="text-2xl font-bold mt-1 text-red-400">
               <NumberFlow
-                value={stats.totalExpense}
+                value={stats.totalExpense + (!hideCards ? cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0) : 0)}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
@@ -899,7 +951,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
         <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
           <div className="relative z-10">
             {/* Changed generic label to accommodate Year/Custom filters */}
-            <p className="text-sm text-gray-400 font-medium">Resultado do Período</p>
+            <p className="text-sm text-gray-400 font-medium">{labels?.savings || 'Resultado do Período'}</p>
             <p className="text-2xl font-bold mt-1 text-purple-400">
               <NumberFlow
                 value={stats.monthlySavings}
@@ -915,6 +967,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({ stats, isLoading = false
           <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-gradient-to-br from-purple-900/20 to-transparent rounded-full opacity-50"></div>
         </div>
       </div>
-    </div>
+    </div >
   );
-};
+};  

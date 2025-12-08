@@ -39,7 +39,9 @@ import { Investments, Investment } from './components/Investments';
 import { Budgets } from './components/Budgets';
 import { MemberSelector } from './components/MemberSelector';
 import { FamilyDashboard } from './components/FamilyDashboard';
+import { FamilyOverview } from './components/FamilyOverview';
 import { ToastContainer, useToasts } from './components/Toast';
+import { GlobalSyncToast } from './components/GlobalSyncToast';
 import { TwoFactorPrompt } from './components/TwoFactorPrompt';
 import { auth } from './services/firebase';
 import { onAuthStateChanged } from "firebase/auth";
@@ -56,6 +58,7 @@ import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
 import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
+import { InviteLanding } from './components/InviteLanding';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 
@@ -226,11 +229,12 @@ const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   );
 };
 
-import { InviteLanding } from './components/InviteLanding';
+import { GlobalModeModal } from './components/GlobalModeModal';
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
+  const [showGlobalModeModal, setShowGlobalModeModal] = useState<'AUTO' | 'MANUAL' | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [pendingTwoFactor, setPendingTwoFactor] = useState<PendingTwoFactor | null>(null);
@@ -270,26 +274,26 @@ const App: React.FC = () => {
       }
 
       if (token && familyId) {
+        let ownerName = 'Alguém';
         try {
           const group = await familyService.getFamilyGroup(familyId);
-          let ownerName = 'Alguém';
           if (group && group.ownerId) {
             const ownerProfile = await dbService.getUserProfile(group.ownerId);
             if (ownerProfile?.name) ownerName = ownerProfile.name;
           }
-          setPendingInvite({ token, familyId, ownerName });
-          // Only show landing if no user is logged in yet.
-          // If logged in, logic further down handles it (showing InviteAcceptModal or auto-joining).
-          if (!auth.currentUser) {
-            setShowInviteLanding(true);
-          }
         } catch (err) {
-          console.error("Erro ao carregar convite:", err);
+          console.log("Ainda não é possível carregar detalhes do grupo (provavelmente não autenticado).");
+        }
+
+        setPendingInvite({ token, familyId, ownerName });
+
+        if (!auth.currentUser) {
+          setShowInviteLanding(true);
         }
       }
     };
     loadInvite();
-  }, []);
+  }, [userId]);
 
 
   // Landing variant selector (default waitlist, alt URL unlocks auth landing)
@@ -455,6 +459,22 @@ const App: React.FC = () => {
     return { reminders: false, subscriptions: false, salary: false, vale: false };
   });
 
+  // Pro Mode State (Pro = Open Finance integration, Manual = manual entry)
+  const [isProMode, setIsProMode] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_pro_mode');
+      return saved !== null ? JSON.parse(saved) : true; // Default to Pro mode
+    }
+    return true;
+  });
+
+  // Persist Pro Mode preference
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('finances_pro_mode', JSON.stringify(isProMode));
+    }
+  }, [isProMode]);
+
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
   }, [projectionSettings]);
@@ -492,6 +512,23 @@ const App: React.FC = () => {
     return false;
   });
 
+  const [includeOpenFinanceInStats, setIncludeOpenFinanceInStats] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_include_open_finance');
+      return saved !== null ? JSON.parse(saved) : true;
+    }
+    return true;
+  });
+
+  // Track which credit cards are enabled for expense calculation (by account ID)
+  const [enabledCreditCardIds, setEnabledCreditCardIds] = useState<string[]>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('finances_enabled_cc_ids');
+      return saved !== null ? JSON.parse(saved) : [];
+    }
+    return [];
+  });
+
   useEffect(() => {
     localStorage.setItem('finances_include_checking', JSON.stringify(includeCheckingInStats));
   }, [includeCheckingInStats]);
@@ -507,6 +544,14 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('finances_cc_use_full_limit', JSON.stringify(creditCardUseFullLimit));
   }, [creditCardUseFullLimit]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_include_open_finance', JSON.stringify(includeOpenFinanceInStats));
+  }, [includeOpenFinanceInStats]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_enabled_cc_ids', JSON.stringify(enabledCreditCardIds));
+  }, [enabledCreditCardIds]);
 
   // Member Management State
   const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
@@ -606,7 +651,10 @@ const App: React.FC = () => {
             avatarUrl: profile?.avatarUrl,
             twoFactorEnabled: profile?.twoFactorEnabled,
             twoFactorSecret: profile?.twoFactorSecret,
-            isAdmin: profile?.isAdmin ?? adminFromClaims
+            isAdmin: profile?.isAdmin ?? adminFromClaims,
+            // Include family info to ensure Family Goals work correctly from the start
+            familyGroupId: profile?.familyGroupId,
+            familyRole: profile?.familyRole
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -848,13 +896,25 @@ const App: React.FC = () => {
         const adminMember: Omit<Member, 'id'> = {
           name: currentUser.name,
           avatarUrl: currentUser.avatarUrl || 'bg-gradient-to-br from-purple-600 to-blue-600',
-          role: 'admin'
+          role: currentUser.familyRole === 'member' ? 'member' : 'admin'
         };
         dbService.addMember(userId, adminMember).then(id => {
           setActiveMemberId(id);
         });
       } else {
         setMembers(data);
+
+        // Self-healing: Ensure local member role matches family role
+        if (currentUser.familyRole === 'member') {
+          // Find self (simplest heuristic: by name or if list has 1 item)
+          // In a robust app, we'd store the linked memberId in user profile
+          const me = data.find(m => m.name === currentUser.name) || (data.length === 1 ? data[0] : null);
+          if (me && me.role === 'admin') {
+            console.log("[App] Correcting member role to 'member' for family guest.");
+            dbService.updateMember(userId, { ...me, role: 'member' });
+          }
+        }
+
         setActiveMemberId(current => {
           if (current !== 'FAMILY_OVERVIEW' && !data.find(m => m.id === current)) {
             return 'FAMILY_OVERVIEW';
@@ -862,10 +922,6 @@ const App: React.FC = () => {
           return current;
         });
       }
-    });
-
-    const unsubGoals = dbService.listenToGoals(userId, (data) => {
-      setFamilyGoals(data);
     });
 
     const unsubAccounts = dbService.listenToConnectedAccounts(userId, (data) => {
@@ -877,12 +933,47 @@ const App: React.FC = () => {
       unsubRem();
       unsubProfile();
       unsubMembers();
-      unsubGoals();
       unsubBudgets();
       unsubSubs();
       unsubAccounts();
     };
   }, [userId, currentUser?.name]);
+
+  // Family Goals Logic (Shared)
+  // If user is part of a family, goals are stored under families/{familyGroupId}/goals
+  // Otherwise, goals are stored under users/{userId}/goals
+  useEffect(() => {
+    if (!userId) return;
+
+    const familyGroupId = currentUser?.familyGroupId;
+
+    console.log('[Family Goals] Setting up goals listener:', {
+      userId,
+      familyGroupId,
+      familyRole: currentUser?.familyRole,
+      usingFamilyGoals: !!familyGroupId
+    });
+
+    let unsubGoals: () => void;
+
+    if (familyGroupId) {
+      // User is part of a family - listen to family's goals collection
+      console.log('[Family Goals] Listening to family goals at families/' + familyGroupId + '/goals');
+      unsubGoals = dbService.listenToGoalsByGroupId(familyGroupId, (data) => {
+        console.log('[Family Goals] Received family goals:', data.length);
+        setFamilyGoals(data);
+      });
+    } else {
+      // User is not part of a family - listen to user's own goals
+      console.log('[Family Goals] Listening to user goals at users/' + userId + '/goals');
+      unsubGoals = dbService.listenToGoals(userId, (data) => {
+        console.log('[Family Goals] Received user goals:', data.length);
+        setFamilyGoals(data);
+      });
+    }
+
+    return () => unsubGoals();
+  }, [userId, currentUser?.familyGroupId]);
 
   // Two-Factor Verification
   const handleVerifyTwoFactor = async (code: string) => {
@@ -925,23 +1016,102 @@ const App: React.FC = () => {
     setShowLanding(true);
   };
 
+  const handleGlobalManualConfirm = async (keepHistory: boolean) => {
+    if (!userId) return;
+    try {
+      // Immediately signal stop to any running syncs
+      localStorage.setItem('finances_pro_mode', 'false');
+
+      // If NOT keeping history ("Começar do Zero"), delete ALL transactions (Manual + Imported)
+      // The user requested to wipe everything to start fresh
+      if (!keepHistory) {
+        await dbService.deleteAllUserTransactions(userId);
+        await dbService.deleteAllConnectedAccounts(userId);
+        
+        // Since we deleted accounts, we can't update them. Just log audit and finish.
+        await dbService.addAuditLog(userId, {
+            timestamp: new Date().toISOString(),
+            action: 'MODE_CHANGE_TO_MANUAL',
+            details: {
+              previousMode: 'AUTO',
+              newMode: 'MANUAL',
+              keepHistory: false,
+              isGlobal: true
+            }
+        });
+        
+        setIsProMode(false);
+        setShowGlobalModeModal(null);
+        toast.success("Modo Manual ativado. Histórico e conexões apagados. Começando do zero.");
+        return; // EXIT HERE
+      }
+
+      // Then update each account mode (Only if we KEPT history and thus kept accounts)
+      for (const acc of connectedAccounts) {
+        if (keepHistory) {
+          await dbService.updateConnectedAccountMode(userId, acc.id, 'MANUAL');
+        } else {
+          // Pass false to skip deleting again per-account since we already deleted all above
+          await dbService.resetAccountData(userId, acc.id, 0, false);
+        }
+
+        // Register audit event for each account
+        await dbService.addAuditLog(userId, {
+          timestamp: new Date().toISOString(),
+          action: 'MODE_CHANGE_TO_MANUAL',
+          accountId: acc.id,
+          accountName: acc.name || acc.institution || 'Conta',
+          details: {
+            previousMode: 'AUTO',
+            newMode: 'MANUAL',
+            keepHistory,
+            isGlobal: true
+          }
+        });
+      }
+      setIsProMode(false);
+      setShowGlobalModeModal(null);
+      toast.success(keepHistory
+        ? "Modo Manual ativado. Histórico mantido."
+        : "Modo Manual ativado. Histórico apagado, começando do zero."
+      );
+    } catch (error) {
+      console.error("Error switching global manual:", error);
+      toast.error("Erro ao mudar para modo manual.");
+    }
+  };
+
+  const handleGlobalAutoConfirm = async () => {
+    if (!userId) return;
+    try {
+      localStorage.setItem('finances_pro_mode', 'true');
+
+      for (const acc of connectedAccounts) {
+        await dbService.deleteManualTransactionsForAccount(userId, acc.id);
+        await dbService.updateConnectedAccountMode(userId, acc.id, 'AUTO');
+
+        // Register audit event for each account
+        await dbService.addAuditLog(userId, {
+          timestamp: new Date().toISOString(),
+          action: 'MODE_CHANGE_TO_AUTO',
+          accountId: acc.id,
+          accountName: acc.name || acc.institution || 'Conta',
+          details: {
+            previousMode: 'MANUAL',
+            newMode: 'AUTO',
+            isGlobal: true
+          }
+        });
+      }
+      setIsProMode(true);
+      setShowGlobalModeModal(null);
+      toast.success("Modo Automático reativado. Lançamentos manuais removidos.");
+    } catch (error) {
+      toast.error("Erro ao reativar modo automático.");
+    }
+  };
+
   // --- Filter Logic ---
-
-  // 1. Filter by Member (Base filtering)
-  const memberFilteredTransactions = useMemo(() => {
-    if (activeMemberId === 'FAMILY_OVERVIEW') return transactions;
-    // Keep unassigned transactions visible for any member (e.g., Pluggy imports before members exist)
-    return transactions.filter(t => !t.memberId || t.memberId === activeMemberId);
-  }, [transactions, activeMemberId]);
-
-  const memberInvestments = useMemo(() => {
-    if (activeMemberId === 'FAMILY_OVERVIEW') return investments;
-    return investments.filter(inv => inv.memberId === activeMemberId);
-  }, [investments, activeMemberId]);
-
-  const totalMemberInvestments = useMemo(() => {
-    return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
-  }, [memberInvestments]);
 
   // Helper: Get current invoice amount from Bills API
   const getCurrentInvoiceAmount = React.useCallback((account: ConnectedAccount): number => {
@@ -1038,6 +1208,46 @@ const App: React.FC = () => {
     connectedAccounts.forEach(a => map.set(a.id, a));
     return map;
   }, [connectedAccounts]);
+
+  // 1. Filter by Member (Base filtering) AND Account Mode Visibility
+
+  const memberFilteredTransactions = useMemo(() => {
+    let filtered = transactions;
+
+    // Apply Account Mode Visibility Rules
+    filtered = filtered.filter(t => {
+      if (!t.accountId) return true; // Manual transaction without account link -> Always show
+
+      const account = accountMap.get(t.accountId);
+      if (!account) return true; // Account deleted or not found -> Show (safer)
+
+      const isManualMode = account.connectionMode === 'MANUAL';
+      const isAutoTx = !!t.importSource;
+
+      // In Manual Mode: Hide Auto transactions
+      // REMOVED to allow "Keep History" to work (show imported data even in manual mode)
+      // if (isManualMode && isAutoTx) return false;
+
+      // In Auto Mode: Hide Manual transactions (Strict "No Mixing")
+      // REMOVED to allow manual adjustments/historic data to appear
+      // if (!isManualMode && !isAutoTx) return false;
+
+      return true;
+    });
+
+    if (activeMemberId === 'FAMILY_OVERVIEW') return filtered;
+    // Keep unassigned transactions visible for any member (e.g., Pluggy imports before members exist)
+    return filtered.filter(t => !t.memberId || t.memberId === activeMemberId);
+  }, [transactions, activeMemberId, accountMap]);
+
+  const memberInvestments = useMemo(() => {
+    if (activeMemberId === 'FAMILY_OVERVIEW') return investments;
+    return investments.filter(inv => inv.memberId === activeMemberId);
+  }, [investments, activeMemberId]);
+
+  const totalMemberInvestments = useMemo(() => {
+    return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
+  }, [memberInvestments]);
 
   // Extract available categories from the filtered transactions
   const availableCategories = useMemo(() => {
@@ -1197,35 +1407,54 @@ const App: React.FC = () => {
       if (t.description === "Vale / Adiantamento" && t.date > todayStr && !projectionSettings.vale) {
         return false;
       }
+      // Filter Open Finance
+      if (!includeOpenFinanceInStats && (t.importSource || t.accountId)) return false;
+
       return true;
     });
 
-    // Base Expenses (All types)
-    const baseExpenses = reviewedDashboardTransactions.filter(t =>
-      t.type === 'expense' &&
-      !t.isInvestment &&
-      !t.category.startsWith('Caixinha') && // Fallback for older txs
-      !((t.accountType || '').toUpperCase().includes('SAVINGS')) // Exclude Savings
-    );
+    // Build a Set of all credit card account IDs for fast lookup
+    const creditCardAccountIds = new Set<string>();
+    accountMap.forEach((acc) => {
+      const type = (acc.subtype || acc.type || "").toUpperCase();
+      if (type.includes('CREDIT')) {
+        creditCardAccountIds.add(acc.id);
+      }
+    });
 
-    // Split Expenses by Type (Credit Card vs Others)
-    const ccTransactions = baseExpenses.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
-    const nonCCTransactions = baseExpenses.filter(t => !(t.accountType || '').toUpperCase().includes('CREDIT'));
+    // Base Expenses (All types) - Exclude credit card transactions entirely
+    // Credit card expenses will be calculated from the invoice amount of enabled cards
+    const baseExpenses = reviewedDashboardTransactions.filter(t => {
+      if (t.type !== 'expense') return false;
+      if (t.isInvestment) return false;
+      if (t.category.startsWith('Caixinha')) return false;
+      if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
+      // Filter Open Finance
+      if (!includeOpenFinanceInStats && (t.importSource || t.accountId)) return false;
+
+      // EXCLUDE credit card transactions - they will be calculated from invoice
+      // Check by accountType OR by accountId belonging to a credit card account
+      const isCreditCardByType = (t.accountType || '').toUpperCase().includes('CREDIT');
+      const isCreditCardByAccountId = t.accountId && creditCardAccountIds.has(t.accountId);
+      if (isCreditCardByType || isCreditCardByAccountId) return false;
+
+      return true;
+    });
 
     const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
-    const nonCCSpending = nonCCTransactions.reduce((acc, t) => acc + t.amount, 0);
-    const ccSpending = ccTransactions.reduce((acc, t) => acc + t.amount, 0);
+    const nonCCSpending = baseExpenses.reduce((acc, t) => acc + t.amount, 0);
 
-    // Calculate Account-level Credit Data (Debt & Limit)
+    // Calculate Account-level Credit Data (Debt & Limit) - Only for ENABLED cards
     let ccBillsInView = 0;
     let ccTotalLimitInView = 0;
 
-    if (includeCreditCardInStats) {
+    if (includeOpenFinanceInStats) {
       accountMap.forEach((acc) => {
         const type = (acc.subtype || acc.type || "").toUpperCase();
         const isCredit = type.includes('CREDIT');
 
-        if (isCredit) {
+        // Only include this card if it's in the enabled list
+        if (isCredit && enabledCreditCardIds.includes(acc.id)) {
           ccBillsInView += getCurrentInvoiceAmount(acc);
           ccTotalLimitInView += (acc.creditLimit || 0);
         }
@@ -1233,29 +1462,30 @@ const App: React.FC = () => {
     }
 
     // Determine Final Credit Card Expense Value for Stats
+    // Based on individual card toggles (enabledCreditCardIds)
     let finalCCExpense = 0;
+    const hasEnabledCards = enabledCreditCardIds.length > 0;
 
-    if (includeCreditCardInStats) {
+    if (hasEnabledCards && includeOpenFinanceInStats) {
       if (creditCardUseFullLimit) {
         finalCCExpense = ccTotalLimitInView;
-      } else if (creditCardUseTotalLimit) {
-        finalCCExpense = ccBillsInView;
       } else {
-        finalCCExpense = ccSpending;
+        // Default: Use invoice amount from enabled cards
+        finalCCExpense = ccBillsInView;
       }
     }
 
     // Final Totals
-    const totalExpense = nonCCSpending + finalCCExpense;
+    const totalExpense = finalCCExpense;
 
     // Calculate Balance
     let calculatedBalance = 0;
-    if (includeCheckingInStats) {
+    if (includeCheckingInStats && includeOpenFinanceInStats) {
       calculatedBalance += accountBalances.checking;
     }
 
-    // Subtract CC Liability from Balance (if enabled)
-    if (includeCreditCardInStats) {
+    // Subtract CC Liability from Balance (if any cards enabled)
+    if (hasEnabledCards) {
       calculatedBalance -= finalCCExpense;
     }
 
@@ -1346,9 +1576,9 @@ const App: React.FC = () => {
       totalExpense: finalTotalExpense,
       totalBalance: finalBalance,
       monthlySavings: finalMonthlySavings,
-      creditCardSpending: ccSpending
+      creditCardSpending: finalCCExpense
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -1378,8 +1608,8 @@ const App: React.FC = () => {
         toast.error("O plano Plus permite criar apenas 1 perfil adicional. Mude para o plano Família para ter até 5.");
         return;
       }
-      if (plan === 'family' && currentCount >= 5) {
-        toast.error("Limite de 5 perfis atingido no plano Família.");
+      if (plan === 'family' && currentCount >= 3) {
+        toast.error("Limite de 3 perfis atingido no plano Família.");
         return;
       }
 
@@ -1600,15 +1830,32 @@ const App: React.FC = () => {
   };
 
   const handleAddGoal = async (goal: Omit<FamilyGoal, 'id'>) => {
-    if (userId) await dbService.addFamilyGoal(userId, goal);
+    const familyGroupId = currentUser?.familyGroupId;
+    if (familyGroupId) {
+      // User is part of a family - save to family's goals collection
+      await dbService.addFamilyGoalByGroupId(familyGroupId, goal);
+    } else if (userId) {
+      // User is not part of a family - save to user's own goals
+      await dbService.addFamilyGoal(userId, goal);
+    }
     toast.success("Meta criada!");
   };
   const handleUpdateGoal = async (goal: FamilyGoal) => {
-    if (userId) await dbService.updateFamilyGoal(userId, goal);
+    const familyGroupId = currentUser?.familyGroupId;
+    if (familyGroupId) {
+      await dbService.updateFamilyGoalByGroupId(familyGroupId, goal);
+    } else if (userId) {
+      await dbService.updateFamilyGoal(userId, goal);
+    }
     toast.success("Meta atualizada!");
   };
   const handleDeleteGoal = async (id: string) => {
-    if (userId) await dbService.deleteFamilyGoal(userId, id);
+    const familyGroupId = currentUser?.familyGroupId;
+    if (familyGroupId) {
+      await dbService.deleteFamilyGoalByGroupId(familyGroupId, id);
+    } else if (userId) {
+      await dbService.deleteFamilyGoal(userId, id);
+    }
     toast.success("Meta removida.");
   };
 
@@ -1662,8 +1909,8 @@ const App: React.FC = () => {
 
     switch (activeTab) {
       case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
-      case 'table': return { title: 'Transações', desc: 'Histórico completo de lançamentos.' };
-      case 'reminders': return { title: 'Lembretes', desc: 'Contas a pagar deste perfil.' };
+      case 'table': return { title: 'Movimentações', desc: 'Histórico completo de movimentações.' };
+      case 'reminders': return { title: 'Lembretes', desc: 'Organize seus lembretes.' };
       case 'investments': return { title: 'Caixinhas', desc: 'Gerencie suas caixinhas e metas financeiras.' };
       case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
@@ -1754,6 +2001,7 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
       <Analytics />
       <ToastContainer />
+      <GlobalSyncToast />
       <InviteAcceptModal
         isOpen={showInviteModal}
         onAccept={handleAcceptInvite}
@@ -1804,6 +2052,7 @@ const App: React.FC = () => {
           onDeleteMember={handleDeleteMember}
           isSidebarOpen={isSidebarOpen}
           userPlan={currentUser?.subscription?.plan || 'starter'}
+          isAdmin={currentUser?.isAdmin}
         />
 
         {/* Adjusted Container Padding based on Sidebar State */}
@@ -1850,21 +2099,44 @@ const App: React.FC = () => {
                   <NavItem
                     active={activeTab === 'table'}
                     onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Table2 size={20} />}
-                    label="Lançamentos"
+                    icon={
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-refresh-dot">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                        <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+                      </svg>
+                    }
+                    label="Movimentações"
                     isOpen={isSidebarOpen}
                   />
                   <NavItem
                     active={activeTab === 'credit_cards'}
                     onClick={() => { setActiveTab('credit_cards'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<CreditCard size={20} />}
+                    icon={
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-credit-card-pay">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+                        <path d="M12 19h-6a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4.5" />
+                        <path d="M3 10h18" />
+                        <path d="M16 19h6" />
+                        <path d="M19 16l3 3l-3 3" />
+                        <path d="M7.005 15h.005" />
+                        <path d="M11 15h2" />
+                      </svg>
+                    }
                     label="Cartão de Crédito"
                     isOpen={isSidebarOpen}
                   />
                   <NavItem
                     active={activeTab === 'reminders'}
                     onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Bell size={20} />}
+                    icon={
+                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-bell">
+                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                        <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
+                        <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
+                      </svg>
+                    }
                     label="Lembretes"
                     isOpen={isSidebarOpen}
                     badge={overdueRemindersCount}
@@ -1887,7 +2159,7 @@ const App: React.FC = () => {
                     active={activeTab === 'connections'}
                     onClick={() => { setActiveTab('connections'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
                     icon={<Building size={20} />}
-                    label="Contas conectadas"
+                    label="Open Finance"
                     isOpen={isSidebarOpen}
                   />
                   <NavItem
@@ -1916,26 +2188,18 @@ const App: React.FC = () => {
             )}
           </div>
 
-          <div className="space-y-1">
-            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Open Finance</p>}
-            <BankConnect
-              userId={userId}
-              memberId={syncMemberId}
-              isSidebar
-              isOpen={isSidebarOpen}
-              userPlan={currentUser?.subscription?.plan || 'starter'}
-            />
-          </div>
+
 
           <div className="space-y-1">
             {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
 
             <NavItem
               active={false}
-              onClick={() => setIsWhatsAppOpen(true)}
-              icon={<MessageCircle size={20} className="text-[#25D366]" />}
-              label="Coinzinha WhatsApp"
+              onClick={() => { }}
+              icon={<MessageCircle size={20} className="text-gray-600" />}
+              label="Coinzinha (Em breve)"
               isOpen={isSidebarOpen}
+              disabled={true}
             />
 
             <button
@@ -1964,18 +2228,6 @@ const App: React.FC = () => {
             </button>
           </div>
 
-          {isSidebarOpen && (
-            <div className="px-3 pb-6 mt-auto animate-fade-in">
-              <div className="bg-[#363735] border border-[#3A3B39] rounded-xl p-4 flex items-center gap-3 shadow-sm">
-                <div className="text-[#d97757] shrink-0">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M15 2a1 1 0 0 1 0 2v4.826l3.932 10.814l.034 .077a1.7 1.7 0 0 1 -.002 1.193l-.07 .162a1.7 1.7 0 0 1 -1.213 .911l-.181 .017h-11l-.181 -.017a1.7 1.7 0 0 1 -1.285 -2.266l.039 -.09l3.927 -10.804v-4.823a1 1 0 1 1 0 -2h6zm-2 2h-2v4h2v-4z" /></svg>
-                </div>
-                <p className="text-xs text-gray-300 leading-snug text-left font-medium">
-                  Você está navegando na versão Beta (0.1.0) do Controlar<span className="text-[#d97757] font-bold">+</span>
-                </p>
-              </div>
-            </div>
-          )}
         </div>
       </aside>
 
@@ -2293,17 +2545,35 @@ const App: React.FC = () => {
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
-              <FamilyDashboard
-                transactions={transactions}
-                members={members}
+              <FamilyOverview
+                stats={stats}
                 goals={familyGoals}
+                isLoading={isLoadingData}
+                accountBalances={accountBalances}
+                creditCardTransactions={creditCardTransactions}
+                dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                toggles={{
+                  includeChecking: includeCheckingInStats,
+                  setIncludeChecking: setIncludeCheckingInStats,
+                  includeCredit: includeCreditCardInStats,
+                  setIncludeCredit: setIncludeCreditCardInStats,
+                  creditCardUseTotalLimit: creditCardUseTotalLimit,
+                  setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                  creditCardUseFullLimit: creditCardUseFullLimit,
+                  setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                  includeOpenFinance: includeOpenFinanceInStats,
+                  setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                  enabledCreditCardIds: enabledCreditCardIds,
+                  setEnabledCreditCardIds: setEnabledCreditCardIds
+                }}
+                isProMode={isProMode}
+                onActivateProMode={() => setIsProMode(true)}
+                userPlan={currentUser?.subscription?.plan || 'starter'}
+                onUpgradeClick={() => setActiveTab('subscription')}
                 onAddGoal={handleAddGoal}
                 onUpdateGoal={handleUpdateGoal}
                 onDeleteGoal={handleDeleteGoal}
                 onAddTransaction={handleAddTransaction}
-                currentUser={currentUser}
-                userId={userId}
-                onUpgrade={() => setActiveTab('subscription')}
               />
             ) : (
               <>
@@ -2314,6 +2584,7 @@ const App: React.FC = () => {
                       <SalaryManager
                         baseSalary={currentUser.baseSalary || 0}
                         currentIncome={stats.totalIncome}
+                        estimatedSalary={stats.totalIncome}
                         paymentDay={currentUser.salaryPaymentDay}
                         advanceValue={currentUser.salaryAdvanceValue}
                         advancePercent={currentUser.salaryAdvancePercent}
@@ -2333,6 +2604,18 @@ const App: React.FC = () => {
                             !t.ignored
                           );
                         })()}
+                        isProMode={isProMode}
+                        onToggleProMode={(val) => {
+                          if (val) {
+                            setShowGlobalModeModal('AUTO');
+                          } else {
+                            setShowGlobalModeModal('MANUAL');
+                          }
+                        }}
+                        userPlan={currentUser?.subscription?.plan || 'starter'}
+                        onUpgradeClick={() => setActiveTab('subscription')}
+                        includeOpenFinance={includeOpenFinanceInStats}
+                        onToggleOpenFinance={setIncludeOpenFinanceInStats}
                       />
                     )}
                     <StatsCards
@@ -2340,6 +2623,7 @@ const App: React.FC = () => {
                       isLoading={isLoadingData}
                       accountBalances={accountBalances}
                       creditCardTransactions={creditCardTransactions}
+                      dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
                       toggles={{
                         includeChecking: includeCheckingInStats,
                         setIncludeChecking: setIncludeCheckingInStats,
@@ -2348,8 +2632,16 @@ const App: React.FC = () => {
                         creditCardUseTotalLimit: creditCardUseTotalLimit,
                         setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
                         creditCardUseFullLimit: creditCardUseFullLimit,
-                        setCreditCardUseFullLimit: setCreditCardUseFullLimit
+                        setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                        includeOpenFinance: includeOpenFinanceInStats,
+                        setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                        enabledCreditCardIds: enabledCreditCardIds,
+                        setEnabledCreditCardIds: setEnabledCreditCardIds
                       }}
+                      isProMode={isProMode}
+                      onActivateProMode={() => setIsProMode(true)}
+                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                      onUpgradeClick={() => setActiveTab('subscription')}
                     />
                     <div className="animate-fade-in space-y-6">
                       <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
@@ -2447,6 +2739,7 @@ const App: React.FC = () => {
                       accounts={connectedAccounts}
                       lastSynced={lastSyncMap}
                       userId={userId}
+                      isProMode={isProMode}
                     />
                   </div>
                 )}
@@ -2493,6 +2786,8 @@ const App: React.FC = () => {
           setSettingsInitialTab('profile');
         }}
         user={currentUser}
+        userId={userId || undefined}
+        members={members}
         onUpdateUser={async (u) => {
           if (userId) await dbService.updateUserProfile(userId, u);
         }}
@@ -2505,6 +2800,11 @@ const App: React.FC = () => {
           setIsSettingsOpen(false);
           setActiveTab('subscription');
         }}
+        onAddGoal={handleAddGoal}
+        onUpdateGoal={handleUpdateGoal}
+        onDeleteGoal={handleDeleteGoal}
+        onAddTransaction={handleAddTransaction}
+        onUpgrade={() => setActiveTab('subscription')}
         initialTab={settingsInitialTab}
       />
 
@@ -2512,6 +2812,16 @@ const App: React.FC = () => {
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
       />
+
+      {showGlobalModeModal && (
+        <GlobalModeModal
+          isOpen={!!showGlobalModeModal}
+          onClose={() => setShowGlobalModeModal(null)}
+          onConfirmManual={handleGlobalManualConfirm}
+          onConfirmAuto={handleGlobalAutoConfirm}
+          targetMode={showGlobalModeModal}
+        />
+      )}
     </div>
   );
 };

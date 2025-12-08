@@ -36,41 +36,138 @@ const extractLinkId = (payload) => {
   return payload.linkId || payload.link_id || payload.data?.linkId || null;
 };
 
+// Helper: Calculate monthly invoice from transactions
+const calculateMonthlyInvoice = (transactions, month, year) => {
+  if (!transactions || !Array.isArray(transactions)) return 0;
+
+  return transactions
+    .filter(tx => {
+      const txDate = new Date(tx.transactionDate || tx.date);
+      return txDate.getMonth() + 1 === month && txDate.getFullYear() === year;
+    })
+    .reduce((sum, tx) => {
+      const amount = parseFloat(tx.transactionAmount?.amount || tx.amount || '0');
+      return sum + Math.abs(amount);
+    }, 0);
+};
+
+// Helper: Extract bills history from closed statements
+const extractBillsHistory = (closedStatements) => {
+  if (!closedStatements || !Array.isArray(closedStatements)) return [];
+
+  return closedStatements.map(statement => ({
+    id: statement.billId || `bill_${statement.billingDate}`,
+    dueDate: statement.dueDate,
+    totalAmount: parseFloat(statement.billTotalAmount?.amount || '0'),
+    balanceCloseDate: statement.billingDate,
+    minimumPayment: parseFloat(statement.minimumPaymentAmount?.amount || '0'),
+    isPaid: statement.isPaid || false,
+  })).filter(bill => bill.totalAmount > 0);
+};
+
 // Helper: Normalize Klavi credit cards to ConnectedAccount format
 const normalizeCreditCards = (creditCards, linkId) => {
   if (!creditCards || !Array.isArray(creditCards)) return [];
 
-  return creditCards.map((card, index) => {
+  // First pass: collect all limits and balances to calculate proportions
+  let totalKnownLimit = 0;
+  let totalBalance = 0;
+  const cardsData = [];
+
+  creditCards.forEach((card, index) => {
     const openStatement = card.openStatement || {};
+    const closedStatements = card.closedStatements || [];
     const limits = card.limits || {};
 
     // Calculate current balance from open statement
     const billTotal = parseFloat(openStatement.billTotalAmount?.amount || '0');
 
+    // Calculate invoice from transactions if billTotal is 0
+    let currentInvoice = billTotal;
+    if (currentInvoice === 0 && openStatement.transactionDetails) {
+      currentInvoice = openStatement.transactionDetails.reduce((sum, tx) => {
+        const amount = parseFloat(tx.transactionAmount?.amount || tx.amount || '0');
+        return sum + Math.abs(amount);
+      }, 0);
+    }
+
     // Get limit info
     const creditLimit = parseFloat(limits.limitAmount?.amount || '0');
     const availableLimit = parseFloat(limits.availableAmount?.amount || '0');
 
+    // Track totals for proportional distribution
+    if (creditLimit > 0) {
+      totalKnownLimit += creditLimit;
+    }
+    totalBalance += Math.abs(currentInvoice);
+
+    cardsData.push({
+      card,
+      index,
+      openStatement,
+      closedStatements,
+      currentInvoice,
+      creditLimit,
+      availableLimit,
+    });
+  });
+
+  // Second pass: normalize with proportional limits for cards without data
+  return cardsData.map(({ card, index, openStatement, closedStatements, currentInvoice, creditLimit, availableLimit }) => {
+    // Calculate final limits (proportional if missing)
+    let finalCreditLimit = creditLimit;
+    let finalAvailableLimit = availableLimit;
+
+    // If this card has no limit data, calculate proportionally
+    if (creditLimit === 0 && totalKnownLimit > 0 && totalBalance > 0) {
+      const cardProportion = Math.abs(currentInvoice) / totalBalance;
+      finalCreditLimit = totalKnownLimit * cardProportion;
+      finalAvailableLimit = Math.max(0, finalCreditLimit - Math.abs(currentInvoice));
+      console.log(`>>> Credit Card ${card.name}: No limit data, using proportional: ${finalCreditLimit.toFixed(2)} (${(cardProportion * 100).toFixed(1)}%)`);
+    }
+
+    // Extract bills history from closed statements
+    const bills = extractBillsHistory(closedStatements);
+
+    // Add current open statement as a bill if it has transactions
+    if (openStatement.billingDate && currentInvoice > 0) {
+      bills.unshift({
+        id: `bill_current_${openStatement.billingDate}`,
+        dueDate: openStatement.dueDate,
+        totalAmount: currentInvoice,
+        balanceCloseDate: openStatement.billingDate,
+        minimumPayment: parseFloat(openStatement.minimumPaymentAmount?.amount || '0'),
+        isPaid: false,
+        isCurrent: true,
+      });
+    }
+
     // Create stable ID based on card properties (not linkId which changes each connection)
     const cardName = card.name || card.creditCardNetwork || `card_${index}`;
     const stableId = `klavi_cc_${card.companyCnpj || 'unknown'}_${cardName.replace(/\s+/g, '_').toLowerCase()}`;
+
+    console.log(`>>> Credit Card ${cardName}: Invoice R$ ${currentInvoice.toFixed(2)}, Limit R$ ${finalCreditLimit.toFixed(2)}, Bills: ${bills.length}`);
 
     return {
       id: stableId,
       name: card.name || `Cartão ${card.creditCardNetwork || 'Crédito'}`,
       type: 'CREDIT_CARD',
       subtype: card.productType || 'CREDIT',
-      balance: -billTotal, // Negative because it's debt
+      balance: -currentInvoice, // Negative because it's debt
       currency: 'BRL',
       institution: card.brandName || card.bacenName || 'Instituição',
       itemId: linkId,
       providerId: 'klavi',
-      creditLimit: creditLimit,
-      availableCreditLimit: availableLimit,
+      creditLimit: finalCreditLimit,
+      availableCreditLimit: finalAvailableLimit,
       balanceDueDate: openStatement.dueDate || null,
       balanceCloseDate: openStatement.billingDate || null,
+      // Store bills history for monthly view
+      bills: bills,
       // Store payment methods info
       paymentMethods: card.paymentMethods || [],
+      // Store raw transactions for further processing
+      lastUpdated: new Date().toISOString(),
     };
   });
 };
@@ -162,7 +259,9 @@ const normalizeTransactions = (creditCards, accounts, linkId) => {
   // Extract transactions from credit cards
   if (creditCards && Array.isArray(creditCards)) {
     creditCards.forEach((card, cardIndex) => {
-      const accountId = `klavi_cc_${linkId}_${cardIndex}`;
+      // Replicate stable ID logic from normalizeCreditCards
+      const cardName = card.name || card.creditCardNetwork || `card_${cardIndex}`;
+      const accountId = `klavi_cc_${card.companyCnpj || 'unknown'}_${cardName.replace(/\s+/g, '_').toLowerCase()}`;
 
       // Open statement transactions
       const openTxs = card.openStatement?.transactionDetails || [];
@@ -184,7 +283,11 @@ const normalizeTransactions = (creditCards, accounts, linkId) => {
   // Extract transactions from checking/savings accounts
   if (accounts && Array.isArray(accounts)) {
     accounts.forEach((acc, accIndex) => {
-      const accountId = `klavi_acc_${linkId}_${accIndex}`;
+      // Replicate stable ID logic from normalizeAccounts
+      const accountNumber = acc.accountNumber || acc.number || `acc_${accIndex}`;
+      const branch = acc.branchCode || acc.agency || 'nobranch';
+      const accountId = `klavi_acc_${acc.companyCnpj || 'unknown'}_${branch}_${accountNumber}`;
+
       const accTxs = acc.transactions || acc.transactionDetails || [];
       accTxs.forEach(tx => {
         transactions.push(normalizeTransaction(tx, accountId, linkId, 'account'));
@@ -197,7 +300,51 @@ const normalizeTransactions = (creditCards, accounts, linkId) => {
 
 // Helper: Normalize a single transaction
 const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => {
-  const amount = parseFloat(tx.brazilianAmount?.amount || tx.amount?.amount || tx.amount || '0');
+  // Try multiple possible amount locations (Klavi/Open Finance has various structures)
+  let amount = 0;
+
+  // Try brazilianAmount first (most common for transactions)
+  if (tx.brazilianAmount?.amount) {
+    amount = parseFloat(tx.brazilianAmount.amount);
+  }
+  // Try transactionAmount (used in some transaction types)
+  else if (tx.transactionAmount?.amount) {
+    amount = parseFloat(tx.transactionAmount.amount);
+  }
+  // Try nested amount object
+  else if (tx.amount?.amount) {
+    amount = parseFloat(tx.amount.amount);
+  }
+  // Try direct amount field
+  else if (typeof tx.amount === 'number') {
+    amount = tx.amount;
+  }
+  else if (typeof tx.amount === 'string') {
+    amount = parseFloat(tx.amount);
+  }
+  // Try value field (alternative naming)
+  else if (tx.value?.amount) {
+    amount = parseFloat(tx.value.amount);
+  }
+  else if (typeof tx.value === 'number') {
+    amount = tx.value;
+  }
+  else if (typeof tx.value === 'string') {
+    amount = parseFloat(tx.value);
+  }
+
+  // Log transactions with zero amount for debugging
+  if (amount === 0) {
+    console.log(`>>> WARNING: Zero amount transaction: "${tx.transactionName || tx.description}"`,
+      JSON.stringify({
+        brazilianAmount: tx.brazilianAmount,
+        transactionAmount: tx.transactionAmount,
+        amount: tx.amount,
+        value: tx.value,
+        keys: Object.keys(tx).join(', ')
+      }).substring(0, 300));
+  }
+
   const isDebit = tx.creditDebitType === 'DEBITO' || tx.type === 'DEBIT' || amount < 0;
 
   return {
@@ -227,12 +374,16 @@ const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => 
 
 
 
+// Store the current linkId for reference
+let currentKlaviLinkId = null;
+
 // 1. Create Link (Generate the widget URL)
 router.post('/klavi/create-link', async (req, res) => {
   try {
-    // Clear old webhook data to start fresh
-    klaviDataStore.clear();
-    console.log(">>> Cleared webhook data store for new connection");
+    // DON'T clear store - keep previous data for reliability
+    // The sync function aggregates all data anyway
+    console.log(">>> Creating new Klavi link (preserving existing webhook data)");
+    console.log(`>>> Current store has ${klaviDataStore.size} entries`);
 
     dotenv.config();
     // User explicitly requested these keys for SANDBOX
@@ -242,7 +393,7 @@ router.post('/klavi/create-link', async (req, res) => {
     // Explicitly requested SANDBOX URL
     const KLAVI_BASE = 'https://api-sandbox.klavi.ai/data/v1';
 
-    const REDIRECT_BASE = 'https://toney-nonreversing-cedrick.ngrok-free.dev';
+    const REDIRECT_BASE = 'https://schematically-oscitant-herbert.ngrok-free.dev';
     const webhookUrl = `${REDIRECT_BASE}/api/klavi/webhook`;
 
     console.log(">>> Starting Klavi Flow (REAL SANDBOX)...");
@@ -286,9 +437,16 @@ router.post('/klavi/create-link', async (req, res) => {
 
     // Docs say response has: linkURL, linkId, linkToken
     const linkUrl = linkResponse.data.linkURL;
+    const linkId = linkResponse.data.linkId;
+
+    // Store the linkId for webhook association
+    if (linkId) {
+      currentKlaviLinkId = linkId;
+      console.log(`   > Stored linkId for webhook: ${linkId}`);
+    }
 
     if (linkUrl) {
-      res.json({ success: true, url: linkUrl });
+      res.json({ success: true, url: linkUrl, linkId: linkId });
     } else {
       console.error("   > Error: linkURL not found in response", linkResponse.data);
       res.status(500).json({ error: "linkURL not found in Klavi response", data: linkResponse.data });
@@ -371,11 +529,12 @@ router.post('/klavi/sync', async (req, res) => {
   try {
     console.log(`>>> Current store has ${klaviDataStore.size} entries`);
 
-    // Polling: Wait for data to arrive (max 10 seconds, checking every 500ms)
+    // Polling: Wait for data to arrive (max 15 seconds total)
     let dataResult = checkForData();
     let attempts = 0;
-    const maxAttempts = 20; // 20 * 500ms = 10 seconds
+    const maxAttempts = 30; // 30 * 500ms = 15 seconds
 
+    // Phase 1: Wait until we get ANY data
     while (!dataResult.hasData && attempts < maxAttempts) {
       console.log(`>>> Waiting for webhook data... attempt ${attempts + 1}/${maxAttempts}`);
       await sleep(500);
@@ -383,11 +542,30 @@ router.post('/klavi/sync', async (req, res) => {
       attempts++;
     }
 
+    // Phase 2: Once we have data, wait a bit more for additional webhooks
+    // Klavi sends different data types in separate webhooks
+    if (dataResult.hasData) {
+      console.log(`>>> Initial data found! Waiting 5 more seconds for additional webhooks...`);
+      let lastCount = dataResult.allCreditCards.length + dataResult.allCheckingAccounts.length + dataResult.allSavingsAccounts.length;
+
+      // Wait up to 5 more seconds, checking if more data arrives
+      for (let i = 0; i < 10; i++) {
+        await sleep(500);
+        const newResult = checkForData();
+        const newCount = newResult.allCreditCards.length + newResult.allCheckingAccounts.length + newResult.allSavingsAccounts.length;
+
+        if (newCount > lastCount) {
+          console.log(`>>> More data arrived! Total items: ${newCount} (was ${lastCount})`);
+          lastCount = newCount;
+          dataResult = newResult;
+        }
+      }
+    }
+
     if (dataResult.hasData) {
       const { allCreditCards, allCheckingAccounts, allSavingsAccounts } = dataResult;
 
-      console.log(`>>> Data found after ${attempts} attempts!`);
-      console.log(`>>> Total aggregated data:`);
+      console.log(`>>> Final data after waiting:`);
       console.log(`>>> Credit Cards: ${allCreditCards.length}`);
       console.log(`>>> Checking Accounts: ${allCheckingAccounts.length}`);
       console.log(`>>> Savings Accounts: ${allSavingsAccounts.length}`);
@@ -485,35 +663,87 @@ router.post('/klavi/webhook', (req, res) => {
       linkId = extractLinkId(event.data);
     }
 
-    // Some Klavi callbacks have the data directly at root level with credit cards
-    // In that case, we need to extract from URL params or use a fallback
-    if (!linkId && event.creditCards) {
-      // Generate a temporary ID based on the first card info
-      const firstCard = event.creditCards[0];
-      linkId = `temp_${firstCard?.companyCnpj || Date.now()}`;
+    // Try to get linkId from links array (common in Open Finance responses)
+    if (!linkId && event.links && Array.isArray(event.links) && event.links.length > 0) {
+      linkId = event.links[0].linkId || event.links[0].link_id;
+    }
+
+    // Use the stored linkId from create-link if we still don't have one
+    if (!linkId && currentKlaviLinkId) {
+      linkId = currentKlaviLinkId;
+      console.log(`>>> Using stored linkId from create-link: ${linkId}`);
+    }
+
+    // Fallback: use companyCnpj as stable identifier
+    if (!linkId && (event.creditCards || event.checkingAccounts || event.savingsAccounts)) {
+      const firstItem = event.creditCards?.[0] || event.checkingAccounts?.[0] || event.savingsAccounts?.[0];
+      if (firstItem?.companyCnpj) {
+        linkId = `cnpj_${firstItem.companyCnpj}`;
+      }
     }
 
     if (!linkId) {
-      console.log('>>> Warning: No linkId found in webhook payload, storing with timestamp key');
+      console.log('>>> Warning: No linkId found, using timestamp key');
       linkId = `unknown_${Date.now()}`;
     }
 
     console.log(`>>> Processing webhook data for linkId: ${linkId}`);
 
-    // Store the raw data
-    const storedData = {
-      receivedAt: new Date().toISOString(),
-      rawPayload: event,
-      creditCards: event.creditCards || event.data?.creditCards || [],
-      checkingAccounts: event.checkingAccounts || event.data?.checkingAccounts || [],
-      savingsAccounts: event.savingsAccounts || event.data?.savingsAccounts || [],
-      investments: event.investments || event.data?.investments || [],
+    // Get existing data for this linkId (to MERGE, not overwrite)
+    const existingData = klaviDataStore.get(linkId) || {
+      creditCards: [],
+      checkingAccounts: [],
+      savingsAccounts: [],
+      investments: [],
     };
 
-    klaviDataStore.set(linkId, storedData);
-    console.log(`>>> Stored webhook data for linkId: ${linkId}`);
-    console.log(`>>> Credit Cards found: ${storedData.creditCards.length}`);
-    console.log(`>>> Checking Accounts found: ${storedData.checkingAccounts.length}`);
+    // Extract new data from this webhook
+    const newCreditCards = event.creditCards || event.data?.creditCards || [];
+    const newCheckingAccounts = event.checkingAccounts || event.data?.checkingAccounts || [];
+    const newSavingsAccounts = event.savingsAccounts || event.data?.savingsAccounts || [];
+    const newInvestments = event.investments || event.data?.investments || [];
+
+    // Helper to deduplicate by companyCnpj + identifier
+    const dedupeByKey = (existing, newItems, keyFn) => {
+      const map = new Map();
+      [...existing, ...newItems].forEach(item => {
+        const key = keyFn(item);
+        if (key) map.set(key, item);
+      });
+      return Array.from(map.values());
+    };
+
+    // Merge and deduplicate data
+    const mergedData = {
+      receivedAt: new Date().toISOString(),
+      rawPayload: event,
+      creditCards: dedupeByKey(
+        existingData.creditCards,
+        newCreditCards,
+        (c) => `${c.companyCnpj}_${c.name || c.creditCardNetwork}`
+      ),
+      checkingAccounts: dedupeByKey(
+        existingData.checkingAccounts,
+        newCheckingAccounts,
+        (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
+      ),
+      savingsAccounts: dedupeByKey(
+        existingData.savingsAccounts,
+        newSavingsAccounts,
+        (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
+      ),
+      investments: dedupeByKey(
+        existingData.investments,
+        newInvestments,
+        (i) => `${i.companyCnpj}_${i.name || i.id}`
+      ),
+    };
+
+    klaviDataStore.set(linkId, mergedData);
+    console.log(`>>> MERGED webhook data for linkId: ${linkId}`);
+    console.log(`>>> Credit Cards total: ${mergedData.creditCards.length} (new: ${newCreditCards.length})`);
+    console.log(`>>> Checking Accounts total: ${mergedData.checkingAccounts.length} (new: ${newCheckingAccounts.length})`);
+    console.log(`>>> Savings Accounts total: ${mergedData.savingsAccounts.length} (new: ${newSavingsAccounts.length})`);
     console.log(`>>> Current store size: ${klaviDataStore.size} entries`);
 
     // Debug: Log the structure of the raw payload to understand where data is
@@ -526,8 +756,14 @@ router.post('/klavi/webhook', (req, res) => {
 
     // Also store with any alternative keys that might be used
     if (event.consent_id) {
-      klaviDataStore.set(event.consent_id, storedData);
+      klaviDataStore.set(event.consent_id, mergedData);
       console.log(`>>> Also stored with consent_id: ${event.consent_id}`);
+    }
+
+    // Also store with currentKlaviLinkId if different from extracted linkId
+    if (currentKlaviLinkId && currentKlaviLinkId !== linkId) {
+      klaviDataStore.set(currentKlaviLinkId, mergedData);
+      console.log(`>>> Also stored with currentKlaviLinkId: ${currentKlaviLinkId}`);
     }
 
   } catch (err) {

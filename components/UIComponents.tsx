@@ -38,6 +38,29 @@ const styles = `
     animation: expandUp 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
   }
 
+  /* Animação de expansão de altura (Accordion/Relative DatePicker) */
+  @keyframes expandHeight {
+    from {
+      max-height: 0;
+      opacity: 0;
+      margin-top: 0;
+      padding-top: 0;
+      padding-bottom: 0;
+    }
+    to {
+      max-height: 350px;
+      opacity: 1;
+      margin-top: 0.5rem; /* mt-2 equivalent */
+      padding-top: 1rem; /* p-4 equivalent */
+      padding-bottom: 1rem;
+    }
+  }
+
+  .animate-expand-height {
+    animation: expandHeight 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    overflow: hidden;
+  }
+
   /* Custom Scrollbar */
   .custom-scrollbar::-webkit-scrollbar {
     width: 6px;
@@ -411,9 +434,10 @@ interface CustomDatePickerProps {
   onChange: (date: string) => void;
   placeholder?: string;
   className?: string;
+  dropdownMode?: 'absolute' | 'relative';
 }
 
-export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "" }) => {
+export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "", dropdownMode = 'absolute' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   
@@ -510,7 +534,10 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
       </div>
 
       {isOpen && (
-        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open">
+        <div className={dropdownMode === 'absolute' 
+          ? "absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open"
+          : "bg-[#2f302e]/50 border border-[#4a4b49] rounded-2xl w-full animate-expand-height"
+        }>
           <div className="flex items-center justify-between mb-4">
             <button onClick={(e) => {e.preventDefault(); handlePrevMonth();}} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
               <ChevronLeft size={16} />
