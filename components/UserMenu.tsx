@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { User as UserType } from '../types';
-import { User, LogOut, Settings, ChevronRight } from './Icons';
+import { LogOut, Settings } from './Icons';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from './Dropdown';
 
 interface UserMenuProps {
   user: UserType;
@@ -11,9 +12,7 @@ interface UserMenuProps {
 }
 
 export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettings, isAdminMode, onToggleAdminMode }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-
+  
   // Debug log to see if user.isAdmin is being received
   useEffect(() => {
     console.log('[UserMenu] User data:', {
@@ -23,17 +22,6 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
       userKeys: Object.keys(user)
     });
   }, [user, user.isAdmin]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   const getInitials = (name: string) => {
     return name
@@ -67,11 +55,8 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
   const avatarBg = user.avatarUrl?.includes('url') ? user.avatarUrl : 'bg-[#363735] border border-[#3A3B39]';
 
   return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-3 hover:bg-gray-800 rounded-full pl-2 pr-1 py-1 transition-all border border-transparent hover:border-gray-700"
-      >
+    <Dropdown>
+      <DropdownTrigger className="flex items-center gap-3 hover:bg-gray-800 rounded-full pl-2 pr-1 py-1 transition-all border border-transparent hover:border-gray-700">
         <div className="text-right hidden sm:block">
           <p className="text-xs font-bold text-gray-200">{user.name}</p>
           <p className="text-[10px] text-gray-500">{getPlanDisplay()}</p>
@@ -79,72 +64,50 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
         <div className={`w-8 h-8 rounded-full ${avatarBg} flex items-center justify-center text-xs font-bold text-white shadow-md`}>
           {!user.avatarUrl?.includes('url') && getInitials(user.name)}
         </div>
-      </button>
+      </DropdownTrigger>
 
-      {isOpen && (
-        <div className="absolute right-0 mt-2 w-64 bg-gray-900 rounded-xl shadow-2xl border border-gray-800 overflow-hidden z-50 animate-dropdown-open">
-          <div className="p-4 border-b border-gray-800 bg-gray-900">
+      <DropdownContent align="right" width="w-64" portal>
+        <div className="p-2 border-b border-[#363735]">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-full ${avatarBg} flex items-center justify-center text-white font-bold shadow-inner`}>
                 {!user.avatarUrl?.includes('url') && getInitials(user.name)}
               </div>
               <div className="overflow-hidden">
-                <h4 className="text-sm font-bold text-white truncate">{user.name}</h4>
+                <h4 className="text-sm font-bold text-gray-200 truncate">{user.name}</h4>
                 <p className="text-xs text-gray-500 truncate">{getPlanDisplay()}</p>
               </div>
             </div>
-          </div>
-          
-          <div className="p-2">
-            <button 
-              onClick={() => {
-                setIsOpen(false);
-                onOpenSettings();
-              }}
-              className="w-full flex items-center justify-between p-2 text-sm text-gray-300 hover:bg-gray-800 rounded-lg group transition-colors"
-            >
-              <div className="flex items-center gap-3">
-                <Settings size={16} className="text-gray-500 group-hover:text-purple-400" />
-                Configurações
-              </div>
-              <ChevronRight size={14} className="text-gray-600" />
-            </button>
+        </div>
 
-            {(() => {
-              console.log('[UserMenu Render] Checking isAdmin condition:', {
-                isAdmin: user.isAdmin,
-                willRender: !!user.isAdmin
-              });
-              return user.isAdmin && (
-                <button
-                  onClick={() => {
-                    setIsOpen(false);
-                    onToggleAdminMode();
-                  }}
-                  className={`w-full flex items-center justify-between p-2 text-sm rounded-lg group transition-colors mt-1 ${isAdminMode ? 'bg-red-900/20 text-red-400' : 'text-gray-300 hover:bg-gray-800'}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isAdminMode ? 'border-red-500 bg-red-500' : 'border-gray-500'}`}>
+        <div className="p-1">
+          <DropdownItem onClick={onOpenSettings} icon={Settings} shortcut="→">
+            Configurações
+          </DropdownItem>
+
+          {user.isAdmin && (
+             <DropdownItem 
+               onClick={onToggleAdminMode} 
+               className={isAdminMode ? 'bg-red-900/20 text-red-400' : ''}
+             >
+                <div className="flex items-center gap-3 w-full">
+                   <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isAdminMode ? 'border-red-500 bg-red-500' : 'border-gray-500'}`}>
                       {isAdminMode && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
                     </div>
-                    Modo Admin
-                  </div>
-                </button>
-              );
-            })()}
-          </div>
-
-          <div className="p-2 border-t border-gray-800 bg-gray-950/50">
-            <button 
-              onClick={onLogout}
-              className="w-full flex items-center gap-3 p-2 text-sm text-red-400 hover:bg-red-900/20 rounded-lg transition-colors"
-            >
-              <LogOut size={16} />
-              Sair da conta
-            </button>
-          </div>
+                    <span>Modo Admin</span>
+                </div>
+             </DropdownItem>
+          )}
         </div>
-      )}
-    </div>
+        
+        <DropdownSeparator />
+
+        <div className="p-1">
+          <DropdownItem onClick={onLogout} icon={LogOut} danger>
+            Sair da conta
+          </DropdownItem>
+        </div>
+
+      </DropdownContent>
+    </Dropdown>
   );
 };

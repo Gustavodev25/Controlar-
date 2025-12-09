@@ -1,26 +1,24 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  LayoutDashboard,
-  Table2,
-  Bot,
-  ChevronLeft,
-  ChevronRight,
   ChevronDown,
-  Bell,
   TrendingUp,
-  BrainCircuit,
   Plus,
   Calendar,
   Filter,
   Tag,
   X,
-  RotateCcw,
   Menu,
   Target,
   Building,
-  CreditCard
+  CreditCard,
+  Bell,
+  RotateCcw,
+  LayoutDashboard,
+  Users as UsersIcon,
+  MathMaxMin
 } from './components/Icons';
-import { Flame, Vault, Lock, MessageCircle, Users as UsersIcon } from 'lucide-react';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel } from './components/Dropdown';
+import { Flame, Vault, Lock } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -37,7 +35,7 @@ import { FinanceCalendar } from './components/FinanceCalendar';
 import { AIAdvisor } from './components/AIAdvisor';
 import { Investments, Investment } from './components/Investments';
 import { Budgets } from './components/Budgets';
-import { MemberSelector } from './components/MemberSelector';
+import { Sidebar, TabType } from './components/Sidebar';
 import { FamilyDashboard } from './components/FamilyDashboard';
 import { FamilyOverview } from './components/FamilyOverview';
 import { ToastContainer, useToasts } from './components/Toast';
@@ -49,7 +47,6 @@ import * as dbService from './services/database';
 import { verifyTOTP } from './services/twoFactor';
 import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter, SystemNotification } from './components/NotificationCenter';
-import { Logo } from './components/Logo';
 import { Analytics } from '@vercel/analytics/react';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { BankConnect } from './components/BankConnect';
@@ -61,6 +58,7 @@ import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
+import AdminEmailMessage from './components/AdminEmailMessage';
 
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
@@ -68,69 +66,6 @@ import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
-
-// Sub-component for Nav Items
-interface NavItemProps {
-  active: boolean;
-  onClick: () => void;
-  icon: React.ReactNode;
-  label: string;
-  isOpen: boolean;
-  badge?: number;
-  disabled?: boolean;
-}
-
-const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen, badge, disabled }) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      className={`
-        flex items-center transition-all duration-200 group relative rounded-lg
-        ${isOpen
-          ? 'w-full gap-3 p-2.5 justify-start' // Expandido: alinhado à esquerda
-          : 'w-full py-3 justify-center'       // Colapsado: largura total, centralizado (removido w-10/h-10 rounded-full)
-        }
-        ${active
-          ? 'bg-gray-800 text-white shadow-sm'
-          : disabled
-            ? 'text-gray-600 cursor-not-allowed opacity-50'
-            : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-        }
-      `}
-    >
-      <span className={`transition-colors relative z-10 ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
-        {icon}
-      </span>
-
-      {isOpen && <span className="font-medium text-sm truncate animate-fade-in">{label}</span>}
-
-      {/* Badge */}
-      {(badge || 0) > 0 && (
-        <span className={`absolute ${isOpen ? 'right-2 top-1/2 -translate-y-1/2' : 'top-1 right-1'} flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white`}>
-          {badge && badge > 9 ? '9+' : badge}
-        </span>
-      )}
-
-      {/* Active Indicator (Collapsed - Barra lateral sutil) */}
-      {!isOpen && active && (
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-[#d97757] rounded-r-md"></div>
-      )}
-
-      {/* Tooltip Card (Collapsed Only) */}
-      {!isOpen && isHovered && (
-        <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left animate-fade-in">
-          <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
-          <p className="text-sm font-bold text-white whitespace-nowrap">{label}</p>
-        </div>
-      )}
-    </button>
-  );
-};
 
 type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
 
@@ -405,7 +340,7 @@ const App: React.FC = () => {
   });
 
   // Navigation State
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'table' | 'reminders' | 'investments' | 'fire' | 'advisor' | 'budgets' | 'connections' | 'subscription' | 'subscriptions' | 'credit_cards' | 'admin_overview' | 'admin_waitlist'>('dashboard');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
@@ -704,114 +639,7 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-  // Auto-Register Monthly Salary
-  useEffect(() => {
-    if (!currentUser || !currentUser.baseSalary || !currentUser.salaryPaymentDay || isLoadingData || !userId) return;
 
-    const checkAndAddSalary = async () => {
-      const now = new Date();
-      const currentYear = now.getFullYear();
-      const currentMonth = now.getMonth(); // 0-indexed
-      const currentDay = now.getDate();
-
-      // Determine the target day for this month (handle shorter months)
-      const lastDayOfThisMonth = new Date(currentYear, currentMonth + 1, 0).getDate();
-      const targetDay = Math.min(currentUser.salaryPaymentDay!, lastDayOfThisMonth);
-
-      // Only proceed if today is on or after the payment day
-      if (currentDay >= targetDay) {
-        const dateString = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}-${String(targetDay).padStart(2, '0')}`;
-        const monthPrefix = `${currentYear}-${String(currentMonth + 1).padStart(2, '0')}`;
-
-        // Check if exists in loaded transactions
-        // We check for "Salário Mensal" description AND the current month prefix in date
-        const exists = transactions.some(t =>
-          t.type === 'income' &&
-          t.description === "Salário Mensal" &&
-          t.date.startsWith(monthPrefix)
-        );
-
-        if (!exists) {
-          // Calculate Advance
-          let advance = currentUser.salaryAdvanceValue || 0;
-
-          // Sanity Check
-          if (advance >= currentUser.baseSalary!) {
-            advance = 0;
-          }
-
-          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
-          }
-          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-
-          const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
-
-          const newTx: Omit<Transaction, 'id'> = {
-            description: "Salário Mensal",
-            amount: salaryAmount,
-            type: 'income',
-            category: 'Trabalho',
-            date: dateString,
-            status: 'completed',
-            memberId: activeMemberId === 'FAMILY_OVERVIEW' ? (members.find(m => m.role === 'admin')?.id || members[0]?.id) : activeMemberId
-          };
-
-          try {
-            await dbService.addTransaction(userId, newTx);
-
-            // Check/Add Vale separately if needed
-            // Note: This auto-register only runs when "Salário Mensal" day arrives.
-            // If the user wants Vale to be auto-registered on its own day, we should have a separate check.
-            // But for now, we register it together or skip if already exists?
-            // Ideally, Vale should be registered on ITS day. 
-            // If we register it here (on Salary day), it might be late.
-            // But if we register it here, let's check if it exists first.
-
-            if (advance > 0) {
-              // Determine Vale Date
-              let valeDateStr = dateString;
-              const pDay = currentUser.salaryPaymentDay || 5;
-              const aDay = currentUser.salaryAdvanceDay;
-
-              if (aDay) {
-                const vDate = new Date(currentYear, currentMonth, 1); // Start with current month of Salary logic
-                vDate.setDate(aDay);
-                valeDateStr = `${vDate.getFullYear()}-${String(vDate.getMonth() + 1).padStart(2, '0')}-${String(vDate.getDate()).padStart(2, '0')}`;
-              }
-
-              // Check if Vale exists
-              const valePrefix = valeDateStr.slice(0, 7);
-              const valeExists = transactions.some(t =>
-                t.type === 'income' &&
-                t.description === "Vale / Adiantamento" &&
-                t.date.startsWith(valePrefix)
-              );
-
-              if (!valeExists) {
-                const advanceTx: Omit<Transaction, 'id'> = {
-                  description: "Vale / Adiantamento",
-                  amount: advance,
-                  type: 'income',
-                  category: 'Trabalho',
-                  date: valeDateStr,
-                  status: 'completed',
-                  memberId: newTx.memberId
-                };
-                await dbService.addTransaction(userId, advanceTx);
-              }
-            }
-
-            toast.success("Salário mensal registrado automaticamente!");
-          } catch (err) {
-            console.error("Erro ao registrar salario automatico:", err);
-          }
-        }
-      }
-    };
-
-    checkAndAddSalary();
-  }, [currentUser?.baseSalary, currentUser?.salaryPaymentDay, transactions.length, isLoadingData, userId]);
 
   // Auto-close sidebar on mobile, auto-open on desktop (on resize only)
   useEffect(() => {
@@ -1085,9 +913,13 @@ const App: React.FC = () => {
     if (!userId) return;
     try {
       localStorage.setItem('finances_pro_mode', 'true');
+      setIsProMode(true); // Set immediately to prevent auto-recreation of manual data
 
+      // 1. Delete ALL manual transactions (Global wipe of manual data)
+      await dbService.deleteAllManualTransactions(userId);
+
+      // 2. Update connected accounts to AUTO mode
       for (const acc of connectedAccounts) {
-        await dbService.deleteManualTransactionsForAccount(userId, acc.id);
         await dbService.updateConnectedAccountMode(userId, acc.id, 'AUTO');
 
         // Register audit event for each account
@@ -1103,11 +935,13 @@ const App: React.FC = () => {
           }
         });
       }
-      setIsProMode(true);
+      
       setShowGlobalModeModal(null);
-      toast.success("Modo Automático reativado. Lançamentos manuais removidos.");
+      toast.success("Modo Automático reativado. Todos os lançamentos manuais foram removidos.");
     } catch (error) {
+      console.error("Error switching to global auto:", error);
       toast.error("Erro ao reativar modo automático.");
+      setIsProMode(false); // Revert on error
     }
   };
 
@@ -1149,6 +983,20 @@ const App: React.FC = () => {
 
   // NEW: Calculate Account Balances
   const accountBalances = useMemo(() => {
+    // Helper to check if an account is a credit card
+    const isCreditCard = (a: ConnectedAccount) => {
+      const type = (a.type || '').toUpperCase();
+      const subtype = (a.subtype || '').toUpperCase();
+      const id = (a.id || '').toLowerCase();
+      
+      return type === 'CREDIT' || 
+             type === 'CREDIT_CARD' || 
+             subtype === 'CREDIT_CARD' || 
+             subtype.includes('CREDIT') ||
+             id.includes('_cc_') ||
+             id.includes('credit');
+    };
+
     const checkingAccounts = connectedAccounts
       .filter(a => {
         const subtype = (a.subtype || '').toUpperCase();
@@ -1156,7 +1004,9 @@ const App: React.FC = () => {
 
         // Excluir poupança (vai para caixinhas) e cartões de crédito
         if (subtype === 'SAVINGS_ACCOUNT' || subtype === 'SAVINGS') return false;
-        if (type === 'CREDIT' || type === 'CREDIT_CARD' || subtype === 'CREDIT_CARD' || subtype.includes('CREDIT')) return false;
+        
+        // Use robust credit card check
+        if (isCreditCard(a)) return false;
 
         // Incluir conta corrente (type=CHECKING ou type=BANK com subtype=CHECKING_ACCOUNT)
         if (type === 'CHECKING') return true;
@@ -1179,12 +1029,7 @@ const App: React.FC = () => {
 
     const checking = checkingAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
 
-    const creditAccounts = connectedAccounts.filter(a =>
-      a.type === 'CREDIT' ||
-      a.type === 'CREDIT_CARD' ||
-      a.subtype === 'CREDIT_CARD' ||
-      (a.subtype || '').toUpperCase().includes('CREDIT')
-    );
+    const creditAccounts = connectedAccounts.filter(a => isCreditCard(a));
 
 
     const credit = creditAccounts.reduce((acc, a) => ({
@@ -1197,9 +1042,25 @@ const App: React.FC = () => {
     return { checking, checkingAccounts, credit };
   }, [connectedAccounts, getCurrentInvoiceAmount]);
 
+  // AUTO-ENABLE ALL CARDS ON LOAD (Only if user hasn't configured preferences yet)
+  useEffect(() => {
+     // Check if user has ever configured this preference
+     const hasConfigured = localStorage.getItem('finances_enabled_cc_ids') !== null;
+     
+     // Only auto-enable if NOT configured yet AND we have cards available
+     if (!hasConfigured && accountBalances.credit.accounts.length > 0) {
+        const allCardIds = accountBalances.credit.accounts.map(a => a.id);
+        setEnabledCreditCardIds(allCardIds);
+     }
+  }, [accountBalances.credit.accounts]);
+
   // NEW: Filter Savings Accounts
   const connectedSavingsAccounts = useMemo(() => {
-    return connectedAccounts.filter(a => a.subtype === 'SAVINGS_ACCOUNT');
+    return connectedAccounts.filter(a => 
+      a.type === 'SAVINGS' || 
+      a.subtype === 'SAVINGS_ACCOUNT' || 
+      a.subtype === 'SAVINGS'
+    );
   }, [connectedAccounts]);
 
   // NEW: Account Map for Lookups
@@ -1315,13 +1176,54 @@ const App: React.FC = () => {
   // Split transactions by Account Type for different tabs
   const checkingTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
+      // Check linked account first
+      if (t.accountId) {
+        const account = accountMap.get(t.accountId);
+        if (account) {
+          const type = (account.type || '').toUpperCase();
+          const subtype = (account.subtype || '').toUpperCase();
+          const id = (account.id || '').toLowerCase();
+          
+          const isCredit = type.includes('CREDIT') || 
+                           subtype.includes('CREDIT') || 
+                           subtype.includes('CARD') ||
+                           id.includes('_cc_') ||
+                           id.includes('credit');
+                           
+          const isSavings = type.includes('SAVINGS') || subtype.includes('SAVINGS');
+          
+          if (isCredit || isSavings) return false;
+          // Also exclude investments if needed, but checking usually includes investments as "transfers" unless specified
+          if (t.isInvestment) return false; 
+          return true;
+        }
+      }
+
       const type = (t.accountType || '').toUpperCase();
       return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
     });
-  }, [memberFilteredTransactions]);
+  }, [memberFilteredTransactions, accountMap]);
 
   const creditCardTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
+      // Check linked account first
+      if (t.accountId) {
+        const account = accountMap.get(t.accountId);
+        if (account) {
+          const type = (account.type || '').toUpperCase();
+          const subtype = (account.subtype || '').toUpperCase();
+          const id = (account.id || '').toLowerCase();
+          
+          if (type.includes('CREDIT') || 
+              subtype.includes('CREDIT') || 
+              subtype.includes('CARD') ||
+              id.includes('_cc_') ||
+              id.includes('credit')) {
+            return true;
+          }
+        }
+      }
+
       const type = (t.accountType || '').toUpperCase();
       const sourceType = (t as any).sourceType || '';
       const tags = (t as any).tags || [];
@@ -1331,15 +1233,27 @@ const App: React.FC = () => {
         sourceType === 'credit_card' ||
         tags.includes('Cartão de Crédito');
     });
-  }, [memberFilteredTransactions]);
+  }, [memberFilteredTransactions, accountMap]);
 
 
   const savingsTransactions = useMemo(() => {
     return memberFilteredTransactions.filter(t => {
+      // Check linked account first
+      if (t.accountId) {
+        const account = accountMap.get(t.accountId);
+        if (account) {
+          const type = (account.type || '').toUpperCase();
+          const subtype = (account.subtype || '').toUpperCase();
+          if (type.includes('SAVINGS') || subtype.includes('SAVINGS')) {
+            return true;
+          }
+        }
+      }
+
       const type = (t.accountType || '').toUpperCase();
       return type.includes('SAVINGS') || t.isInvestment;
     });
-  }, [memberFilteredTransactions]);
+  }, [memberFilteredTransactions, accountMap]);
 
   const averageMonthlyExpense = useMemo(() => {
     const expensesByMonth: Record<string, number> = {};
@@ -1392,12 +1306,58 @@ const App: React.FC = () => {
   const stats: DashboardStats = React.useMemo(() => {
     const todayStr = toLocalISODate();
 
-    const incomes = reviewedDashboardTransactions.filter(t => {
-      if (t.type !== 'income') return false;
+    // Build a Set of all credit card account IDs for fast lookup
+    const creditCardAccountIds = new Set<string>();
+    accountMap.forEach((acc) => {
+      const type = (acc.subtype || acc.type || "").toUpperCase();
+      const isCreditId = acc.id && (acc.id.includes('_cc_') || acc.id.includes('credit'));
+      if (type.includes('CREDIT') || isCreditId) {
+        creditCardAccountIds.add(acc.id);
+      }
+    });
+
+    // Build a set of checking/savings account IDs (non-credit card accounts)
+    const checkingAccountIds = new Set<string>();
+    accountMap.forEach((acc) => {
+      if (!creditCardAccountIds.has(acc.id)) {
+        checkingAccountIds.add(acc.id);
+      }
+    });
+
+    const incomeFilter = (t: Transaction) => {
+      // Check description for expense patterns - exclude these from income
+      const desc = (t.description || '').toUpperCase();
+      const isExpenseByDescription =
+        desc.includes('ENVIADO') ||
+        desc.includes('ENVIADA') ||
+        desc.includes('PAG ') ||
+        desc.includes('PAGAMENTO') ||
+        desc.includes('DEBITO') ||
+        desc.includes('DÉBITO') ||
+        desc.includes('EMPRESTIMO') ||
+        desc.includes('EMPRÉSTIMO') ||
+        desc.includes('TRANSFERENCIA ENVIADA') ||
+        desc.includes('TRANSFERÊNCIA ENVIADA') ||
+        desc.includes('SAQUE') ||
+        desc.includes('COMPRA') ||
+        desc.includes('TARIFA');
+
+      // Exclude transactions that look like expenses by description
+      if (isExpenseByDescription) return false;
+
+      // Consider as income if type is 'income' AND amount is positive (for Open Finance transactions)
+      const isIncome = t.type === 'income' && t.amount >= 0;
+      if (!isIncome) return false;
       if (t.isInvestment) return false;
       if (t.category.startsWith('Caixinha')) return false;
-      // Exclude Savings Account transactions from Dashboard Income
-      if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
+
+      // Exclude Internal Transfers
+      if (t.category === 'Transferência') return false;
+
+      // EXCLUDE credit card transactions from Income
+      const isCreditCardByType = (t.accountType || '').toUpperCase().includes('CREDIT');
+      const isCreditCardByAccountId = t.accountId && creditCardAccountIds.has(t.accountId);
+      if (isCreditCardByType || isCreditCardByAccountId) return false;
 
       // Salary Visibility Logic
       if (t.description === "Salário Mensal" && t.date > todayStr && !projectionSettings.salary) {
@@ -1407,42 +1367,140 @@ const App: React.FC = () => {
       if (t.description === "Vale / Adiantamento" && t.date > todayStr && !projectionSettings.vale) {
         return false;
       }
-      // Filter Open Finance
-      if (!includeOpenFinanceInStats && (t.importSource || t.accountId)) return false;
+
+      // Check if this is a checking/savings account transaction
+      const isAccountTransaction = (t as any).sourceType === 'account' ||
+        (t.accountId && checkingAccountIds.has(t.accountId));
+
+      // Filter Open Finance - check if transaction belongs to Open Finance
+      const isOpenFinanceTx = !!(t.importSource || (t as any).providerId || isAccountTransaction);
+      if (!includeOpenFinanceInStats && isOpenFinanceTx) return false;
 
       return true;
+    };
+
+    const incomes = reviewedDashboardTransactions.filter(incomeFilter);
+
+    // DEBUG: Log all transactions to see what's coming from Open Finance
+    console.log('=== DEBUG DESPESAS ===');
+    console.log('includeOpenFinanceInStats:', includeOpenFinanceInStats);
+    console.log('Total reviewedDashboardTransactions:', reviewedDashboardTransactions.length);
+    console.log('checkingAccountIds:', Array.from(checkingAccountIds));
+    console.log('creditCardAccountIds:', Array.from(creditCardAccountIds));
+
+    // Log transactions that have accountId in checkingAccountIds
+    const checkingTxs = reviewedDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
+    console.log('Transações de conta corrente encontradas:', checkingTxs.length);
+    
+    // DEBUG: Specific check for checking account expenses
+    const checkingExpenses = checkingTxs.filter(t => {
+       const desc = (t.description || '').toUpperCase();
+       const isExpenseByDesc =
+        desc.includes('ENVIADO') ||
+        desc.includes('ENVIADA') ||
+        desc.includes('PAG ') ||
+        desc.includes('PAGAMENTO') ||
+        desc.includes('DEBITO') ||
+        desc.includes('DÉBITO') ||
+        desc.includes('EMPRESTIMO') ||
+        desc.includes('EMPRÉSTIMO') ||
+        desc.includes('TRANSFERENCIA ENVIADA') ||
+        desc.includes('TRANSFERÊNCIA ENVIADA') ||
+        desc.includes('SAQUE') ||
+        desc.includes('COMPRA') ||
+        desc.includes('TARIFA');
+       
+       return t.type === 'expense' || t.amount < 0 || isExpenseByDesc;
+    });
+    console.log('Despesas reais em conta corrente:', checkingExpenses.length);
+    checkingExpenses.slice(0, 5).forEach(t => {
+      console.log(`  Checking Expense: "${t.description}" | type: ${t.type} | amount: ${t.amount}`);
     });
 
-    // Build a Set of all credit card account IDs for fast lookup
-    const creditCardAccountIds = new Set<string>();
-    accountMap.forEach((acc) => {
-      const type = (acc.subtype || acc.type || "").toUpperCase();
-      if (type.includes('CREDIT')) {
-        creditCardAccountIds.add(acc.id);
-      }
+    // DEBUG: Raw Transactions Check
+    console.log('=== RAW TRANSACTIONS CHECK ===');
+    const rawCheckingTxs = transactions.filter(t => 
+      t.accountId && 
+      (t.accountId.includes('klavi_acc_22518081502090_3402_43346088') || 
+       t.accountId.includes('klavi_acc_22518081502090_6710_73468350'))
+    );
+    console.log('Total Raw Transactions for target accounts:', rawCheckingTxs.length);
+    const rawExpenses = rawCheckingTxs.filter(t => t.type === 'expense' || t.amount < 0);
+    console.log('Raw Expenses found:', rawExpenses.length);
+    rawExpenses.forEach(t => {
+       console.log(`  RAW EXPENSE: "${t.description}" | amount: ${t.amount} | date: ${t.date} | ignored: ${t.ignored}`);
+    });
+    console.log('=== END RAW CHECK ===');
+
+    checkingTxs.slice(0, 10).forEach(t => {
+      console.log(`  - "${t.description}" | type: ${t.type} | amount: ${t.amount} | accountId: ${t.accountId} | sourceType: ${(t as any).sourceType} | providerId: ${(t as any).providerId}`);
     });
 
     // Base Expenses (All types) - Exclude credit card transactions entirely
     // Credit card expenses will be calculated from the invoice amount of enabled cards
     const baseExpenses = reviewedDashboardTransactions.filter(t => {
-      if (t.type !== 'expense') return false;
+      // Check description for expense patterns (for transactions that may have wrong type)
+      const desc = (t.description || '').toUpperCase();
+      const isExpenseByDescription =
+        desc.includes('ENVIADO') ||
+        desc.includes('ENVIADA') ||
+        desc.includes('PAG ') ||
+        desc.includes('PAGAMENTO') ||
+        desc.includes('DEBITO') ||
+        desc.includes('DÉBITO') ||
+        desc.includes('EMPRESTIMO') ||
+        desc.includes('EMPRÉSTIMO') ||
+        desc.includes('TRANSFERENCIA ENVIADA') ||
+        desc.includes('TRANSFERÊNCIA ENVIADA') ||
+        desc.includes('SAQUE') ||
+        desc.includes('COMPRA') ||
+        desc.includes('TARIFA');
+
+      // Consider as expense if type is 'expense' OR amount is negative OR description indicates expense
+      const isExpense = t.type === 'expense' || t.amount < 0 || isExpenseByDescription;
+
+      // DEBUG: Log why transaction is/isn't considered expense
+      if (t.accountId && checkingAccountIds.has(t.accountId)) {
+        console.log(`[EXPENSE CHECK] "${t.description}" | type=${t.type} | amount=${t.amount} | isExpenseByDesc=${isExpenseByDescription} | isExpense=${isExpense}`);
+      }
+
+      if (!isExpense) return false;
       if (t.isInvestment) return false;
       if (t.category.startsWith('Caixinha')) return false;
-      if ((t.accountType || '').toUpperCase().includes('SAVINGS')) return false;
-      // Filter Open Finance
-      if (!includeOpenFinanceInStats && (t.importSource || t.accountId)) return false;
 
-      // EXCLUDE credit card transactions - they will be calculated from invoice
-      // Check by accountType OR by accountId belonging to a credit card account
+      // Check if this is a checking/savings account transaction
+      // Either by sourceType or by accountId belonging to a non-credit account
+      const isAccountTransaction = (t as any).sourceType === 'account' ||
+        (t.accountId && checkingAccountIds.has(t.accountId));
+
+      // Check if it's a credit card transaction
       const isCreditCardByType = (t.accountType || '').toUpperCase().includes('CREDIT');
       const isCreditCardByAccountId = t.accountId && creditCardAccountIds.has(t.accountId);
-      if (isCreditCardByType || isCreditCardByAccountId) return false;
+      const isCreditCardBySource = (t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito');
+      const isCreditCard = isCreditCardByType || isCreditCardByAccountId || isCreditCardBySource;
 
+      // If it's a credit card transaction, exclude it (will be calculated from invoice)
+      if (isCreditCard) {
+        console.log(`[FILTERED - CREDIT CARD] "${t.description}"`);
+        return false;
+      }
+
+      // Filter Open Finance - check if transaction belongs to Open Finance
+      const isOpenFinanceTx = !!(t.importSource || (t as any).providerId || isAccountTransaction);
+      if (!includeOpenFinanceInStats && isOpenFinanceTx) {
+        console.log(`[FILTERED - OPEN FINANCE OFF] "${t.description}" | isOpenFinanceTx=${isOpenFinanceTx}`);
+        return false;
+      }
+
+      console.log(`[INCLUDED AS EXPENSE] "${t.description}" | amount=${t.amount}`);
       return true;
     });
 
-    const totalIncome = incomes.reduce((acc, t) => acc + t.amount, 0);
-    const nonCCSpending = baseExpenses.reduce((acc, t) => acc + t.amount, 0);
+    console.log('baseExpenses encontradas:', baseExpenses.length);
+    console.log('=== FIM DEBUG ===');
+
+    const totalIncome = incomes.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const nonCCSpending = baseExpenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
 
     // Calculate Account-level Credit Data (Debt & Limit) - Only for ENABLED cards
     let ccBillsInView = 0;
@@ -1466,21 +1524,79 @@ const App: React.FC = () => {
     let finalCCExpense = 0;
     const hasEnabledCards = enabledCreditCardIds.length > 0;
 
-    if (hasEnabledCards && includeOpenFinanceInStats) {
+    // We calculate if there are enabled cards, regardless of the global Open Finance toggle.
+    // Explicit selection of a card overrides the global "hide" setting for that specific card.
+    if (hasEnabledCards) {
       if (creditCardUseFullLimit) {
         finalCCExpense = ccTotalLimitInView;
       } else {
-        // Default: Use invoice amount from enabled cards
-        finalCCExpense = ccBillsInView;
+        // Use the exact same list of accounts as StatsCards
+        const allCreditAccounts = accountBalances.credit.accounts || [];
+
+        // 1. Establish stable matching context using ALL-TIME transactions from the memo
+        // This ensures Strategy 1 (Index Matching) works identically to StatsCards
+        const stableUniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId).filter(Boolean))];
+
+        // 2. Filter current view transactions for Credit Cards
+        // Note: reviewedDashboardTransactions is filtered by Date AND Category. 
+        // StatsCards typically ignores Category for the invoice display, but for the Total Expense stats, 
+        // it makes sense to respect the global category filter if applied.
+        const currentViewCCTransactions = reviewedDashboardTransactions.filter(t => {
+           if ((t.accountType || '').toUpperCase().includes('CREDIT')) return true;
+           if (t.accountId && creditCardAccountIds.has(t.accountId)) return true;
+           if ((t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito')) return true;
+           return false;
+        });
+
+        // 3. Iterate enabled cards and sum their matched transactions
+        allCreditAccounts.forEach((card, cardIndex) => {
+             if (!enabledCreditCardIds.includes(card.id)) return;
+
+             // Check if Open Finance is disabled and this is an automated account
+             const isManual = card.connectionMode === 'MANUAL';
+             if (!includeOpenFinanceInStats && !isManual) return;
+
+             // Robust Matching Strategy
+             let cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === card.id);
+
+             if (cardTransactions.length === 0) {
+                // Strategy 1: Map by index if counts match (using stable all-time IDs)
+                if (stableUniqueAccountIds.length === allCreditAccounts.length && stableUniqueAccountIds.length > 0) {
+                   const sortedAccountIds = [...stableUniqueAccountIds].sort();
+                   const targetAccountId = sortedAccountIds[cardIndex];
+                   cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === targetAccountId);
+                }
+
+                // Strategy 2: Single card fallback
+                if (cardTransactions.length === 0 && allCreditAccounts.length === 1) {
+                   cardTransactions = currentViewCCTransactions;
+                }
+             }
+             
+             let accInvoice = 0;
+             if (cardTransactions.length > 0) {
+                 accInvoice = cardTransactions.reduce((sum, t) => {
+                     if (t.type === 'expense') return sum + Math.abs(t.amount);
+                     if (t.type === 'income') return sum - Math.abs(t.amount);
+                     return sum;
+                 }, 0);
+             } else {
+                 // Fallback to absolute balance if no transactions found (Aligns with StatsCards)
+                 // This fixes issues where negative balances (liabilities) were ignored by getCurrentInvoiceAmount
+                 accInvoice = Math.abs(card.balance || 0);
+             }
+             
+             finalCCExpense += Math.max(0, accInvoice);
+         });
       }
     }
 
     // Final Totals
-    const totalExpense = finalCCExpense;
+    const totalExpense = finalCCExpense + nonCCSpending;
 
     // Calculate Balance
     let calculatedBalance = 0;
-    if (includeCheckingInStats && includeOpenFinanceInStats) {
+    if (includeCheckingInStats) {
       calculatedBalance += accountBalances.checking;
     }
 
@@ -1578,7 +1694,7 @@ const App: React.FC = () => {
       monthlySavings: finalMonthlySavings,
       creditCardSpending: finalCCExpense
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds, creditCardTransactions]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -1870,8 +1986,28 @@ const App: React.FC = () => {
 
   const handleUpdateInvestment = async (investment: Investment) => {
     if (!userId) return;
-    await dbService.updateInvestment(userId, investment);
-    toast.success("Investimento atualizado!");
+    
+    // Check if it's a connected account (ID usually starts with provider prefix like 'klavi_' or comes from accounts list)
+    // We can check if it exists in our connectedAccounts list
+    const connectedAcc = connectedAccounts.find(acc => acc.id === investment.id);
+    
+    if (connectedAcc) {
+        // Update connected account (nickname/icon)
+        const updatedAccount: ConnectedAccount = {
+            ...connectedAcc,
+            name: investment.name, // Use the new name as the nickname
+            // We might want to store the custom icon too if ConnectedAccount supports it?
+            // Assuming ConnectedAccount has 'name' field which we overwrite. 
+            // (Original name usually in 'institution' or we can keep original in another field if needed, 
+            // but usually users want to rename it).
+        };
+        await dbService.updateConnectedAccount(userId, updatedAccount);
+        toast.success("Apelido da conta atualizado!");
+    } else {
+        // Standard manual investment update
+        await dbService.updateInvestment(userId, investment);
+        toast.success("Investimento atualizado!");
+    }
   };
 
   const handleDeleteInvestment = async (id: string) => {
@@ -1914,9 +2050,12 @@ const App: React.FC = () => {
       case 'investments': return { title: 'Caixinhas', desc: 'Gerencie suas caixinhas e metas financeiras.' };
       case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
       case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
-      case 'budgets': return { title: 'Orçamentos', desc: 'Planejamento e controle de gastos.' };
+      case 'budgets': return { title: 'Metas', desc: 'Planejamento e controle de gastos.' };
       case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
       case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
+      case 'admin_overview': return { title: 'Painel Administrativo', desc: 'Visão geral do sistema.' };
+      case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar usuários interessados.' };
+      case 'admin_email': return { title: 'Campanhas de Email', desc: 'Criar e enviar mensagens.' };
       default: return { title: 'Controlar+', desc: '' };
     }
   };
@@ -1935,15 +2074,6 @@ const App: React.FC = () => {
     }
     return false;
   }, [currentUser, activeTab, budgets, investments]);
-
-  const sidebarClasses = `
-    fixed inset-y-0 left-0 z-50
-    bg-gray-950 border-r border-gray-800
-    transition-all duration-300 ease-in-out
-    flex flex-col
-    ${isSidebarOpen ? 'overflow-hidden' : 'overflow-hidden lg:overflow-visible'}
-    ${isSidebarOpen ? 'w-64 translate-x-0' : '-translate-x-full w-0 lg:translate-x-0 lg:w-20'}
-  `;
 
   if (isLoadingAuth) {
     return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -2011,238 +2141,27 @@ const App: React.FC = () => {
       />
 
       {/* Sidebar */}
-      <aside className={sidebarClasses}>
-        <div className="h-16 flex items-center justify-between px-4 border-b border-gray-800/50 mb-4">
-          <div className={`flex items-center overflow-hidden transition-all duration-300 ${!isSidebarOpen ? 'w-full justify-center' : ''}`}>
-            <Logo
-              size={32}
-              withText={isSidebarOpen}
-              className="gap-3"
-              textClassName="font-bold text-lg whitespace-nowrap text-[#faf9f5]"
-              imgClassName="rounded-lg"
-            />
-          </div>
-
-          {isSidebarOpen && (
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="hidden lg:flex p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
-            >
-              <ChevronLeft size={16} />
-            </button>
-          )}
-        </div>
-
-        {!isSidebarOpen && (
-          <div className="hidden lg:flex justify-center py-3 border-b border-gray-800/30 mb-4">
-            <button
-              onClick={() => setSidebarOpen(true)}
-              className="p-1.5 rounded-md text-gray-500 hover:bg-gray-800 hover:text-white transition-colors"
-            >
-              <ChevronRight size={16} />
-            </button>
-          </div>
-        )}
-
-        <MemberSelector
-          members={members}
-          activeMemberId={activeMemberId}
-          onSelectMember={setActiveMemberId}
-          onAddMember={handleAddMember}
-          onDeleteMember={handleDeleteMember}
-          isSidebarOpen={isSidebarOpen}
-          userPlan={currentUser?.subscription?.plan || 'starter'}
-          isAdmin={currentUser?.isAdmin}
-        />
-
-        {/* Adjusted Container Padding based on Sidebar State */}
-        <div className={`flex-1 space-y-6 custom-scrollbar ${isSidebarOpen ? 'px-3 overflow-y-auto' : 'px-2 overflow-visible'}`}>
-          <div className="space-y-1">
-            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Menu</p>}
-
-            {isAdminMode ? (
-              <>
-                <NavItem
-                  active={activeTab === 'admin_overview'}
-                  onClick={() => { setActiveTab('admin_overview'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<LayoutDashboard size={20} />}
-                  label="Painel Admin"
-                  isOpen={isSidebarOpen}
-                />
-                <NavItem
-                  active={activeTab === 'admin_waitlist'}
-                  onClick={() => { setActiveTab('admin_waitlist'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                  icon={<UsersIcon size={20} />}
-                  label="Lista de Espera"
-                  isOpen={isSidebarOpen}
-                />
-                {/* Add more admin links here if needed */}
-              </>
-            ) : (
-              activeMemberId === 'FAMILY_OVERVIEW' ? (
-                <NavItem
-                  active={true}
-                  onClick={() => { }}
-                  icon={<LayoutDashboard size={20} />}
-                  label="Visão Geral"
-                  isOpen={isSidebarOpen}
-                />
-              ) : (
-                <>
-                  <NavItem
-                    active={activeTab === 'dashboard'}
-                    onClick={() => { setActiveTab('dashboard'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<LayoutDashboard size={20} />}
-                    label="Visão Geral"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'table'}
-                    onClick={() => { setActiveTab('table'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-refresh-dot">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                        <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                        <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-                      </svg>
-                    }
-                    label="Movimentações"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'credit_cards'}
-                    onClick={() => { setActiveTab('credit_cards'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-credit-card-pay">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                        <path d="M12 19h-6a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4.5" />
-                        <path d="M3 10h18" />
-                        <path d="M16 19h6" />
-                        <path d="M19 16l3 3l-3 3" />
-                        <path d="M7.005 15h.005" />
-                        <path d="M11 15h2" />
-                      </svg>
-                    }
-                    label="Cartão de Crédito"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'reminders'}
-                    onClick={() => { setActiveTab('reminders'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={
-                      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-bell">
-                        <path stroke="none" d="M0 0h24v24H0z" fill="none" />
-                        <path d="M10 5a2 2 0 1 1 4 0a7 7 0 0 1 4 6v3a4 4 0 0 0 2 3h-16a4 4 0 0 0 2 -3v-3a7 7 0 0 1 4 -6" />
-                        <path d="M9 17v1a3 3 0 0 0 6 0v-1" />
-                      </svg>
-                    }
-                    label="Lembretes"
-                    isOpen={isSidebarOpen}
-                    badge={overdueRemindersCount}
-                  />
-                  <NavItem
-                    active={activeTab === 'subscriptions'}
-                    onClick={() => { setActiveTab('subscriptions'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<RotateCcw size={20} />}
-                    label="Assinaturas"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'budgets'}
-                    onClick={() => { setActiveTab('budgets'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Target size={20} />}
-                    label="Orçamentos"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'connections'}
-                    onClick={() => { setActiveTab('connections'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Building size={20} />}
-                    label="Open Finance"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'investments'}
-                    onClick={() => { setActiveTab('investments'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Vault size={20} />}
-                    label="Caixinhas"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'fire'}
-                    onClick={() => { setActiveTab('fire'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<Flame size={20} />}
-                    label="FIRE"
-                    isOpen={isSidebarOpen}
-                  />
-                  <NavItem
-                    active={activeTab === 'advisor'}
-                    onClick={() => { setActiveTab('advisor'); if (window.innerWidth < 1024) setSidebarOpen(false); }}
-                    icon={<BrainCircuit size={20} />}
-                    label="Consultor IA"
-                    isOpen={isSidebarOpen}
-                  />
-                </>
-              )
-            )}
-          </div>
-
-
-
-          <div className="space-y-1">
-            {isSidebarOpen && <p className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 animate-fade-in opacity-70">Inteligência</p>}
-
-            <NavItem
-              active={false}
-              onClick={() => { }}
-              icon={<MessageCircle size={20} className="text-gray-600" />}
-              label="Coinzinha (Em breve)"
-              isOpen={isSidebarOpen}
-              disabled={true}
-            />
-
-            <button
-              onClick={() => setIsAIModalOpen(true)}
-              disabled={activeMemberId === 'FAMILY_OVERVIEW'}
-              className={`
-                  flex items-center gap-3 p-2.5 rounded-lg transition-all duration-200 group shadow-lg relative
-                  ${activeMemberId === 'FAMILY_OVERVIEW'
-                  ? 'bg-gray-800 text-gray-600 cursor-not-allowed shadow-none w-full justify-start'
-                  : isSidebarOpen
-                    ? 'w-full justify-start bg-[#d97757] text-[#faf9f5] hover:bg-[#c56a4d] shadow-[#d97757]/20'
-                    : 'w-full justify-center bg-transparent text-[#d97757] hover:bg-gray-800 shadow-none'
-                }
-                `}
-            >
-              <Bot size={20} className={`${isSidebarOpen ? 'text-[#faf9f5]' : 'text-[#d97757]'} ${activeMemberId !== 'FAMILY_OVERVIEW' ? 'group-hover:scale-110 transition-transform' : ''}`} />
-              {isSidebarOpen && <span className="font-medium text-sm">Novo c/ IA</span>}
-
-              {/* Tooltip */}
-              {!isSidebarOpen && (
-                <div className="absolute left-full top-1/2 -translate-y-1/2 ml-4 z-50 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl p-3 min-w-[140px] text-left hidden group-hover:block animate-fade-in pointer-events-none">
-                  <div className="absolute left-0 top-1/2 -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
-                  <p className="text-sm font-bold text-white whitespace-nowrap">Novo c/ IA</p>
-                </div>
-              )}
-            </button>
-          </div>
-
-        </div>
-      </aside>
-
-      {/* Mobile Overlay */}
-      {isSidebarOpen && (
-        <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        ></div>
-      )}
+      <Sidebar
+        isOpen={isSidebarOpen}
+        setIsOpen={setSidebarOpen}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isAdminMode={isAdminMode}
+        activeMemberId={activeMemberId}
+        members={members}
+        onSelectMember={setActiveMemberId}
+        onAddMember={handleAddMember}
+        onDeleteMember={handleDeleteMember}
+        userPlan={currentUser?.subscription?.plan || 'starter'}
+        isAdmin={currentUser?.isAdmin}
+        overdueRemindersCount={overdueRemindersCount}
+        onOpenAIModal={() => setIsAIModalOpen(true)}
+      />
 
       {/* Main Content */}
 
-      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative`}>
-        <header className="bg-gray-950/80 backdrop-blur-md h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
+        <header className="h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setSidebarOpen(!isSidebarOpen)}
@@ -2303,91 +2222,87 @@ const App: React.FC = () => {
 
                 {/* Forecast Dropdown */}
                 {filterMode === 'month' && (
-                  <div className="relative">
-                    <button
-                      onClick={() => setShowProjectionMenu(!showProjectionMenu)}
-                      className={`
-                        h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border
+                  <Dropdown>
+                    <DropdownTrigger className={`
+                        h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border cursor-pointer
                         ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
-                          ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
-                          : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
-                        }
-                      `}
-                      title="Simular saldo futuro"
-                    >
+                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
+                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
+                      }
+                      `}>
                       <Calendar size={16} className={(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary) ? "animate-pulse" : ""} />
                       Previsão
-                      <ChevronDown size={14} className={`transition-transform duration-200 ${showProjectionMenu ? 'rotate-180' : ''}`} />
-                    </button>
+                      <ChevronDown size={14} className="transition-transform duration-200 group-data-[state=open]:rotate-180" />
+                    </DropdownTrigger>
 
-                    {/* Dropdown Menu */}
-                    {showProjectionMenu && (
-                      <>
-                        <div className="fixed inset-0 z-40" onClick={() => setShowProjectionMenu(false)}></div>
-                        <div className="absolute right-0 top-full mt-2 w-56 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 p-2 animate-dropdown-open">
-                          <div className="text-[10px] font-bold text-gray-500 uppercase tracking-wider px-2 py-1.5 mb-1">
-                            Incluir na Previsão
-                          </div>
+                    <DropdownContent width="w-56" align="right" portal>
+                      <DropdownLabel>Incluir na Previsão</DropdownLabel>
 
-                          {/* Toggle Lembretes */}
-                          <div
-                            onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
-                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <Bell size={14} className="text-gray-400 group-hover:text-white" />
-                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
-                            </div>
-                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.reminders ? 'translate-x-4' : ''}`}></div>
-                            </div>
-                          </div>
+                      {/* Toggle Lembretes */}
+                      <div
+                        onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
+                        className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <Bell size={14} className="text-gray-400 group-hover:text-white" />
+                          <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
+                        </div>
+                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.reminders ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </div>
+                      </div>
 
-                          {/* Toggle Assinaturas */}
-                          <div
-                            onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
-                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
-                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
-                            </div>
-                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.subscriptions ? 'translate-x-4' : ''}`}></div>
-                            </div>
-                          </div>
+                      {/* Toggle Assinaturas */}
+                      <div
+                        onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
+                        className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                      >
+                        <div className="flex items-center gap-2">
+                          <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
+                          <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
+                        </div>
+                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.subscriptions ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                        </div>
+                      </div>
 
-                          {/* Toggle Salário */}
-                          <div
-                            onClick={() => setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
-                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
-                            </div>
-                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.salary ? 'translate-x-4' : ''}`}></div>
-                            </div>
-                          </div>
-
-                          {/* Toggle Vale */}
-                          <div
-                            onClick={() => setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
-                            className="flex items-center justify-between p-2 rounded-lg hover:bg-gray-800 cursor-pointer transition-colors group"
-                          >
-                            <div className="flex items-center gap-2">
-                              <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                              <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
-                            </div>
-                            <div className={`w-8 h-4 rounded-full transition-colors relative ${projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                              <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${projectionSettings.vale ? 'translate-x-4' : ''}`}></div>
-                            </div>
+                      {/* Toggle Salário */}
+                      <div
+                        onClick={() => !isProMode && setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
+                        className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg transition-colors group ${isProMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'}`}
+                        title={isProMode ? "Gerenciado automaticamente no Modo Auto" : ""}
+                      >
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
+                            {isProMode && <span className="text-[9px] text-[#d97757]">Automático</span>}
                           </div>
                         </div>
-                      </>
-                    )}
-                  </div>
+                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${isProMode ? 'bg-gray-800' : (projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700')}`}>
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.salary || isProMode ? 'translate-x-4' : 'translate-x-0.5'} ${isProMode ? 'opacity-50' : ''}`} />
+                        </div>
+                      </div>
+
+                      {/* Toggle Vale */}
+                      <div
+                        onClick={() => !isProMode && setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
+                        className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg transition-colors group ${isProMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'}`}
+                        title={isProMode ? "Gerenciado automaticamente no Modo Auto" : ""}
+                      >
+                        <div className="flex items-center gap-2">
+                          <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                          <div className="flex flex-col">
+                            <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
+                            {isProMode && <span className="text-[9px] text-[#d97757]">Automático</span>}
+                          </div>
+                        </div>
+                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${isProMode ? 'bg-gray-800' : (projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700')}`}>
+                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.vale || isProMode ? 'translate-x-4' : 'translate-x-0.5'} ${isProMode ? 'opacity-50' : ''}`} />
+                        </div>
+                      </div>
+                    </DropdownContent>
+                  </Dropdown>
                 )}
 
                 {filterMode === 'year' && (
@@ -2542,6 +2457,8 @@ const App: React.FC = () => {
             <AdminDashboard user={currentUser} />
           ) : activeTab === 'admin_waitlist' ? (
             <AdminWaitlist />
+          ) : activeTab === 'admin_email' ? (
+            <AdminEmailMessage currentUser={currentUser} />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
@@ -2644,7 +2561,13 @@ const App: React.FC = () => {
                       onUpgradeClick={() => setActiveTab('subscription')}
                     />
                     <div className="animate-fade-in space-y-6">
-                      <DashboardCharts transactions={reviewedDashboardTransactions} isLoading={isLoadingData} />
+                      <DashboardCharts
+                      transactions={reviewedDashboardTransactions}
+                      reminders={filteredReminders}
+                      stats={stats}
+                      dashboardDate={dashboardDate}
+                      filterMode={filterMode}
+                    />
                       {filterMode === 'month' && (
                         <FinanceCalendar
                           month={dashboardDate}

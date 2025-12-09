@@ -81,18 +81,15 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
 
   return (
     <>
-    <div className="px-3 mb-6 relative">
+    <div className="px-3 py-4 relative">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2 flex items-center gap-3 hover:border-gray-700 transition-all group"
+        className="w-full bg-gray-900 border border-gray-800 rounded-xl p-2.5 flex items-center gap-3 hover:border-gray-700 transition-all group"
       >
         <div className={`w-10 h-10 rounded-full ${activeMember?.avatarUrl?.includes('url') ? activeMember.avatarUrl : 'bg-[#363735] border border-[#3A3B39]'} flex items-center justify-center shadow-inner text-white font-bold text-sm`}>
           {activeMemberId === 'FAMILY_OVERVIEW' ? <Users size={18} /> : activeMember?.name.substring(0, 2).toUpperCase()}
         </div>
-        <div className="flex-1 text-left overflow-hidden">
-          <p className="text-xs text-gray-500 font-medium uppercase tracking-wider">
-            {activeMemberId === 'FAMILY_OVERVIEW' ? 'Visão Geral' : ((activeMember as any)?.role === 'admin' ? 'Administrador' : 'Convidado')}
-          </p>
+        <div className="flex-1 text-left overflow-hidden flex items-center">
           <p className="text-sm font-bold text-gray-200 truncate group-hover:text-[#d97757] transition-colors">
             {activeMember?.name || 'Família'}
           </p>

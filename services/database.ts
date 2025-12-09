@@ -78,6 +78,36 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
   }
 };
 
+export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
+  if (!db) return [];
+  try {
+    const usersRef = collection(db, "users");
+    const snapshot = await getDocs(usersRef);
+    
+    const users = snapshot.docs.map(doc => {
+      const data = doc.data();
+      // Merge root data with profile data, prioritizing profile if structure varies
+      const profile = data.profile || {};
+      
+      // Construct a user object
+      return {
+        id: doc.id,
+        name: profile.name || data.name || 'Usuário',
+        email: profile.email || data.email || '',
+        // Include other necessary fields
+        subscription: profile.subscription,
+        isAdmin: data.isAdmin === true || profile.isAdmin === true,
+        ...profile
+      } as User & { id: string };
+    });
+    
+    return users;
+  } catch (error) {
+    console.error("Error fetching all users:", error);
+    return [];
+  }
+};
+
 export const listenToUserProfile = (userId: string, callback: (data: Partial<User>) => void) => {
   if (!db) return () => { };
   const userRef = doc(db, "users", userId);
@@ -541,6 +571,16 @@ export const addConnectedAccount = async (userId: string, account: ConnectedAcco
   await setDoc(docRef, account, { merge: true });
 };
 
+export const updateConnectedAccount = async (userId: string, account: ConnectedAccount) => {
+  if (!db) return;
+  const accountRef = doc(db, "users", userId, "accounts", account.id);
+  // We filter out undefined values to avoid errors and only update changed fields
+  // However, typically we pass the whole object. Let's just use updateDoc or setDoc with merge.
+  // For safety, let's use updateDoc if we are sure it exists, or setDoc merge.
+  const { id, ...data } = account;
+  await setDoc(accountRef, data, { merge: true });
+};
+
 export const updateConnectedAccountMode = async (userId: string, accountId: string, mode: 'AUTO' | 'MANUAL', initialBalance?: number) => {
   try {
     const accountRef = doc(db, "users", userId, "accounts", accountId);
@@ -644,6 +684,45 @@ export const deleteAllImportedTransactions = async (userId: string) => {
     return totalDeleted;
   } catch (error) {
     console.error("Error deleting all imported transactions:", error);
+    throw error;
+  }
+};
+
+export const deleteAllManualTransactions = async (userId: string) => {
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const snapshot = await getDocs(txRef);
+
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let totalDeleted = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      const data = docSnapshot.data();
+      // Delete transactions that are MANUAL (do NOT have importSource AND do NOT have providerId)
+      // providerId is legacy but still used by some importers like Klavi in this codebase
+      if (!data.importSource && !data.providerId) {
+        batch.delete(docSnapshot.ref);
+        operationCount++;
+        totalDeleted++;
+
+        if (operationCount >= batchSize) {
+          await batch.commit();
+          batch = writeBatch(db);
+          operationCount = 0;
+        }
+      }
+    }
+
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Deleted ${totalDeleted} total manual transactions for user ${userId}`);
+    return totalDeleted;
+  } catch (error) {
+    console.error("Error deleting all manual transactions:", error);
     throw error;
   }
 };

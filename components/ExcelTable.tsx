@@ -256,7 +256,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </td>
                 <td className="px-6 py-4 text-right">
                   <span className={`font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
-                    {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                    {t.type === 'income' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center">
@@ -348,7 +348,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                         {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
                     </div>
                     <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
-                    {formatCurrency(t.amount)}
+                    {formatCurrency(Math.abs(t.amount))}
                     </span>
                 </div>
                 

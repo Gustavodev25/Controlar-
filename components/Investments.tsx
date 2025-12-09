@@ -1,9 +1,9 @@
-﻿import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { PiggyBank, ArrowUpCircle, X } from 'lucide-react';
-import { Plus, Edit2, Trash2, Check, Target, Calendar, DollarSign, Coins, TrendingUp, Sparkles, TrendingDown, ChevronLeft, ChevronRight } from './Icons';
+import { PiggyBank, ArrowUpCircle, X, MoreVertical, ArrowDownCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Check, Target, Calendar, DollarSign, Coins, TrendingUp, Sparkles, TrendingDown, ChevronLeft, ChevronRight, Banknote, Wallet, Search, Filter, RotateCcw, FileText, Building } from './Icons';
 import { useToasts } from './Toast';
-import { ConfirmationCard } from './UIComponents';
+import { ConfirmationCard, CustomSelect, CustomDatePicker } from './UIComponents';
 import { Transaction, ConnectedAccount } from '../types';
 import { EmptyState } from './EmptyState';
 import NumberFlow from '@number-flow/react';
@@ -61,6 +61,198 @@ const getRandomColor = () => {
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
 
+// Componente de Card Individual (Estilo Subscriptions)
+const InvestmentCard: React.FC<{
+  investment: Investment;
+  onEdit: (inv: Investment) => void;
+  onDelete: (id: string) => void;
+  onDeposit: (inv: Investment) => void;
+  onView: (inv: Investment) => void;
+}> = ({ investment, onEdit, onDelete, onDeposit, onView }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    if (isMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isMenuOpen]);
+
+  const colorClass = COLOR_OPTIONS.find(c => c.value === investment.color) || COLOR_OPTIONS[0];
+  const progress = investment.targetAmount > 0 ? (investment.currentAmount / investment.targetAmount) * 100 : 0;
+  const isComplete = progress >= 100 && investment.targetAmount > 0;
+  const remainingAmount = Math.max(investment.targetAmount - investment.currentAmount, 0);
+
+  return (
+    <div 
+      className="bg-gray-950 rounded-2xl p-6 border border-gray-800 hover:border-gray-700 transition-all group relative shadow-lg shadow-black/20 flex flex-col gap-6 h-full"
+    >
+      {/* Luz de fundo decorativa */}
+      <div className="absolute inset-0 overflow-hidden rounded-2xl pointer-events-none">
+        <div className={`absolute -top-24 -right-24 w-64 h-64 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity ${colorClass.bgClass.replace('/20', '')}`}></div>
+      </div>
+
+      {/* Header: Ícone, Nome e Menu */}
+      <div className="flex justify-between items-start relative z-20">
+        <div className="flex items-start gap-4">
+          {/* Ícone */}
+          <div className="w-14 h-14 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/5 shadow-inner bg-gray-900/80">
+            {investment.icon.includes('.png') ? (
+              <img src={`/assets/${investment.icon}`} alt={investment.name} className="w-8 h-8 object-contain" />
+            ) : (
+              <span className="text-2xl">{investment.icon}</span>
+            )}
+          </div>
+
+          {/* Nome e Detalhes */}
+          <div className="pt-0.5">
+            <h4 className="font-bold text-gray-100 text-lg leading-tight mb-1.5">{investment.name}</h4>
+            
+            {/* Badges / Instituição */}
+            <div className="flex flex-wrap items-center gap-2">
+              {investment.isConnected ? (
+                <span className="flex items-center gap-1.5 font-mono text-gray-500 text-[10px] uppercase tracking-wide">
+                  <Building size={10} /> {investment.institution}
+                </span>
+              ) : (
+                investment.deadline && (
+                  <span className="flex items-center gap-1.5 font-mono text-gray-500 text-[10px] uppercase tracking-wide">
+                    <Calendar size={10} /> {new Date(investment.deadline).toLocaleDateString('pt-BR')}
+                  </span>
+                )
+              )}
+              
+              {investment.isConnected && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-blue-500/10 text-blue-400 rounded border border-blue-500/20 uppercase tracking-wider font-bold flex items-center gap-1">
+                  <Sparkles size={8} /> Auto
+                </span>
+              )}
+              {isComplete && !investment.isConnected && (
+                <span className="text-[9px] px-1.5 py-0.5 bg-emerald-500/10 text-emerald-400 rounded border border-emerald-500/20 uppercase tracking-wider font-bold flex items-center gap-1">
+                  <Check size={8} /> Completo
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Menu Dropdown */}
+        <div className="relative" ref={menuRef}>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsMenuOpen(!isMenuOpen);
+              }}
+              className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${isMenuOpen ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
+            >
+              <MoreVertical size={18} />
+            </button>
+
+            {isMenuOpen && (
+              <div className="absolute top-10 right-0 w-48 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden animate-dropdown-open">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    onView(investment);
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 transition-colors border-b border-gray-800"
+                >
+                  <FileText size={16} className="text-gray-500" />
+                  Extrato
+                </button>
+                
+                {!investment.isConnected && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsMenuOpen(false);
+                      onDeposit(investment);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 transition-colors border-b border-gray-800"
+                  >
+                    <Wallet size={16} className="text-gray-500" />
+                    Movimentar
+                  </button>
+                )}
+
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsMenuOpen(false);
+                    onEdit(investment);
+                  }}
+                  className="w-full text-left px-4 py-3 text-sm text-gray-300 hover:bg-gray-800 hover:text-white flex items-center gap-3 transition-colors border-b border-gray-800"
+                >
+                  <Edit2 size={16} className="text-gray-500" />
+                  {investment.isConnected ? 'Editar Apelido' : 'Editar'}
+                </button>
+
+                {!investment.isConnected && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsMenuOpen(false);
+                      onDelete(investment.id);
+                    }}
+                    className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 hover:text-red-300 flex items-center gap-3 transition-colors"
+                  >
+                    <Trash2 size={16} />
+                    Excluir
+                  </button>
+                )}
+              </div>
+            )}
+        </div>
+      </div>
+
+      {/* Body: Saldo e Meta */}
+      <div className="relative z-10 flex-1 flex flex-col justify-center pl-1">
+        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Saldo Atual</p>
+        <p className="font-mono font-bold text-2xl md:text-3xl text-white tracking-tight">
+          <NumberFlow value={investment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+        </p>
+        
+        {!investment.isConnected && investment.targetAmount > 0 && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500 font-mono">
+            <Target size={12} />
+            <span>Meta: {formatCurrency(investment.targetAmount)}</span>
+          </div>
+        )}
+      </div>
+
+      {/* Footer: Barra de Progresso (apenas para manuais com meta) */}
+      {!investment.isConnected && investment.targetAmount > 0 && (
+        <div className="relative z-10">
+          <div className="flex justify-between text-[10px] mb-1.5 text-gray-400 font-medium uppercase tracking-wide">
+            <span className={isComplete ? 'text-emerald-400' : ''}>{Math.min(progress, 100).toFixed(0)}% Concluído</span>
+            {!isComplete && <span>Falta {formatCurrency(remainingAmount)}</span>}
+          </div>
+          <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-[#d97757]'}`}
+              style={{ width: `${Math.min(progress, 100)}%` }}
+            ></div>
+          </div>
+        </div>
+      )}
+      
+      {/* Spacer para Connected Accounts */}
+      {investment.isConnected && <div className="h-4"></div>}
+
+    </div>
+  );
+};
+
 export const Investments: React.FC<InvestmentsProps> = ({
   investments,
   connectedSavingsAccounts = [],
@@ -80,9 +272,14 @@ export const Investments: React.FC<InvestmentsProps> = ({
   const [editingInvestment, setEditingInvestment] = useState<Investment | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  // Paginação
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 3;
+  // Details Modal State
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedInvestment, setSelectedInvestment] = useState<Investment | null>(null);
+  
+  // Statement Filters
+  const [detailsSearch, setDetailsSearch] = useState('');
+  const [detailsStartDate, setDetailsStartDate] = useState('');
+  const [detailsEndDate, setDetailsEndDate] = useState('');
 
   // Merge connected accounts
   const connectedInvestments: Investment[] = connectedSavingsAccounts.map(acc => ({
@@ -116,15 +313,10 @@ export const Investments: React.FC<InvestmentsProps> = ({
 
   const toast = useToasts();
 
-  // Reset para página 1 quando as caixinhas mudarem
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [allInvestments.length]);
-
   // Animation Control (Igual ao Reminders)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
-    if (isModalOpen || depositModalOpen) {
+    if (isModalOpen || depositModalOpen || detailsModalOpen) {
       setIsVisible(true);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -138,13 +330,14 @@ export const Investments: React.FC<InvestmentsProps> = ({
       }, 300);
     }
     return () => clearTimeout(timeoutId);
-  }, [isModalOpen, depositModalOpen]);
+  }, [isModalOpen, depositModalOpen, detailsModalOpen]);
 
 
   const isLimitReached = userPlan === 'starter' && investments.length >= 2;
 
   const handleOpenModal = (investment?: Investment) => {
-    if (investment?.isConnected) return; // Cannot edit connected accounts
+    // Removed the check that prevented editing connected accounts
+    // if (investment?.isConnected) return; 
 
     if (!investment && isLimitReached) {
         if (toast && toast.error) {
@@ -212,14 +405,20 @@ export const Investments: React.FC<InvestmentsProps> = ({
   };
 
   const handleSave = () => {
-    if (!formData.name || formData.targetAmount <= 0) {
-      toast.error("Preencha o nome e a meta.");
+    // Validation: Name is always required. Target Amount is required only for manual investments.
+    if (!formData.name) {
+      toast.error("Preencha o nome.");
+      return;
+    }
+    
+    if (!editingInvestment?.isConnected && formData.targetAmount <= 0) {
+      toast.error("Preencha a meta.");
       return;
     }
 
     if (editingInvestment) {
       onUpdate({ ...editingInvestment, ...formData });
-      toast.success("Caixinha atualizada!");
+      toast.success(editingInvestment.isConnected ? "Apelido atualizado!" : "Caixinha atualizada!");
     } else {
       onAdd(formData);
       toast.success("Caixinha criada!");
@@ -300,6 +499,52 @@ export const Investments: React.FC<InvestmentsProps> = ({
     setDepositInvestment(null);
     setDepositAmount('');
   };
+
+  // Handle Opening the Details Modal
+  const handleViewDetails = (investment: Investment) => {
+    setSelectedInvestment(investment);
+    setDetailsSearch('');
+    setDetailsStartDate('');
+    setDetailsEndDate('');
+    setDetailsModalOpen(true);
+  };
+
+  // Filter Transactions for Selected Investment
+  const investmentTransactions = React.useMemo(() => {
+    if (!selectedInvestment) return [];
+    
+    let filtered = transactions.filter(t => {
+      // Case 1: Connected Account
+      if (selectedInvestment.isConnected) {
+        return t.accountId === selectedInvestment.id;
+      }
+      
+      // Case 2: Manual Caixinha (Match by Category "Caixinha - Name")
+      if (t.category === `Caixinha - ${selectedInvestment.name}`) return true;
+      
+      // Fallback: Match by description + isInvestment flag
+      return t.isInvestment && t.description.includes(selectedInvestment.name);
+    });
+
+    // Apply Filters
+    if (detailsSearch) {
+      const term = detailsSearch.toLowerCase();
+      filtered = filtered.filter(t => 
+        (t.description || '').toLowerCase().includes(term) || 
+        (t.category || '').toLowerCase().includes(term)
+      );
+    }
+
+    if (detailsStartDate) {
+      filtered = filtered.filter(t => t.date >= detailsStartDate);
+    }
+
+    if (detailsEndDate) {
+      filtered = filtered.filter(t => t.date <= detailsEndDate);
+    }
+
+    return filtered.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort by date desc
+  }, [selectedInvestment, transactions, detailsSearch, detailsStartDate, detailsEndDate]);
 
   const getColorClass = (color: string) => {
     return COLOR_OPTIONS.find(c => c.value === color) || COLOR_OPTIONS[0];
@@ -383,7 +628,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
         </div>
       </div>
 
-      {/* Lista de Caixinhas */}
+      {/* Lista de Caixinhas (Vertical List - Style Subscriptions) */}
       <div className="flex-1">
         {allInvestments.length === 0 ? (
           <EmptyState
@@ -391,243 +636,232 @@ export const Investments: React.FC<InvestmentsProps> = ({
             description="Crie caixinhas para organizar e acompanhar seus objetivos financeiros de forma visual e prática."
           />
         ) : (
-          <>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {(() => {
-                const totalPages = Math.ceil(allInvestments.length / itemsPerPage);
-                const startIndex = (currentPage - 1) * itemsPerPage;
-                const endIndex = startIndex + itemsPerPage;
-                const paginatedInvestments = allInvestments.slice(startIndex, endIndex);
-
-                return paginatedInvestments.map((investment) => {
-              const progress = investment.targetAmount > 0
-                ? (investment.currentAmount / investment.targetAmount) * 100
-                : 0;
-              const colorClass = getColorClass(investment.color);
-              const isComplete = progress >= 100 && investment.targetAmount > 0;
-              const remainingAmount = Math.max(investment.targetAmount - investment.currentAmount, 0);
-
-              return (
-                <div
-                  key={investment.id}
-                  className="bg-gray-950 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-all duration-200 group relative shadow-lg shadow-black/20 overflow-hidden"
-                >
-                  {/* Luz de fundo decorativa suave */}
-                  <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${colorClass.bgClass.replace('/20', '')}`}></div>
-
-                  {/* Connected/Complete badge */}
-                  <div className="absolute -top-0 -right-0 flex flex-col items-end">
-                      {investment.isConnected && (
-                        <div className="bg-blue-500/10 border-l border-b border-blue-500/20 text-blue-400 text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide mb-1">
-                          <Sparkles size={10} />
-                          Conectado
-                        </div>
-                      )}
-                      {isComplete && !investment.isConnected && (
-                        <div className="bg-emerald-500/10 border-l border-b border-emerald-500/20 text-emerald-400 text-[10px] font-bold px-3 py-1.5 rounded-bl-xl flex items-center gap-1 z-10 uppercase tracking-wide">
-                          <Sparkles size={10} />
-                          Completo
-                        </div>
-                      )}
-                  </div>
-
-                  <div className="flex justify-between items-start mb-5 relative z-10">
-                    <div className="flex items-center gap-4">
-                      <div className="p-3 rounded-xl bg-gray-900 border border-gray-800 shadow-inner">
-                        {investment.icon.includes('.png') ? (
-                          <img
-                            src={`/assets/${investment.icon}`}
-                            alt={investment.name}
-                            className="w-10 h-10 object-contain"
-                          />
-                        ) : (
-                          <span className="text-3xl">{investment.icon}</span>
-                        )}
-                      </div>
-                      <div>
-                        <h3 className="font-bold text-gray-100 text-lg leading-tight truncate max-w-[150px]">{investment.name}</h3>
-                        {investment.isConnected ? (
-                             <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono">
-                                {investment.institution}
-                             </p>
-                        ) : (
-                            investment.deadline && (
-                            <p className="text-xs text-gray-500 flex items-center gap-1 mt-1 font-mono">
-                                <Calendar size={12} />
-                                {new Date(investment.deadline).toLocaleDateString('pt-BR')}
-                            </p>
-                            )
-                        )}
-                      </div>
-                    </div>
-                    
-                    {/* Actions (Style from Reminders) */}
-                    {!investment.isConnected && (
-                        <div className="flex gap-1">
-                        <button
-                            onClick={() => handleOpenModal(investment)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
-                            title="Editar"
-                        >
-                            <Edit2 size={14} />
-                        </button>
-                        <button
-                            onClick={() => setDeleteId(investment.id)}
-                            className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
-                            title="Excluir"
-                        >
-                            <Trash2 size={14} />
-                        </button>
-                        </div>
-                    )}
-                  </div>
-
-                  <div className="space-y-4 relative z-10">
-                    <div className="flex justify-between items-end">
-                      <div>
-                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Guardado</p>
-                        <p className={`text-xl font-mono font-bold ${isComplete ? 'text-emerald-400' : 'text-white'}`}>
-                            <NumberFlow value={investment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-                        </p>
-                      </div>
-                      {!investment.isConnected && (
-                        <div className="text-right">
-                            <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Meta</p>
-                            <p className="text-sm font-mono text-gray-400">
-                                <NumberFlow value={investment.targetAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-                            </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {!investment.isConnected && (
-                        <>
-                            <div className="h-2 bg-gray-900 rounded-full overflow-hidden border border-gray-800/50">
-                            <div
-                                className={`h-full rounded-full transition-all duration-500 ${isComplete ? 'bg-emerald-500' : 'bg-[#d97757]'}`}
-                                style={{ width: `${Math.min(progress, 100)}%` }}
-                            ></div>
-                            </div>
-
-                            <div className="flex justify-between items-center text-xs">
-                            <span className={`${isComplete ? 'text-emerald-400 font-bold' : 'text-gray-500'}`}>
-                                <NumberFlow value={Math.min(progress, 100)} format={{ maximumFractionDigits: 0 }} />% alcançado
-                            </span>
-                            {!isComplete && (
-                                <span className="font-mono text-gray-400">
-                                Falta <NumberFlow value={remainingAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-                                </span>
-                            )}
-                            </div>
-                        </>
-                    )}
-
-                    <button
-                      onClick={() => handleOpenDeposit(investment)}
-                      disabled={investment.isConnected}
-                      className={`w-full py-3 rounded-xl font-medium transition-all border flex items-center justify-center gap-2 group/btn
-                        ${investment.isConnected 
-                             ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-default' 
-                             : 'bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white border-gray-800 hover:border-gray-700'
-                        }
-                      `}
-                    >
-                      <ArrowUpCircle size={16} className={investment.isConnected ? 'text-gray-600' : 'text-[#d97757] group-hover/btn:text-white transition-colors'} />
-                      <span className="text-xs font-bold uppercase tracking-wider">
-                          {investment.isConnected ? 'Saldo Sincronizado' : 'Depositar / Retirar'}
-                      </span>
-                    </button>
-                  </div>
-                </div>
-              );
-                });
-              })()}
-            </div>
-
-            {/* Controles de Paginação */}
-            {(() => {
-              const totalPages = Math.ceil(allInvestments.length / itemsPerPage);
-
-              if (totalPages <= 1) return null;
-
-              return (
-                <div className="flex items-center justify-center gap-4 mt-6">
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                    disabled={currentPage === 1}
-                    className={`p-2.5 rounded-xl transition-all border ${
-                      currentPage === 1
-                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                    }`}
-                  >
-                    <ChevronLeft size={20} />
-                  </button>
-
-                  <span className="text-sm text-gray-400 font-medium">
-                    Página <span className="text-white font-bold">{currentPage}</span> de <span className="text-white font-bold">{totalPages}</span>
-                  </span>
-
-                  <button
-                    onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                    disabled={currentPage === totalPages}
-                    className={`p-2.5 rounded-xl transition-all border ${
-                      currentPage === totalPages
-                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                    }`}
-                  >
-                    <ChevronRight size={20} />
-                  </button>
-                </div>
-              );
-            })()}
-          </>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            {allInvestments.map((investment) => (
+              <InvestmentCard 
+                key={investment.id} 
+                investment={investment} 
+                onEdit={handleOpenModal} 
+                onDelete={setDeleteId}
+                onDeposit={handleOpenDeposit}
+                onView={handleViewDetails}
+              />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* Transactions List (Extrato de Poupança) */}
-      {transactions.length > 0 && (
-        <div className="mt-8 pt-8 border-t border-gray-800">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="p-2.5 bg-gray-900 rounded-xl border border-gray-800 text-emerald-500">
-                <Sparkles size={20} />
+      {/* Details/Statement Modal */}
+      {isVisible && detailsModalOpen && selectedInvestment && createPortal(
+        <div className={`
+            fixed inset-0 z-[9999] flex items-center justify-center p-4 
+            transition-all duration-300 ease-in-out
+            ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
+        `}>
+          <div className={`
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 
+                flex flex-col max-h-[90vh] relative 
+                transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+          `}>
+            {/* Background Effects */}
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
             </div>
-            <div>
-                <h3 className="font-bold text-white text-lg">Extrato de Caixinhas</h3>
-                <p className="text-xs text-gray-400">Histórico de movimentações em contas poupança conectadas</p>
-            </div>
-          </div>
 
-          <div className="bg-gray-950 border border-gray-800 rounded-2xl overflow-hidden">
-             <table className="min-w-full border-collapse text-sm text-left">
-                <thead className="bg-gray-900 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                    <tr>
-                        <th className="px-6 py-4 border-b border-gray-800">Data</th>
-                        <th className="px-6 py-4 border-b border-gray-800">Descrição</th>
-                        <th className="px-6 py-4 border-b border-gray-800 text-right">Valor</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-800/50">
-                    {transactions.map(t => (
-                        <tr key={t.id} className="hover:bg-gray-900/40 transition-colors">
-                            <td className="px-6 py-4 text-gray-400 font-mono text-xs">
-                                {new Date(t.date).toLocaleDateString('pt-BR')}
-                            </td>
-                            <td className="px-6 py-4 text-gray-200 font-medium">
-                                {t.description}
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                                <span className={`font-bold font-mono ${t.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                    {formatCurrency(t.amount)}
-                                </span>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-             </table>
+            {/* Header */}
+            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                {selectedInvestment.icon.includes('.png') ? (
+                    <img src={`/assets/${selectedInvestment.icon}`} alt="icon" className="w-6 h-6 object-contain" />
+                ) : (
+                    <span className="text-2xl text-[#d97757]">{selectedInvestment.icon}</span>
+                )}
+                {selectedInvestment.name}
+              </h2>
+              <button onClick={() => setDetailsModalOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Filters */}
+            <div className="p-4 border-b border-gray-800/50 bg-gray-900/30 flex flex-col sm:flex-row gap-3 relative z-10">
+                {/* Search */}
+                <div className="relative flex-1 group">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                    <input 
+                        type="text" 
+                        placeholder="Buscar..." 
+                        value={detailsSearch}
+                        onChange={(e) => setDetailsSearch(e.target.value)}
+                        className="w-full bg-gray-900/50 border border-gray-800 rounded-xl pl-10 pr-4 py-2.5 text-sm text-white focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                    />
+                </div>
+                
+                {/* Dates */}
+                <div className="flex gap-2 flex-1">
+                    <div className="flex-1">
+                        <CustomDatePicker 
+                            value={detailsStartDate}
+                            onChange={setDetailsStartDate}
+                            placeholder="Início"
+                        />
+                    </div>
+                    <div className="flex-1">
+                        <CustomDatePicker 
+                            value={detailsEndDate}
+                            onChange={setDetailsEndDate}
+                            placeholder="Fim"
+                        />
+                    </div>
+                </div>
+
+                {/* Reset */}
+                {(detailsSearch || detailsStartDate || detailsEndDate) && (
+                    <button 
+                        onClick={() => { setDetailsSearch(''); setDetailsStartDate(''); setDetailsEndDate(''); }}
+                        className="p-2.5 bg-gray-800 hover:bg-gray-700 text-gray-400 hover:text-white rounded-xl border border-gray-700 transition-all"
+                        title="Limpar filtros"
+                    >
+                        <RotateCcw size={16} />
+                    </button>
+                )}
+            </div>
+
+            {/* Content: Transaction List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar relative z-10 p-0">
+              {investmentTransactions.length === 0 ? (
+                <EmptyState
+                  title="Nenhuma movimentação"
+                  description="Esta caixinha ainda não possui histórico."
+                  className="!border-0 !bg-transparent !shadow-none h-64"
+                />
+              ) : (
+                <table className="min-w-full border-collapse text-sm text-left">
+                  <thead className="bg-gray-900/30 text-xs font-bold text-gray-400 uppercase tracking-wider sticky top-0 z-20 backdrop-blur-sm">
+                      <tr>
+                          <th className="px-6 py-4 border-b border-gray-800/50">Data</th>
+                          <th className="px-6 py-4 border-b border-gray-800/50">Descrição</th>
+                          <th className="px-6 py-4 border-b border-gray-800/50 text-right">Valor</th>
+                      </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800/50">
+                      {investmentTransactions.map(t => (
+                          <tr key={t.id} className="hover:bg-gray-900/40 transition-colors">
+                              <td className="px-6 py-4 text-gray-400 font-mono text-xs whitespace-nowrap">
+                                  {new Date(t.date).toLocaleDateString('pt-BR')}
+                              </td>
+                              <td className="px-6 py-4 text-gray-200 font-medium">
+                                  {t.description}
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                  <span className={`font-bold font-mono ${t.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                      {formatCurrency(t.amount)}
+                                  </span>
+                              </td>
+                          </tr>
+                      ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+            
+            {/* Footer Summary */}
+            <div className="p-4 border-t border-gray-800/50 bg-gray-900/30 flex justify-between items-center text-xs font-medium text-gray-400 relative z-10">
+               <span>Total de movimentações: {investmentTransactions.length}</span>
+               <div className="flex items-center gap-2">
+                  <span>Saldo Atual:</span>
+                  <span className="text-white font-bold font-mono text-sm">{formatCurrency(selectedInvestment.currentAmount)}</span>
+               </div>
+            </div>
           </div>
-        </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Deposit/Withdraw Modal */}
+      {isVisible && depositModalOpen && depositInvestment && createPortal(
+        <div className={`
+            fixed inset-0 z-[100] flex items-center justify-center p-4 
+            transition-all duration-300 ease-in-out
+            ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
+        `}>
+          <div className={`
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden border border-gray-800 
+                flex flex-col relative 
+                transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+          `}>
+             {/* Background Effects */}
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+            </div>
+
+             {/* Header */}
+            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <Wallet className="text-[#d97757]" size={24} />
+                Movimentar
+              </h2>
+              <button onClick={() => setDepositModalOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-8 relative z-10">
+                {/* Balance Display */}
+                <div className="bg-gray-900/50 border border-gray-800 rounded-2xl p-4 flex flex-col items-center justify-center shadow-inner">
+                    <span className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-1">Saldo Disponível</span>
+                    <span className="text-2xl font-bold text-white font-mono tracking-tight">
+                        {formatCurrency(depositInvestment.currentAmount)}
+                    </span>
+                </div>
+
+                {/* Amount Input */}
+                <div className="relative">
+                    <div className="flex items-center justify-center gap-1">
+                        <span className="text-2xl text-gray-500 font-bold -mt-1">R$</span>
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            value={depositAmount}
+                            onChange={(e) => {
+                                const val = e.target.value.replace(/[^0-9,.]/g, '');
+                                setDepositAmount(val);
+                            }}
+                            className="w-48 bg-transparent text-4xl font-bold text-white placeholder-gray-800 outline-none text-center font-mono"
+                            placeholder="0,00"
+                            autoFocus
+                        />
+                    </div>
+                </div>
+
+                {/* Actions */}
+                <div className="grid grid-cols-2 gap-3">
+                    <button
+                        onClick={handleWithdraw}
+                        disabled={!depositAmount || parseFloat(depositAmount.replace(',', '.')) <= 0}
+                        className="py-3.5 bg-red-500/10 hover:bg-red-500/20 text-red-500 hover:text-red-400 rounded-xl font-bold transition-all border border-red-500/20 hover:border-red-500/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                        <ArrowDownCircle size={18} className="group-hover:translate-y-0.5 transition-transform" />
+                        Sacar
+                    </button>
+                    <button
+                        onClick={handleDeposit}
+                        disabled={!depositAmount || parseFloat(depositAmount.replace(',', '.')) <= 0}
+                        className="py-3.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 hover:text-emerald-400 rounded-xl font-bold transition-all border border-emerald-500/20 hover:border-emerald-500/40 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed group"
+                    >
+                        <ArrowUpCircle size={18} className="group-hover:-translate-y-0.5 transition-transform" />
+                        Depositar
+                    </button>
+                </div>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Create/Edit Modal - VISUAL IGUAL REMINDERS */}
@@ -635,114 +869,111 @@ export const Investments: React.FC<InvestmentsProps> = ({
       {isVisible && isModalOpen && createPortal(
         <div className={`
             fixed inset-0 z-[9999] flex items-center justify-center p-4 
-            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-            ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
+            transition-all duration-300 ease-in-out
+            ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
         `}>
           <div className={`
-                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 
                 flex flex-col max-h-[90vh] relative 
-                transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+                transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
                 ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
           `}>
-            {/* Background Glow */}
-            <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20"></div>
+            {/* Background Effects */}
+            <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+              <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
+              <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
+            </div>
 
             {/* Header */}
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/80 backdrop-blur-sm">
-              <h3 className="font-bold text-white flex items-center gap-2 text-lg">
-                <div className="p-2 bg-[#d97757]/10 rounded-lg text-[#d97757]">
-                    <PiggyBank size={20} />
-                </div>
-                {editingInvestment ? 'Editar Caixinha' : 'Nova Caixinha'}
-              </h3>
-              <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-xl border border-transparent hover:border-gray-700 transition-all">
+            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+              <h2 className="text-xl font-bold text-white flex items-center gap-2">
+                <PiggyBank className="text-[#d97757]" size={24} />
+                {editingInvestment ? (editingInvestment.isConnected ? 'Editar Apelido' : 'Editar Caixinha') : 'Nova Caixinha'}
+              </h2>
+              <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
                 <X size={20} />
               </button>
             </div>
 
             {/* Content */}
-            <div className="p-6 overflow-y-auto custom-scrollbar relative z-10">
+            <div className="px-6 pb-6 pt-6 overflow-y-auto custom-scrollbar relative z-10">
               {modalStep === 'template' && !editingInvestment ? (
                 <div className="space-y-6 animate-fade-in">
-                  <div className="text-center mb-2">
-                    <h4 className="text-2xl font-bold text-white mb-2">
-                      Escolha um modelo
-                    </h4>
-                    <p className="text-sm text-gray-500">Comece rapidamente com uma sugestão</p>
+                  <div className="text-left mb-2">
+                    <p className="text-gray-400 text-sm">Escolha um modelo para começar ou crie do zero.</p>
                   </div>
 
                   {/* Templates Grid */}
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-2 gap-3">
                     {TEMPLATES.map((template) => {
-                      const colorClass = getColorClass(template.color);
                       return (
                         <button
                           key={template.name}
                           onClick={() => handleSelectTemplate(template)}
-                          className="p-5 bg-gray-900/50 border border-gray-800 rounded-2xl hover:border-[#d97757]/50 hover:bg-gray-900 transition-all duration-300 group text-center relative overflow-hidden"
+                          className="p-4 bg-gray-900/40 border border-gray-800 rounded-xl hover:border-gray-600 hover:bg-gray-900 transition-all duration-200 group text-left flex items-center gap-3"
                         >
-                          <div className={`absolute inset-0 bg-gradient-to-br ${colorClass.class} opacity-0 group-hover:opacity-5 transition-all duration-500`}></div>
-
-                          <div className="relative z-10 flex flex-col items-center gap-3">
-                            <div className="mb-1 transform group-hover:scale-110 transition-transform duration-300">
+                            <div className="w-10 h-10 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center group-hover:scale-105 transition-transform">
                               <img
                                 src={`/assets/${template.icon}`}
                                 alt={template.name}
-                                className="w-16 h-16 object-contain"
+                                className="w-6 h-6 object-contain"
                               />
                             </div>
                             <div>
-                              <p className="text-base font-bold text-gray-200 group-hover:text-white">
+                              <p className="text-sm font-bold text-gray-200 group-hover:text-white">
                                 {template.name}
                               </p>
-                              <p className="text-xs font-mono text-gray-500 mt-1">
-                                Meta: <NumberFlow value={template.suggestedAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+                              <p className="text-[10px] font-mono text-gray-500 mt-0.5">
+                                <NumberFlow value={template.suggestedAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
                               </p>
                             </div>
-                          </div>
                         </button>
                       );
                     })}
                   </div>
                 </div>
               ) : (
-                <div className="space-y-5 animate-slide-up">
-                  {/* Icon Preview and Name */}
-                  <div className="flex items-start gap-4 bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
-                    {/* Icon Preview */}
-                    <div className="flex-shrink-0">
-                      <div className="w-16 h-16 bg-gray-950 border border-gray-800 rounded-xl flex items-center justify-center shadow-inner">
+                <div className="space-y-6 animate-slide-up">
+                  {/* Centered Icon Preview */}
+                  <div className="flex justify-center">
+                    <div className="w-20 h-20 bg-gray-900 rounded-2xl border border-gray-800 flex items-center justify-center shadow-lg relative group cursor-pointer">
                         {formData.icon.includes('.png') ? (
                           <img
                             src={`/assets/${formData.icon}`}
                             alt="Ícone"
-                            className="w-10 h-10 object-contain"
+                            className="w-10 h-10 object-contain group-hover:scale-110 transition-transform"
                           />
                         ) : (
                           <span className="text-3xl">{formData.icon}</span>
                         )}
-                      </div>
+                        <div className="absolute -bottom-2 -right-2 bg-gray-800 rounded-full p-1.5 border border-gray-700 text-gray-400">
+                            <Edit2 size={10} />
+                        </div>
                     </div>
+                  </div>
 
-                    {/* Name */}
-                    <div className="flex-1">
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block">Nome da Caixinha</label>
+                  {/* Name Input - Minimalist */}
+                  <div>
+                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">
+                        {editingInvestment?.isConnected ? 'Apelido da Conta' : 'Nome do Objetivo'}
+                      </label>
                       <input
                         type="text"
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        className="w-full bg-gray-950 border border-gray-800 rounded-xl text-white px-4 py-3 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all font-bold"
-                        placeholder="Ex: Viagem para Europa"
+                        className="w-full bg-gray-900 border border-gray-800 rounded-xl text-white px-4 py-3 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all font-bold placeholder-gray-600"
+                        placeholder="Ex: Viagem dos Sonhos"
+                        autoFocus
                       />
-                    </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                      {/* Target Amount */}
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Meta (R$)</label>
+                  {/* Amount & Date Input - Hidden for Connected Accounts */}
+                  {!(editingInvestment?.isConnected) && (
+                   <>
+                   <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Meta Financeira</label>
                         <div className="relative group">
-                            <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-lg">R$</span>
                             <input
                                 type="text"
                                 inputMode="decimal"
@@ -752,47 +983,44 @@ export const Investments: React.FC<InvestmentsProps> = ({
                                 const parsed = parseFloat(val);
                                 setFormData({ ...formData, targetAmount: isNaN(parsed) ? 0 : parsed });
                                 }}
-                                className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all font-mono"
+                                className="w-full bg-gray-900 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-lg focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all font-mono font-bold"
                                 placeholder="0,00"
                             />
                         </div>
-                      </div>
+                   </div>
 
-                      {/* Deadline */}
-                      <div>
-                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Prazo <span className="text-gray-600 font-normal lowercase">(opcional)</span></label>
-                        <div className="relative group">
-                            <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
-                            <input
-                                type="date"
-                                value={formData.deadline}
-                                onChange={(e) => setFormData({ ...formData, deadline: e.target.value })}
-                                className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
-                            />
-                        </div>
-                      </div>
-                  </div>
+                   <div>
+                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-1 block">Prazo <span className="text-gray-600 font-normal lowercase">(opcional)</span></label>
+                        <CustomDatePicker 
+                            value={formData.deadline || ''} 
+                            onChange={(date) => setFormData({ ...formData, deadline: date })}
+                            placeholder="Selecione uma data"
+                            dropdownMode="absolute"
+                        />
+                   </div>
+                   </>
+                  )}
                 </div>
               )}
             </div>
 
             {/* Footer */}
             {modalStep === 'form' && (
-              <div className="p-6 border-t border-gray-800 flex gap-3 relative z-10 bg-gray-950/50">
+              <div className="p-6 border-t border-gray-800/50 bg-gray-900/30 flex gap-3 relative z-10">
                 <button
                   type="button"
                   onClick={() => editingInvestment ? handleCloseModal() : setModalStep('template')}
-                  className="flex-1 py-3.5 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl font-bold transition-all border border-gray-800 hover:border-gray-700"
+                  className="flex-1 py-3 bg-gray-900 hover:bg-gray-800 text-gray-300 hover:text-white rounded-xl font-bold transition-all border border-gray-800 hover:border-gray-700 text-sm"
                 >
                   {editingInvestment ? 'Cancelar' : 'Voltar'}
                 </button>
                 <button
                   type="button"
                   onClick={handleSave}
-                  className="flex-[2] py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 flex items-center justify-center gap-2"
+                  className="flex-[2] py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50 flex items-center justify-center gap-2 text-sm"
                 >
                   <Check size={18} strokeWidth={3} />
-                  {editingInvestment ? 'Salvar Alterações' : 'Criar Caixinha'}
+                  {editingInvestment ? 'Salvar' : 'Criar Caixinha'}
                 </button>
               </div>
             )}
@@ -800,141 +1028,6 @@ export const Investments: React.FC<InvestmentsProps> = ({
         </div>,
         document.body
       )}
-
-      {/* Deposit/Withdraw Modal - VISUAL IGUAL REMINDERS */}
-      {isVisible && depositModalOpen && depositInvestment && createPortal(
-        <div className={`
-            fixed inset-0 z-[9999] flex items-center justify-center p-4 
-            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-            ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
-        `}>
-          <div className={`
-                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 
-                flex flex-col relative 
-                transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-          `}>
-            {/* Background glow */}
-            <div className="absolute inset-0 pointer-events-none">
-              <div className="absolute top-0 right-0 w-48 h-48 bg-[#d97757]/10 rounded-full blur-3xl -mr-12 -mt-12"></div>
-            </div>
-
-            {/* Header */}
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/80 backdrop-blur-sm">
-              <div className="flex items-center gap-3">
-                <div className="p-2.5 rounded-xl bg-[#d97757]/15 text-[#d97757] border border-[#d97757]/30 shadow-inner">
-                  <ArrowUpCircle size={20} />
-                </div>
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Gerenciar Saldo</p>
-                  <h3 className="text-lg font-bold text-white">{depositInvestment.name}</h3>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setDepositModalOpen(false);
-                  setDepositInvestment(null);
-                  setDepositAmount('');
-                }}
-                className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-xl border border-transparent hover:border-gray-700 transition-all"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            {/* Body */}
-            <div className="p-6 space-y-6 relative z-10">
-              {/* Infos Cards */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 shadow-sm">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Saldo Atual</p>
-                  <p className="text-lg font-mono font-bold text-white">
-                    <NumberFlow value={depositInvestment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-                  </p>
-                </div>
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-3 shadow-sm">
-                  <p className="text-[10px] text-gray-500 uppercase tracking-wider mb-1 font-bold">Meta</p>
-                  <p className="text-lg font-mono font-bold text-gray-400">
-                    <NumberFlow value={depositInvestment.targetAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-                  </p>
-                </div>
-              </div>
-
-              {/* Progress */}
-              <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800">
-                  <div className="flex justify-between items-center mb-2">
-                    <span className="text-xs text-gray-400 font-medium">Progresso</span>
-                    <span className="text-xs text-white font-bold">
-                        <NumberFlow value={Math.min(depositProgress, 100)} format={{ maximumFractionDigits: 0 }} />%
-                    </span>
-                  </div>
-                  <div className="h-2 bg-gray-950 rounded-full overflow-hidden border border-gray-800/50">
-                    <div
-                        className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(depositProgress)}`}
-                        style={{ width: `${Math.min(depositProgress, 100)}%` }}
-                    ></div>
-                  </div>
-              </div>
-
-              {/* Input Value */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-2">
-                  Valor da operação
-                </label>
-                <div className="relative group">
-                  <span className="absolute left-5 top-1/2 -translate-y-1/2 text-gray-500 font-bold text-xl group-focus-within:text-[#d97757] transition-colors">R$</span>
-                  <input
-                    type="text"
-                    inputMode="decimal"
-                    value={depositAmount}
-                    onChange={(e) => setDepositAmount(e.target.value)}
-                    className="w-full p-5 pl-14 bg-gray-900 border border-gray-800 rounded-2xl focus:ring-1 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white text-2xl font-bold transition-all outline-none font-mono placeholder-gray-700"
-                    placeholder="0,00"
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              {/* Buttons */}
-              <div className="grid grid-cols-2 gap-3 pt-2">
-                <button
-                  onClick={handleDeposit}
-                  className="py-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2 border border-emerald-500/50"
-                >
-                  <ArrowUpCircle size={18} strokeWidth={2.5} />
-                  Depositar
-                </button>
-                <button
-                  onClick={handleWithdraw}
-                  className="py-4 bg-gray-800 hover:bg-red-500/10 text-gray-300 hover:text-red-500 rounded-xl font-bold transition-all border border-gray-700 hover:border-red-500/50 flex items-center justify-center gap-2"
-                >
-                  <TrendingDown size={18} strokeWidth={2.5} />
-                  Retirar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* Delete Confirmation */}
-      <ConfirmationCard
-        isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        onConfirm={() => {
-          if (deleteId) {
-            onDelete(deleteId);
-            toast.success("Caixinha removida!");
-            setDeleteId(null);
-          }
-        }}
-        title="Remover Caixinha?"
-        description="Você está prestes a apagar esta caixinha. Todo o histórico de progresso será perdido."
-        isDestructive={true}
-        confirmText="Sim, remover"
-        cancelText="Cancelar"
-      />
     </div>
   );
 };

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Bell, AlertTriangle, Info, Check, Sparkles, Clock, Calendar, TrendingUp, Target } from './Icons';
+import { Bell, AlertTriangle, Info, Check, Sparkles, Clock, Calendar, TrendingUp, Target, MathMaxMin } from './Icons';
 import { Reminder, Budget, Transaction } from '../types';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 

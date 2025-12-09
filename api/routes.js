@@ -5,8 +5,10 @@ import twilio from 'twilio';
 import { GoogleGenAI } from '@google/genai';
 import axios from 'axios';
 import geminiHandler from './gemini.js';
+import path from 'path';
 
-dotenv.config();
+// Explicitly load .env from root
+dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
 const router = express.Router();
 
@@ -174,7 +176,7 @@ const normalizeCreditCards = (creditCards, linkId) => {
 
 
 // Helper: Normalize Klavi checking/savings accounts to ConnectedAccount format
-const normalizeAccounts = (accounts, linkId) => {
+const normalizeAccounts = (accounts, linkId, defaultType = null) => {
   if (!accounts || !Array.isArray(accounts)) return [];
 
   return accounts.map((acc, index) => {
@@ -235,10 +237,27 @@ const normalizeAccounts = (accounts, linkId) => {
     const branch = acc.branchCode || acc.agency || 'nobranch';
     const stableId = `klavi_acc_${acc.companyCnpj || 'unknown'}_${branch}_${accountNumber}`;
 
+    // Determine account type with broader checks
+    const rawType = (acc.accountType || acc.type || '').toUpperCase();
+    const rawSubtype = (acc.accountSubType || acc.subtype || '').toUpperCase();
+    
+    let isSavings = false;
+    
+    if (defaultType === 'SAVINGS') {
+        isSavings = true;
+    } else {
+        isSavings = 
+          rawType === 'CONTA_POUPANCA' || 
+          rawType === 'SAVINGS' || 
+          rawType === 'SAVINGS_ACCOUNT' ||
+          rawSubtype.includes('POUPANCA') ||
+          rawSubtype.includes('SAVINGS');
+    }
+
     return {
       id: stableId,
-      name: acc.accountName || acc.name || `Conta ${acc.accountType || acc.type || 'Corrente'}`,
-      type: (acc.accountType === 'CONTA_POUPANCA' || acc.type === 'SAVINGS') ? 'SAVINGS' : 'CHECKING',
+      name: acc.accountName || acc.name || `Conta ${isSavings ? 'Poupança' : (acc.accountType || acc.type || 'Corrente')}`,
+      type: isSavings ? 'SAVINGS' : 'CHECKING',
       subtype: acc.accountSubType || acc.subtype || acc.compeCode || '',
       balance: balance,
       currency: acc.currency || 'BRL',
@@ -300,6 +319,11 @@ const normalizeTransactions = (creditCards, accounts, linkId) => {
 
 // Helper: Normalize a single transaction
 const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => {
+  // Debug: Log raw transaction for checking accounts to investigate missing expenses
+  if (sourceType === 'account') {
+     console.log(`>>> RAW TX CHECK: ID=${tx.transactionId || 'N/A'} Desc="${tx.transactionName || tx.description}" Val=${tx.amount?.amount || tx.value} Type=${tx.type} CD=${tx.creditDebitType}`);
+  }
+
   // Try multiple possible amount locations (Klavi/Open Finance has various structures)
   let amount = 0;
 
@@ -345,7 +369,40 @@ const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => 
       }).substring(0, 300));
   }
 
-  const isDebit = tx.creditDebitType === 'DEBITO' || tx.type === 'DEBIT' || amount < 0;
+  // Detect if transaction is a debit (expense) - check multiple possible indicators
+  const creditDebitType = (tx.creditDebitType || '').toUpperCase();
+  const txType = (tx.type || '').toUpperCase();
+  const description = (tx.transactionName || tx.description || '').toUpperCase();
+
+  // Check creditDebitType variations
+  const isDebitByType = creditDebitType.includes('DEBITO') || creditDebitType.includes('DEBIT') || creditDebitType === 'D';
+
+  // Check tx.type variations
+  const isDebitByTxType = txType.includes('DEBIT') || txType.includes('DEBITO') || txType === 'D' || txType === 'SAIDA' || txType === 'PAYMENT';
+
+  // Check description for common expense patterns
+  const isDebitByDescription =
+    description.includes('ENVIADO') ||
+    description.includes('ENVIADA') ||
+    description.includes('PAG ') ||
+    description.includes('PAGAMENTO') ||
+    description.includes('DEBITO') ||
+    description.includes('DÉBITO') ||
+    description.includes('EMPRESTIMO') ||
+    description.includes('EMPRÉSTIMO') ||
+    description.includes('TRANSFERENCIA ENVIADA') ||
+    description.includes('TRANSFERÊNCIA ENVIADA') ||
+    description.includes('SAQUE') ||
+    description.includes('COMPRA') ||
+    description.includes('TARIFA');
+
+  // Final decision: is this a debit?
+  const isDebit = isDebitByType || isDebitByTxType || isDebitByDescription || amount < 0;
+
+  // Debug log for expense detection
+  if (isDebit) {
+    console.log(`>>> EXPENSE detected: "${tx.transactionName || tx.description}" - Amount: ${amount}, creditDebitType: ${tx.creditDebitType}, type: ${tx.type}`);
+  }
 
   return {
     id: tx.transactionId || `klavi_tx_${linkId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
@@ -366,6 +423,8 @@ const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => 
     transactionType: tx.transactionType || '',
     paymentType: tx.paymentType || '',
     identificationNumber: tx.identificationNumber || '',
+    // Mark imported transactions
+    importSource: 'klavi',
   };
 };
 
@@ -393,8 +452,8 @@ router.post('/klavi/create-link', async (req, res) => {
     // Explicitly requested SANDBOX URL
     const KLAVI_BASE = 'https://api-sandbox.klavi.ai/data/v1';
 
-    const REDIRECT_BASE = 'https://schematically-oscitant-herbert.ngrok-free.dev';
-    const webhookUrl = `${REDIRECT_BASE}/api/klavi/webhook`;
+    const REDIRECT_BASE = process.env.REDIRECT_BASE || 'https://schematically-oscitant-herbert.ngrok-free.dev';
+    const webhookUrl = process.env.KLAVI_WEBHOOK_URL || `${REDIRECT_BASE}/api/klavi/webhook`;
 
     console.log(">>> Starting Klavi Flow (REAL SANDBOX)...");
     console.log("    Target:", `${KLAVI_BASE}/auth`);
@@ -572,8 +631,8 @@ router.post('/klavi/sync', async (req, res) => {
 
       // Normalize the data
       const creditCardAccounts = normalizeCreditCards(allCreditCards, itemId);
-      const checkingAccounts = normalizeAccounts(allCheckingAccounts, itemId);
-      const savingsAccounts = normalizeAccounts(allSavingsAccounts, itemId);
+      const checkingAccounts = normalizeAccounts(allCheckingAccounts, itemId, 'CHECKING');
+      const savingsAccounts = normalizeAccounts(allSavingsAccounts, itemId, 'SAVINGS');
 
       const allAccounts = [
         ...creditCardAccounts,
@@ -703,13 +762,50 @@ router.post('/klavi/webhook', (req, res) => {
     const newSavingsAccounts = event.savingsAccounts || event.data?.savingsAccounts || [];
     const newInvestments = event.investments || event.data?.investments || [];
 
-    // Helper to deduplicate by companyCnpj + identifier
-    const dedupeByKey = (existing, newItems, keyFn) => {
+    // Helper to deduplicate and merge by key
+    const mergeByKey = (existing, newItems, keyFn) => {
       const map = new Map();
-      [...existing, ...newItems].forEach(item => {
-        const key = keyFn(item);
-        if (key) map.set(key, item);
+      
+      // Initialize with existing items
+      existing.forEach(item => {
+         const key = keyFn(item);
+         if (key) map.set(key, item);
       });
+
+      // Merge new items
+      newItems.forEach(newItem => {
+        const key = keyFn(newItem);
+        if (!key) return;
+
+        const existingItem = map.get(key);
+        if (existingItem) {
+           // Merge logic: New data overrides old data, BUT...
+           const merged = { ...existingItem, ...newItem };
+           
+           // Preserve transactions if new item doesn't have them (or has empty list while old had data)
+           const hasNewTxs = (newItem.transactions && newItem.transactions.length > 0) || (newItem.transactionDetails && newItem.transactionDetails.length > 0);
+           const hasOldTxs = (existingItem.transactions && existingItem.transactions.length > 0) || (existingItem.transactionDetails && existingItem.transactionDetails.length > 0);
+           
+           if (!hasNewTxs && hasOldTxs) {
+              // console.log(`>>> Preserving transactions for ${key} (New update missing txs)`);
+              if (existingItem.transactions) merged.transactions = existingItem.transactions;
+              if (existingItem.transactionDetails) merged.transactionDetails = existingItem.transactionDetails;
+           }
+           
+           // Also preserve openStatement/closedStatements for credit cards
+           if (!newItem.openStatement && existingItem.openStatement) {
+              merged.openStatement = existingItem.openStatement;
+           }
+           if ((!newItem.closedStatements || newItem.closedStatements.length === 0) && existingItem.closedStatements && existingItem.closedStatements.length > 0) {
+              merged.closedStatements = existingItem.closedStatements;
+           }
+
+           map.set(key, merged);
+        } else {
+           map.set(key, newItem);
+        }
+      });
+      
       return Array.from(map.values());
     };
 
@@ -717,22 +813,22 @@ router.post('/klavi/webhook', (req, res) => {
     const mergedData = {
       receivedAt: new Date().toISOString(),
       rawPayload: event,
-      creditCards: dedupeByKey(
+      creditCards: mergeByKey(
         existingData.creditCards,
         newCreditCards,
         (c) => `${c.companyCnpj}_${c.name || c.creditCardNetwork}`
       ),
-      checkingAccounts: dedupeByKey(
+      checkingAccounts: mergeByKey(
         existingData.checkingAccounts,
         newCheckingAccounts,
         (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
       ),
-      savingsAccounts: dedupeByKey(
+      savingsAccounts: mergeByKey(
         existingData.savingsAccounts,
         newSavingsAccounts,
         (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
       ),
-      investments: dedupeByKey(
+      investments: mergeByKey(
         existingData.investments,
         newInvestments,
         (i) => `${i.companyCnpj}_${i.name || i.id}`
@@ -785,6 +881,12 @@ router.get('/klavi/debug/:linkId', (req, res) => {
       receivedAt: data.receivedAt,
       creditCardsCount: data.creditCards?.length || 0,
       checkingAccountsCount: data.checkingAccounts?.length || 0,
+      // Expose full checking accounts for debugging
+      checkingAccounts: data.checkingAccounts,
+      // Expose checking account transactions for debugging
+      checkingAccountTransactions: (data.checkingAccounts || []).flatMap(acc => 
+        (acc.transactions || acc.transactionDetails || []).slice(0, 50)
+      ),
       // Show raw data for debugging
       rawPayloadKeys: Object.keys(data.rawPayload || {}),
     });
@@ -913,5 +1015,191 @@ router.post('/whatsapp', async (req, res) => {
 
 // Gemini proxy endpoint
 router.post('/gemini', geminiHandler);
+
+// Email Sending Endpoint (Nodemailer)
+import nodemailer from 'nodemailer';
+
+// Remove spaces from password if present (common when copying from Google)
+const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
+
+const smtpConfig = {
+  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  port: parseInt(process.env.SMTP_PORT || '465'),
+  secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+  auth: {
+    user: process.env.SMTP_USER,
+    pass: smtpPass,
+  },
+  // Disable debug logs
+  logger: false,
+  debug: false,
+};
+
+const smtpTransporter = nodemailer.createTransport(smtpConfig);
+
+// Verify connection configuration
+smtpTransporter.verify(function (error, success) {
+  if (error) {
+    console.error('>>> SMTP Connection Error:', error);
+  }
+});
+
+router.post('/admin/send-email', async (req, res) => {
+  const { recipients, subject, title, body, buttonText, buttonLink, headerAlign, titleAlign, bodyAlign } = req.body;
+
+  if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
+    return res.status(400).json({ error: 'Nenhum destinatário selecionado.' });
+  }
+
+  // HTML Template - Pixel Perfect Match with AdminEmailMessage.tsx
+  // Theme: Dark Mode (Custom Colors)
+  // Header/Footer: #363735
+  // Content: #2F302E
+  // Text: White (#ffffff) & Gray-300 (#d1d5db)
+  
+  // Alignment Defaults
+  const hAlign = headerAlign || 'center';
+  const tAlign = titleAlign || 'center';
+  const bAlign = bodyAlign || 'left';
+
+  const htmlTemplate = `
+    <!DOCTYPE html>
+    <html lang="pt-BR">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${subject}</title>
+      <style>
+        /* Reset for email clients */
+        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        img { -ms-interpolation-mode: bicubic; }
+      </style>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #111827; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">
+      
+      <!-- Outer Page Background (Dark) -->
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #111827; padding: 40px 0;">
+        <tr>
+          <td align="center">
+            
+            <!-- Main Card Container -->
+            <!-- Width: 600px, rounded-lg (8px), border-gray-700 (#374151) -->
+            <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #2F302E; border: 1px solid #374151; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 8px;">
+              
+              <!-- Header -->
+              <!-- bg-[#363735], p-6 (24px), border-b-gray-700 -->
+              <tr>
+                <td align="${hAlign === 'justify' ? 'center' : hAlign}" style="padding: 24px; background-color: #363735; border-bottom: 1px solid #374151; text-align: ${hAlign === 'justify' ? 'center' : hAlign};">
+                  <!-- Logo Text Replication -->
+                  <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em; line-height: 1; display: inline-block;">
+                    Controlar<span style="color: #d97757;">+</span>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Content -->
+              <!-- bg-[#2F302E], p-8 (32px) -->
+              <tr>
+                <td style="padding: 32px; background-color: #2F302E;">
+                  
+                  <!-- Title -->
+                  <!-- text-2xl (24px), font-bold, text-white, mb-6 (24px) -->
+                  <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">
+                    ${title || 'Novidades do Controlar+'}
+                  </h1>
+                  
+                  <!-- Body -->
+                  <!-- text-gray-300 (#d1d5db), leading-relaxed (1.625) -->
+                  <div style="color: #d1d5db; font-size: 16px; line-height: 1.625; white-space: pre-wrap; text-align: ${bAlign};">
+                    ${(body || '').replace(/\n/g, '<br/>')}
+                  </div>
+
+                  <!-- CTA Button -->
+                  <!-- mt-8 (32px), center -->
+                  <div style="margin-top: 32px; text-align: center;">
+                    <!-- bg-[#d97757], text-white, font-bold, py-3 (12px) px-8 (32px), rounded-full -->
+                    <a href="${buttonLink}" target="_blank" style="display: inline-block; background-color: #d97757; color: #ffffff; font-weight: bold; padding: 12px 32px; border-radius: 9999px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(217, 119, 87, 0.2);">
+                      ${buttonText || 'Ver Agora'}
+                    </a>
+                  </div>
+                </td>
+              </tr>
+
+              <!-- Footer -->
+              <!-- bg-[#363735], p-6 (24px), border-t-gray-700 -->
+              <tr>
+                <td align="center" style="padding: 24px; background-color: #363735; border-top: 1px solid #374151; color: #6b7280; font-size: 12px;">
+                  <p style="margin: 0;">© ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>
+                  <p style="margin: 8px 0 0 0;">
+                    <a href="#" style="color: #9ca3af; text-decoration: underline;">Descadastrar</a> • 
+                    <a href="#" style="color: #9ca3af; text-decoration: underline; margin-left: 8px;">Política de Privacidade</a>
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+            <!-- End Card -->
+
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  try {
+    // Send to recipients
+    // For bulk, using BCC is often better, or loop.
+    // Here we will loop to simulate individual "To" fields which is more personal,
+    // but in high volume production, use a bulk service.
+    
+    // NOTE: If using Gmail free tier, there are strict limits (e.g. 500/day).
+    
+    const sendPromises = recipients.map(email => {
+       return smtpTransporter.sendMail({
+          from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
+          to: email,
+          subject: subject,
+          html: htmlTemplate,
+          text: body // Fallback plain text
+       });
+    });
+
+    // Wait for all (or handle errors individually to not fail batch)
+    const results = await Promise.allSettled(sendPromises);
+    
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+    const failures = results.filter(r => r.status === 'rejected');
+    const failCount = failures.length;
+
+    console.log(`>>> Email Campaign Sent: ${successCount} success, ${failCount} failed.`);
+    
+    if (failCount > 0) {
+        console.error(">>> First failure reason:", failures[0].reason);
+    }
+
+    // Determine status code
+    if (successCount === 0 && failCount > 0) {
+        // Total failure
+        const firstError = failures[0].reason;
+        return res.status(500).json({ 
+            error: 'Falha ao enviar todos os emails.', 
+            details: firstError?.message || 'Erro desconhecido no SMTP.'
+        });
+    }
+
+    res.json({ 
+      success: true, 
+      sent: successCount, 
+      failed: failCount,
+      message: `Enviado para ${successCount} usuários.` 
+    });
+
+  } catch (error) {
+    console.error('Email Send Error:', error);
+    res.status(500).json({ error: 'Falha ao processar envio.', details: error.message });
+  }
+});
 
 export default router;

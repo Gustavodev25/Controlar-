@@ -7,6 +7,7 @@ import axios from "axios";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
 import { BankConnectModal } from "./BankConnectModal";
+import { ConfirmationCard } from "./UIComponents";
 import {
   SyncProgress,
   clearSyncProgress,
@@ -74,6 +75,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({ step: '', current: 0, total: 0 });
   const [showSyncTooltip, setShowSyncTooltip] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
@@ -159,11 +161,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
 
 
-  const handleDeleteInstitution = async (institutionAccounts: ConnectedAccount[], institutionName: string) => {
-    if (!userId) return;
+  const handleDeleteInstitution = async () => {
+    if (!userId || !deleteData) return;
 
-    const confirmed = confirm(`Deseja remover "${institutionName}" e todas as suas ${institutionAccounts.length} conta(s) conectadas?`);
-    if (!confirmed) return;
+    const { accounts: institutionAccounts, institutionName } = deleteData;
 
     setIsDeleting(institutionName);
     try {
@@ -178,6 +179,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       toast.error("Erro ao remover as contas.");
     } finally {
       setIsDeleting(null);
+      setDeleteData(null);
     }
   };
 
@@ -472,25 +474,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
-                    {/* Sync Loader in card */}
-                    {isSyncing && (
-                      <div
-                        className="relative flex items-center gap-1.5 px-2 py-1 bg-gray-900 border border-gray-800 rounded-lg cursor-pointer"
-                        onMouseEnter={() => setShowSyncTooltip(true)}
-                        onMouseLeave={() => setShowSyncTooltip(false)}
-                      >
-                        <Loader2 size={14} className="text-[#d97757] animate-spin" />
-                        <span className="text-[10px] text-gray-400 font-medium uppercase">Sync</span>
-
-                        {/* Tooltip */}
-                        {showSyncTooltip && syncProgress.step && (
-                          <SyncProgressTooltip progress={syncProgress} />
-                        )}
-                      </div>
-                    )}
-
                     <button
-                      onClick={() => handleDeleteInstitution(institutionAccounts, institution)}
+                      onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
                       disabled={isDeleting !== null || isSyncing}
                       className="text-xs text-red-400 hover:text-red-300 font-semibold uppercase border border-red-500/30 hover:border-red-500/50 rounded-lg px-2 py-1 flex items-center gap-1.5 transition-all hover:bg-red-500/10 disabled:opacity-50"
                     >
@@ -635,6 +620,18 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           })}
         </div>
       )}
+
+      {/* Delete Confirmation Card */}
+      <ConfirmationCard
+        isOpen={!!deleteData}
+        onClose={() => setDeleteData(null)}
+        onConfirm={handleDeleteInstitution}
+        title="Desconectar Conta?"
+        description="Esta ação removerá a conexão e as contas vinculadas. Seus lançamentos passados serão mantidos."
+        confirmText="Sim, excluir"
+        cancelText="Cancelar"
+        isDestructive
+      />
 
     </div>
   );

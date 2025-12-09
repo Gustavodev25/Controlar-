@@ -260,6 +260,34 @@
         animation: blink 1s step-start infinite;
       }
       @keyframes blink { 50% { opacity: 0; } }
+
+      /* Inverted Border Radius - Canto arredondado invertido entre sidebar e conteúdo */
+      .main-content-area::before {
+        content: '';
+        position: fixed;
+        top: 0;
+        width: 20px;
+        height: 20px;
+        background: #2f302e;
+        pointer-events: none;
+        z-index: 51;
+        transition: left 0.3s ease-in-out;
+        border-bottom-right-radius: 20px;
+      }
+      /* Sidebar aberta (w-64 = 256px) */
+      .main-content-area.sidebar-open::before {
+        left: 256px;
+      }
+      /* Sidebar fechada (w-20 = 80px) */
+      .main-content-area.sidebar-closed::before {
+        left: 80px;
+      }
+      /* Mobile - esconde o efeito */
+      @media (max-width: 1023px) {
+        .main-content-area::before {
+          display: none;
+        }
+      }
     </style>
   <script type="importmap">
 {

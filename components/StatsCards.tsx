@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import NumberFlow from '@number-flow/react';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 
 interface StatsCardsProps {
   stats: DashboardStats;
@@ -61,38 +61,59 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   hideCards = false,
   labels
 }) => {
-  const [isCheckingConfigOpen, setIsCheckingConfigOpen] = useState(false);
-  const [isBalanceConfigOpen, setIsBalanceConfigOpen] = useState(false);
-  const [isCreditCardConfigOpen, setIsCreditCardConfigOpen] = useState(false);
-  const [cardsIncludedInExpenses, setCardsIncludedInExpenses] = useState<Set<string>>(() => {
-    // Load persisted selection from localStorage
+  
+  // Use enabledCreditCardIds from toggles (Synced with App.tsx)
+  const cardsIncludedInExpenses = useMemo(() => {
+    return new Set(toggles?.enabledCreditCardIds || []);
+  }, [toggles?.enabledCreditCardIds]);
+
+  const checkingAccounts = (accountBalances?.checkingAccounts || []).filter(acc => {
+    const type = (acc.type || '').toUpperCase();
+    const subtype = (acc.subtype || '').toUpperCase();
+    const name = (acc.name || '').toUpperCase();
+    
+    // Filter out Savings accounts based on multiple criteria
+    const isSavings = 
+        type === 'SAVINGS' || 
+        type === 'SAVINGS_ACCOUNT' ||
+        subtype === 'SAVINGS' || 
+        subtype === 'SAVINGS_ACCOUNT' ||
+        name.includes('POUPANÇA') ||
+        name.includes('POUPANCA');
+
+    return !isSavings;
+  });
+  
+  // Initialize or fallback to the first account if selection is invalid or null
+  const [selectedCheckingAccountId, setSelectedCheckingAccountId] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('cardsIncludedInExpenses');
-      if (stored) {
-        try {
-          const arr: string[] = JSON.parse(stored);
-          return new Set(arr);
-        } catch (e) {
-          console.error('Failed to parse persisted cardsIncludedInExpenses', e);
-        }
+      const stored = localStorage.getItem('finances_selected_checking_account');
+      // If we have a stored ID, check if it's still valid in the filtered list (optimization: hard to check here without list, so just return it)
+      return stored; 
+    }
+    return null;
+  });
+  
+  // Ensure we always have a valid selection if accounts exist
+  useEffect(() => {
+    if (checkingAccounts.length > 0) {
+      const isValid = selectedCheckingAccountId && checkingAccounts.some(acc => acc.id === selectedCheckingAccountId);
+      if (!isValid) {
+        setSelectedCheckingAccountId(checkingAccounts[0].id);
       }
     }
-    return new Set();
-  });
-  // Persist changes to localStorage
+  }, [checkingAccounts, selectedCheckingAccountId]);
+  
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const arr = Array.from(cardsIncludedInExpenses);
-      localStorage.setItem('cardsIncludedInExpenses', JSON.stringify(arr));
+      if (selectedCheckingAccountId) {
+        localStorage.setItem('finances_selected_checking_account', selectedCheckingAccountId);
+      } else {
+        localStorage.removeItem('finances_selected_checking_account');
+      }
     }
-  }, [cardsIncludedInExpenses]);
-  const checkingConfigRef = useRef<HTMLDivElement>(null);
-  const balanceConfigRef = useRef<HTMLDivElement>(null);
-  const creditCardConfigRef = useRef<HTMLDivElement>(null);
-  const creditCardConfigButtonRef = useRef<HTMLButtonElement>(null);
+  }, [selectedCheckingAccountId]);
 
-  const checkingAccounts = accountBalances?.checkingAccounts || [];
-  const [selectedCheckingAccountId, setSelectedCheckingAccountId] = useState<string | null>(null);
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
   // Calculate credit card invoice for the filtered month
@@ -264,6 +285,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     ? checkingAccounts.find(acc => acc.id === selectedCheckingAccountId)
     : null;
 
+  // Calculate adjusted Total Balance based on selected checking account
+  const adjustedTotalBalance = useMemo(() => {
+    // Safety check
+    if (!accountBalances || !toggles) return stats.totalBalance;
+
+    // Check if Checking is included in the global stats calculation
+    // Note: App.tsx requires BOTH includeCheckingInStats AND includeOpenFinanceInStats to be true
+    const isCheckingIncluded = toggles.includeChecking;
+
+    if (!isCheckingIncluded) {
+      return stats.totalBalance;
+    }
+
+    const totalChecking = accountBalances.checking || 0;
+    
+    // Adjust: Remove total, add displayed (which is selected or total)
+    return stats.totalBalance - totalChecking + displayedCheckingBalance;
+  }, [stats.totalBalance, toggles, accountBalances, displayedCheckingBalance]);
+
   // Helper to translate account type/subtype to Portuguese
   const getAccountTypeLabel = (acc: ConnectedAccount) => {
     const type = (acc.type || '').toUpperCase();
@@ -281,38 +321,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     // Fallback: mostra o subtype ou type
     return subtype || type || 'Conta Corrente';
   };
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (checkingConfigRef.current && !checkingConfigRef.current.contains(event.target as Node)) {
-        setIsCheckingConfigOpen(false);
-      }
-      if (balanceConfigRef.current && !balanceConfigRef.current.contains(event.target as Node)) {
-        setIsBalanceConfigOpen(false);
-      }
-      if (creditCardConfigRef.current && !creditCardConfigRef.current.contains(event.target as Node)) {
-        setIsCreditCardConfigOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  // Close dropdowns on scroll to prevent position mismatch
-  // But ignore scroll inside the dropdown itself
-  useEffect(() => {
-    const handleScroll = (e: Event) => {
-      // If scrolling inside the credit card config dropdown, don't close it
-      if (creditCardConfigRef.current && creditCardConfigRef.current.contains(e.target as Node)) {
-        return;
-      }
-      if (isCheckingConfigOpen) setIsCheckingConfigOpen(false);
-      if (isBalanceConfigOpen) setIsBalanceConfigOpen(false);
-      if (isCreditCardConfigOpen) setIsCreditCardConfigOpen(false);
-    };
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isCheckingConfigOpen, isBalanceConfigOpen, isCreditCardConfigOpen]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
@@ -393,126 +401,70 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-1">
-                <div className="relative" ref={checkingConfigRef}>
-                  <button
-                    onClick={() => setIsCheckingConfigOpen(!isCheckingConfigOpen)}
-                    className={`p-2 rounded-lg transition-colors ${isCheckingConfigOpen ? 'bg-gray-800 text-white' : 'text-gray-500 hover:text-gray-300 hover:bg-gray-800/50'}`}
-                  >
+                <Dropdown>
+                  <DropdownTrigger className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors data-[state=open]:bg-gray-800 data-[state=open]:text-white">
                     <Settings size={16} />
-                  </button>
-
-                  {/* Checking Accounts Dropdown Portal */}
-                  {isCheckingConfigOpen && createPortal(
+                  </DropdownTrigger>
+                  
+                  <DropdownContent width="w-72" align="right" portal>
+                    <DropdownLabel>Contas Correntes</DropdownLabel>
+                    
+                    {/* Toggle include in balance */}
                     <div
-                      className="fixed inset-0 z-[9999]"
-                      onMouseDown={(e) => {
-                        if (e.target === e.currentTarget) {
-                          setIsCheckingConfigOpen(false);
-                        }
-                      }}
+                      onClick={() => toggles.setIncludeChecking(!toggles.includeChecking)}
+                      className="flex items-center justify-between px-2.5 py-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group mx-1 my-1"
                     >
-                      <div
-                        className="absolute w-72 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 max-h-[300px] overflow-auto no-scrollbar animate-dropdown-open"
-                        style={{
-                          top: (checkingConfigRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
-                          right: window.innerWidth - (checkingConfigRef.current?.getBoundingClientRect().right ?? 0),
-                        }}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="px-2 py-1.5 border-b border-gray-800 mb-1">
-                          <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Contas Correntes</span>
+                      <div className="flex items-center gap-2">
+                        <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400">
+                          <Wallet size={14} />
                         </div>
-
-                        {/* Toggle include in balance */}
-                        <div
-                          onClick={() => toggles.setIncludeChecking(!toggles.includeChecking)}
-                          className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group mb-2"
-                        >
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400">
-                              <Wallet size={14} />
-                            </div>
-                            <span className="text-sm text-gray-300 group-hover:text-white">Incluir no Saldo</span>
-                          </div>
-                          <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.includeChecking ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.includeChecking ? 'translate-x-5' : 'translate-x-1'}`} />
-                          </div>
-                        </div>
-
-                        {/* List of accounts */}
-                        <div className="border-t border-gray-800 pt-2">
-                          <p className="text-[10px] text-gray-600 uppercase tracking-wider px-2 mb-2">Suas Contas</p>
-                          {checkingAccounts.length === 0 ? (
-                            <p className="text-sm text-gray-500 text-center py-3">Nenhuma conta conectada</p>
-                          ) : (
-                            <div className="space-y-1">
-                              {/* "Todas as Contas" option */}
-                              {checkingAccounts.length > 1 && (
-                                <div
-                                  onClick={() => setSelectedCheckingAccountId(null)}
-                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === null
-                                    ? 'bg-emerald-900/30 border border-emerald-500/30'
-                                    : 'bg-gray-800/30 hover:bg-gray-800'
-                                    }`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
-                                      <Building size={14} />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-sm text-white font-medium truncate">Todas as Contas</p>
-                                      <p className="text-[10px] text-gray-500 truncate">{checkingAccounts.length} contas somadas</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <p className={`text-sm font-bold font-mono flex-shrink-0 ${(accountBalances?.checking ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                      {formatCurrency(accountBalances?.checking ?? 0)}
-                                    </p>
-                                    {selectedCheckingAccountId === null && (
-                                      <Check size={14} className="text-emerald-400" />
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-
-                              {/* Individual accounts */}
-                              {checkingAccounts.map((acc) => (
-                                <div
-                                  key={acc.id}
-                                  onClick={() => setSelectedCheckingAccountId(acc.id)}
-                                  className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === acc.id
-                                    ? 'bg-emerald-900/30 border border-emerald-500/30'
-                                    : 'bg-gray-800/50 hover:bg-gray-800'
-                                    }`}
-                                >
-                                  <div className="flex items-center gap-2 min-w-0">
-                                    <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
-                                      <Building size={14} />
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-sm text-white font-medium truncate">{acc.institution || acc.name || 'Conta'}</p>
-                                      <p className="text-[10px] text-gray-500 truncate">{getAccountTypeLabel(acc)}</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <p className={`text-sm font-bold font-mono flex-shrink-0 ${(acc.balance ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                                      {formatCurrency(acc.balance ?? 0)}
-                                    </p>
-                                    {selectedCheckingAccountId === acc.id && (
-                                      <Check size={14} className="text-emerald-400" />
-                                    )}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                        <span className="text-sm text-gray-300 group-hover:text-white">Incluir no Saldo</span>
                       </div>
-                    </div>,
-                    document.body
-                  )}
-                </div>
+                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${toggles.includeChecking ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${toggles.includeChecking ? 'translate-x-5' : 'translate-x-1'}`} />
+                      </div>
+                    </div>
+
+                    <DropdownSeparator />
+                    
+                    <DropdownLabel>Suas Contas</DropdownLabel>
+                    
+                    {checkingAccounts.length === 0 ? (
+                       <div className="px-3 py-2 text-sm text-gray-500 text-center">Nenhuma conta conectada</div>
+                    ) : (
+                      <div className="p-1 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                        {checkingAccounts.map((acc) => (
+                          <div
+                            key={acc.id}
+                            onClick={() => setSelectedCheckingAccountId(acc.id)}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === acc.id
+                              ? 'bg-emerald-900/30 border border-emerald-500/30'
+                              : 'bg-transparent hover:bg-gray-800'
+                              }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
+                                <Building size={14} />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-sm text-white font-medium truncate">{acc.institution || acc.name || 'Conta'}</p>
+                                <p className="text-[10px] text-gray-500 truncate">{getAccountTypeLabel(acc)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-bold font-mono flex-shrink-0 ${(acc.balance ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                                {formatCurrency(acc.balance ?? 0)}
+                              </p>
+                              {selectedCheckingAccountId === acc.id && (
+                                <Check size={14} className="text-emerald-400" />
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </DropdownContent>
+                </Dropdown>
               </div>
             </div>
           </div>
@@ -658,22 +610,80 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                         {isCurrent && (
                           <div className="flex items-center gap-2">
                             {/* Settings Button */}
-                            <motion.button
-                              ref={creditCardConfigButtonRef}
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setIsCreditCardConfigOpen(!isCreditCardConfigOpen);
-                              }}
-                              className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
-                                ? 'bg-orange-900/50 text-orange-400'
-                                : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-orange-400'
-                                }`}
-                              title="Configurações do cartão"
-                            >
-                              <Settings size={14} />
-                            </motion.button>
+                             <Dropdown>
+                                <DropdownTrigger asChild>
+                                  <motion.button
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+                                    className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
+                                      ? 'bg-orange-900/50 text-orange-400'
+                                      : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-orange-400'
+                                      }`}
+                                    title="Configurações do cartão"
+                                  >
+                                    <Settings size={14} />
+                                  </motion.button>
+                                </DropdownTrigger>
+                                
+                                <DropdownContent width="w-[280px]" align="right" className="max-h-[300px] overflow-y-auto custom-scrollbar" portal>
+                                   <DropdownLabel>Configurações do Cartão</DropdownLabel>
+                                   <div className="px-2.5 py-1">
+                                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2 font-medium">Fatura nas Despesas</p>
+                                      <div className="space-y-1">
+                                        {creditAccounts.map((card, index) => {
+                                          const cardInvoice = cardInvoices[index];
+                                          const isEnabled = cardsIncludedInExpenses.has(card.id);
+
+                                          const toggleCard = () => {
+                                            const newSet = new Set(cardsIncludedInExpenses);
+                                            if (isEnabled) newSet.delete(card.id);
+                                            else newSet.add(card.id);
+                                            
+                                            // Update parent state (App.tsx)
+                                            if (toggles?.setEnabledCreditCardIds) {
+                                              toggles.setEnabledCreditCardIds(Array.from(newSet));
+                                            }
+                                          };
+
+                                          return (
+                                            <div
+                                              key={`expense-${card.id}`}
+                                              onClick={(e) => { e.stopPropagation(); toggleCard(); }}
+                                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isEnabled ? 'bg-orange-900/30 border border-orange-500/30' : 'bg-transparent hover:bg-gray-800'
+                                                }`}
+                                            >
+                                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                <div className={`p-1 rounded ${isEnabled ? 'bg-orange-900/30 text-orange-400' : 'bg-gray-700/50 text-gray-500'}`}>
+                                                  <TrendingDown size={10} />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="text-xs text-white font-medium truncate">{card.institution || card.name || 'Cartão'}</p>
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 font-mono">{formatCurrency(cardInvoice?.invoice || 0)}</p>
+                                              </div>
+                                              {isEnabled && <Check size={12} className="text-orange-400 ml-1" />}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                   </div>
+                                   
+                                   {/* Summary */}
+                                    {cardsIncludedInExpenses.size > 0 && (
+                                      <>
+                                        <DropdownSeparator />
+                                        <div className="px-2.5 py-2">
+                                          <p className="text-orange-400 text-xs">
+                                            + {formatCurrency(cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0))} será somado às despesas
+                                          </p>
+                                        </div>
+                                      </>
+                                    )}
+
+                                </DropdownContent>
+                             </Dropdown>
+
                             {/* Swipe Hint */}
                             {creditAccounts.length > 1 && !isDragging && (
                               <motion.div
@@ -817,88 +827,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         </div>
       )}
 
-      {/* Credit Card Config Dropdown */}
-      {isCreditCardConfigOpen && creditCardConfigButtonRef.current && createPortal(
-        <div
-          ref={creditCardConfigRef}
-          className="fixed z-[9999] bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-3 w-[300px] animate-dropdown-open max-h-[400px] overflow-y-auto scrollbar-hide"
-          style={{
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-            top: creditCardConfigButtonRef.current.getBoundingClientRect().bottom + 8,
-            left: Math.max(
-              10,
-              creditCardConfigButtonRef.current.getBoundingClientRect().right - 300
-            ),
-          }}
-        >
-          {/* Header */}
-          <div className="flex items-center gap-2 mb-3 pb-2 border-b border-gray-700/50">
-            <div className="p-1.5 rounded bg-orange-900/30 text-orange-400">
-              <CreditCard size={14} />
-            </div>
-            <p className="text-xs text-gray-400 font-medium">Configurações do Cartão</p>
-          </div>
-
-          {/* Section 1: Invoice in Expenses */}
-          <div className="mb-3">
-            <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2 font-medium">Fatura nas Despesas</p>
-            <div className="space-y-1.5">
-              {creditAccounts.map((card, index) => {
-                const cardInvoice = cardInvoices[index];
-                const isEnabled = cardsIncludedInExpenses.has(card.id);
-
-                const toggleCard = () => {
-                  const newSet = new Set(cardsIncludedInExpenses);
-                  if (isEnabled) newSet.delete(card.id);
-                  else newSet.add(card.id);
-                  setCardsIncludedInExpenses(newSet);
-                };
-
-                return (
-                  <div
-                    key={`expense-${card.id}`}
-                    onClick={toggleCard}
-                    className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isEnabled ? 'bg-orange-900/30 border border-orange-500/30' : 'bg-gray-800/50 hover:bg-gray-800'
-                      }`}
-                  >
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className={`p-1 rounded ${isEnabled ? 'bg-orange-900/30 text-orange-400' : 'bg-gray-700/50 text-gray-500'}`}>
-                        <TrendingDown size={10} />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-white font-medium truncate">{card.institution || card.name || 'Cartão'}</p>
-                      </div>
-                      <p className="text-[10px] text-gray-500 font-mono">{formatCurrency(cardInvoice?.invoice || 0)}</p>
-                    </div>
-                    {isEnabled && <Check size={12} className="text-orange-400 ml-1" />}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Summary */}
-          {cardsIncludedInExpenses.size > 0 && (
-            <div className="mt-3 pt-2 border-t border-gray-700/50">
-              <p className="text-orange-400 text-xs">
-                + {formatCurrency(cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0))} será somado às despesas
-              </p>
-            </div>
-          )}
-        </div>,
-        document.body
-      )}
-
-
-
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
             <p className="text-sm text-gray-400 font-medium">{labels?.balance || 'Saldo Total'}</p>
-            <p className={`text-2xl font-bold mt-1 ${stats.totalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
+            <p className={`text-2xl font-bold mt-1 ${adjustedTotalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
               <NumberFlow
-                value={stats.totalBalance}
+                value={adjustedTotalBalance}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
@@ -937,7 +872,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
             </div>
             <p className="text-2xl font-bold mt-1 text-red-400">
               <NumberFlow
-                value={stats.totalExpense + (!hideCards ? cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0) : 0)}
+                value={stats.totalExpense}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />

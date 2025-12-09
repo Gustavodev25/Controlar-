@@ -13,6 +13,7 @@ import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
 import { ConfirmationCard, CurrencyInput } from './UIComponents';
 import { FamilyDashboard } from './FamilyDashboard';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
@@ -1870,85 +1871,108 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </div>
 
                         <div className="space-y-3">
-                           <button
-                              onClick={handleExportData}
-                              className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group"
-                           >
-                              <div className="flex items-center gap-4">
-                                 <div className="p-3 bg-green-900/20 rounded-xl text-green-400 group-hover:bg-green-900/30 transition-colors">
-                                    <FileText size={24} />
-                                 </div>
-                                 <div className="text-left">
-                                    <h4 className="text-white font-bold flex items-center gap-2">Exportar CSV</h4>
-                                    <p className="text-sm text-gray-500">Baixar todas as transações em formato planilha</p>
-                                 </div>
-                              </div>
-                              <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />
-                           </button>
+                           <Dropdown className="w-full">
+                              <DropdownTrigger className="w-full">
+                                 <button className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group">
+                                    <div className="flex items-center gap-4">
+                                       <div className="p-3 bg-emerald-900/20 rounded-xl text-emerald-400 group-hover:bg-emerald-900/30 transition-colors">
+                                          <Download size={24} />
+                                       </div>
+                                       <div className="text-left">
+                                          <h4 className="text-white font-bold flex items-center gap-2">Exportar Dados</h4>
+                                          <p className="text-sm text-gray-500">Baixar suas transações e relatórios</p>
+                                       </div>
+                                    </div>
+                                    <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors rotate-90" />
+                                 </button>
+                              </DropdownTrigger>
 
-                           <button
-                              onClick={() => {
-                                 if (plan === 'starter') {
-                                     toast.error("Relatórios avançados disponíveis no plano Plus.");
-                                     return;
-                                 }
-                                 if (transactions.length === 0) {
-                                    toast.error("Sem dados para exportar.");
-                                    return;
-                                 }
-                                 // Generate detailed report
-                                 const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                                 const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                                 const balance = totalIncome - totalExpense;
+                              <DropdownContent width="w-full" align="left" portal>
+                                 <DropdownLabel>Opções de Exportação</DropdownLabel>
+                                 <DropdownItem
+                                    icon={FileText}
+                                    onClick={() => {
+                                       if (transactions.length === 0) {
+                                          toast.error("Sem transações para exportar.");
+                                          return;
+                                       }
+                                       const headers = ["Data", "Descrição", "Categoria", "Valor", "Tipo", "Status"];
+                                       const rows = transactions.map(t => {
+                                          const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
+                                          const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
+                                          return [t.date, t.description, t.category, t.amount, typeStr, statusStr].join(",");
+                                       });
+                                       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
+                                       const encodedUri = encodeURI(csvContent);
+                                       const link = document.createElement("a");
+                                       link.setAttribute("href", encodedUri);
+                                       link.setAttribute("download", "transacoes_" + toLocalISODate() + ".csv");
+                                       document.body.appendChild(link);
+                                       link.click();
+                                       document.body.removeChild(link);
+                                       toast.success("Download iniciado!");
+                                    }}
+                                 >
+                                    Exportar CSV Simples
+                                 </DropdownItem>
 
-                                 const dateStr = new Date().toLocaleString('pt-BR');
-                                 const headers = ["=== RELATÓRIO FINANCEIRO ===", "", "Gerado em: " + dateStr, "", "---", ""];
-                                 const summary = [
-                                    "RESUMO GERAL:",
-                                    "Total de Receitas: R$ " + totalIncome.toFixed(2),
-                                    "Total de Despesas: R$ " + totalExpense.toFixed(2),
-                                    "Saldo: R$ " + balance.toFixed(2),
-                                    "Total de Transações: " + transactions.length,
-                                    "",
-                                    "---",
-                                    "",
-                                    "TRANSAÇÕES DETALHADAS:",
-                                    "Data,Descrição,Categoria,Valor,Tipo,Status"
-                                 ];
-                                 const rows = transactions
-                                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                    .map(t => {
-                                       const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
-                                       const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
-                                       return t.date + ',"'+ t.description +'",' + t.category + ',' + t.amount.toFixed(2) + ',' + typeStr + ',' + statusStr;
-                                    });
+                                 <DropdownItem
+                                    icon={Download}
+                                    disabled={plan === 'starter'}
+                                    onClick={() => {
+                                       if (plan === 'starter') {
+                                          toast.error("Relatórios avançados disponíveis no plano Plus.");
+                                          return;
+                                       }
+                                       if (transactions.length === 0) {
+                                          toast.error("Sem dados para exportar.");
+                                          return;
+                                       }
+                                       // Generate detailed report
+                                       const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
+                                       const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
+                                       const balance = totalIncome - totalExpense;
 
-                                 const content = [...headers, ...summary, ...rows].join("\n");
-                                 const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-                                 const link = document.createElement("a");
-                                 link.href = URL.createObjectURL(blob);
-                                 link.setAttribute("download", "relatorio_financeiro_" + toLocalISODate() + ".csv");
-                                 document.body.appendChild(link);
-                                 link.click();
-                                 document.body.removeChild(link);
-                                 toast.success("Relatório gerado com sucesso!");
-                              }}
-                              className={`w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between transition-colors group ${plan === 'starter' ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-900'}`}
-                           >
-                              <div className="flex items-center gap-4">
-                                 <div className={`p-3 rounded-xl transition-colors ${plan === 'starter' ? 'bg-gray-800 text-gray-500' : 'bg-blue-900/20 text-blue-400 group-hover:bg-blue-900/30'}`}>
-                                    <Download size={24} />
-                                 </div>
-                                 <div className="text-left">
-                                    <h4 className="text-white font-bold flex items-center gap-2">
-                                        Gerar Relatório Completo
-                                        {plan === 'starter' && <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded border border-gray-700 uppercase">Plus</span>}
-                                    </h4>
-                                    <p className="text-sm text-gray-500">Extrato detalhado com resumo financeiro</p>
-                                 </div>
-                              </div>
-                              {plan !== 'starter' && <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors" />}
-                           </button>
+                                       const dateStr = new Date().toLocaleString('pt-BR');
+                                       const headers = ["=== RELATÓRIO FINANCEIRO ===", "", "Gerado em: " + dateStr, "", "---", ""];
+                                       const summary = [
+                                          "RESUMO GERAL:",
+                                          "Total de Receitas: R$ " + totalIncome.toFixed(2),
+                                          "Total de Despesas: R$ " + totalExpense.toFixed(2),
+                                          "Saldo: R$ " + balance.toFixed(2),
+                                          "Total de Transações: " + transactions.length,
+                                          "",
+                                          "---",
+                                          "",
+                                          "TRANSAÇÕES DETALHADAS:",
+                                          "Data,Descrição,Categoria,Valor,Tipo,Status"
+                                       ];
+                                       const rows = transactions
+                                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                          .map(t => {
+                                             const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
+                                             const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
+                                             return t.date + ',"'+ t.description +'",' + t.category + ',' + t.amount.toFixed(2) + ',' + typeStr + ',' + statusStr;
+                                          });
+
+                                       const content = [...headers, ...summary, ...rows].join("\n");
+                                       const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
+                                       const link = document.createElement("a");
+                                       link.href = URL.createObjectURL(blob);
+                                       link.setAttribute("download", "relatorio_financeiro_" + toLocalISODate() + ".csv");
+                                       document.body.appendChild(link);
+                                       link.click();
+                                       document.body.removeChild(link);
+                                       toast.success("Relatório gerado com sucesso!");
+                                    }}
+                                 >
+                                    <div className="flex items-center justify-between w-full">
+                                       <span>Relatório Completo</span>
+                                       {plan === 'starter' && <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded border border-gray-700 uppercase ml-2">Plus</span>}
+                                    </div>
+                                 </DropdownItem>
+                              </DropdownContent>
+                           </Dropdown>
                         </div>
                      </div>
                   )}

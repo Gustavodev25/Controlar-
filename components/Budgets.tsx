@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign } from './Icons';
+import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign, MathMaxMin } from './Icons';
 import { Budget, Transaction, Member } from '../types';
 import * as dbService from '../services/database';
 import { useToasts } from './Toast';
@@ -56,7 +56,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
     const handleOpenModal = (budget?: Budget) => {
         if (!budget && isLimitReached) {
-            toast.error("Plano Starter limitado a 2 orçamentos. Faça upgrade para criar mais.");
+            toast.error("Plano Starter limitado a 2 metas. Faça upgrade para criar mais.");
             return;
         }
         
@@ -96,22 +96,22 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
         try {
             if (editingBudget) {
                 await dbService.updateBudget(userId, { ...budgetData, id: editingBudget.id });
-                toast.success("Orçamento atualizado!");
+                toast.success("Meta atualizada!");
             } else {
                 await dbService.addBudget(userId, budgetData);
-                toast.success("Orçamento criado!");
+                toast.success("Meta criada!");
             }
             handleCloseModal();
         } catch (error) {
             console.error(error);
-            toast.error("Erro ao salvar orçamento.");
+            toast.error("Erro ao salvar meta.");
         }
     };
 
     const handleDelete = async () => {
         if (deleteId) {
             await dbService.deleteBudget(userId, deleteId);
-            toast.success("Orçamento removido.");
+            toast.success("Meta removida.");
             setDeleteId(null);
         }
     };
@@ -169,7 +169,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
         <div className="space-y-6 animate-fade-in pb-20 lg:pb-0">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-2xl font-bold text-white">Orçamentos Mensais</h2>
+                    <h2 className="text-2xl font-bold text-white">Metas Mensais</h2>
                     <p className="text-gray-400 text-sm">Acompanhe seus gastos por categoria.</p>
                 </div>
                 <button
@@ -184,7 +184,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                     `}
                 >
                     <Plus size={18} />
-                    <span className="hidden sm:inline">Novo Orçamento</span>
+                    <span className="hidden sm:inline">Nova Meta</span>
                 </button>
             </div>
 
@@ -200,7 +200,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-3">
                                 <div className="p-2.5 bg-gray-800 rounded-xl text-gray-300">
-                                    <Target size={20} />
+                                    <MathMaxMin size={20} />
                                 </div>
                                 <div>
                                     <h3 className="font-bold text-white">{budget.category}</h3>
@@ -262,8 +262,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 {filteredBudgets.length === 0 && (
                     <div className="col-span-full">
                         <EmptyState
-                            title="Nenhum orçamento definido"
-                            description="Crie orçamentos para acompanhar seus gastos por categoria e manter suas finanças organizadas."
+                            title="Nenhuma meta definida"
+                            description="Crie metas para acompanhar seus gastos por categoria e manter suas finanças organizadas."
                         />
                     </div>
                 )}
@@ -293,10 +293,10 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                         <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-[#d97757]/20 rounded-xl text-[#d97757]">
-                                    <Target size={20} />
+                                    <MathMaxMin size={20} />
                                 </div>
                                 <h3 className="text-lg font-bold text-white">
-                                    {editingBudget ? 'Editar Orçamento' : 'Novo Orçamento'}
+                                    {editingBudget ? 'Editar Meta' : 'Nova Meta'}
                                 </h3>
                             </div>
                             <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
@@ -370,7 +370,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                                         className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
                                     >
                                         <Check size={18} />
-                                        Salvar Orçamento
+                                        Salvar Meta
                                     </button>
                                 </div>
                             </form>
@@ -384,7 +384,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 isOpen={!!deleteId}
                 onClose={() => setDeleteId(null)}
                 onConfirm={handleDelete}
-                title="Excluir Orçamento"
+                title="Excluir Meta"
                 description="Tem certeza? O histórico de gastos não será afetado, apenas o monitoramento."
                 isDestructive={true}
                 confirmText="Excluir"

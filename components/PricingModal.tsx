@@ -29,7 +29,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       features: [
         'Dashboard completo',
         'Lançamentos manuais',
-        'Orçamentos básicos',
+        'Metas básicas',
         'Aurora IA (limitada)',
         '1 conta bancária'
       ],

@@ -3,6 +3,9 @@ import { createPortal } from 'react-dom';
 import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building } from './Icons';
 import { useToasts } from './Toast';
 import NumberFlow from '@number-flow/react';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
+import Lottie from 'lottie-react';
+import coinAnimation from '../assets/coin.json';
 
 interface SalaryManagerProps {
   baseSalary: number;
@@ -61,9 +64,6 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [isAnimating, setIsAnimating] = useState(false);
 
   // State for Config Dropdown
-  const [isConfigOpen, setIsConfigOpen] = useState(false);
-  const configRef = useRef<HTMLDivElement>(null);
-  
   const [showConfigTooltip, setShowConfigTooltip] = useState(() => {
       if (typeof window !== 'undefined') {
           return !localStorage.getItem('hasSeenConfigTooltip_v2');
@@ -78,17 +78,6 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   };
 
   const toast = useToasts();
-
-  // Close config dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (configRef.current && !configRef.current.contains(event.target as Node)) {
-        setIsConfigOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
 
   // Modal Logic State
   const [activeTab, setActiveTab] = useState<'simple' | 'calculator' | 'clt'>('simple');
@@ -366,20 +355,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
         {/* Switch Modo Manual / Modo Pro */}
         <div className="flex items-center gap-2">
            {/* Config Dropdown Trigger */}
-           {onToggleOpenFinance && (
-            <div className="relative" ref={configRef}>
-              <button
-                onClick={() => setIsConfigOpen(!isConfigOpen)}
-                className={`p-2 px-3 rounded-xl border transition-all flex items-center gap-2 ${
-                  isConfigOpen || includeOpenFinance
-                    ? 'bg-gray-900 border-gray-800 text-gray-400 hover:text-white'
-                    : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-400'
-                }`}
-                title="Configurações globais"
-              >
+           {onToggleOpenFinance && isProMode && (
+            <Dropdown>
+              <DropdownTrigger className={`p-2 px-3 rounded-xl border transition-all flex items-center gap-2 data-[state=open]:bg-gray-900 data-[state=open]:border-gray-800 data-[state=open]:text-gray-400 data-[state=open]:hover:text-white ${includeOpenFinance ? 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-400' : 'bg-gray-900 border-gray-800 text-gray-500 hover:text-gray-400'}`}>
                 <Settings size={16} />
                 <span className="text-xs font-medium">Configuração Global</span>
-              </button>
+              </DropdownTrigger>
 
               {/* Tooltip */}
               {showConfigTooltip && (
@@ -397,49 +378,31 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                 </div>
               )}
 
-              {isConfigOpen && createPortal(
-                <div
-                  className="fixed inset-0 z-[9999]"
-                  onMouseDown={(e) => {
-                    if (e.target === e.currentTarget) setIsConfigOpen(false);
-                  }}
-                >
-                  <div
-                    className="absolute w-64 bg-gray-900 border border-gray-700 rounded-xl shadow-2xl p-2 animate-dropdown-open"
-                    style={{
-                      top: (configRef.current?.getBoundingClientRect().bottom ?? 0) + 8,
-                      right: window.innerWidth - (configRef.current?.getBoundingClientRect().right ?? 0),
-                    }}
-                    onMouseDown={(e) => e.stopPropagation()}
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50">
+              <DropdownContent width="w-64" align="right" portal>
+                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50 px-2 pt-1">
                       <div className="p-1.5 rounded bg-orange-900/30 text-orange-400">
                         <Settings size={12} />
                       </div>
                       <p className="text-xs text-gray-400 font-medium">Configuração Global</p>
-                    </div>
-                    <div
-                      onClick={() => {
-                        onToggleOpenFinance(!includeOpenFinance);
-                      }}
-                      className="flex items-center justify-between p-2 hover:bg-gray-800 rounded-lg cursor-pointer transition-colors group"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className={`p-1.5 rounded bg-blue-900/30 text-blue-400`}>
-                          <Building size={14} />
-                        </div>
-                        <span className="text-sm text-gray-300 group-hover:text-white">Incluir Open Finance</span>
-                      </div>
-                      <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${includeOpenFinance ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                        <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${includeOpenFinance ? 'translate-x-5' : 'translate-x-1'}`} />
-                      </div>
-                    </div>
                   </div>
-                </div>,
-                document.body
-              )}
-            </div>
+                  
+                  <DropdownItem 
+                    onClick={() => onToggleOpenFinance(!includeOpenFinance)}
+                  >
+                      <div className="flex items-center justify-between w-full">
+                        <div className="flex items-center gap-2">
+                            <div className={`p-1.5 rounded bg-blue-900/30 text-blue-400`}>
+                            <Building size={14} />
+                            </div>
+                            <span className="text-sm">Incluir Open Finance</span>
+                        </div>
+                        <div className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-300 ${includeOpenFinance ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                            <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${includeOpenFinance ? 'translate-x-5' : 'translate-x-1'}`} />
+                        </div>
+                      </div>
+                  </DropdownItem>
+              </DropdownContent>
+            </Dropdown>
           )}
 
           <div className="flex items-center gap-3 bg-gray-900 border border-gray-800 rounded-xl px-3 py-2">
@@ -649,17 +612,20 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
                     <div className="flex flex-wrap gap-2 mt-2">
                       <span className="text-xs text-emerald-400 flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
-                        <TrendingUp size={10} /> Baseado em transações
+                        <div className="w-6 h-6 flex items-center justify-center">
+                          <Lottie animationData={coinAnimation} loop={true} />
+                        </div>
+                        Analisado através das transações
                       </span>
                     </div>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-1">
                     <span className="text-xl font-medium text-gray-400 flex items-center gap-2">
-                      <AlertCircle size={20} className="text-gray-500" />
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 animate-spin"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5" /></svg>
                       Aguardando dados
                     </span>
-                    <span className="text-xs text-gray-500 ml-7">
+                    <span className="text-xs text-gray-500 ml-8">
                       Conecte suas contas para ver a estimativa
                     </span>
                   </div>
@@ -725,7 +691,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           </div>
 
           {/* Salary Insights Grid */}
-          {baseSalary > 0 && !isEditing && (
+          {baseSalary > 0 && !isEditing && !isProMode && (
             <div className="mt-6 grid grid-cols-2 gap-2 animate-fade-in">
               {/* Hourly Rate Card */}
               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
