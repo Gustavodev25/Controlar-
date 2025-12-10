@@ -26,9 +26,12 @@ const COLORS = ['#d97757', '#e68e70', '#c56a4d', '#b55a3d', '#767775', '#4a4b49'
 export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading = false }) => {
   // Process data for Category Pie Chart
   const categoryData = React.useMemo(() => {
-    const expenses = transactions.filter(t => t.type === 'expense');
+    // Robust check: explicit 'expense' type OR negative amount
+    const expenses = transactions.filter(t => t.type === 'expense' || t.amount < 0);
     const grouped = expenses.reduce((acc, curr) => {
-      acc[curr.category] = (acc[curr.category] || 0) + curr.amount;
+      // Always use absolute amount for visualization
+      const val = Math.abs(curr.amount);
+      acc[curr.category] = (acc[curr.category] || 0) + val;
       return acc;
     }, {} as Record<string, number>);
 
@@ -45,8 +48,14 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
     let expense = 0;
     
     transactions.forEach(t => {
-      if (t.type === 'income') income += t.amount;
-      else expense += t.amount;
+      // Income: explicit type 'income' AND positive amount (excludes refunds labeled as income but negative?)
+      // Actually simpler: Income is positive, Expense is negative or explicit expense.
+      
+      if (t.type === 'income' && t.amount > 0) {
+        income += t.amount;
+      } else if (t.type === 'expense' || t.amount < 0) {
+        expense += Math.abs(t.amount);
+      }
     });
     
     return [
@@ -75,11 +84,11 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
   if (isLoading) {
     return (
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 animate-pulse">
-        <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
+        <div className="bg-[#30302E] p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
            <div className="h-4 lg:h-5 w-32 lg:w-40 bg-gray-800 rounded"></div>
            <div className="flex-1 bg-gray-800/50 rounded-full w-40 h-40 lg:w-48 lg:h-48 mx-auto"></div>
         </div>
-        <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
+        <div className="bg-[#30302E] p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col gap-4">
            <div className="h-4 lg:h-5 w-40 lg:w-52 bg-gray-800 rounded"></div>
            <div className="flex-1 flex items-end gap-4 px-4 lg:px-8">
              <div className="w-1/2 h-1/2 bg-gray-800 rounded-t"></div>
@@ -93,7 +102,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6 mb-6 animate-fade-in">
       {/* Pie Chart - Categories */}
-      <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
+      <div className="bg-[#30302E] p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
         <h3 className="text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 lg:mb-4">Despesas por Categoria</h3>
         <div className="flex-1 min-h-0 flex items-center">
           <ResponsiveContainer width="100%" height="100%">
@@ -109,11 +118,11 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
                 dataKey="value"
               >
                 {categoryData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="#2f302e" strokeWidth={2} />
+                  <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="#262624" strokeWidth={2} />
                 ))}
               </Pie>
               <Tooltip 
-                formatter={(value: number) => `R$ ${value.toFixed(2)}`} 
+                formatter={(value: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value)} 
                 contentStyle={{ backgroundColor: '#1a1a19', borderColor: '#4a4b49', color: '#faf9f5', borderRadius: '8px', fontSize: '12px' }}
                 itemStyle={{ color: '#faf9f5' }}
               />
@@ -129,7 +138,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
       </div>
 
       {/* Bar Chart - Income vs Expense */}
-      <div className="bg-gray-900 p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
+      <div className="bg-[#30302E] p-4 lg:p-6 rounded-xl shadow-sm border border-gray-800 h-72 lg:h-80 flex flex-col">
         <h3 className="text-xs lg:text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 lg:mb-4">Comparativo: Receitas vs Despesas</h3>
         <div className="flex-1 min-h-0">
           <ResponsiveContainer width="100%" height="100%">
@@ -158,7 +167,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
               />
               <Tooltip 
                 cursor={{ fill: '#4a4b49' }}
-                formatter={(value: number) => [`R$ ${value.toFixed(2)}`, 'Total']}
+                formatter={(value: number) => [new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value), 'Total']}
                 contentStyle={{ backgroundColor: '#1a1a19', borderColor: '#4a4b49', color: '#faf9f5', borderRadius: '8px', fontSize: '12px' }}
                 itemStyle={{ color: '#faf9f5' }}
               />

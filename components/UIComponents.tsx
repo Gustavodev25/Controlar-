@@ -1,5 +1,61 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, type JSX } from 'react';
+import { motion } from 'framer-motion';
 import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X } from './Icons';
+
+// --- UTILS ---
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(' ');
+}
+
+// --- TEXT SHIMMER ---
+interface TextShimmerProps {
+  children: string;
+  as?: React.ElementType;
+  className?: string;
+  duration?: number;
+  spread?: number;
+}
+
+export function TextShimmer({
+  children,
+  as: Component = 'p',
+  className,
+  duration = 2,
+  spread = 2,
+}: TextShimmerProps) {
+  const MotionComponent = motion(Component as keyof JSX.IntrinsicElements);
+
+  const dynamicSpread = useMemo(() => {
+    return children.length * spread;
+  }, [children, spread]);
+
+  return (
+    <MotionComponent
+      className={cn(
+        'relative inline-block bg-[length:250%_100%,auto] bg-clip-text',
+        'text-transparent [--base-color:#a1a1aa] [--base-gradient-color:#000]',
+        '[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--base-gradient-color),#0000_calc(50%+var(--spread)))] [background-repeat:no-repeat,padding-box]',
+        'dark:[--base-color:#71717a] dark:[--base-gradient-color:#ffffff] dark:[--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--base-gradient-color),#0000_calc(50%+var(--spread)))]',
+        className
+      )}
+      initial={{ backgroundPosition: '100% center' }}
+      animate={{ backgroundPosition: '0% center' }}
+      transition={{
+        repeat: Infinity,
+        duration,
+        ease: 'linear',
+      }}
+      style={
+        {
+          '--spread': `${dynamicSpread}px`,
+          backgroundImage: `var(--bg), linear-gradient(var(--base-color), var(--base-color))`,
+        } as React.CSSProperties
+      }
+    >
+      {children}
+    </MotionComponent>
+  );
+}
 
 // --- ESTILOS DAS ANIMAÇÕES ---
 // Você pode mover isso para o seu arquivo CSS global se preferir
@@ -107,7 +163,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         if (inputValue !== value && value !== '') {
-            setInputValue(value);
+          setInputValue(value);
         }
       }
     };
@@ -115,7 +171,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [inputValue, value]);
 
-  const filteredOptions = (options || []).filter(opt => 
+  const filteredOptions = (options || []).filter(opt =>
     (opt || "").toLowerCase().includes((inputValue || "").toLowerCase())
   );
 
@@ -135,9 +191,9 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <InjectStyles />
-      <div 
+      <div
         className={`
-          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 transition-all group focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)]
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 transition-all group focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)] focus-within:ring-2 focus-within:ring-[#d97757]/20
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
       >
@@ -154,7 +210,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
       </div>
 
       {isOpen && (inputValue || filteredOptions.length > 0) && (
-        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
+        <div className="absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
           {filteredOptions.length > 0 ? (
             filteredOptions.map((opt) => (
               <div
@@ -170,7 +226,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
               </div>
             ))
           ) : null}
-          
+
           {!exactMatch && inputValue.trim() !== '' && (
             <div
               onClick={() => handleSelect(inputValue)}
@@ -201,11 +257,13 @@ interface CustomSelectProps {
   icon?: React.ReactNode;
 }
 
+import { AnimatePresence } from 'framer-motion';
+
 export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder, className = "", icon }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const normalizedOptions: Option[] = options.map(opt => 
+  const normalizedOptions: Option[] = options.map(opt =>
     typeof opt === 'string' ? { value: opt, label: opt } : opt
   );
 
@@ -223,8 +281,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
-      <InjectStyles />
-      <div 
+      <div
         onClick={() => setIsOpen(!isOpen)}
         className={`
           w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center justify-between cursor-pointer transition-all
@@ -240,25 +297,48 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
         <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (
-        <div className="absolute z-50 w-full mt-2 bg-[#2f302e] border border-[#4a4b49] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
-          {normalizedOptions.map((opt) => (
-            <div
-              key={String(opt.value)}
-              onClick={() => {
-                onChange(String(opt.value));
-                setIsOpen(false);
-              }}
-              className={`
-                px-4 py-2.5 text-sm cursor-pointer transition-colors
-                ${String(value) === String(opt.value) ? 'bg-[#d97757]/20 text-[#d97757]' : 'text-gray-300 hover:bg-gray-800'}
-              `}
-            >
-              {opt.label}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+            className="absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 max-h-60 overflow-y-auto custom-scrollbar"
+          >
+            <div className="p-1">
+              {normalizedOptions.map((opt, index) => (
+                <motion.div
+                  key={String(opt.value)}
+                  initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
+                  animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.03,
+                    ease: "easeInOut",
+                    type: "spring",
+                    stiffness: 200,
+                    damping: 20
+                  }}
+                  onClick={() => {
+                    onChange(String(opt.value));
+                    setIsOpen(false);
+                  }}
+                  className={`
+                    px-3 py-2.5 text-sm cursor-pointer rounded-lg transition-colors flex items-center justify-between
+                    ${String(value) === String(opt.value)
+                      ? 'bg-[#d97757]/20 text-[#d97757]'
+                      : 'text-gray-300 hover:bg-white/10'}
+                  `}
+                >
+                  <span className="font-medium">{opt.label}</span>
+                  {String(value) === String(opt.value) && <Check size={14} />}
+                </motion.div>
+              ))}
             </div>
-          ))}
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -274,7 +354,7 @@ interface CustomMonthPickerProps {
 export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onChange, placeholder = "Mês de referência", className = "" }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  
+
   // State to track the year currently being viewed in the popup
   const [viewYear, setViewYear] = useState<number>(() => {
     return value ? parseInt(value.split('-')[0]) : new Date().getFullYear();
@@ -333,8 +413,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
-       <InjectStyles />
-       <div 
+      <div
         onClick={() => setIsOpen(!isOpen)}
         className={`
           w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-pointer transition-all group
@@ -346,84 +425,109 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
           {getDisplayText()}
         </span>
         {value ? (
-          <div 
+          <div
             onClick={handleClear}
             className="p-1 rounded-full hover:bg-gray-700 text-gray-500 hover:text-white transition-colors"
           >
-             <X size={12} />
+            <X size={12} />
           </div>
         ) : (
           <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
         )}
       </div>
 
-      {isOpen && (
-        <div className="absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open">
-          
-          {/* Year Navigation Header */}
-          <div className="flex items-center justify-between mb-2 px-1">
-            <span className="text-lg font-bold text-white tracking-wide">{viewYear}</span>
-             <div className="flex gap-1">
-                <button 
-                  onClick={(e) => {e.preventDefault(); setViewYear(prev => prev - 1);}} 
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+            className="absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+          >
+            {/* Year Navigation Header */}
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex items-center justify-between mb-2 px-1"
+            >
+              <span className="text-lg font-bold text-white tracking-wide">{viewYear}</span>
+              <div className="flex gap-1">
+                <button
+                  onClick={(e) => { e.preventDefault(); setViewYear(prev => prev - 1); }}
                   className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <button 
-                  onClick={(e) => {e.preventDefault(); setViewYear(prev => prev + 1);}} 
+                <button
+                  onClick={(e) => { e.preventDefault(); setViewYear(prev => prev + 1); }}
                   className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
                 >
                   <ChevronRight size={16} />
                 </button>
-             </div>
-          </div>
+              </div>
+            </motion.div>
 
-          {/* Separator Line */}
-          <div className="h-px w-full bg-gray-700/50 mb-4"></div>
+            {/* Separator Line */}
+            <div className="h-px w-full bg-gray-700/50 mb-4"></div>
 
-          {/* Month Grid */}
-          <div className="grid grid-cols-4 gap-2 mb-4">
+            {/* Month Grid */}
+            <div className="grid grid-cols-4 gap-2 mb-4">
               {months.map((m, i) => {
                 const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
                 const isCurrent = currentYear === viewYear && currentMonthIndex === i;
-                
+
                 return (
-                  <button
+                  <motion.button
                     key={m}
+                    initial={{ opacity: 0, scale: 0.8, filter: "blur(5px)" }}
+                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                    transition={{
+                      delay: 0.05 + i * 0.02,
+                      type: "spring",
+                      stiffness: 200,
+                      damping: 20
+                    }}
                     onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
                     className={`
-                      h-9 rounded-lg text-sm font-medium transition-all
-                      ${isSelected 
-                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30 scale-105' 
-                        : isCurrent 
-                          ? 'bg-gray-800 text-[#d97757] border border-[#d97757]/50'
-                          : 'text-gray-300 hover:bg-gray-700 hover:text-white'}
-                    `}
+                        h-9 rounded-lg text-sm font-medium transition-all border
+                        ${isSelected
+                        ? 'bg-[#d97757]/20 text-[#d97757] border-[#d97757] shadow-lg shadow-[#d97757]/20'
+                        : isCurrent
+                          ? 'bg-gray-800 text-[#d97757] border-[#d97757]/50'
+                          : 'text-gray-300 hover:bg-gray-700 hover:text-white border-transparent'}
+                      `}
                   >
                     {m}
-                  </button>
+                  </motion.button>
                 );
               })}
-          </div>
+            </div>
 
-          {/* Footer Actions */}
-          <div className="flex justify-between items-center text-xs font-medium pt-2 border-t border-gray-700/50">
-             <button 
-               onClick={handleClear}
-               className="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
-             >
-               Limpar
-             </button>
-             <button 
-               onClick={handleCurrentMonth}
-               className="text-[#d97757] hover:text-[#e68e70] transition-colors px-2 py-1 rounded hover:bg-[#d97757]/10"
-             >
-               Este mês
-             </button>
-          </div>
-        </div>
-      )}
+            {/* Footer Actions */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.3 }}
+              className="flex justify-between items-center text-xs font-medium pt-2 border-t border-gray-700/50"
+            >
+              <button
+                onClick={handleClear}
+                className="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
+              >
+                Limpar
+              </button>
+              <button
+                onClick={handleCurrentMonth}
+                className="text-[#d97757] hover:text-[#e68e70] transition-colors px-2 py-1 rounded hover:bg-[#d97757]/10"
+              >
+                Este mês
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -440,8 +544,8 @@ interface CustomDatePickerProps {
 export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "", dropdownMode = 'absolute' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  
-  const dateValue = value ? new Date(value + 'T12:00:00') : null; 
+
+  const dateValue = value ? new Date(value + 'T12:00:00') : null;
   const [viewDate, setViewDate] = useState(dateValue || new Date());
 
   useEffect(() => {
@@ -480,13 +584,13 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     }
 
     for (let d = 1; d <= daysInMonth; d++) {
-      const isSelected = dateValue && 
-        dateValue.getDate() === d && 
-        dateValue.getMonth() === month && 
+      const isSelected = dateValue &&
+        dateValue.getDate() === d &&
+        dateValue.getMonth() === month &&
         dateValue.getFullYear() === year;
 
-      const isToday = new Date().getDate() === d && 
-        new Date().getMonth() === month && 
+      const isToday = new Date().getDate() === d &&
+        new Date().getMonth() === month &&
         new Date().getFullYear() === year;
 
       days.push(
@@ -495,9 +599,9 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
           onClick={(e) => { e.preventDefault(); handleDayClick(d); }}
           className={`
             h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-all
-            ${isSelected 
-              ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30' 
-              : isToday 
+            ${isSelected
+              ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/30'
+              : isToday
                 ? 'bg-gray-800 text-[#d97757] border border-[#d97757]/50'
                 : 'text-gray-300 hover:bg-gray-700 hover:text-white'}
           `}
@@ -519,8 +623,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
-       <InjectStyles />
-       <div 
+      <div
         onClick={() => setIsOpen(!isOpen)}
         className={`
           w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-pointer transition-all
@@ -533,30 +636,43 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
         </span>
       </div>
 
-      {isOpen && (
-        <div className={dropdownMode === 'absolute' 
-          ? "absolute z-50 mt-2 p-4 bg-[#2f302e] border border-[#4a4b49] rounded-2xl shadow-2xl w-64 animate-dropdown-open"
-          : "bg-[#2f302e]/50 border border-[#4a4b49] rounded-2xl w-full animate-expand-height"
-        }>
-          <div className="flex items-center justify-between mb-4">
-            <button onClick={(e) => {e.preventDefault(); handlePrevMonth();}} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
-              <ChevronLeft size={16} />
-            </button>
-            <span className="text-sm font-bold text-white">{months[viewDate.getMonth()]} {viewDate.getFullYear()}</span>
-            <button onClick={(e) => {e.preventDefault(); handleNextMonth();}} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
-              <ChevronRight size={16} />
-            </button>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+            className={dropdownMode === 'absolute'
+              ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+              : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4"
+            }
+          >
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex items-center justify-between mb-4"
+            >
+              <button onClick={(e) => { e.preventDefault(); handlePrevMonth(); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-sm font-bold text-white">{months[viewDate.getMonth()]} {viewDate.getFullYear()}</span>
+              <button onClick={(e) => { e.preventDefault(); handleNextMonth(); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
+                <ChevronRight size={16} />
+              </button>
+            </motion.div>
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
               {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
                 <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
               ))}
-          </div>
-          <div className="grid grid-cols-7 gap-1 place-items-center">
+            </div>
+            <div className="grid grid-cols-7 gap-1 place-items-center">
               {renderCalendar()}
-          </div>
-        </div>
-      )}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
@@ -577,10 +693,10 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onValueChan
       const formatted = value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const currentNum = parseCurrency(displayValue);
       if (Math.abs(currentNum - value) > 0.001) { // float comparison
-         setDisplayValue(formatted);
+        setDisplayValue(formatted);
       }
     } else if (value === 0) {
-       setDisplayValue('0,00');
+      setDisplayValue('0,00');
     }
   }, [value]);
 
@@ -593,18 +709,18 @@ export const CurrencyInput: React.FC<CurrencyInputProps> = ({ value, onValueChan
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value;
-    
+
     // Allow only numbers, dots and commas
     val = val.replace(/[^0-9.,]/g, '');
-    
+
     // Prevent multiple commas
     const parts = val.split(',');
     if (parts.length > 2) {
-        val = parts[0] + ',' + parts.slice(1).join('');
+      val = parts[0] + ',' + parts.slice(1).join('');
     }
 
     setDisplayValue(val);
-    
+
     const num = parseCurrency(val);
     onValueChange(num);
   };
@@ -640,11 +756,11 @@ interface ConfirmationCardProps {
   isDestructive?: boolean;
 }
 
-export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({ 
-  isOpen, onClose, onConfirm, title, description, 
-  confirmText = "Confirmar", cancelText = "Cancelar", isDestructive = false 
+export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
+  isOpen, onClose, onConfirm, title, description,
+  confirmText = "Confirmar", cancelText = "Cancelar", isDestructive = false
 }) => {
-  
+
   const [isVisible, setIsVisible] = useState(isOpen);
 
   useEffect(() => {
@@ -660,51 +776,51 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
       w-[90%] max-w-sm
       ${isOpen ? '' : 'pointer-events-none'}
     `}>
-       <InjectStyles />
-       <div className={`
+      <InjectStyles />
+      <div className={`
           bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl p-6 relative overflow-hidden
           ${isOpen ? 'animate-modal-up' : 'opacity-0 translate-y-4 transition-all duration-300 ease-in'}
        `}>
-          {/* Decorative background blur based on type */}
-          <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none ${isDestructive ? 'bg-red-500' : 'bg-[#d97757]'}`}></div>
+        {/* Decorative background blur based on type */}
+        <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none ${isDestructive ? 'bg-red-500' : 'bg-[#d97757]'}`}></div>
 
-          <div className="relative z-10">
-              <div className="flex flex-col items-center text-center mb-6">
-                  <div className={`
+        <div className="relative z-10">
+          <div className="flex flex-col items-center text-center mb-6">
+            <div className={`
                     w-14 h-14 rounded-2xl flex items-center justify-center mb-4 shadow-lg
-                    ${isDestructive 
-                        ? 'bg-red-500/10 text-red-500 ring-1 ring-red-500/20' 
-                        : 'bg-[#d97757]/10 text-[#d97757] ring-1 ring-[#d97757]/20'}
+                    ${isDestructive
+                ? 'bg-red-500/10 text-red-500 ring-1 ring-red-500/20'
+                : 'bg-[#d97757]/10 text-[#d97757] ring-1 ring-[#d97757]/20'}
                   `}>
-                    <AlertTriangle size={28} strokeWidth={2} />
-                  </div>
-                  
-                  <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
-                  <p className="text-sm text-gray-400 leading-relaxed max-w-[260px]">{description}</p>
-              </div>
+              <AlertTriangle size={28} strokeWidth={2} />
+            </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                  <button 
-                    onClick={onClose}
-                    className="px-4 py-3 rounded-xl text-sm font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all"
-                  >
-                    {cancelText}
-                  </button>
-                  <button 
-                    onClick={() => { onConfirm(); onClose(); }}
-                    className={`
-                      px-4 py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2
-                      ${isDestructive 
-                        ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20' 
-                        : 'bg-[#d97757] hover:bg-[#c56a4d] shadow-[#d97757]/20'}
-                    `}
-                  >
-                    {confirmText}
-                    {isDestructive ? null : <Check size={18} />}
-                  </button>
-              </div>
+            <h3 className="text-lg font-bold text-white mb-2">{title}</h3>
+            <p className="text-sm text-gray-400 leading-relaxed max-w-[260px]">{description}</p>
           </div>
-       </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-3 rounded-xl text-sm font-semibold text-gray-300 bg-gray-800 hover:bg-gray-700 hover:text-white border border-gray-700 transition-all"
+            >
+              {cancelText}
+            </button>
+            <button
+              onClick={() => { onConfirm(); onClose(); }}
+              className={`
+                      px-4 py-3 rounded-xl text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2
+                      ${isDestructive
+                  ? 'bg-red-600 hover:bg-red-500 shadow-red-900/20'
+                  : 'bg-[#d97757] hover:bg-[#c56a4d] shadow-[#d97757]/20'}
+                    `}
+            >
+              {confirmText}
+              {isDestructive ? null : <Check size={18} />}
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

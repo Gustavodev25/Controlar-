@@ -16,7 +16,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon } from "../types";
 import { AppNotification } from "../types";
 
 // --- User Services ---
@@ -576,7 +576,7 @@ export const updateConnectedAccount = async (userId: string, account: ConnectedA
   const accountRef = doc(db, "users", userId, "accounts", account.id);
   // We filter out undefined values to avoid errors and only update changed fields
   // However, typically we pass the whole object. Let's just use updateDoc or setDoc with merge.
-  // For safety, let's use updateDoc if we are sure it exists, or setDoc merge.
+  // For safety, let's use updateDoc or setDoc with merge.
   const { id, ...data } = account;
   await setDoc(accountRef, data, { merge: true });
 };
@@ -889,4 +889,82 @@ export const listenToAuditLogs = (userId: string, callback: (logs: AuditLogEntry
     logs.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
     callback(logs);
   });
+};
+
+// --- Coupon Services ---
+
+export const addCoupon = async (coupon: Omit<Coupon, 'id'>) => {
+  if (!db) return "";
+  const couponsRef = collection(db, "coupons");
+  // Check if code exists
+  const q = query(couponsRef, where("code", "==", coupon.code));
+  const snap = await getDocs(q);
+  if (!snap.empty) {
+    throw new Error("Código de cupom já existe.");
+  }
+  
+  const docRef = await addDoc(couponsRef, coupon);
+  return docRef.id;
+};
+
+export const updateCoupon = async (coupon: Coupon) => {
+  if (!db) return;
+  const couponRef = doc(db, "coupons", coupon.id);
+  const { id, ...data } = coupon;
+  await updateDoc(couponRef, data);
+};
+
+export const deleteCoupon = async (couponId: string) => {
+  if (!db) return;
+  const couponRef = doc(db, "coupons", couponId);
+  await deleteDoc(couponRef);
+};
+
+export const getCoupons = async (): Promise<Coupon[]> => {
+  if (!db) return [];
+  const couponsRef = collection(db, "coupons");
+  const snap = await getDocs(couponsRef);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Coupon));
+};
+
+export const getCouponByCode = async (code: string): Promise<Coupon | null> => {
+  if (!db) return null;
+  const couponsRef = collection(db, "coupons");
+  const q = query(couponsRef, where("code", "==", code), limit(1));
+  const snap = await getDocs(q);
+  
+  if (snap.empty) return null;
+  return { id: snap.docs[0].id, ...snap.docs[0].data() } as Coupon;
+};
+
+export const validateCoupon = async (code: string): Promise<{ isValid: boolean; coupon?: Coupon; error?: string }> => {
+  const coupon = await getCouponByCode(code);
+  
+  if (!coupon) {
+    return { isValid: false, error: "Cupom não encontrado." };
+  }
+  
+  if (!coupon.isActive) {
+    return { isValid: false, error: "Este cupom está inativo." };
+  }
+  
+  if (coupon.expirationDate && new Date(coupon.expirationDate) < new Date()) {
+    return { isValid: false, error: "Este cupom expirou." };
+  }
+  
+  if (coupon.maxUses && coupon.currentUses >= coupon.maxUses) {
+    return { isValid: false, error: "Limite de uso do cupom atingido." };
+  }
+  
+  return { isValid: true, coupon };
+};
+
+export const incrementCouponUsage = async (couponId: string) => {
+  if (!db) return;
+  const couponRef = doc(db, "coupons", couponId);
+  const snap = await getDoc(couponRef);
+  if (snap.exists()) {
+    const current = snap.data().currentUses || 0;
+    await updateDoc(couponRef, { currentUses: current + 1 });
+  }
 };

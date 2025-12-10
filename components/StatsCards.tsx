@@ -291,7 +291,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     if (!accountBalances || !toggles) return stats.totalBalance;
 
     // Check if Checking is included in the global stats calculation
-    // Note: App.tsx requires BOTH includeCheckingInStats AND includeOpenFinanceInStats to be true
     const isCheckingIncluded = toggles.includeChecking;
 
     if (!isCheckingIncluded) {
@@ -330,7 +329,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6 animate-pulse">
         {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
+          <div key={i} className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
             <div className="space-y-3 w-full">
               <div className="h-3 bg-gray-800 rounded w-1/3"></div>
               <div className="h-8 bg-gray-800 rounded w-2/3"></div>
@@ -348,12 +347,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       {!hideCards && accountBalances && toggles && (isProMode || userPlan === 'starter') && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Checking Account */}
-          <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-gray-900 border-gray-800' : 'bg-gray-900/50 border-gray-800/50'}`}>
+          <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-[#30302E] border-gray-800' : 'bg-[#30302E]/50 border-gray-800/50'}`}>
             {/* Blur overlay for Manual Mode */}
             {!isProMode && userPlan === 'starter' && (
               <div
                 onClick={userPlan === 'starter' ? onUpgradeClick : onActivateProMode}
-                className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-gray-900/70"
+                className="absolute inset-0 z-20 bg-[#30302E]/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-[#30302E]/70"
               >
                 <div className="p-3 bg-[#d97757]/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
                   {userPlan === 'starter' ? <Lock size={24} className="text-[#d97757]" /> : <Building size={24} className="text-[#d97757]" />}
@@ -478,7 +477,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
             {!isProMode && userPlan === 'starter' && (
               <div
                 onClick={userPlan === 'starter' ? onUpgradeClick : onActivateProMode}
-                className="absolute inset-0 z-20 bg-gray-900/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-gray-900/70"
+                className="absolute inset-0 z-20 bg-[#30302E]/80 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center cursor-pointer group transition-all hover:bg-[#30302E]/70"
               >
                 <div className="p-3 bg-[#d97757]/20 rounded-xl mb-2 group-hover:scale-110 transition-transform">
                   {userPlan === 'starter' ? <Lock size={24} className="text-[#d97757]" /> : <CreditCard size={24} className="text-[#d97757]" />}
@@ -775,7 +774,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                 })
               ) : (
                 /* Empty State (Same as before) */
-                <div className="absolute inset-0 p-4 rounded-xl shadow-sm border bg-gray-900/50 border-gray-800/50 flex flex-col justify-between h-[120px]">
+                <div className="absolute inset-0 p-4 rounded-xl shadow-sm border bg-[#30302E]/50 border-gray-800/50 flex flex-col justify-between h-[120px]">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3 opacity-50">
                       <div className="p-2.5 bg-orange-900/20 rounded-lg text-orange-400">
@@ -828,7 +827,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
             <p className="text-sm text-gray-400 font-medium">{labels?.balance || 'Saldo Total'}</p>
             <p className={`text-2xl font-bold mt-1 ${adjustedTotalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
@@ -844,7 +843,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           </div>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
+        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
             <p className="text-sm text-gray-400 font-medium">{labels?.income || 'Receitas'}</p>
             <p className="text-2xl font-bold mt-1 text-green-400">
@@ -860,7 +859,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           </div>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative">
+        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative">
           <div>
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-400 font-medium">{labels?.expense || 'Despesas'}</p>
@@ -883,7 +882,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           </div>
         </div>
 
-        <div className="bg-gray-900 p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
+        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
           <div className="relative z-10">
             {/* Changed generic label to accommodate Year/Custom filters */}
             <p className="text-sm text-gray-400 font-medium">{labels?.savings || 'Resultado do Período'}</p>

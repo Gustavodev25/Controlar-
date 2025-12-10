@@ -52,7 +52,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
   };
 
   // Determine background color based on avatarUrl if it exists (assuming it's a gradient string for now)
-  const avatarBg = user.avatarUrl?.includes('url') ? user.avatarUrl : 'bg-[#363735] border border-[#3A3B39]';
+  const avatarBg = user.avatarUrl?.includes('url') ? user.avatarUrl : 'bg-[#30302E] border border-[#373734]';
 
   return (
     <Dropdown>
@@ -67,7 +67,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
       </DropdownTrigger>
 
       <DropdownContent align="right" width="w-64" portal>
-        <div className="p-2 border-b border-[#363735]">
+        <div className="p-2 border-b border-[#373734]">
             <div className="flex items-center gap-3">
               <div className={`w-10 h-10 rounded-full ${avatarBg} flex items-center justify-center text-white font-bold shadow-inner`}>
                 {!user.avatarUrl?.includes('url') && getInitials(user.name)}

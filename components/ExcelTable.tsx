@@ -129,10 +129,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
   return (
-    <div className="bg-gray-950 rounded-3xl shadow-2xl border border-gray-800 overflow-hidden flex flex-col h-full animate-fade-in">
+    <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
       
       {/* Toolbar */}
-      <div className="p-4 lg:p-6 border-b border-gray-800 flex flex-col gap-4 bg-gray-950/50 backdrop-blur-xl relative z-20">
+      <div className="p-4 lg:p-6 border-b border-[#373734] flex flex-col gap-4 bg-[#30302E]/95 backdrop-blur-xl relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
@@ -204,30 +204,30 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       </div>
 
       {/* Spreadsheet Grid */}
-      <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-gray-950">
+      <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-[#30302E]">
         {/* Desktop Table View */}
         <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
-          <thead className="bg-gray-900 sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
+          <thead className="bg-[#373734] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
                 <div className="flex items-center gap-2">Data {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
                 Descrição {sortField === 'description' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
                 Categoria {sortField === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
                 Valor {sortField === 'amount' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 w-32 text-center">Status</th>
-              <th className="px-6 py-4 border-b border-gray-800 w-28 text-center">Ações</th>
+              <th className="px-6 py-4 border-b border-[#373734] w-32 text-center">Status</th>
+              <th className="px-6 py-4 border-b border-[#373734] w-28 text-center">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/50">
+          <tbody className="divide-y divide-[#373734]/50">
             {filteredTransactions.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-900/40 transition-colors group">
+              <tr key={t.id} className="hover:bg-[#373734]/30 transition-colors group">
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs">
                   {formatDate(t.date)}
                 </td>
@@ -307,7 +307,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         {/* Mobile Card View - REDESIGNED */}
         <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
           {filteredTransactions.map((t) => (
-            <div key={t.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 relative overflow-hidden shadow-lg group">
+            <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group">
               {/* Left Colored Bar */}
               <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
 
@@ -375,7 +375,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       </div>
 
       {/* Footer Summary */}
-      <div className="bg-gray-900 border-t border-gray-800 px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
+      <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
         <div>Total de Registros: <span className="text-white">{filteredTransactions.length}</span></div>
         <div className="flex items-center gap-2">
             <span>Saldo Filtrado:</span>

@@ -129,9 +129,9 @@ export const analyzeFinances = async (
 };
 
 /**
- * Parses natural language text into a structured transaction object.
+ * Parses natural language text into structured transaction objects (Array).
  */
-export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction | null> => {
+export const parseTransactionFromText = async (text: string): Promise<AIParsedTransaction[] | null> => {
   const today = new Date();
   const todayStr = today.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
 
@@ -141,25 +141,33 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
 
     Texto do usuario: "${text}"
 
-    Identifique se eh uma DESPESA (expense) ou RECEITA (income).
-    Extraia: descricao, valor, categoria, data (YYYY-MM-DD), parcelas e se eh uma assinatura (isSubscription).
-    Se a data nao for informada, use a data de hoje.
+    Instrucoes:
+    1. Identifique TODAS as transacoes mencionadas no texto.
+    2. Se o texto for apenas conversa (ex: "ola", "bom dia"), ou nao contiver dados financeiros validos (valor e item), retorne uma lista VAZIA [].
+    3. Ignore nomes de arquivos (ex: .tsx, .js) ou textos tecnicos que nao sejam gastos reais.
+    4. Para cada transacao:
+       - Identifique se eh DESPESA (expense) ou RECEITA (income).
+       - Extraia: descricao, valor (> 0), categoria, data (YYYY-MM-DD), parcelas.
+       - Se a data nao for informada, use a data de hoje.
 
-    Retorne APENAS JSON seguindo o schema.
+    Retorne APENAS JSON (Array).
   `;
 
   const schema: Schema = {
-    type: Type.OBJECT,
-    properties: {
-      description: { type: Type.STRING },
-      amount: { type: Type.NUMBER, description: "Valor total ou da parcela" },
-      category: { type: Type.STRING },
-      date: { type: Type.STRING, description: "YYYY-MM-DD" },
-      type: { type: Type.STRING, enum: ["income", "expense"] },
-      installments: { type: Type.INTEGER, description: "Quantidade de parcelas (1 se a vista)" },
-      isSubscription: { type: Type.BOOLEAN, description: "True se for assinatura/servico recorrente" }
-    },
-    required: ["description", "amount", "category", "type", "date"]
+    type: Type.ARRAY,
+    items: {
+      type: Type.OBJECT,
+      properties: {
+        description: { type: Type.STRING },
+        amount: { type: Type.NUMBER, description: "Valor total ou da parcela" },
+        category: { type: Type.STRING },
+        date: { type: Type.STRING, description: "YYYY-MM-DD" },
+        type: { type: Type.STRING, enum: ["income", "expense"] },
+        installments: { type: Type.INTEGER, description: "Quantidade de parcelas (1 se a vista)" },
+        isSubscription: { type: Type.BOOLEAN, description: "True se for assinatura/servico recorrente" }
+      },
+      required: ["description", "amount", "category", "type", "date"]
+    }
   };
 
   try {
@@ -168,16 +176,24 @@ export const parseTransactionFromText = async (text: string): Promise<AIParsedTr
       config: { responseMimeType: "application/json", responseSchema: schema }
     });
 
-    const result = JSON.parse(response?.text || "{}") as AIParsedTransaction;
+    const results = JSON.parse(response?.text || "[]") as AIParsedTransaction[];
 
-    if (!result.description) result.description = "Nova Transacao";
-    if (result.amount === undefined || result.amount === null) result.amount = 0;
-    if (!result.category) result.category = "Outros";
-    if (!result.type) result.type = "expense";
-    if (!result.date) result.date = toLocalISODate();
-    if (!result.installments || result.installments < 1) result.installments = 1;
+    if (!Array.isArray(results)) return [];
 
-    return result;
+    // Filter and sanitize
+    const validTransactions = results
+      .map(result => {
+        if (!result.description) result.description = "Nova Transacao";
+        if (result.amount === undefined || result.amount === null) result.amount = 0;
+        if (!result.category) result.category = "Outros";
+        if (!result.type) result.type = "expense";
+        if (!result.date) result.date = toLocalISODate();
+        if (!result.installments || result.installments < 1) result.installments = 1;
+        return result;
+      })
+      .filter(t => t.amount > 0); // Filter out zero or negative amounts
+
+    return validTransactions;
   } catch (error) {
     console.error("Erro ao interpretar texto:", error);
     if (isMissingKeyError(error)) throw error;
@@ -342,6 +358,109 @@ export const parseStatementFile = async (base64Data: string, mimeType: string): 
     }));
   } catch (error) {
     console.error("Erro ao processar extrato:", error);
+    if (isMissingKeyError(error)) throw error;
+    return null;
+  }
+};
+
+export type ParsedIntent = 
+  | { type: 'transaction'; data: AIParsedTransaction[] }
+  | { type: 'reminder'; data: AIParsedReminder[] }
+  | null;
+
+export const parseMessageIntent = async (text: string): Promise<ParsedIntent> => {
+  const today = new Date();
+  const todayStr = today.toLocaleDateString("pt-BR", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  const prompt = `
+    Hoje eh: ${todayStr}.
+    Analise o texto: "${text}"
+
+    Decida se o usuario quer:
+    1. Registrar transacoes passadas/atuais (intent: 'transaction')
+    2. Criar lembretes de contas futuras (intent: 'reminder')
+
+    Se for 'transaction': Extraia lista de transacoes.
+    Se for 'reminder': Extraia lista de lembretes.
+
+    Retorne JSON:
+    {
+      "intent": "transaction" | "reminder",
+      "items": [
+        // Schema misto, campos dependem do intent
+        // Transacao: { description, amount, category, date, type, installments, isSubscription }
+        // Lembrete: { description, amount, category, dueDate, isRecurring, frequency, type }
+      ]
+    }
+  `;
+
+  const schema: Schema = {
+    type: Type.OBJECT,
+    properties: {
+      intent: { type: Type.STRING, enum: ["transaction", "reminder"] },
+      items: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            description: { type: Type.STRING },
+            amount: { type: Type.NUMBER },
+            category: { type: Type.STRING },
+            date: { type: Type.STRING },
+            dueDate: { type: Type.STRING },
+            type: { type: Type.STRING, enum: ["income", "expense"] },
+            installments: { type: Type.INTEGER },
+            isSubscription: { type: Type.BOOLEAN },
+            isRecurring: { type: Type.BOOLEAN },
+            frequency: { type: Type.STRING, enum: ["monthly", "weekly", "yearly"] }
+          }
+        }
+      }
+    },
+    required: ["intent", "items"]
+  };
+
+  try {
+    const response = await generateWithRetry({
+      contents: prompt,
+      config: { responseMimeType: "application/json", responseSchema: schema }
+    });
+
+    const result = JSON.parse(response?.text || "{}");
+    
+    if (!result.items || !Array.isArray(result.items)) return null;
+
+    if (result.intent === 'transaction') {
+       const transactions = result.items.map((item: any) => ({
+          description: item.description || "Transacao",
+          amount: item.amount || 0,
+          category: item.category || "Outros",
+          date: item.date || toLocalISODate(),
+          type: item.type || "expense",
+          installments: item.installments || 1,
+          isSubscription: item.isSubscription || false
+       })).filter((t: any) => t.amount > 0);
+       
+       return transactions.length > 0 ? { type: 'transaction', data: transactions } : null;
+    } 
+    
+    if (result.intent === 'reminder') {
+       const reminders = result.items.map((item: any) => ({
+          description: item.description || "Lembrete",
+          amount: item.amount || 0,
+          category: item.category || "Outros",
+          dueDate: item.dueDate || item.date || toLocalISODate(), // Fallback to date if dueDate missing
+          type: item.type || "expense",
+          isRecurring: item.isRecurring || false,
+          frequency: item.frequency
+       })).filter((r: any) => r.amount > 0);
+
+       return reminders.length > 0 ? { type: 'reminder', data: reminders } : null;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Erro ao interpretar intencao:", error);
     if (isMissingKeyError(error)) throw error;
     return null;
   }

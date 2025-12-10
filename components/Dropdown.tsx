@@ -145,7 +145,7 @@ export const DropdownContent = ({
           style={style}
           data-dropdown-content
           className={`
-            rounded-xl bg-[#363735]/90 backdrop-blur-sm shadow-[0_0_20px_rgba(0,0,0,0.2)] border border-gray-800/50 overflow-hidden ring-1 ring-white/5
+            rounded-xl bg-[#30302E] backdrop-blur-sm shadow-[0_0_20px_rgba(0,0,0,0.2)] border border-[#373734] overflow-hidden ring-1 ring-white/5
             ${!portal ? 'absolute mt-2 z-50' : ''}
             ${!portal && align === 'right' ? 'right-0' : ''}
             ${!portal && align === 'center' ? 'left-1/2 -translate-x-1/2' : ''}

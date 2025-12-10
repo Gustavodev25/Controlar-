@@ -509,7 +509,7 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                 
                 {/* Email Canvas */}
                 <div 
-                    className={`bg-[#2F302E] text-white shadow-2xl transition-all duration-300 flex flex-col overflow-hidden border border-gray-700
+                    className={`bg-[#262624] text-white shadow-2xl transition-all duration-300 flex flex-col overflow-hidden border border-gray-700
                         ${previewDevice === 'mobile' ? 'w-[375px] rounded-[30px] my-auto min-h-[600px]' : 'w-[600px] rounded-lg my-8 min-h-[500px]'}
                     `}
                 >

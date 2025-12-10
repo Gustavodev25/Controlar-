@@ -10,6 +10,7 @@ import { toLocalISODate } from '../utils/dateUtils';
 
 import NumberFlow from '@number-flow/react';
 import { motion } from 'framer-motion';
+import { WordPullUp } from './WordPullUp';
 
 interface SubscriptionPageProps {
   user: User;
@@ -76,14 +77,14 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
   const handleSelectClick = async (planId: 'starter' | 'pro' | 'family', name: string, price: number) => {
       if (planId === 'starter') {
-          handleCheckoutSubmit({}, {}, planId, 'monthly'); 
+          handleCheckoutSubmit({}, {}, undefined, undefined, planId, 'monthly'); 
           return;
       }
       setSelectedPlan({ id: planId, name, price });
       setView('checkout');
   };
 
-  const handleCheckoutSubmit = async (cardData: any, holderInfo: any, planIdOverride?: 'starter' | 'pro' | 'family', cycleOverride?: 'monthly' | 'annual') => {
+  const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, planIdOverride?: 'starter' | 'pro' | 'family', cycleOverride?: 'monthly' | 'annual') => {
       const planToBuy = planIdOverride || selectedPlan?.id;
       const cycleToBuy = cycleOverride || billingCycle;
       
@@ -98,6 +99,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
             plan: planToBuy,
             status: 'active' as const,
             billingCycle: cycleToBuy,
+            installments: installments || 1,
             nextBillingDate: toLocalISODate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
             paymentMethod: 'CREDIT_CARD'
           };
@@ -131,19 +133,19 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
   return (
     <div className="min-h-full bg-gray-950 animate-fade-in flex flex-col">
-        {/* Header */}
-        <div className="p-4 lg:p-6 flex items-center gap-3 sticky top-0 z-10 bg-gray-950/80 backdrop-blur-md border-b border-gray-800/50">
+        {/* Header - Tamanho Reduzido */}
+        <div className="py-3 px-4 lg:px-6 flex items-center gap-3 sticky top-0 z-10 bg-[#30302E] border-b border-gray-800/50">
             <button 
                 onClick={onBack}
                 className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors"
             >
-                <ChevronLeft size={20} />
+                <ChevronLeft size={18} />
             </button>
             <div>
-                <h1 className="text-xl font-bold text-white">
+                <h1 className="text-lg font-bold text-white leading-tight">
                     {view === 'checkout' ? 'Finalizar Assinatura' : 'Planos e Preços'}
                 </h1>
-                <p className="text-xs text-gray-400">
+                <p className="text-[11px] text-gray-400">
                     {view === 'checkout' ? 'Dados de pagamento seguros' : 'Escolha o melhor para sua vida financeira'}
                 </p>
             </div>
@@ -154,7 +156,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 <div className="space-y-12">
                     {/* Billing Toggle */}
                     <div className="flex justify-center">
-                        <div className="bg-[#363735] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
+                        <div className="bg-[#30302E] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
                             <button
                                 onClick={() => setBillingCycle('monthly')}
                                 className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
@@ -181,26 +183,27 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                 )}
                                 <span className="relative z-10">Anual</span>
                                 <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
-                                    -5%
+                                    -7%
                                 </span>
                             </button>
                         </div>
                     </div>
 
                     {/* Cards Grid */}
-                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto">
+                    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto pt-4">
                         {plans.map((plan) => {
                             const isCurrent = currentPlan === plan.id;
                             const price = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
                             const isPro = plan.popular;
 
                             const containerClasses = isPro
-                                ? "bg-gray-900 border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-4"
-                                : "bg-gray-900 border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors";
+                                ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10"
+                                : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors";
 
                             return (
                                 <motion.div
                                     key={plan.id}
+                                    layout
                                     className={containerClasses}
                                     initial={{ opacity: 0, y: 20 }}
                                     animate={{ opacity: 1, y: 0 }}
@@ -245,12 +248,18 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                             />
                                         </span>
                                         <span className="text-gray-500">/mês</span>
-                                        {billingCycle === 'annual' && plan.annualPrice && (
-                                            <span className="text-xs text-gray-500 block mt-1">
-                                                cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
-                                            </span>
-                                        )}
-                                    </div>
+                                        
+                                                                                {billingCycle === 'annual' && plan.annualPrice && (
+                                                                                    <div className="flex flex-col items-center mt-1">
+                                                                                        <span className="text-xs text-gray-500 block">
+                                                                                            cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
+                                                                                        </span>
+                                                                                        <WordPullUp 
+                                                                                          words="12x sem juros" 
+                                                                                          className="text-xs text-[#d97757] font-bold mt-1"
+                                                                                        />
+                                                                                    </div>
+                                                                                )}                                    </div>
 
                                     <ul className="space-y-4 mb-8 flex-1">
                                         {plan.features.map((feature, idx) => (
@@ -289,6 +298,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 <CheckoutForm
                     planName={selectedPlan?.name || ''}
                     price={selectedPlan?.price || 0}
+                    billingCycle={billingCycle}
                     onSubmit={handleCheckoutSubmit}
                     onBack={() => setView('plans')}
                     isLoading={isLoading}

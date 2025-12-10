@@ -36,8 +36,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
   // Extract unique years from transactions for the dropdown
   const yearOptions = useMemo(() => {
     const years = new Set<number>(transactions.map(t => {
-        if (!t.date) return new Date().getFullYear();
-        return parseInt(t.date.split('-')[0]);
+      if (!t.date) return new Date().getFullYear();
+      return parseInt(t.date.split('-')[0]);
     }));
     years.add(new Date().getFullYear());
     const sortedYears = Array.from(years).sort((a, b) => b - a);
@@ -129,26 +129,26 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
   return (
-    <div className="bg-gray-950 rounded-3xl shadow-2xl border border-gray-800 overflow-hidden flex flex-col h-full animate-fade-in">
-      
+    <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
+
       {/* Toolbar */}
-      <div className="p-4 lg:p-6 border-b border-gray-800 flex flex-col gap-4 bg-gray-950/50 backdrop-blur-xl relative z-20">
+      <div className="p-4 lg:p-6 border-b border-[#373734] flex flex-col gap-4 bg-[#30302E]/95 backdrop-blur-xl relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-credit-card-pay">
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                  <path d="M12 19h-6a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4.5" />
-                  <path d="M3 10h18" />
-                  <path d="M16 19h6" />
-                  <path d="M19 16l3 3l-3 3" />
-                  <path d="M7.005 15h.005" />
-                  <path d="M11 15h2" />
-                </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-credit-card-pay">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                <path d="M12 19h-6a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12a3 3 0 0 1 3 3v4.5" />
+                <path d="M3 10h18" />
+                <path d="M16 19h6" />
+                <path d="M19 16l3 3l-3 3" />
+                <path d="M7.005 15h.005" />
+                <path d="M11 15h2" />
+              </svg>
             </div>
             <div>
-                <h3 className="font-bold text-white text-lg">Fatura do Cartão</h3>
-                <p className="text-xs text-gray-400">{filteredTransactions.length} lançamentos na fatura</p>
+              <h3 className="font-bold text-white text-lg">Fatura do Cartão</h3>
+              <p className="text-xs text-gray-400">{filteredTransactions.length} lançamentos na fatura</p>
             </div>
           </div>
 
@@ -207,30 +207,30 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
       </div>
 
       {/* Spreadsheet Grid */}
-      <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-gray-950">
+      <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-[#30302E]">
         {/* Desktop Table View */}
         <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
-          <thead className="bg-gray-900 sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
+          <thead className="bg-[#373734] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
                 <div className="flex items-center gap-2">Data {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
                 Descrição {sortField === 'description' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
                 Categoria {sortField === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
+              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
                 Valor {sortField === 'amount' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-gray-800 w-32 text-center">Status</th>
-              <th className="px-6 py-4 border-b border-gray-800 w-28 text-center">Ações</th>
+              <th className="px-6 py-4 border-b border-[#373734] w-32 text-center">Status</th>
+              <th className="px-6 py-4 border-b border-[#373734] w-28 text-center">Ações</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-800/50">
+          <tbody className="divide-y divide-[#373734]/50">
             {filteredTransactions.map((t) => (
-              <tr key={t.id} className="hover:bg-gray-900/40 transition-colors group">
+              <tr key={t.id} className="hover:bg-[#373734]/30 transition-colors group">
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs">
                   {formatDate(t.date)}
                 </td>
@@ -252,7 +252,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
                 <td className="px-6 py-4 text-gray-400">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-gray-900 rounded-lg text-gray-500 border border-gray-800">
-                        {getCategoryIcon(t.category || "Outros", 14)}
+                      {getCategoryIcon(t.category || "Outros", 14)}
                     </div>
                     <span className="text-xs">{t.category || "Outros"}</span>
                   </div>
@@ -263,11 +263,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${
-                      t.status === 'completed' 
-                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${t.status === 'completed'
+                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                       : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                  }`}>
+                    }`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                     {t.status === 'completed' ? 'Pago' : 'Pendente'}
                   </span>
@@ -310,7 +309,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
         {/* Mobile Card View - REDESIGNED */}
         <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
           {filteredTransactions.map((t) => (
-            <div key={t.id} className="bg-gray-950 border border-gray-800 rounded-2xl p-4 relative overflow-hidden shadow-lg group">
+            <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group">
               {/* Left Colored Bar */}
               <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
 
@@ -323,11 +322,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
                       {t.category || "Outros"}
                     </span>
                     <span className="font-mono flex items-center gap-1.5">
-                        <Calendar size={12} /> {formatDate(t.date)}
+                      <Calendar size={12} /> {formatDate(t.date)}
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Actions */}
                 <div className="flex items-center gap-1 ml-2">
                   <button
@@ -347,19 +346,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
 
               <div className="flex justify-between items-center pl-3 pt-3 border-t border-gray-800/50">
                 <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
-                        {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
-                    </div>
-                    <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
+                  <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
+                    {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                  </div>
+                  <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
                     {formatCurrency(Math.abs(t.amount))}
-                    </span>
+                  </span>
                 </div>
-                
-                <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full font-bold border ${
-                    t.status === 'completed' 
-                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+
+                <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full font-bold border ${t.status === 'completed'
+                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                }`}>
+                  }`}>
                   {t.status === 'completed' ? 'Pago' : 'Pendente'}
                 </span>
               </div>
@@ -378,13 +376,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
       </div>
 
       {/* Footer Summary */}
-      <div className="bg-gray-900 border-t border-gray-800 px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
+      <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
         <div>Total de Registros: <span className="text-white">{filteredTransactions.length}</span></div>
         <div className="flex items-center gap-2">
-            <span>Total Fatura:</span>
-            <span className={`font-mono font-bold text-sm text-white`}>
-                {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
-            </span>
+          <span>Total Fatura:</span>
+          <span className={`font-mono font-bold text-sm text-white`}>
+            {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
+          </span>
         </div>
       </div>
 
@@ -417,7 +415,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
             <div className="p-6 border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm rounded-t-3xl relative z-10 flex justify-between items-center">
               <h3 className="font-bold text-white text-xl flex items-center gap-3">
                 <div className="p-2 bg-[#d97757]/10 rounded-xl text-[#d97757]">
-                    <Edit2 size={20} />
+                  <Edit2 size={20} />
                 </div>
                 Editar Lançamento
               </h3>
@@ -444,33 +442,33 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
               {/* Amount */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Valor</label>
-                    <div className="relative group">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Valor</label>
+                  <div className="relative group">
                     <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold group-focus-within:text-[#d97757] transition-colors">R$</span>
                     <input
-                        type="text"
-                        inputMode="decimal"
-                        value={editTransaction.amount.toString().replace('.', ',')}
-                        onChange={(e) => {
+                      type="text"
+                      inputMode="decimal"
+                      value={editTransaction.amount.toString().replace('.', ',')}
+                      onChange={(e) => {
                         const val = e.target.value.replace(',', '.');
                         const parsed = parseFloat(val);
                         setEditTransaction({ ...editTransaction, amount: isNaN(parsed) ? 0 : parsed });
-                        }}
-                        className="w-full p-4 pl-12 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white text-lg font-bold font-mono transition-all"
-                        placeholder="0,00"
+                      }}
+                      className="w-full p-4 pl-12 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white text-lg font-bold font-mono transition-all"
+                      placeholder="0,00"
                     />
-                    </div>
+                  </div>
                 </div>
 
                 {/* Date */}
                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data</label>
-                    <input
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data</label>
+                  <input
                     type="date"
                     value={editTransaction.date}
                     onChange={(e) => setEditTransaction({ ...editTransaction, date: e.target.value })}
                     className="w-full p-4 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white font-medium transition-all"
-                    />
+                  />
                 </div>
               </div>
 
@@ -478,18 +476,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Categoria</label>
                 <div className="relative">
-                    <select
+                  <select
                     value={editTransaction.category}
                     onChange={(e) => setEditTransaction({ ...editTransaction, category: e.target.value })}
                     className="w-full p-4 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white font-medium transition-all appearance-none cursor-pointer"
-                    >
+                  >
                     {CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                      <option key={cat} value={cat}>{cat}</option>
                     ))}
-                    </select>
-                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
-                        <ArrowDownCircle size={16} />
-                    </div>
+                  </select>
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
+                    <ArrowDownCircle size={16} />
+                  </div>
                 </div>
               </div>
 

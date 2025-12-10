@@ -33,10 +33,13 @@ export default defineConfig(({ mode }) => {
       proxy: {
         // Proxies to external services only
         '/api/asaas': {
-          target: 'https://sandbox.asaas.com/api/v3',
+          target: 'https://www.asaas.com/api/v3',
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api\/asaas/, ''),
-          secure: false
+          secure: false,
+          headers: {
+            'access_token': process.env.ASAAS_API_KEY || ''
+          }
         }
       }
     },

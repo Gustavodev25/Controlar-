@@ -102,7 +102,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
     const cells: React.ReactNode[] = [];
 
     for (let i = 0; i < startWeekday; i++) {
-      cells.push(<div key={`empty-${i}`} className="rounded-2xl bg-gray-900/40 border border-gray-900 h-20 sm:h-24" />);
+      cells.push(<div key={`empty-${i}`} className="rounded-2xl bg-[#30302E]/40 border border-gray-900 h-20 sm:h-24" />);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
@@ -122,8 +122,8 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
           }}
           className={`relative h-20 sm:h-24 w-full rounded-2xl border transition-all text-left p-3 ${
             hasItems
-              ? 'border-[#d97757]/50 bg-gray-900/80 hover:border-[#e68e70] hover:bg-gray-900'
-              : 'border-gray-800 bg-gray-900/40 hover:border-gray-700 hover:bg-gray-900/60'
+              ? 'border-[#d97757]/50 bg-[#30302E]/80 hover:border-[#e68e70] hover:bg-[#30302E]'
+              : 'border-gray-800 bg-[#30302E]/40 hover:border-gray-700 hover:bg-[#30302E]/60'
           } ${isToday ? 'ring-2 ring-[#d97757]/60 ring-offset-2 ring-offset-gray-950' : ''}`}
         >
           <div className="flex items-start justify-between">
@@ -150,7 +150,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
   };
 
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 lg:p-6 shadow-xl">
+    <div className="bg-[#30302E] border border-gray-800 rounded-2xl p-4 lg:p-6 shadow-xl">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Calendario Financeiro</p>
@@ -219,20 +219,20 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
               </div>
               <button
                 onClick={handleCloseModal}
-                className="h-9 w-9 inline-flex items-center justify-center rounded-full bg-gray-900 hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-colors"
+                className="h-9 w-9 inline-flex items-center justify-center rounded-full bg-[#30302E] hover:bg-gray-800 border border-gray-800 text-gray-300 hover:text-white transition-colors"
               >
                 <X size={16} />
               </button>
             </div>
 
             {!selectedItems || (selectedItems.transactions.length === 0 && selectedItems.reminders.length === 0) ? (
-              <div className="relative z-10 p-4 rounded-xl border border-dashed border-gray-800 bg-gray-900/60 text-gray-400 text-sm">
+              <div className="relative z-10 p-4 rounded-xl border border-dashed border-gray-800 bg-[#30302E]/60 text-gray-400 text-sm">
                 Nenhuma transacao ou lembrete para este dia.
               </div>
             ) : (
               <div className="space-y-4 relative z-10">
                 {selectedItems.transactions.length > 0 && (
-                  <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+                  <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
                     <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
                       <TrendingUp size={14} className="text-emerald-400" />
                       <span>Transacoes</span>
@@ -271,7 +271,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
                 )}
 
                 {selectedItems.reminders.length > 0 && (
-                  <div className="bg-gray-900/60 border border-gray-800 rounded-xl p-4">
+                  <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
                     <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
                       <Bell size={14} className="text-amber-300" />
                       <span>Lembretes</span>

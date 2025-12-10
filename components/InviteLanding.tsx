@@ -11,12 +11,12 @@ export const InviteLanding: React.FC<InviteLandingProps> = ({
   onAccept
 }) => {
   return (
-    <div className="min-h-screen bg-[#2F302E] flex flex-col items-center justify-center p-4 relative overflow-hidden text-center">
+    <div className="min-h-screen bg-[#262624] flex flex-col items-center justify-center p-4 relative overflow-hidden text-center">
 
         {/* Background decoration */}
         <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-[#d97757] to-orange-600"></div>
         
-        <div className="relative z-10 max-w-md w-full bg-[#2F302E] border border-gray-800 rounded-3xl shadow-2xl overflow-hidden">
+        <div className="relative z-10 max-w-md w-full bg-[#262624] border border-gray-800 rounded-3xl shadow-2xl overflow-hidden">
            
            {/* Background Effects */}
            <div className="absolute inset-0 pointer-events-none">

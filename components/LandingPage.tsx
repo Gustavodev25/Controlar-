@@ -301,7 +301,7 @@ const AIInteractiveDemo = () => {
         {/* Header */}
         <div className="px-4 py-3 bg-[#363735] border-b border-[#3A3B39] flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-[#2F302E] border border-[#d97757]/50 overflow-hidden flex items-center justify-center">
+            <div className="w-10 h-10 rounded-full bg-[#262624] border border-[#d97757]/50 overflow-hidden flex items-center justify-center">
               <img src={coinzinhaImg} alt="Coinzinha" className="w-full h-full object-cover" />
             </div>
             <div>
@@ -313,13 +313,13 @@ const AIInteractiveDemo = () => {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button className="w-8 h-8 rounded-full bg-[#2F302E] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
+            <button className="w-8 h-8 rounded-full bg-[#262624] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
               <Plus size={14} />
             </button>
-            <button className="w-8 h-8 rounded-full bg-[#2F302E] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
+            <button className="w-8 h-8 rounded-full bg-[#262624] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
               <AlertCircle size={14} />
             </button>
-            <button className="w-8 h-8 rounded-full bg-[#2F302E] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
+            <button className="w-8 h-8 rounded-full bg-[#262624] border border-[#3A3B39] flex items-center justify-center text-gray-400 hover:text-white hover:border-[#d97757]/60 transition-colors">
               <X size={14} />
             </button>
           </div>
@@ -328,7 +328,7 @@ const AIInteractiveDemo = () => {
         {/* Messages */}
         <div
           ref={messagesRef}
-          className="px-5 py-5 space-y-4 bg-[#2F302E] flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar min-h-0"
+          className="px-5 py-5 space-y-4 bg-[#262624] flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar min-h-0"
         >
           <div className="flex gap-3">
             <div className="w-8 h-8 rounded-full bg-[#d97757]/10 flex items-center justify-center shrink-0 border border-[#d97757]/30 overflow-hidden">
@@ -375,7 +375,7 @@ const AIInteractiveDemo = () => {
                 <div className="bg-[#363735] border border-[#3A3B39] rounded-2xl rounded-tl-none px-4 py-3 text-sm text-gray-200">
                   <BlurredStagger text="Lançamento criado:" />
                 </div>
-                <div className="bg-[#2F302E] border border-[#3A3B39] rounded-xl p-4 shadow-lg relative overflow-hidden">
+                <div className="bg-[#262624] border border-[#3A3B39] rounded-xl p-4 shadow-lg relative overflow-hidden">
                   <div className={`absolute left-0 top-0 bottom-0 w-1 ${currentExample.result.isExpense ? 'bg-[#d97757]' : 'bg-green-500'}`}></div>
                   <div className="flex justify-between items-start mb-3 pl-2">
                     <div>
@@ -405,19 +405,19 @@ const AIInteractiveDemo = () => {
 
         {/* Quick actions */}
         <div className="px-4 py-3 bg-[#363735] border-t border-[#3A3B39] flex flex-wrap gap-2">
-          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#2F302E] transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#262624] transition-colors">
             <Plus size={14} /> Add Despesa
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#2F302E] transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#262624] transition-colors">
             <TrendingUp size={14} /> Analisar Gastos
           </button>
-          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#2F302E] transition-colors">
+          <button className="flex items-center gap-2 px-4 py-2 rounded-full border border-[#d97757] text-[#d97757] text-sm font-semibold hover:bg-[#262624] transition-colors">
             <Sparkles size={14} /> Dica do dia
           </button>
         </div>
 
         {/* Input */}
-        <div className="px-4 py-3 bg-[#2F302E] border-t border-[#3A3B39]">
+        <div className="px-4 py-3 bg-[#262624] border-t border-[#3A3B39]">
           <div className="flex items-center gap-3 bg-[#363735] border border-[#d97757]/40 rounded-xl px-4 py-3 text-sm text-gray-400 focus-within:border-[#d97757] transition-colors">
             <input
               type="text"
@@ -523,7 +523,7 @@ const PricingSection = () => {
             )}
             <span className="relative z-10">Anual</span>
             <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
-              -5%
+              -7%
             </span>
           </button>
         </div>
@@ -896,9 +896,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
   const handleSecondaryCta = isWaitlistVariant ? openWaitlist : onLogin;
 
   return (
-    <div className="min-h-screen bg-[#2F302E] text-[#faf9f5] font-sans overflow-x-hidden selection:bg-[#f17853]/30">
+    <div className="min-h-screen bg-[#262624] text-[#faf9f5] font-sans overflow-x-hidden selection:bg-[#f17853]/30">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#2F302E]/80 border-b border-white/5 backdrop-blur-sm">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-[#262624]/80 border-b border-white/5 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
            <Logo
              size={40}
@@ -952,7 +952,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
 
         {/* Mobile Menu Overlay */}
         {isMobileMenuOpen && (
-          <div className="md:hidden absolute top-20 left-0 right-0 bg-[#2F302E] border-b border-gray-800 animate-fade-in shadow-2xl max-h-[80vh] overflow-y-auto">
+          <div className="md:hidden absolute top-20 left-0 right-0 bg-[#262624] border-b border-gray-800 animate-fade-in shadow-2xl max-h-[80vh] overflow-y-auto">
             <div className="flex flex-col p-6 space-y-4">
               <a
                 href="#system"
@@ -1045,7 +1045,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </nav>
 
       {/* Hero Section - REMOVED BACKGROUND BLURS */}
-      <section className="relative pt-24 pb-14 lg:pt-28 lg:pb-24 px-4 lg:px-6 overflow-hidden bg-[#2F302E]">
+      <section className="relative pt-24 pb-14 lg:pt-28 lg:pb-24 px-4 lg:px-6 overflow-hidden bg-[#262624]">
          <div className="max-w-7xl mx-auto flex flex-col lg:grid lg:grid-cols-2 gap-10 lg:gap-16 items-center relative z-10">
 
             {/* Left: Content */}
@@ -1114,7 +1114,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </section>
 
       {/* System Preview Section */}
-      <section id="system" className="py-24 lg:py-32 relative overflow-hidden bg-[#2F302E]">
+      <section id="system" className="py-24 lg:py-32 relative overflow-hidden bg-[#262624]">
           <div className="max-w-7xl mx-auto px-6 relative z-10">
 
              <AnimatedSection className="flex flex-col items-center text-center max-w-3xl mx-auto mb-24">
@@ -1562,7 +1562,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                   {/* Input: Net Worth */}
                                   <div className="space-y-2">
                                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Patrimônio Atual</label>
-                                      <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                      <div className="bg-[#262624] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
                                           <div className="p-2 bg-[#363735] rounded-lg text-[#d97757] border border-gray-800">
                                               <Wallet size={16} />
                                           </div>
@@ -1573,7 +1573,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                   {/* Input: Expenses */}
                                   <div className="space-y-2">
                                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Gasto Mensal Estimado</label>
-                                      <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                      <div className="bg-[#262624] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
                                           <div className="p-2 bg-[#363735] rounded-lg text-amber-500 border border-gray-800">
                                               <Target size={16} />
                                           </div>
@@ -1584,7 +1584,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                   {/* Input: Savings */}
                                   <div className="space-y-2">
                                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider ml-1">Aporte Mensal</label>
-                                      <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
+                                      <div className="bg-[#262624] border border-gray-800 rounded-xl p-3 flex items-center gap-3">
                                           <div className="p-2 bg-[#363735] rounded-lg text-emerald-500 border border-gray-800">
                                               <TrendingUp size={16} />
                                           </div>
@@ -1616,7 +1616,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                           {/* Right Column: Results & Chart */}
                           <div className="lg:col-span-7 space-y-5">
                               <div className="grid grid-cols-2 gap-3">
-                                  <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-4">
+                                  <div className="bg-[#262624] border border-gray-800 rounded-xl p-4">
                                       <div className="flex items-center gap-2 mb-2">
                                           <Target size={14} className="text-[#d97757]" />
                                           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Meta FIRE</p>
@@ -1626,7 +1626,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                       </p>
                                       <p className="text-[10px] text-gray-500 mt-1">Patrimônio necessário</p>
                                   </div>
-                                  <div className="bg-[#2F302E] border border-gray-800 rounded-xl p-4">
+                                  <div className="bg-[#262624] border border-gray-800 rounded-xl p-4">
                                       <div className="flex items-center gap-2 mb-2">
                                           <Calendar size={14} className="text-emerald-500" />
                                           <p className="text-[10px] text-gray-500 font-bold uppercase tracking-widest">Liberdade em</p>
@@ -1636,7 +1636,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                                   </div>
                               </div>
 
-                              <div className="bg-[#2F302E] border border-gray-800 rounded-xl overflow-hidden flex flex-col h-[240px]">
+                              <div className="bg-[#262624] border border-gray-800 rounded-xl overflow-hidden flex flex-col h-[240px]">
                                   <div className="px-4 py-3 border-b border-gray-800 flex items-center justify-between">
                                       <div className="flex items-center gap-2">
                                           <TrendingUp size={14} className="text-[#d97757]" />
@@ -1777,7 +1777,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
 
 
       {/* Testimonials Section */}
-      <section id="testimonials" className="py-16 lg:py-24 relative overflow-hidden bg-[#2F302E]">
+      <section id="testimonials" className="py-16 lg:py-24 relative overflow-hidden bg-[#262624]">
          <div className="max-w-7xl mx-auto px-4 lg:px-6 relative z-10">
 
             <AnimatedSection className="flex flex-col items-center text-center max-w-2xl mx-auto mb-12 lg:mb-16">
@@ -1875,7 +1875,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </section>
 
       {/* FAQ Section */}
-      <section id="faq" className="py-16 lg:py-24 bg-[#2F302E] border-t border-gray-900">
+      <section id="faq" className="py-16 lg:py-24 bg-[#262624] border-t border-gray-900">
          <div className="max-w-7xl mx-auto px-4 lg:px-6">
             <AnimatedSection className="text-center mb-12 lg:mb-16">
                <h2 className="text-2xl lg:text-3xl font-bold mb-4">Perguntas Frequentes</h2>
@@ -1885,7 +1885,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </section>
 
       {/* CTA Final */}
-      <section className="py-16 lg:py-24 relative overflow-hidden bg-[#2F302E]">
+      <section className="py-16 lg:py-24 relative overflow-hidden bg-[#262624]">
          <motion.div 
             animate={{ opacity: [0.2, 0.4, 0.2] }}
             transition={{ duration: 5, repeat: Infinity, ease: "easeInOut" }}
@@ -1917,7 +1917,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-gray-800 py-12 lg:py-16 bg-[#2F302E]">
+      <footer className="border-t border-gray-800 py-12 lg:py-16 bg-[#262624]">
          <div className="max-w-7xl mx-auto px-4 lg:px-6">
             <div className="flex flex-col items-center text-center gap-6 mb-8 lg:mb-12">
                <div className="flex items-center gap-2">

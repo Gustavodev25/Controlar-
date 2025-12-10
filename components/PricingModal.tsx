@@ -84,7 +84,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       setView('checkout');
   };
 
-  const handleCheckoutSubmit = async (cardData: any, holderInfo: any) => {
+  const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string) => {
       if (!selectedPlan) return;
       setIsLoading(true);
       try {
@@ -205,6 +205,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
           <CheckoutForm
             planName={selectedPlan?.name || ''}
             price={selectedPlan?.price || 0}
+            billingCycle={billingCycle}
             onSubmit={handleCheckoutSubmit}
             onBack={() => setView('plans')}
             isLoading={isLoading}

@@ -1054,7 +1054,7 @@ router.post('/admin/send-email', async (req, res) => {
   // HTML Template - Pixel Perfect Match with AdminEmailMessage.tsx
   // Theme: Dark Mode (Custom Colors)
   // Header/Footer: #363735
-  // Content: #2F302E
+  // Content: #262624
   // Text: White (#ffffff) & Gray-300 (#d1d5db)
   
   // Alignment Defaults
@@ -1085,7 +1085,7 @@ router.post('/admin/send-email', async (req, res) => {
             
             <!-- Main Card Container -->
             <!-- Width: 600px, rounded-lg (8px), border-gray-700 (#374151) -->
-            <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #2F302E; border: 1px solid #374151; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 8px;">
+            <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #262624; border: 1px solid #374151; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 8px;">
               
               <!-- Header -->
               <!-- bg-[#363735], p-6 (24px), border-b-gray-700 -->
@@ -1099,9 +1099,9 @@ router.post('/admin/send-email', async (req, res) => {
               </tr>
 
               <!-- Content -->
-              <!-- bg-[#2F302E], p-8 (32px) -->
+              <!-- bg-[#262624], p-8 (32px) -->
               <tr>
-                <td style="padding: 32px; background-color: #2F302E;">
+                <td style="padding: 32px; background-color: #262624;">
                   
                   <!-- Title -->
                   <!-- text-2xl (24px), font-bold, text-white, mb-6 (24px) -->

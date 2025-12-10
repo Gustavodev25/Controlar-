@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, Loader2 } from 'lucide-react';
+import { Lock, Loader2, Ticket, X, Check } from 'lucide-react';
 import { useToasts } from './Toast';
 import { CustomSelect } from './UIComponents';
+import * as dbService from '../services/database';
+import { Coupon } from '../types';
 
 interface CreditCardData {
   holderName: string;
@@ -23,12 +25,20 @@ interface HolderInfo {
 interface CheckoutFormProps {
   planName: string;
   price: number;
-  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo) => Promise<void>;
+  billingCycle?: 'monthly' | 'annual';
+  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string) => Promise<void>;
   onBack: () => void;
   isLoading: boolean;
 }
 
-export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onSubmit, onBack, isLoading }) => {
+export const CheckoutForm: React.FC<CheckoutFormProps> = ({ 
+  planName, 
+  price, 
+  billingCycle = 'monthly', 
+  onSubmit, 
+  onBack, 
+  isLoading 
+}) => {
   const [cardData, setCardData] = useState<CreditCardData>({
     holderName: '',
     number: '',
@@ -45,6 +55,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
     addressNumber: '',
     phone: ''
   });
+
+  const [installments, setInstallments] = useState(1);
+  
+  // Coupon State
+  const [couponCode, setCouponCode] = useState('');
+  const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
+  const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   const toast = useToasts();
 
@@ -68,13 +85,63 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
     setHolderInfo(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleApplyCoupon = async () => {
+    if (!couponCode) return;
+    
+    setIsValidatingCoupon(true);
+    try {
+      const result = await dbService.validateCoupon(couponCode.toUpperCase());
+      
+      if (result.isValid && result.coupon) {
+        setAppliedCoupon(result.coupon);
+        toast.success("Cupom aplicado com sucesso!");
+      } else {
+        setAppliedCoupon(null);
+        toast.error(result.error || "Cupom inválido.");
+      }
+    } catch (error) {
+      toast.error("Erro ao validar cupom.");
+    } finally {
+      setIsValidatingCoupon(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode('');
+  };
+
+  const calculateTotal = () => {
+    let finalPrice = price;
+    let discount = 0;
+
+    if (appliedCoupon) {
+      if (appliedCoupon.type === 'percentage') {
+        discount = price * (appliedCoupon.value / 100);
+      } else {
+        discount = appliedCoupon.value;
+      }
+      finalPrice = Math.max(0, price - discount);
+    }
+
+    return { finalPrice, discount };
+  };
+
+  const { finalPrice, discount } = calculateTotal();
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cardData.number || !cardData.holderName || !cardData.ccv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
-    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName });
+    
+    // If coupon used, increment usage
+    if (appliedCoupon) {
+      dbService.incrementCouponUsage(appliedCoupon.id);
+    }
+
+    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id);
   };
 
   const inputStyle = "w-full bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] rounded-xl px-4 h-11 text-[#faf9f5] text-sm placeholder-gray-500 focus:outline-none focus:border-[#d97757] focus:bg-[rgba(58,59,57,0.8)] hover:border-gray-500 transition-all";
@@ -89,6 +156,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
     return { value: year.toString(), label: year.toString() };
   });
 
+  const installmentOptions = Array.from({ length: 12 }, (_, i) => {
+    const count = i + 1;
+    const value = finalPrice / count;
+    return {
+      value: count.toString(),
+      label: `${count}x de R$ ${value.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} sem juros`
+    };
+  });
+
   return (
     <div className="p-6">
       <form onSubmit={handleSubmit}>
@@ -97,8 +173,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
           {/* Coluna Esquerda - Formulário */}
           <div className="lg:col-span-2 space-y-6">
 
-            {/* Payment Detail */}
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+            {/* Payment Detail - COR ALTERADA AQUI */}
+            <div className="bg-[#30302E] rounded-xl p-6 border border-gray-800">
               <h2 className="text-lg font-bold text-white mb-1">Informações de Pagamento</h2>
               <p className="text-sm text-gray-400 mb-6">Preencha os dados do seu cartão de crédito</p>
 
@@ -223,11 +299,23 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
                     />
                   </div>
                 </div>
+
+                {billingCycle === 'annual' && (
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Parcelamento</label>
+                    <CustomSelect
+                      value={installments.toString()}
+                      onChange={(v) => setInstallments(Number(v))}
+                      options={installmentOptions}
+                      placeholder="Selecione o parcelamento"
+                    />
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Security Notice */}
-            <div className="bg-gray-900 border border-gray-800 rounded-xl p-5 flex gap-4">
+            {/* Security Notice - COR ALTERADA AQUI */}
+            <div className="bg-[#30302E] border border-gray-800 rounded-xl p-5 flex gap-4">
               <div className="text-green-500 shrink-0 mt-0.5">
                 <Lock size={20} />
               </div>
@@ -240,9 +328,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
             </div>
           </div>
 
-          {/* Coluna Direita - Summary */}
+          {/* Coluna Direita - Summary - COR ALTERADA AQUI */}
           <div className="lg:col-span-1">
-            <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 sticky top-6">
+            <div className="bg-[#30302E] rounded-xl p-6 border border-gray-800 sticky top-6">
               <h3 className="text-lg font-bold text-white mb-6">Resumo</h3>
 
               <div className="space-y-4 mb-6 pb-6 border-b border-gray-800">
@@ -252,9 +340,19 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
                 </div>
 
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Valor</span>
+                  <span className="text-gray-400">Valor Original</span>
                   <span className="font-medium text-white">R$ {price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
                 </div>
+
+                {appliedCoupon && (
+                  <div className="flex justify-between text-sm text-green-500 animate-fade-in">
+                    <span className="font-medium flex items-center gap-1">
+                      <Ticket size={12} />
+                      Desconto ({appliedCoupon.code})
+                    </span>
+                    <span className="font-bold">- R$ {discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                  </div>
+                )}
 
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Taxa</span>
@@ -263,13 +361,65 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({ planName, price, onS
 
                 <div className="flex justify-between text-sm">
                   <span className="text-gray-400">Duração</span>
-                  <span className="font-medium text-white">Mensal</span>
+                  <span className="font-medium text-white">{billingCycle === 'annual' ? 'Anual' : 'Mensal'}</span>
                 </div>
+              </div>
+
+              {/* Coupon Input */}
+              <div className="mb-6">
+                <label className="block text-xs font-semibold text-gray-400 mb-2">Cupom de Desconto</label>
+                {!appliedCoupon ? (
+                  <div className="flex gap-2">
+                    <input 
+                      type="text" 
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                      placeholder="Código"
+                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 h-10 text-white text-sm focus:border-[#d97757] focus:outline-none uppercase"
+                    />
+                    <button 
+                      type="button"
+                      onClick={handleApplyCoupon}
+                      disabled={!couponCode || isValidatingCoupon}
+                      className="bg-gray-700 hover:bg-gray-600 text-white px-3 rounded-lg font-medium text-sm disabled:opacity-50 transition-colors"
+                    >
+                      {isValidatingCoupon ? <Loader2 size={16} className="animate-spin" /> : 'Aplicar'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
+                    <div className="flex items-center gap-2">
+                      <div className="bg-green-500 rounded-full p-0.5">
+                        <Check size={10} className="text-black" />
+                      </div>
+                      <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
+                    </div>
+                    <button 
+                      type="button"
+                      onClick={handleRemoveCoupon}
+                      className="text-gray-400 hover:text-white transition-colors"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-between items-center mb-6">
                 <span className="text-lg font-bold text-white">Total</span>
-                <span className="text-2xl font-bold text-[#d97757]">R$ {price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
+                <div className="text-right">
+                  <span className="text-2xl font-bold text-[#d97757]">
+                    {installments > 1 
+                      ? `${installments}x R$ ${(finalPrice / installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                      : `R$ ${finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                    }
+                  </span>
+                  {installments > 1 && (
+                    <div className="text-xs text-gray-400 mt-1">
+                      Total: R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <button

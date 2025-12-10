@@ -18,6 +18,7 @@ export interface User {
     status: 'active' | 'canceled' | 'past_due';
     billingCycle: 'monthly' | 'annual';
     nextBillingDate?: string;
+    installments?: number;
   };
   paymentMethodDetails?: {
     last4: string;
@@ -218,4 +219,16 @@ export interface AppNotification {
   date: string;
   read: boolean;
   archived?: boolean;
+}
+
+export interface Coupon {
+  id: string;
+  code: string;
+  type: 'percentage' | 'fixed';
+  value: number; // Percentage (0-100) or Fixed Amount
+  isActive: boolean;
+  maxUses?: number; // Optional limit
+  currentUses: number;
+  expirationDate?: string; // ISO Date
+  createdAt: string;
 }

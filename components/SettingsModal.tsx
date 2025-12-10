@@ -62,7 +62,7 @@ interface BadgeDefinition {
    requirement: string;
 }
 
-type SettingsTab = 'account' | 'finance' | 'security' | 'plan' | 'notifications' | 'data' | 'family';
+type SettingsTab = 'account' | 'badges' | 'family' | 'finance' | 'security' | 'plan';
 
 // --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
@@ -338,7 +338,7 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
       }
 
       setStep('verifying');
-      
+
       // Simulate Bank Verification
       try {
          await new Promise(resolve => setTimeout(resolve, 2000)); // Fake API delay
@@ -368,9 +368,9 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
    return createPortal(
       <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
          <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
-            
-             {/* Background Effects (Matched to TwoFactorModal) */}
-             <div className="absolute inset-0 pointer-events-none">
+
+            {/* Background Effects (Matched to TwoFactorModal) */}
+            <div className="absolute inset-0 pointer-events-none">
                <div className="absolute top-0 right-0 w-40 h-40 bg-[#d97757]/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
                <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
             </div>
@@ -425,10 +425,10 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
                      <div className="space-y-4">
                         <div>
                            <div className="relative">
-                              <input 
-                                 type="text" 
+                              <input
+                                 type="text"
                                  value={formatCardNumber(cardData.number)}
-                                 onChange={e => setCardData({...cardData, number: e.target.value})}
+                                 onChange={e => setCardData({ ...cardData, number: e.target.value })}
                                  placeholder="0000 0000 0000 0000"
                                  className="input-primary pl-10 font-mono text-sm"
                                  maxLength={19}
@@ -436,12 +436,12 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
                               <CreditCard size={16} className="absolute left-3 top-3.5 text-gray-500" />
                            </div>
                         </div>
-                        
+
                         <div>
-                           <input 
-                              type="text" 
+                           <input
+                              type="text"
                               value={cardData.holder}
-                              onChange={e => setCardData({...cardData, holder: e.target.value.toUpperCase()})}
+                              onChange={e => setCardData({ ...cardData, holder: e.target.value.toUpperCase() })}
                               placeholder="Nome no cartão"
                               className="input-primary uppercase text-sm"
                            />
@@ -449,10 +449,10 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
 
                         <div className="flex gap-3">
                            <div className="flex-1">
-                              <input 
-                                 type="text" 
+                              <input
+                                 type="text"
                                  value={formatExpiry(cardData.expiry)}
-                                 onChange={e => setCardData({...cardData, expiry: e.target.value})}
+                                 onChange={e => setCardData({ ...cardData, expiry: e.target.value })}
                                  placeholder="MM/AA"
                                  className="input-primary text-center font-mono text-sm"
                                  maxLength={5}
@@ -460,10 +460,10 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
                            </div>
                            <div className="w-20">
                               <div className="relative">
-                                 <input 
-                                    type="text" 
+                                 <input
+                                    type="text"
                                     value={cardData.cvc}
-                                    onChange={e => setCardData({...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0,4)})}
+                                    onChange={e => setCardData({ ...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
                                     placeholder="CVC"
                                     className="input-primary text-center font-mono pl-6 text-sm"
                                     maxLength={4}
@@ -532,12 +532,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    const tabs = [
       { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
+      { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
       { id: 'family', label: 'Família', icon: <Users size={18} /> },
       { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
       { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
       { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
-      { id: 'notifications', label: 'Notificações', icon: <Bell size={18} /> },
-      { id: 'data', label: 'Dados', icon: <Download size={18} /> },
    ];
 
    // Plan Logic
@@ -547,22 +546,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const nextDate = formData.subscription?.nextBillingDate;
 
    const planStyle = useMemo(() => {
-      switch(plan) {
-         case 'pro': return { 
-            gradient: 'bg-gradient-to-br from-gray-900 to-[#d97757]/20 border-[#d97757]/30', 
-            text: 'text-[#d97757]', 
+      switch (plan) {
+         case 'pro': return {
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#d97757]/20 border-[#d97757]/30',
+            text: 'text-[#d97757]',
             icon: <img src={fogueteImg} alt="Pro" className="w-8 h-8 object-contain" />,
             label: 'Plus'
          };
-         case 'family': return { 
-            gradient: 'bg-gradient-to-br from-gray-900 to-[#D4B996]/20 border-[#D4B996]/30', 
-            text: 'text-[#D4B996]', 
+         case 'family': return {
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#D4B996]/20 border-[#D4B996]/30',
+            text: 'text-[#D4B996]',
             icon: <img src={familiaImg} alt="Family" className="w-8 h-8 object-contain" />,
             label: 'Family'
          };
-         default: return { 
-            gradient: 'bg-gradient-to-br from-gray-900 to-[#8B5CF6]/20 border-[#8B5CF6]/30', 
-            text: 'text-[#8B5CF6]', 
+         default: return {
+            gradient: 'bg-gradient-to-br from-gray-900 to-[#8B5CF6]/20 border-[#8B5CF6]/30',
+            text: 'text-[#8B5CF6]',
             icon: <img src={quebraCabecaImg} alt="Starter" className="w-8 h-8 object-contain" />,
             label: 'Starter'
          };
@@ -929,6 +928,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
    }, [isOpen, initialTab]);
 
+   // Bloquear scroll do body quando o modal está aberto
+   useEffect(() => {
+      if (isOpen) {
+         document.body.style.overflow = 'hidden';
+      } else {
+         document.body.style.overflow = '';
+      }
+      return () => {
+         document.body.style.overflow = '';
+      };
+   }, [isOpen]);
+
    if (!isVisible) return null;
 
    // --- HANDLERS ---
@@ -943,15 +954,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvc: string }) => {
       const updatedUser: UserType = {
-          ...formData,
-          paymentMethodDetails: {
-              last4: cardData.number.slice(-4),
-              holder: cardData.holder,
-              expiry: cardData.expiry,
-              brand: 'mastercard' // Em um app real, detectaríamos a bandeira
-          }
+         ...formData,
+         paymentMethodDetails: {
+            last4: cardData.number.slice(-4),
+            holder: cardData.holder,
+            expiry: cardData.expiry,
+            brand: 'mastercard' // Em um app real, detectaríamos a bandeira
+         }
       };
-      
+
       setFormData(updatedUser);
       await persistUser(updatedUser);
       toast.success("Novo cartão validado e vinculado com sucesso!");
@@ -1044,8 +1055,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       <button
          onClick={() => setActiveTab(id)}
          className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all text-sm font-medium ${activeTab === id
-               ? 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'
-               : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
+            ? 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'
+            : 'text-gray-400 hover:bg-gray-800 hover:text-gray-200'
             }`}
       >
          {icon}
@@ -1053,36 +1064,105 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       </button>
    );
 
-   return (
-      <div className={`fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0'}`}>
-         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] border border-gray-800 flex overflow-hidden transition-all duration-300 transform ${isOpen ? 'translate-y-0 scale-100' : 'translate-y-10 scale-95'}`}>
+   return createPortal(
+      <div className={`
+         fixed inset-0 z-[9999] flex items-center justify-center p-4 
+         transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+         ${isOpen ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
+      `}>
+         <div className={`
+            bg-gray-950 rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] border border-gray-800 
+            flex overflow-hidden relative
+            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+            ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+         `}>
+
+            {/* Background Glow Effects */}
+            <div className="absolute top-0 right-0 w-96 h-96 bg-[#d97757]/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
 
             {/* Sidebar */}
-            <div className="w-64 bg-gray-900 border-r border-gray-800 p-6 flex flex-col hidden md:flex">
+            <div className="w-64 bg-[#30302E] border-r border-gray-800 p-6 flex flex-col hidden md:flex relative z-10">
                <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2 px-2">
-                  <div className="w-2 h-2 rounded-full bg-[#d97757]"></div> Configurações
+                  <div className="w-2 h-2 rounded-full bg-[#d97757] animate-pulse"></div> Configurações
                </h2>
-               <div className="space-y-1 flex-1">
-                  {renderSidebarItem('account', 'Minha Conta', <User size={18} />)}
-                  {renderSidebarItem('family', 'Família', <Users size={18} />)}
-                  {renderSidebarItem('finance', 'Financeiro', <Coins size={18} />)}
-                  {renderSidebarItem('security', 'Segurança', <Shield size={18} />)}
-                  {renderSidebarItem('plan', 'Planos e Assinatura', <CreditCard size={18} />)}
-                  {renderSidebarItem('notifications', 'Notificações', <Bell size={18} />)}
-                  {renderSidebarItem('data', 'Dados e Privacidade', <Download size={18} />)}
+               <div className="flex flex-col flex-1 relative">
+                  {/* Animated Indicator */}
+                  <div
+                     className="absolute left-0 right-0 h-11 bg-[#d97757]/10 border border-[#d97757]/20 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] pointer-events-none"
+                     style={{
+                        top: `${activeTab === 'account' ? 0 :
+                           activeTab === 'badges' ? 44 :
+                              activeTab === 'family' ? 88 :
+                                 activeTab === 'finance' ? 132 :
+                                    activeTab === 'security' ? 176 :
+                                       220
+                           }px`,
+                     }}
+                  />
+
+                  {/* Tab Buttons */}
+                  <button
+                     onClick={() => setActiveTab('account')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <User size={18} className="flex-shrink-0" />
+                     <span>Minha Conta</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('badges')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'badges' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <Trophy size={18} className="flex-shrink-0" />
+                     <span>Conquistas</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('family')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'family' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <Users size={18} className="flex-shrink-0" />
+                     <span>Família</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('finance')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'finance' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <Coins size={18} className="flex-shrink-0" />
+                     <span>Financeiro</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('security')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'security' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <Shield size={18} className="flex-shrink-0" />
+                     <span>Segurança</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('plan')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'plan' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <CreditCard size={18} className="flex-shrink-0" />
+                     <span>Planos e Assinatura</span>
+                  </button>
                </div>
             </div>
 
             {/* Main Content */}
-            <div className="flex-1 flex flex-col min-w-0 bg-gray-950 relative">
+            <div className="flex-1 flex flex-col min-w-0 bg-gray-950/50 relative z-10">
                {/* Mobile Header */}
-               <div className="md:hidden p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900">
+               <div className="md:hidden p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/90 backdrop-blur-sm">
                   <h2 className="font-bold text-white">Configurações</h2>
-                  <button onClick={onClose} className="text-gray-500"><X size={24} /></button>
+                  <button onClick={onClose} className="text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"><X size={20} /></button>
                </div>
 
                {/* Mobile Navigation */}
-               <div className="md:hidden flex overflow-x-auto no-scrollbar border-b border-gray-800 bg-gray-900/50">
+               <div className="md:hidden flex overflow-x-auto no-scrollbar border-b border-gray-800 bg-gray-900/50 backdrop-blur-sm">
                   {tabs.map(tab => (
                      <button
                         key={tab.id}
@@ -1099,7 +1179,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                </div>
 
                {/* Desktop Close */}
-               <div className="hidden md:flex justify-end p-6 absolute top-0 right-0 z-10">
+               <div className="hidden md:flex justify-end p-6 absolute top-0 right-0 z-20">
                   <button onClick={onClose} className="text-gray-500 hover:text-white p-2 rounded-full hover:bg-gray-800 transition-colors">
                      <X size={20} />
                   </button>
@@ -1114,6 +1194,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            <h3 className="text-3xl font-bold text-white mb-2">Minha Conta</h3>
                            <p className="text-gray-400">Gerencie suas informações pessoais.</p>
                         </div>
+
+                        {/* Perfil */}
                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 pb-8 border-b border-gray-800">
                            <div className="relative group shrink-0">
                               <div className={`w-32 h-32 rounded-full ${formData.avatarUrl?.includes('url') ? formData.avatarUrl : 'bg-[#363735] border border-[#3A3B39]'} flex items-center justify-center text-4xl font-bold text-white shadow-2xl overflow-hidden`}>
@@ -1148,65 +1230,162 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     />
                                  </div>
                               </div>
-                             <button
-                                onClick={handleSave}
-                                className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
-                             >
-                                <Save size={16} /> Salvar
-                             </button>
+                              <button
+                                 onClick={handleSave}
+                                 className="px-6 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
+                              >
+                                 <Save size={16} /> Salvar
+                              </button>
                            </div>
                         </div>
 
-                        {/* Badges */}
-                        <div className="space-y-3">
-                           <div className="flex items-center justify-between">
-                              <div>
-                                 <h4 className="text-xl font-bold text-white">Minhas Conquistas</h4>
-                                 <p className="text-sm text-gray-400">Desbloqueie badges ao usar o app.</p>
+                        {/* Resumo da Conta */}
+                        <div className="space-y-4">
+                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                              <Activity size={18} className="text-[#d97757]" />
+                              Resumo da Conta
+                           </h4>
+                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                                 <p className="text-2xl font-bold text-white">{transactions.length}</p>
+                                 <p className="text-xs text-gray-500 mt-1">Transações</p>
                               </div>
-                              <span className="text-xs font-bold text-gray-400 px-3 py-1 rounded-full border border-gray-800">
-                                 {unlockedBadges.filter(b => b.unlocked).length} / {unlockedBadges.length} desbloqueadas
-                              </span>
+                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                                 <p className="text-2xl font-bold text-white">{reminders.length}</p>
+                                 <p className="text-xs text-gray-500 mt-1">Lembretes</p>
+                              </div>
+                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                                 <p className="text-2xl font-bold text-white">{familyGoals.length}</p>
+                                 <p className="text-xs text-gray-500 mt-1">Metas</p>
+                              </div>
+                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                                 <p className="text-2xl font-bold text-white">{unlockedBadges.filter(b => b.unlocked).length}</p>
+                                 <p className="text-xs text-gray-500 mt-1">Conquistas</p>
+                              </div>
                            </div>
+                        </div>
 
-                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                              {unlockedBadges.map((badge) => (
-                                 <div
-                                    key={badge.id}
-                                    className={`relative border rounded-2xl p-4 flex gap-3 items-center transition-all ${badge.unlocked ? `${badge.colorClass} backdrop-blur-sm` : 'bg-gray-900/40 border-gray-800 opacity-80'}`}
-                                 >
-                                    {!badge.unlocked && (
-                                       <div className="absolute inset-0 rounded-2xl bg-black/20 pointer-events-none" />
-                                    )}
-                                    <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center bg-gray-900/70">
-                                       {badge.image ? (
-                                          <img src={`/assets/badges/${badge.image}`} alt={badge.title} className="w-full h-full object-contain" />
-                                       ) : (
-                                          badge.icon
-                                       )}
-                                    </div>
-                                    <div className="flex-1">
-                                       <div className="flex items-center gap-2">
-                                          <p className="text-sm font-bold text-white">{badge.title}</p>
-                                          <span className="text-[10px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-400 uppercase tracking-wide">
-                                             {badge.category}
-                                          </span>
-                                       </div>
-                                       <p className="text-xs text-gray-400">{badge.description}</p>
-                                       {!badge.unlocked && (
-                                          <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
-                                             <Lock size={12} /> {badge.requirement}
-                                          </p>
-                                       )}
-                                       {badge.unlocked && (
-                                          <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
-                                             <Check size={12} /> Desbloqueado
-                                          </p>
-                                       )}
-                                    </div>
+                        {/* Plano Atual */}
+                        <div className="space-y-4">
+                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                              <CreditCard size={18} className="text-[#d97757]" />
+                              Plano Atual
+                           </h4>
+                           <div className={`p-5 rounded-2xl border ${planStyle.gradient} flex items-center justify-between`}>
+                              <div className="flex items-center gap-4">
+                                 <div className="w-12 h-12 rounded-xl bg-gray-900/50 flex items-center justify-center">
+                                    {planStyle.icon}
                                  </div>
-                              ))}
+                                 <div>
+                                    <p className={`font-bold text-lg ${planStyle.text}`}>Plano {planStyle.label}</p>
+                                    <p className="text-sm text-gray-400">
+                                       {cycle === 'annual' ? 'Cobrança anual' : 'Cobrança mensal'}
+                                    </p>
+                                 </div>
+                              </div>
+                              <button
+                                 onClick={() => setActiveTab('plan')}
+                                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                              >
+                                 Ver Planos <ChevronRight size={16} />
+                              </button>
                            </div>
+                        </div>
+
+                        {/* Exportar Dados */}
+                        <div className="space-y-4">
+                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                              <Download size={18} className="text-[#d97757]" />
+                              Exportar Dados
+                           </h4>
+                           <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
+                              <p className="text-sm text-gray-400 mb-4">
+                                 Baixe uma cópia de todas as suas transações e dados financeiros.
+                              </p>
+                              <button
+                                 onClick={handleExportData}
+                                 className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                              >
+                                 <Download size={16} /> Exportar CSV
+                              </button>
+                           </div>
+                        </div>
+
+                        {/* Zona de Perigo */}
+                        <div className="space-y-4 pt-4">
+                           <h4 className="text-lg font-bold text-red-400 flex items-center gap-2">
+                              <Trash2 size={18} />
+                              Zona de Perigo
+                           </h4>
+                           <div className="bg-red-950/20 border border-red-900/30 rounded-xl p-5">
+                              <p className="text-sm text-gray-400 mb-4">
+                                 Ações irreversíveis relacionadas à sua conta.
+                              </p>
+                              <button
+                                 className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                              >
+                                 <Trash2 size={16} /> Excluir Conta
+                              </button>
+                           </div>
+                        </div>
+                     </div>
+                  )}
+
+                  {/* --- TAB: BADGES --- */}
+                  {activeTab === 'badges' && (
+                     <div className="space-y-8 animate-fade-in max-w-3xl">
+                        <div>
+                           <h3 className="text-3xl font-bold text-white mb-2">Conquistas</h3>
+                           <p className="text-gray-400">Desbloqueie badges ao usar o app.</p>
+                        </div>
+
+                        <div className="flex items-center gap-4 p-4 bg-gray-900/50 rounded-2xl border border-gray-800">
+                           <div className="flex items-center justify-center w-14 h-14 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
+                              <Trophy size={24} className="text-[#d97757]" />
+                           </div>
+                           <div>
+                              <p className="text-2xl font-bold text-white">{unlockedBadges.filter(b => b.unlocked).length} / {unlockedBadges.length}</p>
+                              <p className="text-sm text-gray-400">conquistas desbloqueadas</p>
+                           </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           {unlockedBadges.map((badge) => (
+                              <div
+                                 key={badge.id}
+                                 className={`relative border rounded-2xl p-4 flex gap-4 items-center transition-all ${badge.unlocked ? `${badge.colorClass} backdrop-blur-sm` : 'bg-gray-900/40 border-gray-800 opacity-80'}`}
+                              >
+                                 {!badge.unlocked && (
+                                    <div className="absolute inset-0 rounded-2xl bg-black/20 pointer-events-none" />
+                                 )}
+                                 <div className="relative w-14 h-14 rounded-xl overflow-hidden border border-gray-800 flex items-center justify-center bg-gray-900/70 flex-shrink-0">
+                                    {badge.image ? (
+                                       <img src={`/assets/badges/${badge.image}`} alt={badge.title} className="w-full h-full object-contain" />
+                                    ) : (
+                                       badge.icon
+                                    )}
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                       <p className="text-sm font-bold text-white">{badge.title}</p>
+                                       <span className="text-[10px] px-2 py-0.5 rounded-full border border-gray-700 text-gray-400 uppercase tracking-wide">
+                                          {badge.category}
+                                       </span>
+                                    </div>
+                                    <p className="text-xs text-gray-400 mt-1">{badge.description}</p>
+                                    {!badge.unlocked && (
+                                       <p className="text-[10px] text-gray-500 mt-1 flex items-center gap-1">
+                                          <Lock size={12} /> {badge.requirement}
+                                       </p>
+                                    )}
+                                    {badge.unlocked && (
+                                       <p className="text-[10px] text-green-400 mt-1 flex items-center gap-1">
+                                          <Check size={12} /> Desbloqueado
+                                       </p>
+                                    )}
+                                 </div>
+                              </div>
+                           ))}
                         </div>
                      </div>
                   )}
@@ -1218,10 +1397,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            transactions={transactions}
                            members={members}
                            goals={familyGoals}
-                           onAddGoal={onAddGoal || (() => {})}
-                           onUpdateGoal={onUpdateGoal || (() => {})}
-                           onDeleteGoal={onDeleteGoal || (() => {})}
-                           onAddTransaction={onAddTransaction || (() => {})}
+                           onAddGoal={onAddGoal || (() => { })}
+                           onUpdateGoal={onUpdateGoal || (() => { })}
+                           onDeleteGoal={onDeleteGoal || (() => { })}
+                           onAddTransaction={onAddTransaction || (() => { })}
                            currentUser={user}
                            userId={userId}
                            onUpgrade={onUpgrade}
@@ -1242,7 +1421,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                                  <Coins size={20} className="text-[#d97757]" /> Renda Mensal
                               </h4>
-                              
+
                               <div className="space-y-4">
                                  <div className="space-y-2">
                                     <label className="text-xs font-medium text-gray-400 ml-1">Salário Base</label>
@@ -1291,7 +1470,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <Wallet size={20} className="text-[#d97757]" /> Adiantamento Salarial (Vale)
                                  </h4>
                                  <div className="bg-[#d97757]/10 text-[#d97757] text-xs px-2 py-1 rounded-lg border border-[#d97757]/20 font-medium">
-                                     Simulador Ativo
+                                    Simulador Ativo
                                  </div>
                               </div>
 
@@ -1308,8 +1487,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                    const percent = parseFloat(e.target.value);
                                                    const base = formData.baseSalary || 0;
                                                    const newVal = base * (percent / 100);
-                                                   setFormData({ 
-                                                      ...formData, 
+                                                   setFormData({
+                                                      ...formData,
                                                       salaryAdvancePercent: percent,
                                                       salaryAdvanceValue: parseFloat(newVal.toFixed(2))
                                                    });
@@ -1329,8 +1508,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 onValueChange={(val) => {
                                                    const base = formData.baseSalary || 0;
                                                    const newPercent = base > 0 ? (val / base) * 100 : 0;
-                                                   setFormData({ 
-                                                      ...formData, 
+                                                   setFormData({
+                                                      ...formData,
                                                       salaryAdvanceValue: val,
                                                       salaryAdvancePercent: parseFloat(newPercent.toFixed(1))
                                                    });
@@ -1367,19 +1546,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                              <Plus size={12} /> Adicionar
                                           </button>
                                        </div>
-                                       
-                                       <div 
-                                           className="flex items-center gap-2 mb-3 cursor-pointer group"
-                                           onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
+
+                                       <div
+                                          className="flex items-center gap-2 mb-3 cursor-pointer group"
+                                          onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
                                        >
-                                           <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                               <Check size={12} strokeWidth={4} />
-                                           </div>
-                                           <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
-                                              Isento de descontos (INSS/IRRF zerados)
-                                           </span>
+                                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                             <Check size={12} strokeWidth={4} />
+                                          </div>
+                                          <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
+                                             Isento de descontos (INSS/IRRF zerados)
+                                          </span>
                                        </div>
-                                       
+
                                        {(formData.valeDeductions || []).map((deduction, index) => (
                                           <div key={deduction.id} className="flex gap-2 animate-fade-in">
                                              <input
@@ -1419,16 +1598,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                    />
                                                 )}
                                              </div>
-                                              <button 
+                                             <button
                                                 onClick={() => {
                                                    const newArr = [...(formData.valeDeductions || [])];
                                                    newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
                                                    setFormData({ ...formData, valeDeductions: newArr });
                                                 }}
                                                 className="bg-gray-800 text-gray-400 text-[10px] px-1.5 rounded border border-gray-700 shrink-0 w-8"
-                                              >
+                                             >
                                                 {deduction.type}
-                                              </button>
+                                             </button>
                                              <button
                                                 onClick={() => setFormData({
                                                    ...formData,
@@ -1454,15 +1633,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                           const base = formData.baseSalary || 0;
                                           const dependents = 0; // Could add input for this later or fetch from profile
                                           const isExempt = formData.valeExemptFromDiscounts || false;
-                                          
+
                                           // CLT Logic (Same as SalaryManager)
                                           let inss = 0;
                                           if (!isExempt) {
-                                              if (base <= 1518.00) inss = base * 0.075;
-                                              else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
-                                              else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
-                                              else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
-                                              else inss = 951.63;
+                                             if (base <= 1518.00) inss = base * 0.075;
+                                             else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
+                                             else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
+                                             else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
+                                             else inss = 951.63;
                                           }
 
                                           const deductibleDependents = dependents * 189.59;
@@ -1478,13 +1657,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                              if (b <= 4664.68) return (b * 0.225) - 675.49;
                                              return (b * 0.275) - 908.73;
                                           };
-                                          
+
                                           // Correct IRRF calculation logic
                                           let irrf = 0;
                                           if (!isExempt) {
-                                              const taxA = Math.max(0, calcTax(baseA));
-                                              const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
-                                              irrf = Math.min(taxA, taxB);
+                                             const taxA = Math.max(0, calcTax(baseA));
+                                             const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
+                                             irrf = Math.min(taxA, taxB);
                                           }
 
                                           const valePercent = formData.salaryAdvancePercent || 40;
@@ -1498,7 +1677,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                           }, 0);
 
                                           const net = base - inss - irrf - valeAmount - totalCustom;
-                                          
+
                                           const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 
                                           return (
@@ -1528,10 +1707,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
                                                    <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
                                                    <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                                      <NumberFlow 
-                                                        value={net} 
-                                                        format={{ style: 'currency', currency: 'BRL' }}
-                                                        locales="pt-BR"
+                                                      <NumberFlow
+                                                         value={net}
+                                                         format={{ style: 'currency', currency: 'BRL' }}
+                                                         locales="pt-BR"
                                                       />
                                                    </span>
                                                 </div>
@@ -1631,349 +1810,197 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         ) : (
                            // OWNER / INDIVIDUAL VIEW
                            <div className="space-y-6">
-                                 {/* 1. Plan Status Card */}
-                                 <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
-                                    <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
-                                       <div className="space-y-4">
-                                          <div className="flex items-center gap-3">
-                                             <div className={`p-3 rounded-xl bg-gray-950/50 border border-white/5 ${planStyle.text} shadow-lg`}>
-                                                {planStyle.icon}
-                                             </div>
-                                             <div>
-                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
-                                                <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-                                                   {planStyle.label}
-                                                   {status === 'active' && (
-                                                      <span className="px-2.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-bold uppercase tracking-wide">
-                                                         Ativo
-                                                      </span>
-                                                   )}
-                                                </h2>
-                                             </div>
+                              {/* 1. Plan Status Card */}
+                              <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
+                                 <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
+                                    <div className="space-y-4">
+                                       <div className="flex items-center gap-3">
+                                          <div className={`p-3 rounded-xl bg-gray-950/50 border border-white/5 ${planStyle.text} shadow-lg`}>
+                                             {planStyle.icon}
                                           </div>
-                                          
-                                          <div className="flex gap-6 text-sm">
-                                             <div className="flex items-center gap-2 text-gray-300">
-                                                <Calendar size={16} className="text-gray-500" />
-                                                <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
-                                             </div>
-                                             <div className="flex items-center gap-2 text-gray-300">
-                                                <Coins size={16} className="text-gray-500" />
-                                                <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
-                                             </div>
+                                          <div>
+                                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
+                                             <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+                                                {planStyle.label}
+                                                {status === 'active' && (
+                                                   <span className="px-2.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-bold uppercase tracking-wide">
+                                                      Ativo
+                                                   </span>
+                                                )}
+                                             </h2>
                                           </div>
                                        </div>
 
-                                       <div className="flex flex-col justify-center gap-3 min-w-[200px]">
-                                          <button 
-                                             onClick={onNavigateToSubscription}
-                                             className="w-full py-3.5 bg-white hover:bg-gray-100 text-black rounded-xl font-bold transition-all shadow-lg hover:-translate-y-0.5 active:translate-y-0"
-                                          >
-                                             {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
-                                          </button>
-                                          {plan !== 'starter' && (
-                                             <p className="text-xs text-center text-gray-500">
-                                                Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (cycle === 'annual' ? '599,90' : '59,90')}
-                                             </p>
-                                          )}
+                                       <div className="flex gap-6 text-sm">
+                                          <div className="flex items-center gap-2 text-gray-300">
+                                             <Calendar size={16} className="text-gray-500" />
+                                             <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                          </div>
+                                          <div className="flex items-center gap-2 text-gray-300">
+                                             <Coins size={16} className="text-gray-500" />
+                                             <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
+                                          </div>
                                        </div>
                                     </div>
 
-                                    {/* Background Decor */}
-                                    <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
+                                    <div className="flex flex-col justify-center gap-3 min-w-[200px]">
+                                       <button
+                                          onClick={onNavigateToSubscription}
+                                          className="w-full py-3.5 bg-white hover:bg-gray-100 text-black rounded-xl font-bold transition-all shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                                       >
+                                          {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+                                       </button>
+                                       {plan !== 'starter' && (
+                                          <p className="text-xs text-center text-gray-500">
+                                             Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (cycle === 'annual' ? '599,90' : '59,90')}
+                                          </p>
+                                       )}
+                                    </div>
                                  </div>
 
-                                 {/* 2. Payment & Billing Details */}
-                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    
-                                    {/* Payment Method Card */}
-                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors h-full">
-                                       <div className="flex justify-between items-start mb-6">
-                                          <h4 className="font-bold text-white flex items-center gap-2">
-                                             <CreditCard size={18} className="text-gray-400"/> Método de Pagamento
-                                          </h4>
-                                          <button 
+                                 {/* Background Decor */}
+                                 <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
+                              </div>
+
+                              {/* 2. Payment & Billing Details */}
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                                 {/* Payment Method Card */}
+                                 <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors h-full">
+                                    <div className="flex justify-between items-start mb-6">
+                                       <h4 className="font-bold text-white flex items-center gap-2">
+                                          <CreditCard size={18} className="text-gray-400" /> Método de Pagamento
+                                       </h4>
+                                       <button
+                                          onClick={() => setIsCardModalOpen(true)}
+                                          className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                                       >
+                                          {formData.paymentMethodDetails ? 'Alterar' : 'Adicionar'}
+                                       </button>
+                                    </div>
+
+                                    {formData.paymentMethodDetails ? (
+                                       <>
+                                          {/* Visual Card Mockup - Active */}
+                                          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700/50 relative overflow-hidden mb-4 shadow-lg">
+                                             <div className="relative z-10">
+                                                <div className="flex justify-between items-center mb-8">
+                                                   <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center backdrop-blur-md">
+                                                      <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
+                                                      <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
+                                                   </div>
+                                                   <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
+                                                      {formData.paymentMethodDetails.brand || 'Card'}
+                                                   </span>
+                                                </div>
+                                                <div className="space-y-4">
+                                                   <div>
+                                                      <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Número</p>
+                                                      <p className="text-sm font-mono text-gray-200 tracking-widest flex items-center gap-2">
+                                                         <span className="text-gray-600">•••• •••• ••••</span>
+                                                         {formData.paymentMethodDetails.last4}
+                                                      </p>
+                                                   </div>
+                                                   <div className="flex justify-between items-end">
+                                                      <div>
+                                                         <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Titular</p>
+                                                         <p className="text-xs font-medium text-gray-200 uppercase tracking-wide truncate max-w-[120px]">
+                                                            {formData.paymentMethodDetails.holder}
+                                                         </p>
+                                                      </div>
+                                                      <div className="text-right">
+                                                         <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Validade</p>
+                                                         <p className="text-xs font-mono text-gray-200">{formData.paymentMethodDetails.expiry}</p>
+                                                      </div>
+                                                   </div>
+                                                </div>
+                                             </div>
+                                             {/* Shine effect */}
+                                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                          </div>
+
+                                          <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2.5 rounded-xl border border-green-500/10">
+                                             <ShieldCheck size={14} /> Pagamento seguro via Asaas
+                                          </div>
+                                       </>
+                                    ) : (
+                                       <>
+                                          {/* Empty State */}
+                                          <div className="flex-1 border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
+                                             <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 text-gray-600">
+                                                <CreditCard size={20} />
+                                             </div>
+                                             <p className="text-sm text-gray-400 font-medium mb-1">Nenhum cartão vinculado</p>
+                                             <p className="text-xs text-gray-600 max-w-[180px]">Adicione um método de pagamento para ativar a renovação.</p>
+                                          </div>
+                                          <button
                                              onClick={() => setIsCardModalOpen(true)}
-                                             className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                                             className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-700"
                                           >
-                                             {formData.paymentMethodDetails ? 'Alterar' : 'Adicionar'}
+                                             Adicionar Cartão
+                                          </button>
+                                       </>
+                                    )}
+                                 </div>
+
+                                 {/* Billing Settings */}
+                                 <div className="space-y-4">
+                                    {/* Auto Renew Toggle */}
+                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6">
+                                       <div className="flex justify-between items-center mb-2">
+                                          <h4 className="font-bold text-white flex items-center gap-2">
+                                             <Calendar size={18} className="text-gray-400" /> Cobrança Automática
+                                          </h4>
+                                          <button
+                                             onClick={() => {
+                                                if (autoRenew) {
+                                                   setShowAutoRenewConfirmation(true);
+                                                } else {
+                                                   setAutoRenew(true);
+                                                   toast.success("Cobrança automática ativada.");
+                                                }
+                                             }}
+                                             className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${autoRenew ? 'bg-[#d97757]' : 'bg-gray-700'}`}
+                                          >
+                                             <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform duration-300 ${autoRenew ? 'left-6' : 'left-1'}`}></div>
                                           </button>
                                        </div>
-
-                                       {formData.paymentMethodDetails ? (
-                                           <>
-                                               {/* Visual Card Mockup - Active */}
-                                               <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700/50 relative overflow-hidden mb-4 shadow-lg">
-                                                  <div className="relative z-10">
-                                                     <div className="flex justify-between items-center mb-8">
-                                                        <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center backdrop-blur-md">
-                                                           <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
-                                                           <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
-                                                        </div>
-                                                        <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
-                                                            {formData.paymentMethodDetails.brand || 'Card'}
-                                                        </span>
-                                                     </div>
-                                                     <div className="space-y-4">
-                                                        <div>
-                                                           <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Número</p>
-                                                           <p className="text-sm font-mono text-gray-200 tracking-widest flex items-center gap-2">
-                                                               <span className="text-gray-600">•••• •••• ••••</span> 
-                                                               {formData.paymentMethodDetails.last4}
-                                                           </p>
-                                                        </div>
-                                                        <div className="flex justify-between items-end">
-                                                           <div>
-                                                              <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Titular</p>
-                                                              <p className="text-xs font-medium text-gray-200 uppercase tracking-wide truncate max-w-[120px]">
-                                                                  {formData.paymentMethodDetails.holder}
-                                                              </p>
-                                                           </div>
-                                                           <div className="text-right">
-                                                              <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Validade</p>
-                                                              <p className="text-xs font-mono text-gray-200">{formData.paymentMethodDetails.expiry}</p>
-                                                           </div>
-                                                        </div>
-                                                     </div>
-                                                  </div>
-                                                  {/* Shine effect */}
-                                                  <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                                               </div>
-
-                                               <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2.5 rounded-xl border border-green-500/10">
-                                                  <ShieldCheck size={14} /> Pagamento seguro via Asaas
-                                               </div>
-                                           </>
-                                       ) : (
-                                           <>
-                                               {/* Empty State */}
-                                               <div className="flex-1 border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
-                                                   <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 text-gray-600">
-                                                       <CreditCard size={20} />
-                                                   </div>
-                                                   <p className="text-sm text-gray-400 font-medium mb-1">Nenhum cartão vinculado</p>
-                                                   <p className="text-xs text-gray-600 max-w-[180px]">Adicione um método de pagamento para ativar a renovação.</p>
-                                               </div>
-                                               <button 
-                                                 onClick={() => setIsCardModalOpen(true)}
-                                                 className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-700"
-                                               >
-                                                  Adicionar Cartão
-                                               </button>
-                                           </>
+                                       <p className="text-xs text-gray-500 leading-relaxed mb-4">
+                                          Renovar automaticamente seu plano {cycle === 'annual' ? 'anual' : 'mensal'} usando o cartão cadastrado para evitar interrupções.
+                                       </p>
+                                       {autoRenew && (
+                                          <div className="flex items-center gap-2 text-xs text-gray-400">
+                                             <CheckCircle size={14} className="text-[#d97757]" />
+                                             Próxima cobrança agendada para {nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : '...'}
+                                          </div>
                                        )}
                                     </div>
 
-                                    {/* Billing Settings */}
-                                    <div className="space-y-4">
-                                       {/* Auto Renew Toggle */}
-                                       <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6">
-                                          <div className="flex justify-between items-center mb-2">
-                                              <h4 className="font-bold text-white flex items-center gap-2">
-                                                <Calendar size={18} className="text-gray-400"/> Cobrança Automática
-                                              </h4>
-                                              <button 
-                                                onClick={() => {
-                                                   if (autoRenew) {
-                                                      setShowAutoRenewConfirmation(true);
-                                                   } else {
-                                                      setAutoRenew(true);
-                                                      toast.success("Cobrança automática ativada.");
-                                                   }
-                                                }}
-                                                className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${autoRenew ? 'bg-[#d97757]' : 'bg-gray-700'}`}
-                                              >
-                                                 <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform duration-300 ${autoRenew ? 'left-6' : 'left-1'}`}></div>
-                                              </button>
-                                          </div>
-                                          <p className="text-xs text-gray-500 leading-relaxed mb-4">
-                                             Renovar automaticamente seu plano {cycle === 'annual' ? 'anual' : 'mensal'} usando o cartão cadastrado para evitar interrupções.
+                                    {/* Last Payment Info */}
+                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex items-center justify-between">
+                                       <div>
+                                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Último Pagamento</p>
+                                          <p className="text-white font-bold text-lg">
+                                             R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (plan === 'family' ? (cycle === 'annual' ? '599,90' : '59,90') : '0,00')}
                                           </p>
-                                          {autoRenew && (
-                                             <div className="flex items-center gap-2 text-xs text-gray-400">
-                                                <CheckCircle size={14} className="text-[#d97757]" />
-                                                Próxima cobrança agendada para {nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : '...'}
-                                             </div>
-                                          )}
                                        </div>
-
-                                       {/* Last Payment Info */}
-                                       <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex items-center justify-between">
-                                          <div>
-                                             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Último Pagamento</p>
-                                             <p className="text-white font-bold text-lg">
-                                                R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (plan === 'family' ? (cycle === 'annual' ? '599,90' : '59,90') : '0,00')}
-                                             </p>
-                                          </div>
-                                          <div className="text-right">
-                                             <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Data</p>
-                                             <p className="text-gray-300 font-medium">
-                                                {new Date().toLocaleDateString('pt-BR')}
-                                             </p>
-                                          </div>
+                                       <div className="text-right">
+                                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Data</p>
+                                          <p className="text-gray-300 font-medium">
+                                             {new Date().toLocaleDateString('pt-BR')}
+                                          </p>
                                        </div>
                                     </div>
                                  </div>
+                              </div>
 
-                                 <div className="flex justify-center pt-4">
-                                     <button className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1">
-                                       Cancelar assinatura
-                                     </button>
-                                 </div>
+                              <div className="flex justify-center pt-4">
+                                 <button className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1">
+                                    Cancelar assinatura
+                                 </button>
+                              </div>
                            </div>
                         )}
-                     </div>
-                  )}
-
-                  {/* --- TAB: NOTIFICATIONS --- */}
-                  {activeTab === 'notifications' && (
-                     <div className="space-y-10 animate-fade-in max-w-2xl">
-                        <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Notificações</h3>
-                           <p className="text-gray-400">Controle o que você recebe.</p>
-                        </div>
-                        <div className="space-y-0 divide-y divide-gray-800 border border-gray-800 rounded-2xl bg-gray-900/30 overflow-hidden">
-                           {[ 
-                              { id: 'email', label: 'E-mails de Resumo', desc: 'Balanço semanal.' },
-                              { id: 'push', label: 'Notificações Push', desc: 'Alertas de contas.' },
-                           ].map((item) => {
-                              const key = item.id as keyof typeof notifications;
-                              const isOn = notifications[key];
-                              const toggle = () => setNotifications({ ...notifications, [key]: !isOn });
-                              const bgClass = isOn ? 'bg-[#d97757]' : 'bg-gray-700';
-                              const translateClass = isOn ? 'translate-x-6' : 'translate-x-1';
-                              
-                              return (
-                                 <div key={item.id} className="p-6 flex items-center justify-between hover:bg-gray-900/50 transition-colors">
-                                    <div className="pr-4">
-                                       <h4 className="text-white font-bold text-base">{item.label}</h4>
-                                       <p className="text-sm text-gray-500 mt-1">{item.desc}</p>
-                                    </div>
-                                    <button
-                                       onClick={toggle}
-                                       className={`shrink-0 relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ${bgClass}`}
-                                    >
-                                       <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform duration-300 shadow-sm ${translateClass}`} />
-                                    </button>
-                                 </div>
-                              );
-                           })}
-                        </div>
-                     </div>
-                  )}
-
-                  {/* --- TAB: DATA --- */}
-                  {activeTab === 'data' && (
-                     <div className="space-y-10 animate-fade-in max-w-2xl">
-                        <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Dados e Relatórios</h3>
-                           <p className="text-gray-400">Exporte seus registros financeiros.</p>
-                        </div>
-
-                        <div className="space-y-3">
-                           <Dropdown className="w-full">
-                              <DropdownTrigger className="w-full">
-                                 <button className="w-full p-4 border border-gray-800 rounded-2xl bg-gray-900/30 flex items-center justify-between hover:bg-gray-900 transition-colors group">
-                                    <div className="flex items-center gap-4">
-                                       <div className="p-3 bg-emerald-900/20 rounded-xl text-emerald-400 group-hover:bg-emerald-900/30 transition-colors">
-                                          <Download size={24} />
-                                       </div>
-                                       <div className="text-left">
-                                          <h4 className="text-white font-bold flex items-center gap-2">Exportar Dados</h4>
-                                          <p className="text-sm text-gray-500">Baixar suas transações e relatórios</p>
-                                       </div>
-                                    </div>
-                                    <ChevronRight size={20} className="text-gray-600 group-hover:text-white transition-colors rotate-90" />
-                                 </button>
-                              </DropdownTrigger>
-
-                              <DropdownContent width="w-full" align="left" portal>
-                                 <DropdownLabel>Opções de Exportação</DropdownLabel>
-                                 <DropdownItem
-                                    icon={FileText}
-                                    onClick={() => {
-                                       if (transactions.length === 0) {
-                                          toast.error("Sem transações para exportar.");
-                                          return;
-                                       }
-                                       const headers = ["Data", "Descrição", "Categoria", "Valor", "Tipo", "Status"];
-                                       const rows = transactions.map(t => {
-                                          const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
-                                          const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
-                                          return [t.date, t.description, t.category, t.amount, typeStr, statusStr].join(",");
-                                       });
-                                       const csvContent = "data:text/csv;charset=utf-8," + [headers.join(","), ...rows].join("\n");
-                                       const encodedUri = encodeURI(csvContent);
-                                       const link = document.createElement("a");
-                                       link.setAttribute("href", encodedUri);
-                                       link.setAttribute("download", "transacoes_" + toLocalISODate() + ".csv");
-                                       document.body.appendChild(link);
-                                       link.click();
-                                       document.body.removeChild(link);
-                                       toast.success("Download iniciado!");
-                                    }}
-                                 >
-                                    Exportar CSV Simples
-                                 </DropdownItem>
-
-                                 <DropdownItem
-                                    icon={Download}
-                                    disabled={plan === 'starter'}
-                                    onClick={() => {
-                                       if (plan === 'starter') {
-                                          toast.error("Relatórios avançados disponíveis no plano Plus.");
-                                          return;
-                                       }
-                                       if (transactions.length === 0) {
-                                          toast.error("Sem dados para exportar.");
-                                          return;
-                                       }
-                                       // Generate detailed report
-                                       const totalIncome = transactions.filter(t => t.type === 'income').reduce((sum, t) => sum + t.amount, 0);
-                                       const totalExpense = transactions.filter(t => t.type === 'expense').reduce((sum, t) => sum + t.amount, 0);
-                                       const balance = totalIncome - totalExpense;
-
-                                       const dateStr = new Date().toLocaleString('pt-BR');
-                                       const headers = ["=== RELATÓRIO FINANCEIRO ===", "", "Gerado em: " + dateStr, "", "---", ""];
-                                       const summary = [
-                                          "RESUMO GERAL:",
-                                          "Total de Receitas: R$ " + totalIncome.toFixed(2),
-                                          "Total de Despesas: R$ " + totalExpense.toFixed(2),
-                                          "Saldo: R$ " + balance.toFixed(2),
-                                          "Total de Transações: " + transactions.length,
-                                          "",
-                                          "---",
-                                          "",
-                                          "TRANSAÇÕES DETALHADAS:",
-                                          "Data,Descrição,Categoria,Valor,Tipo,Status"
-                                       ];
-                                       const rows = transactions
-                                          .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                          .map(t => {
-                                             const typeStr = t.type === 'income' ? 'Receita' : 'Despesa';
-                                             const statusStr = t.status === 'completed' ? 'Pago' : 'Pendente';
-                                             return t.date + ',"'+ t.description +'",' + t.category + ',' + t.amount.toFixed(2) + ',' + typeStr + ',' + statusStr;
-                                          });
-
-                                       const content = [...headers, ...summary, ...rows].join("\n");
-                                       const blob = new Blob([content], { type: 'text/csv;charset=utf-8;' });
-                                       const link = document.createElement("a");
-                                       link.href = URL.createObjectURL(blob);
-                                       link.setAttribute("download", "relatorio_financeiro_" + toLocalISODate() + ".csv");
-                                       document.body.appendChild(link);
-                                       link.click();
-                                       document.body.removeChild(link);
-                                       toast.success("Relatório gerado com sucesso!");
-                                    }}
-                                 >
-                                    <div className="flex items-center justify-between w-full">
-                                       <span>Relatório Completo</span>
-                                       {plan === 'starter' && <span className="text-[10px] px-1.5 py-0.5 bg-gray-800 text-gray-400 rounded border border-gray-700 uppercase ml-2">Plus</span>}
-                                    </div>
-                                 </DropdownItem>
-                              </DropdownContent>
-                           </Dropdown>
-                        </div>
                      </div>
                   )}
 
@@ -2013,6 +2040,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             confirmText="Sim, desativar"
             cancelText="Manter ativa"
          />
-      </div>
+      </div>,
+      document.body
    );
 };

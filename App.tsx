@@ -59,6 +59,7 @@ import { InviteLanding } from './components/InviteLanding';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import AdminEmailMessage from './components/AdminEmailMessage';
+import { AdminCoupons } from './components/AdminCoupons';
 
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
@@ -410,6 +411,14 @@ const App: React.FC = () => {
     }
   }, [isProMode]);
 
+  // Force Manual Mode for users on free plan (starter)
+  useEffect(() => {
+    const userPlan = currentUser?.subscription?.plan || 'starter';
+    if (userPlan === 'starter' && isProMode) {
+      setIsProMode(false);
+    }
+  }, [currentUser?.subscription?.plan, isProMode]);
+
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
   }, [projectionSettings]);
@@ -499,6 +508,12 @@ const App: React.FC = () => {
 
   // Modals State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
+  const [aiModalContext, setAiModalContext] = useState<'transaction' | 'reminder'>('transaction');
+  const handleOpenAIModal = (context: 'transaction' | 'reminder' = 'transaction') => {
+    setAiModalContext(context);
+    setIsAIModalOpen(true);
+  };
+
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data' | 'finance'>('profile');
 
@@ -855,19 +870,19 @@ const App: React.FC = () => {
       if (!keepHistory) {
         await dbService.deleteAllUserTransactions(userId);
         await dbService.deleteAllConnectedAccounts(userId);
-        
+
         // Since we deleted accounts, we can't update them. Just log audit and finish.
         await dbService.addAuditLog(userId, {
-            timestamp: new Date().toISOString(),
-            action: 'MODE_CHANGE_TO_MANUAL',
-            details: {
-              previousMode: 'AUTO',
-              newMode: 'MANUAL',
-              keepHistory: false,
-              isGlobal: true
-            }
+          timestamp: new Date().toISOString(),
+          action: 'MODE_CHANGE_TO_MANUAL',
+          details: {
+            previousMode: 'AUTO',
+            newMode: 'MANUAL',
+            keepHistory: false,
+            isGlobal: true
+          }
         });
-        
+
         setIsProMode(false);
         setShowGlobalModeModal(null);
         toast.success("Modo Manual ativado. Histórico e conexões apagados. Começando do zero.");
@@ -935,7 +950,7 @@ const App: React.FC = () => {
           }
         });
       }
-      
+
       setShowGlobalModeModal(null);
       toast.success("Modo Automático reativado. Todos os lançamentos manuais foram removidos.");
     } catch (error) {
@@ -988,13 +1003,13 @@ const App: React.FC = () => {
       const type = (a.type || '').toUpperCase();
       const subtype = (a.subtype || '').toUpperCase();
       const id = (a.id || '').toLowerCase();
-      
-      return type === 'CREDIT' || 
-             type === 'CREDIT_CARD' || 
-             subtype === 'CREDIT_CARD' || 
-             subtype.includes('CREDIT') ||
-             id.includes('_cc_') ||
-             id.includes('credit');
+
+      return type === 'CREDIT' ||
+        type === 'CREDIT_CARD' ||
+        subtype === 'CREDIT_CARD' ||
+        subtype.includes('CREDIT') ||
+        id.includes('_cc_') ||
+        id.includes('credit');
     };
 
     const checkingAccounts = connectedAccounts
@@ -1004,7 +1019,7 @@ const App: React.FC = () => {
 
         // Excluir poupança (vai para caixinhas) e cartões de crédito
         if (subtype === 'SAVINGS_ACCOUNT' || subtype === 'SAVINGS') return false;
-        
+
         // Use robust credit card check
         if (isCreditCard(a)) return false;
 
@@ -1044,21 +1059,21 @@ const App: React.FC = () => {
 
   // AUTO-ENABLE ALL CARDS ON LOAD (Only if user hasn't configured preferences yet)
   useEffect(() => {
-     // Check if user has ever configured this preference
-     const hasConfigured = localStorage.getItem('finances_enabled_cc_ids') !== null;
-     
-     // Only auto-enable if NOT configured yet AND we have cards available
-     if (!hasConfigured && accountBalances.credit.accounts.length > 0) {
-        const allCardIds = accountBalances.credit.accounts.map(a => a.id);
-        setEnabledCreditCardIds(allCardIds);
-     }
+    // Check if user has ever configured this preference
+    const hasConfigured = localStorage.getItem('finances_enabled_cc_ids') !== null;
+
+    // Only auto-enable if NOT configured yet AND we have cards available
+    if (!hasConfigured && accountBalances.credit.accounts.length > 0) {
+      const allCardIds = accountBalances.credit.accounts.map(a => a.id);
+      setEnabledCreditCardIds(allCardIds);
+    }
   }, [accountBalances.credit.accounts]);
 
   // NEW: Filter Savings Accounts
   const connectedSavingsAccounts = useMemo(() => {
-    return connectedAccounts.filter(a => 
-      a.type === 'SAVINGS' || 
-      a.subtype === 'SAVINGS_ACCOUNT' || 
+    return connectedAccounts.filter(a =>
+      a.type === 'SAVINGS' ||
+      a.subtype === 'SAVINGS_ACCOUNT' ||
       a.subtype === 'SAVINGS'
     );
   }, [connectedAccounts]);
@@ -1183,18 +1198,18 @@ const App: React.FC = () => {
           const type = (account.type || '').toUpperCase();
           const subtype = (account.subtype || '').toUpperCase();
           const id = (account.id || '').toLowerCase();
-          
-          const isCredit = type.includes('CREDIT') || 
-                           subtype.includes('CREDIT') || 
-                           subtype.includes('CARD') ||
-                           id.includes('_cc_') ||
-                           id.includes('credit');
-                           
+
+          const isCredit = type.includes('CREDIT') ||
+            subtype.includes('CREDIT') ||
+            subtype.includes('CARD') ||
+            id.includes('_cc_') ||
+            id.includes('credit');
+
           const isSavings = type.includes('SAVINGS') || subtype.includes('SAVINGS');
-          
+
           if (isCredit || isSavings) return false;
           // Also exclude investments if needed, but checking usually includes investments as "transfers" unless specified
-          if (t.isInvestment) return false; 
+          if (t.isInvestment) return false;
           return true;
         }
       }
@@ -1213,12 +1228,12 @@ const App: React.FC = () => {
           const type = (account.type || '').toUpperCase();
           const subtype = (account.subtype || '').toUpperCase();
           const id = (account.id || '').toLowerCase();
-          
-          if (type.includes('CREDIT') || 
-              subtype.includes('CREDIT') || 
-              subtype.includes('CARD') ||
-              id.includes('_cc_') ||
-              id.includes('credit')) {
+
+          if (type.includes('CREDIT') ||
+            subtype.includes('CREDIT') ||
+            subtype.includes('CARD') ||
+            id.includes('_cc_') ||
+            id.includes('credit')) {
             return true;
           }
         }
@@ -1391,11 +1406,11 @@ const App: React.FC = () => {
     // Log transactions that have accountId in checkingAccountIds
     const checkingTxs = reviewedDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
     console.log('Transações de conta corrente encontradas:', checkingTxs.length);
-    
+
     // DEBUG: Specific check for checking account expenses
     const checkingExpenses = checkingTxs.filter(t => {
-       const desc = (t.description || '').toUpperCase();
-       const isExpenseByDesc =
+      const desc = (t.description || '').toUpperCase();
+      const isExpenseByDesc =
         desc.includes('ENVIADO') ||
         desc.includes('ENVIADA') ||
         desc.includes('PAG ') ||
@@ -1409,8 +1424,8 @@ const App: React.FC = () => {
         desc.includes('SAQUE') ||
         desc.includes('COMPRA') ||
         desc.includes('TARIFA');
-       
-       return t.type === 'expense' || t.amount < 0 || isExpenseByDesc;
+
+      return t.type === 'expense' || t.amount < 0 || isExpenseByDesc;
     });
     console.log('Despesas reais em conta corrente:', checkingExpenses.length);
     checkingExpenses.slice(0, 5).forEach(t => {
@@ -1419,16 +1434,16 @@ const App: React.FC = () => {
 
     // DEBUG: Raw Transactions Check
     console.log('=== RAW TRANSACTIONS CHECK ===');
-    const rawCheckingTxs = transactions.filter(t => 
-      t.accountId && 
-      (t.accountId.includes('klavi_acc_22518081502090_3402_43346088') || 
-       t.accountId.includes('klavi_acc_22518081502090_6710_73468350'))
+    const rawCheckingTxs = transactions.filter(t =>
+      t.accountId &&
+      (t.accountId.includes('klavi_acc_22518081502090_3402_43346088') ||
+        t.accountId.includes('klavi_acc_22518081502090_6710_73468350'))
     );
     console.log('Total Raw Transactions for target accounts:', rawCheckingTxs.length);
     const rawExpenses = rawCheckingTxs.filter(t => t.type === 'expense' || t.amount < 0);
     console.log('Raw Expenses found:', rawExpenses.length);
     rawExpenses.forEach(t => {
-       console.log(`  RAW EXPENSE: "${t.description}" | amount: ${t.amount} | date: ${t.date} | ignored: ${t.ignored}`);
+      console.log(`  RAW EXPENSE: "${t.description}" | amount: ${t.amount} | date: ${t.date} | ignored: ${t.ignored}`);
     });
     console.log('=== END RAW CHECK ===');
 
@@ -1542,52 +1557,48 @@ const App: React.FC = () => {
         // StatsCards typically ignores Category for the invoice display, but for the Total Expense stats, 
         // it makes sense to respect the global category filter if applied.
         const currentViewCCTransactions = reviewedDashboardTransactions.filter(t => {
-           if ((t.accountType || '').toUpperCase().includes('CREDIT')) return true;
-           if (t.accountId && creditCardAccountIds.has(t.accountId)) return true;
-           if ((t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito')) return true;
-           return false;
+          if ((t.accountType || '').toUpperCase().includes('CREDIT')) return true;
+          if (t.accountId && creditCardAccountIds.has(t.accountId)) return true;
+          if ((t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito')) return true;
+          return false;
         });
 
         // 3. Iterate enabled cards and sum their matched transactions
         allCreditAccounts.forEach((card, cardIndex) => {
-             if (!enabledCreditCardIds.includes(card.id)) return;
+          if (!enabledCreditCardIds.includes(card.id)) return;
 
-             // Check if Open Finance is disabled and this is an automated account
-             const isManual = card.connectionMode === 'MANUAL';
-             if (!includeOpenFinanceInStats && !isManual) return;
+          // Robust Matching Strategy
+          let cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === card.id);
 
-             // Robust Matching Strategy
-             let cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === card.id);
+          if (cardTransactions.length === 0) {
+            // Strategy 1: Map by index if counts match (using stable all-time IDs)
+            if (stableUniqueAccountIds.length === allCreditAccounts.length && stableUniqueAccountIds.length > 0) {
+              const sortedAccountIds = [...stableUniqueAccountIds].sort();
+              const targetAccountId = sortedAccountIds[cardIndex];
+              cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === targetAccountId);
+            }
 
-             if (cardTransactions.length === 0) {
-                // Strategy 1: Map by index if counts match (using stable all-time IDs)
-                if (stableUniqueAccountIds.length === allCreditAccounts.length && stableUniqueAccountIds.length > 0) {
-                   const sortedAccountIds = [...stableUniqueAccountIds].sort();
-                   const targetAccountId = sortedAccountIds[cardIndex];
-                   cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === targetAccountId);
-                }
+            // Strategy 2: Single card fallback
+            if (cardTransactions.length === 0 && allCreditAccounts.length === 1) {
+              cardTransactions = currentViewCCTransactions;
+            }
+          }
 
-                // Strategy 2: Single card fallback
-                if (cardTransactions.length === 0 && allCreditAccounts.length === 1) {
-                   cardTransactions = currentViewCCTransactions;
-                }
-             }
-             
-             let accInvoice = 0;
-             if (cardTransactions.length > 0) {
-                 accInvoice = cardTransactions.reduce((sum, t) => {
-                     if (t.type === 'expense') return sum + Math.abs(t.amount);
-                     if (t.type === 'income') return sum - Math.abs(t.amount);
-                     return sum;
-                 }, 0);
-             } else {
-                 // Fallback to absolute balance if no transactions found (Aligns with StatsCards)
-                 // This fixes issues where negative balances (liabilities) were ignored by getCurrentInvoiceAmount
-                 accInvoice = Math.abs(card.balance || 0);
-             }
-             
-             finalCCExpense += Math.max(0, accInvoice);
-         });
+          let accInvoice = 0;
+          if (cardTransactions.length > 0) {
+            accInvoice = cardTransactions.reduce((sum, t) => {
+              if (t.type === 'expense') return sum + Math.abs(t.amount);
+              if (t.type === 'income') return sum - Math.abs(t.amount);
+              return sum;
+            }, 0);
+          } else {
+            // Fallback to absolute balance if no transactions found (Aligns with StatsCards)
+            // This fixes issues where negative balances (liabilities) were ignored by getCurrentInvoiceAmount
+            accInvoice = Math.abs(card.balance || 0);
+          }
+
+          finalCCExpense += Math.max(0, accInvoice);
+        });
       }
     }
 
@@ -1684,7 +1695,15 @@ const App: React.FC = () => {
     // Apply Projections
     const finalTotalIncome = totalIncome + projectedIncome;
     const finalTotalExpense = totalExpense + projectedExpense;
-    const finalBalance = calculatedBalance + projectedIncome - projectedExpense;
+
+    // Calculate Balance Base (Checking)
+    let balanceBase = 0;
+    if (includeCheckingInStats) {
+      balanceBase = accountBalances.checking;
+    }
+
+    // User requested: Saldo Total = Checking + Income - Expense
+    const finalBalance = balanceBase + finalTotalIncome - finalTotalExpense;
     const finalMonthlySavings = finalTotalIncome - finalTotalExpense;
 
     return {
@@ -1986,27 +2005,27 @@ const App: React.FC = () => {
 
   const handleUpdateInvestment = async (investment: Investment) => {
     if (!userId) return;
-    
+
     // Check if it's a connected account (ID usually starts with provider prefix like 'klavi_' or comes from accounts list)
     // We can check if it exists in our connectedAccounts list
     const connectedAcc = connectedAccounts.find(acc => acc.id === investment.id);
-    
+
     if (connectedAcc) {
-        // Update connected account (nickname/icon)
-        const updatedAccount: ConnectedAccount = {
-            ...connectedAcc,
-            name: investment.name, // Use the new name as the nickname
-            // We might want to store the custom icon too if ConnectedAccount supports it?
-            // Assuming ConnectedAccount has 'name' field which we overwrite. 
-            // (Original name usually in 'institution' or we can keep original in another field if needed, 
-            // but usually users want to rename it).
-        };
-        await dbService.updateConnectedAccount(userId, updatedAccount);
-        toast.success("Apelido da conta atualizado!");
+      // Update connected account (nickname/icon)
+      const updatedAccount: ConnectedAccount = {
+        ...connectedAcc,
+        name: investment.name, // Use the new name as the nickname
+        // We might want to store the custom icon too if ConnectedAccount supports it?
+        // Assuming ConnectedAccount has 'name' field which we overwrite. 
+        // (Original name usually in 'institution' or we can keep original in another field if needed, 
+        // but usually users want to rename it).
+      };
+      await dbService.updateConnectedAccount(userId, updatedAccount);
+      toast.success("Apelido da conta atualizado!");
     } else {
-        // Standard manual investment update
-        await dbService.updateInvestment(userId, investment);
-        toast.success("Investimento atualizado!");
+      // Standard manual investment update
+      await dbService.updateInvestment(userId, investment);
+      toast.success("Investimento atualizado!");
     }
   };
 
@@ -2056,6 +2075,7 @@ const App: React.FC = () => {
       case 'admin_overview': return { title: 'Painel Administrativo', desc: 'Visão geral do sistema.' };
       case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar usuários interessados.' };
       case 'admin_email': return { title: 'Campanhas de Email', desc: 'Criar e enviar mensagens.' };
+      case 'admin_coupons': return { title: 'Cupons de Desconto', desc: 'Gerenciar códigos promocionais.' };
       default: return { title: 'Controlar+', desc: '' };
     }
   };
@@ -2155,13 +2175,14 @@ const App: React.FC = () => {
         userPlan={currentUser?.subscription?.plan || 'starter'}
         isAdmin={currentUser?.isAdmin}
         overdueRemindersCount={overdueRemindersCount}
-        onOpenAIModal={() => setIsAIModalOpen(true)}
+        onOpenAIModal={() => handleOpenAIModal('transaction')}
+        isProMode={isProMode}
       />
 
       {/* Main Content */}
 
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-        <header className="h-16 lg:h-20 border-b border-gray-800 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
+        <header className="h-16 lg:h-20 bg-[#30302E] sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
           {/* Mobile Menu Button */}
           <button
             onClick={() => setSidebarOpen(!isSidebarOpen)}
@@ -2226,7 +2247,7 @@ const App: React.FC = () => {
                     <DropdownTrigger className={`
                         h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border cursor-pointer
                         ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
-                        ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
+                        ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
                         : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
                       }
                       `}>
@@ -2417,7 +2438,7 @@ const App: React.FC = () => {
                   className={`
                       h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border
                       ${(projectionSettings.reminders || projectionSettings.subscriptions)
-                      ? 'bg-[#d97757] text-white shadow-lg shadow-[#d97757]/20 border-[#d97757]'
+                      ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
                       : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
                     }
                     `}
@@ -2459,6 +2480,8 @@ const App: React.FC = () => {
             <AdminWaitlist />
           ) : activeTab === 'admin_email' ? (
             <AdminEmailMessage currentUser={currentUser} />
+          ) : activeTab === 'admin_coupons' ? (
+            <AdminCoupons />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
@@ -2562,12 +2585,12 @@ const App: React.FC = () => {
                     />
                     <div className="animate-fade-in space-y-6">
                       <DashboardCharts
-                      transactions={reviewedDashboardTransactions}
-                      reminders={filteredReminders}
-                      stats={stats}
-                      dashboardDate={dashboardDate}
-                      filterMode={filterMode}
-                    />
+                        transactions={reviewedDashboardTransactions}
+                        reminders={filteredReminders}
+                        stats={stats}
+                        dashboardDate={dashboardDate}
+                        filterMode={filterMode}
+                      />
                       {filterMode === 'month' && (
                         <FinanceCalendar
                           month={dashboardDate}
@@ -2700,6 +2723,8 @@ const App: React.FC = () => {
         isOpen={isAIModalOpen}
         onClose={() => setIsAIModalOpen(false)}
         onConfirm={handleAddTransaction}
+        onCreateReminder={handleAddReminder}
+        initialContext={aiModalContext}
       />
 
       <SettingsModal
