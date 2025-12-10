@@ -29,19 +29,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: ['schematically-oscitant-herbert.ngrok-free.dev'],
-      proxy: {
-        // Proxies to external services only
-        '/api/asaas': {
-          target: 'https://www.asaas.com/api/v3',
-          changeOrigin: true,
-          rewrite: (path) => path.replace(/^\/api\/asaas/, ''),
-          secure: false,
-          headers: {
-            'access_token': process.env.ASAAS_API_KEY || ''
-          }
-        }
-      }
+      allowedHosts: ['schematically-oscitant-herbert.ngrok-free.dev', 'www.controlarmais.com.br'],
     },
     plugins: [react(), expressPlugin()],
     resolve: {

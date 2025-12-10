@@ -240,18 +240,18 @@ const normalizeAccounts = (accounts, linkId, defaultType = null) => {
     // Determine account type with broader checks
     const rawType = (acc.accountType || acc.type || '').toUpperCase();
     const rawSubtype = (acc.accountSubType || acc.subtype || '').toUpperCase();
-    
+
     let isSavings = false;
-    
+
     if (defaultType === 'SAVINGS') {
-        isSavings = true;
+      isSavings = true;
     } else {
-        isSavings = 
-          rawType === 'CONTA_POUPANCA' || 
-          rawType === 'SAVINGS' || 
-          rawType === 'SAVINGS_ACCOUNT' ||
-          rawSubtype.includes('POUPANCA') ||
-          rawSubtype.includes('SAVINGS');
+      isSavings =
+        rawType === 'CONTA_POUPANCA' ||
+        rawType === 'SAVINGS' ||
+        rawType === 'SAVINGS_ACCOUNT' ||
+        rawSubtype.includes('POUPANCA') ||
+        rawSubtype.includes('SAVINGS');
     }
 
     return {
@@ -321,7 +321,7 @@ const normalizeTransactions = (creditCards, accounts, linkId) => {
 const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => {
   // Debug: Log raw transaction for checking accounts to investigate missing expenses
   if (sourceType === 'account') {
-     console.log(`>>> RAW TX CHECK: ID=${tx.transactionId || 'N/A'} Desc="${tx.transactionName || tx.description}" Val=${tx.amount?.amount || tx.value} Type=${tx.type} CD=${tx.creditDebitType}`);
+    console.log(`>>> RAW TX CHECK: ID=${tx.transactionId || 'N/A'} Desc="${tx.transactionName || tx.description}" Val=${tx.amount?.amount || tx.value} Type=${tx.type} CD=${tx.creditDebitType}`);
   }
 
   // Try multiple possible amount locations (Klavi/Open Finance has various structures)
@@ -765,11 +765,11 @@ router.post('/klavi/webhook', (req, res) => {
     // Helper to deduplicate and merge by key
     const mergeByKey = (existing, newItems, keyFn) => {
       const map = new Map();
-      
+
       // Initialize with existing items
       existing.forEach(item => {
-         const key = keyFn(item);
-         if (key) map.set(key, item);
+        const key = keyFn(item);
+        if (key) map.set(key, item);
       });
 
       // Merge new items
@@ -779,33 +779,33 @@ router.post('/klavi/webhook', (req, res) => {
 
         const existingItem = map.get(key);
         if (existingItem) {
-           // Merge logic: New data overrides old data, BUT...
-           const merged = { ...existingItem, ...newItem };
-           
-           // Preserve transactions if new item doesn't have them (or has empty list while old had data)
-           const hasNewTxs = (newItem.transactions && newItem.transactions.length > 0) || (newItem.transactionDetails && newItem.transactionDetails.length > 0);
-           const hasOldTxs = (existingItem.transactions && existingItem.transactions.length > 0) || (existingItem.transactionDetails && existingItem.transactionDetails.length > 0);
-           
-           if (!hasNewTxs && hasOldTxs) {
-              // console.log(`>>> Preserving transactions for ${key} (New update missing txs)`);
-              if (existingItem.transactions) merged.transactions = existingItem.transactions;
-              if (existingItem.transactionDetails) merged.transactionDetails = existingItem.transactionDetails;
-           }
-           
-           // Also preserve openStatement/closedStatements for credit cards
-           if (!newItem.openStatement && existingItem.openStatement) {
-              merged.openStatement = existingItem.openStatement;
-           }
-           if ((!newItem.closedStatements || newItem.closedStatements.length === 0) && existingItem.closedStatements && existingItem.closedStatements.length > 0) {
-              merged.closedStatements = existingItem.closedStatements;
-           }
+          // Merge logic: New data overrides old data, BUT...
+          const merged = { ...existingItem, ...newItem };
 
-           map.set(key, merged);
+          // Preserve transactions if new item doesn't have them (or has empty list while old had data)
+          const hasNewTxs = (newItem.transactions && newItem.transactions.length > 0) || (newItem.transactionDetails && newItem.transactionDetails.length > 0);
+          const hasOldTxs = (existingItem.transactions && existingItem.transactions.length > 0) || (existingItem.transactionDetails && existingItem.transactionDetails.length > 0);
+
+          if (!hasNewTxs && hasOldTxs) {
+            // console.log(`>>> Preserving transactions for ${key} (New update missing txs)`);
+            if (existingItem.transactions) merged.transactions = existingItem.transactions;
+            if (existingItem.transactionDetails) merged.transactionDetails = existingItem.transactionDetails;
+          }
+
+          // Also preserve openStatement/closedStatements for credit cards
+          if (!newItem.openStatement && existingItem.openStatement) {
+            merged.openStatement = existingItem.openStatement;
+          }
+          if ((!newItem.closedStatements || newItem.closedStatements.length === 0) && existingItem.closedStatements && existingItem.closedStatements.length > 0) {
+            merged.closedStatements = existingItem.closedStatements;
+          }
+
+          map.set(key, merged);
         } else {
-           map.set(key, newItem);
+          map.set(key, newItem);
         }
       });
-      
+
       return Array.from(map.values());
     };
 
@@ -884,7 +884,7 @@ router.get('/klavi/debug/:linkId', (req, res) => {
       // Expose full checking accounts for debugging
       checkingAccounts: data.checkingAccounts,
       // Expose checking account transactions for debugging
-      checkingAccountTransactions: (data.checkingAccounts || []).flatMap(acc => 
+      checkingAccountTransactions: (data.checkingAccounts || []).flatMap(acc =>
         (acc.transactions || acc.transactionDetails || []).slice(0, 50)
       ),
       // Show raw data for debugging
@@ -1056,7 +1056,7 @@ router.post('/admin/send-email', async (req, res) => {
   // Header/Footer: #363735
   // Content: #262624
   // Text: White (#ffffff) & Gray-300 (#d1d5db)
-  
+
   // Alignment Defaults
   const hAlign = headerAlign || 'center';
   const tAlign = titleAlign || 'center';
@@ -1153,52 +1153,382 @@ router.post('/admin/send-email', async (req, res) => {
     // For bulk, using BCC is often better, or loop.
     // Here we will loop to simulate individual "To" fields which is more personal,
     // but in high volume production, use a bulk service.
-    
+
     // NOTE: If using Gmail free tier, there are strict limits (e.g. 500/day).
-    
+
     const sendPromises = recipients.map(email => {
-       return smtpTransporter.sendMail({
-          from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
-          to: email,
-          subject: subject,
-          html: htmlTemplate,
-          text: body // Fallback plain text
-       });
+      return smtpTransporter.sendMail({
+        from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: subject,
+        html: htmlTemplate,
+        text: body // Fallback plain text
+      });
     });
 
     // Wait for all (or handle errors individually to not fail batch)
     const results = await Promise.allSettled(sendPromises);
-    
+
     const successCount = results.filter(r => r.status === 'fulfilled').length;
     const failures = results.filter(r => r.status === 'rejected');
     const failCount = failures.length;
 
     console.log(`>>> Email Campaign Sent: ${successCount} success, ${failCount} failed.`);
-    
+
     if (failCount > 0) {
-        console.error(">>> First failure reason:", failures[0].reason);
+      console.error(">>> First failure reason:", failures[0].reason);
     }
 
     // Determine status code
     if (successCount === 0 && failCount > 0) {
-        // Total failure
-        const firstError = failures[0].reason;
-        return res.status(500).json({ 
-            error: 'Falha ao enviar todos os emails.', 
-            details: firstError?.message || 'Erro desconhecido no SMTP.'
-        });
+      // Total failure
+      const firstError = failures[0].reason;
+      return res.status(500).json({
+        error: 'Falha ao enviar todos os emails.',
+        details: firstError?.message || 'Erro desconhecido no SMTP.'
+      });
     }
 
-    res.json({ 
-      success: true, 
-      sent: successCount, 
+    res.json({
+      success: true,
+      sent: successCount,
       failed: failCount,
-      message: `Enviado para ${successCount} usuários.` 
+      message: `Enviado para ${successCount} usuários.`
     });
 
   } catch (error) {
     console.error('Email Send Error:', error);
     res.status(500).json({ error: 'Falha ao processar envio.', details: error.message });
+  }
+});
+
+// ========================================
+// ASAAS PAYMENT INTEGRATION
+// ========================================
+
+const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
+const ASAAS_API_URL = 'https://www.asaas.com/api/v3';
+
+// Helper: Make Asaas API request
+const asaasRequest = async (method, endpoint, data = null) => {
+  const config = {
+    method,
+    url: `${ASAAS_API_URL}${endpoint}`,
+    headers: {
+      'Content-Type': 'application/json',
+      'access_token': ASAAS_API_KEY,
+    },
+  };
+
+  if (data) {
+    config.data = data;
+  }
+
+  console.log(`>>> ASAAS ${method.toUpperCase()} ${endpoint}`);
+
+  try {
+    const response = await axios(config);
+    return response.data;
+  } catch (error) {
+    console.error('>>> ASAAS Error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// 1. Create or Update Customer in Asaas
+router.post('/asaas/customer', async (req, res) => {
+  const { name, email, cpfCnpj, phone, postalCode, addressNumber } = req.body;
+
+  if (!name || !email || !cpfCnpj) {
+    return res.status(400).json({ error: 'Nome, email e CPF/CNPJ são obrigatórios.' });
+  }
+
+  try {
+    // Check if customer already exists by CPF/CNPJ
+    const searchResult = await asaasRequest('GET', `/customers?cpfCnpj=${cpfCnpj.replace(/\D/g, '')}`);
+
+    let customer;
+
+    if (searchResult.data && searchResult.data.length > 0) {
+      // Customer exists, update it
+      customer = searchResult.data[0];
+      console.log(`>>> Found existing customer: ${customer.id}`);
+
+      // Update customer data
+      const updateData = {
+        name,
+        email,
+        phone: phone?.replace(/\D/g, '') || undefined,
+        postalCode: postalCode?.replace(/\D/g, '') || undefined,
+        addressNumber: addressNumber || undefined,
+      };
+
+      customer = await asaasRequest('PUT', `/customers/${customer.id}`, updateData);
+    } else {
+      // Create new customer
+      const customerData = {
+        name,
+        email,
+        cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+        phone: phone?.replace(/\D/g, '') || undefined,
+        postalCode: postalCode?.replace(/\D/g, '') || undefined,
+        addressNumber: addressNumber || undefined,
+        notificationDisabled: false,
+      };
+
+      customer = await asaasRequest('POST', '/customers', customerData);
+      console.log(`>>> Created new customer: ${customer.id}`);
+    }
+
+    res.json({ success: true, customer });
+  } catch (error) {
+    console.error('>>> Customer creation error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao criar cliente.',
+      details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
+// 2. Create Subscription with Credit Card
+router.post('/asaas/subscription', async (req, res) => {
+  const {
+    customerId,
+    planId,
+    billingCycle,
+    value,
+    creditCard,
+    creditCardHolderInfo,
+    installmentCount,
+    couponId
+  } = req.body;
+
+  if (!customerId || !value || !creditCard || !creditCardHolderInfo) {
+    return res.status(400).json({ error: 'Dados incompletos para criar assinatura.' });
+  }
+
+  try {
+    // Determine billing cycle
+    const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
+    const nextDueDate = new Date();
+    nextDueDate.setDate(nextDueDate.getDate() + 1); // Next day
+    const dueDateStr = nextDueDate.toISOString().split('T')[0];
+
+    // For annual plans with installments, we create a single payment (parcelado)
+    // For monthly, we create a subscription
+
+    if (billingCycle === 'annual' && installmentCount && installmentCount > 1) {
+      // Annual plan with installments - Create a single installment payment
+      const paymentData = {
+        customer: customerId,
+        billingType: 'CREDIT_CARD',
+        value: value,
+        dueDate: dueDateStr,
+        description: `Plano ${planId} - Anual (${installmentCount}x)`,
+        installmentCount: installmentCount,
+        installmentValue: Math.round((value / installmentCount) * 100) / 100,
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: creditCard.number.replace(/\s/g, ''),
+          expiryMonth: creditCard.expiryMonth,
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv,
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          email: creditCardHolderInfo.email,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          addressNumber: creditCardHolderInfo.addressNumber,
+          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined,
+        },
+        externalReference: `${planId}_annual_${Date.now()}`,
+      };
+
+      console.log('>>> Creating installment payment:', JSON.stringify(paymentData, null, 2));
+
+      const payment = await asaasRequest('POST', '/payments', paymentData);
+
+      console.log('>>> Payment created:', payment.id, payment.status);
+
+      // Check payment status
+      if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {
+        return res.json({
+          success: true,
+          payment,
+          status: 'CONFIRMED',
+          message: 'Pagamento confirmado com sucesso!'
+        });
+      } else if (payment.status === 'PENDING') {
+        return res.json({
+          success: true,
+          payment,
+          status: 'PENDING',
+          message: 'Pagamento em processamento. Aguarde a confirmação.'
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          payment,
+          status: payment.status,
+          error: 'Pagamento não foi aprovado. Verifique os dados do cartão.'
+        });
+      }
+    } else {
+      // Monthly or Annual without installments - Create subscription
+      const subscriptionData = {
+        customer: customerId,
+        billingType: 'CREDIT_CARD',
+        value: value,
+        nextDueDate: dueDateStr,
+        cycle: cycle,
+        description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: creditCard.number.replace(/\s/g, ''),
+          expiryMonth: creditCard.expiryMonth,
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv,
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          email: creditCardHolderInfo.email,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          addressNumber: creditCardHolderInfo.addressNumber,
+          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined,
+        },
+        externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`,
+      };
+
+      console.log('>>> Creating subscription:', JSON.stringify(subscriptionData, null, 2));
+
+      const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
+
+      console.log('>>> Subscription created:', subscription.id, subscription.status);
+
+      // Get the first payment to check status
+      const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
+      const firstPayment = payments.data?.[0];
+
+      if (firstPayment && (firstPayment.status === 'CONFIRMED' || firstPayment.status === 'RECEIVED')) {
+        return res.json({
+          success: true,
+          subscription,
+          payment: firstPayment,
+          status: 'CONFIRMED',
+          message: 'Assinatura criada e pagamento confirmado!'
+        });
+      } else if (subscription.status === 'ACTIVE' || firstPayment?.status === 'PENDING') {
+        return res.json({
+          success: true,
+          subscription,
+          payment: firstPayment,
+          status: 'PENDING',
+          message: 'Assinatura criada. Pagamento em processamento.'
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          subscription,
+          status: subscription.status,
+          error: 'Não foi possível processar o pagamento. Verifique os dados do cartão.'
+        });
+      }
+    }
+  } catch (error) {
+    console.error('>>> Subscription error:', error.response?.data || error.message);
+
+    const asaasErrors = error.response?.data?.errors;
+    let errorMessage = 'Erro ao processar pagamento.';
+
+    if (asaasErrors && asaasErrors.length > 0) {
+      errorMessage = asaasErrors.map(e => e.description).join('. ');
+    }
+
+    res.status(500).json({
+      error: errorMessage,
+      details: error.response?.data
+    });
+  }
+});
+
+// 3. Webhook to receive payment confirmations
+router.post('/asaas/webhook', async (req, res) => {
+  const event = req.body;
+
+  console.log('>>> ASAAS WEBHOOK RECEIVED:', event.event);
+  console.log('>>> Payment ID:', event.payment?.id);
+  console.log('>>> Status:', event.payment?.status);
+
+  try {
+    // Handle different event types
+    switch (event.event) {
+      case 'PAYMENT_CONFIRMED':
+      case 'PAYMENT_RECEIVED':
+        console.log(`>>> Payment confirmed: ${event.payment?.id}`);
+        // Here you would update the user's subscription in Firebase
+        // This is handled client-side for now
+        break;
+
+      case 'PAYMENT_OVERDUE':
+        console.log(`>>> Payment overdue: ${event.payment?.id}`);
+        break;
+
+      case 'PAYMENT_REFUNDED':
+        console.log(`>>> Payment refunded: ${event.payment?.id}`);
+        break;
+
+      case 'SUBSCRIPTION_CREATED':
+        console.log(`>>> Subscription created: ${event.subscription?.id}`);
+        break;
+
+      case 'SUBSCRIPTION_RENEWED':
+        console.log(`>>> Subscription renewed: ${event.subscription?.id}`);
+        break;
+
+      case 'SUBSCRIPTION_CANCELED':
+        console.log(`>>> Subscription canceled: ${event.subscription?.id}`);
+        break;
+
+      default:
+        console.log(`>>> Unknown event: ${event.event}`);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('>>> Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// 4. Cancel Subscription
+router.delete('/asaas/subscription/:subscriptionId', async (req, res) => {
+  const { subscriptionId } = req.params;
+
+  try {
+    const result = await asaasRequest('DELETE', `/subscriptions/${subscriptionId}`);
+    res.json({ success: true, result });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao cancelar assinatura.',
+      details: error.response?.data
+    });
+  }
+});
+
+// 5. Get Payment Status
+router.get('/asaas/payment/:paymentId', async (req, res) => {
+  const { paymentId } = req.params;
+
+  try {
+    const payment = await asaasRequest('GET', `/payments/${paymentId}`);
+    res.json({ success: true, payment });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao buscar pagamento.',
+      details: error.response?.data
+    });
   }
 });
 
