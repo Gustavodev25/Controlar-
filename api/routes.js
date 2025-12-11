@@ -1090,7 +1090,7 @@ router.post('/asaas/customer', async (req, res) => {
       const customerData = {
         name,
         email,
-        cpfCnpj: cpfCnpj.replace(/\D/g, ''),
+        cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,
         phone: phone?.replace(/\D/g, '') || undefined,
         postalCode: postalCode?.replace(/\D/g, '') || undefined,
         addressNumber: addressNumber || undefined,
