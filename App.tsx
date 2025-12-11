@@ -211,14 +211,19 @@ const App: React.FC = () => {
 
       if (token && familyId) {
         let ownerName = 'Alguém';
-        try {
-          const group = await familyService.getFamilyGroup(familyId);
-          if (group && group.ownerId) {
-            const ownerProfile = await dbService.getUserProfile(group.ownerId);
-            if (ownerProfile?.name) ownerName = ownerProfile.name;
+        // Only attempt to fetch details if we are already authenticated.
+        // Otherwise, Firestore rules will block the read and throw "Missing permissions".
+        // The InviteLanding component handles the unauthenticated case gracefully.
+        if (auth.currentUser) {
+          try {
+            const group = await familyService.getFamilyGroup(familyId);
+            if (group && group.ownerId) {
+              const ownerProfile = await dbService.getUserProfile(group.ownerId);
+              if (ownerProfile?.name) ownerName = ownerProfile.name;
+            }
+          } catch (err) {
+            console.log("Could not fetch family details (likely not authorized yet).");
           }
-        } catch (err) {
-          console.log("Ainda não é possível carregar detalhes do grupo (provavelmente não autenticado).");
         }
 
         setPendingInvite({ token, familyId, ownerName });
