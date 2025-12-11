@@ -1032,7 +1032,7 @@ router.post('/admin/send-email', async (req, res) => {
 // ========================================
 
 const ASAAS_API_KEY = process.env.ASAAS_API_KEY;
-const ASAAS_API_URL = 'https://www.asaas.com/api/v3';
+const ASAAS_API_URL = 'https://sandbox.asaas.com/api/v3';
 
 // Helper: Make Asaas API request
 const asaasRequest = async (method, endpoint, data = null) => {
