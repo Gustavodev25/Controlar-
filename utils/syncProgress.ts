@@ -8,9 +8,9 @@ export interface SyncProgress {
   timestamp?: number;
 }
 
-export const SYNC_STORAGE_KEY = 'klavi_sync_progress';
-export const SYNC_PROGRESS_EVENT = 'klavi-sync-progress';
-export const SYNC_PROGRESS_CLEAR_EVENT = 'klavi-sync-progress-clear';
+export const SYNC_STORAGE_KEY = 'bank_sync_progress';
+export const SYNC_PROGRESS_EVENT = 'bank-sync-progress';
+export const SYNC_PROGRESS_CLEAR_EVENT = 'bank-sync-progress-clear';
 
 // Returns true when the stored progress is still recent enough to show in the UI
 export const isRecentSyncProgress = (progress: SyncProgress | null, maxAgeMs = 5 * 60 * 1000) => {

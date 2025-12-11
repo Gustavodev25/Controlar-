@@ -249,23 +249,7 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', updateLandingVariant);
   }, []);
 
-  // Handle Klavi Callback (Popup Mode)
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const params = new URLSearchParams(window.location.search);
-      // Klavi docs say it returns 'link_id' and 'external_info' on success
-      // We also keep 'item_id' and 'code' for backward compatibility/other providers
-      const itemId = params.get('link_id') || params.get('item_id') || params.get('code');
 
-      if (itemId && window.opener) {
-        console.log("[Popup] Klavi success detected. ID:", itemId);
-        // We are inside the popup. Send message to main window and close.
-        // Use '*' to allow communication between Localhost (Opener) and Ngrok (Popup)
-        window.opener.postMessage({ type: 'KLAVI_SUCCESS', itemId }, '*');
-        window.close();
-      }
-    }
-  }, []);
 
   // Trigger Modal after Login
   useEffect(() => {
@@ -413,11 +397,14 @@ const App: React.FC = () => {
 
   // Force Manual Mode for users on free plan (starter)
   useEffect(() => {
-    const userPlan = currentUser?.subscription?.plan || 'starter';
-    if (userPlan === 'starter' && isProMode) {
+    if (!currentUser) return;
+    
+    // Only force downgrade if explicitly on starter plan.
+    // If subscription is undefined (loading/error), preserve current mode to prevent Pro users from being kicked to Manual on reload.
+    if (currentUser.subscription?.plan === 'starter' && isProMode) {
       setIsProMode(false);
     }
-  }, [currentUser?.subscription?.plan, isProMode]);
+  }, [currentUser, isProMode]);
 
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
@@ -604,7 +591,8 @@ const App: React.FC = () => {
             isAdmin: profile?.isAdmin ?? adminFromClaims,
             // Include family info to ensure Family Goals work correctly from the start
             familyGroupId: profile?.familyGroupId,
-            familyRole: profile?.familyRole
+            familyRole: profile?.familyRole,
+            subscription: profile?.subscription
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -2546,6 +2534,12 @@ const App: React.FC = () => {
                         })()}
                         isProMode={isProMode}
                         onToggleProMode={(val) => {
+                          // Validação extra: Usuários Starter não podem ativar modo AUTO
+                          const userPlan = currentUser?.subscription?.plan || 'starter';
+                          if (userPlan === 'starter' && val) {
+                            // Ignorar tentativa de ativar Auto para Starter
+                            return;
+                          }
                           if (val) {
                             setShowGlobalModeModal('AUTO');
                           } else {

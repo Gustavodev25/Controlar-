@@ -21,904 +21,739 @@ const authToken = process.env.TWILIO_AUTH_TOKEN;
 const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';
 
-// Klavi Configuration
-const KLAVI_API_URL = 'https://api.klavi.com.br/v1';
-// We define this but will use specific endpoint bases in routes
-const KLAVI_ACCESS_KEY = process.env.KLAVI_ACCESS_KEY;
-const KLAVI_SECRET_KEY = process.env.KLAVI_SECRET_KEY;
-const KLAVI_WEBHOOK_URL = process.env.KLAVI_WEBHOOK_URL;
+const PLUGGY_API_URL = 'https://api.pluggy.ai';
+const PLUGGY_CLIENT_ID = process.env.PLUGGY_CLIENT_ID || 'd93b0176-0cd8-4563-b9c1-bcb9c6e510bd';
+const PLUGGY_CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET || '2b45852a-9638-4677-8232-6b2da7c54967';
 
-// In-memory storage for Klavi webhook data (keyed by linkId)
-// In production, this should be Redis or a database
-const klaviDataStore = new Map();
+const normalizePluggyAccounts = (accounts, itemId, institutionName) => {
+  if (!accounts || !Array.isArray(accounts)) {
+    console.log('[PLUGGY] normalizePluggyAccounts: No accounts to normalize');
+    return [];
+  }
 
-// Helper: Extract linkId from webhook payload
-const extractLinkId = (payload) => {
-  // Klavi sends linkId in different places depending on the event type
-  return payload.linkId || payload.link_id || payload.data?.linkId || null;
-};
-
-// Helper: Calculate monthly invoice from transactions
-const calculateMonthlyInvoice = (transactions, month, year) => {
-  if (!transactions || !Array.isArray(transactions)) return 0;
-
-  return transactions
-    .filter(tx => {
-      const txDate = new Date(tx.transactionDate || tx.date);
-      return txDate.getMonth() + 1 === month && txDate.getFullYear() === year;
-    })
-    .reduce((sum, tx) => {
-      const amount = parseFloat(tx.transactionAmount?.amount || tx.amount || '0');
-      return sum + Math.abs(amount);
-    }, 0);
-};
-
-// Helper: Extract bills history from closed statements
-const extractBillsHistory = (closedStatements) => {
-  if (!closedStatements || !Array.isArray(closedStatements)) return [];
-
-  return closedStatements.map(statement => ({
-    id: statement.billId || `bill_${statement.billingDate}`,
-    dueDate: statement.dueDate,
-    totalAmount: parseFloat(statement.billTotalAmount?.amount || '0'),
-    balanceCloseDate: statement.billingDate,
-    minimumPayment: parseFloat(statement.minimumPaymentAmount?.amount || '0'),
-    isPaid: statement.isPaid || false,
-  })).filter(bill => bill.totalAmount > 0);
-};
-
-// Helper: Normalize Klavi credit cards to ConnectedAccount format
-const normalizeCreditCards = (creditCards, linkId) => {
-  if (!creditCards || !Array.isArray(creditCards)) return [];
-
-  // First pass: collect all limits and balances to calculate proportions
-  let totalKnownLimit = 0;
-  let totalBalance = 0;
-  const cardsData = [];
-
-  creditCards.forEach((card, index) => {
-    const openStatement = card.openStatement || {};
-    const closedStatements = card.closedStatements || [];
-    const limits = card.limits || {};
-
-    // Calculate current balance from open statement
-    const billTotal = parseFloat(openStatement.billTotalAmount?.amount || '0');
-
-    // Calculate invoice from transactions if billTotal is 0
-    let currentInvoice = billTotal;
-    if (currentInvoice === 0 && openStatement.transactionDetails) {
-      currentInvoice = openStatement.transactionDetails.reduce((sum, tx) => {
-        const amount = parseFloat(tx.transactionAmount?.amount || tx.amount || '0');
-        return sum + Math.abs(amount);
-      }, 0);
-    }
-
-    // Get limit info
-    const creditLimit = parseFloat(limits.limitAmount?.amount || '0');
-    const availableLimit = parseFloat(limits.availableAmount?.amount || '0');
-
-    // Track totals for proportional distribution
-    if (creditLimit > 0) {
-      totalKnownLimit += creditLimit;
-    }
-    totalBalance += Math.abs(currentInvoice);
-
-    cardsData.push({
-      card,
-      index,
-      openStatement,
-      closedStatements,
-      currentInvoice,
-      creditLimit,
-      availableLimit,
-    });
-  });
-
-  // Second pass: normalize with proportional limits for cards without data
-  return cardsData.map(({ card, index, openStatement, closedStatements, currentInvoice, creditLimit, availableLimit }) => {
-    // Calculate final limits (proportional if missing)
-    let finalCreditLimit = creditLimit;
-    let finalAvailableLimit = availableLimit;
-
-    // If this card has no limit data, calculate proportionally
-    if (creditLimit === 0 && totalKnownLimit > 0 && totalBalance > 0) {
-      const cardProportion = Math.abs(currentInvoice) / totalBalance;
-      finalCreditLimit = totalKnownLimit * cardProportion;
-      finalAvailableLimit = Math.max(0, finalCreditLimit - Math.abs(currentInvoice));
-      console.log(`>>> Credit Card ${card.name}: No limit data, using proportional: ${finalCreditLimit.toFixed(2)} (${(cardProportion * 100).toFixed(1)}%)`);
-    }
-
-    // Extract bills history from closed statements
-    const bills = extractBillsHistory(closedStatements);
-
-    // Add current open statement as a bill if it has transactions
-    if (openStatement.billingDate && currentInvoice > 0) {
-      bills.unshift({
-        id: `bill_current_${openStatement.billingDate}`,
-        dueDate: openStatement.dueDate,
-        totalAmount: currentInvoice,
-        balanceCloseDate: openStatement.billingDate,
-        minimumPayment: parseFloat(openStatement.minimumPaymentAmount?.amount || '0'),
-        isPaid: false,
-        isCurrent: true,
-      });
-    }
-
-    // Create stable ID based on card properties (not linkId which changes each connection)
-    const cardName = card.name || card.creditCardNetwork || `card_${index}`;
-    const stableId = `klavi_cc_${card.companyCnpj || 'unknown'}_${cardName.replace(/\s+/g, '_').toLowerCase()}`;
-
-    console.log(`>>> Credit Card ${cardName}: Invoice R$ ${currentInvoice.toFixed(2)}, Limit R$ ${finalCreditLimit.toFixed(2)}, Bills: ${bills.length}`);
-
-    return {
-      id: stableId,
-      name: card.name || `Cartão ${card.creditCardNetwork || 'Crédito'}`,
-      type: 'CREDIT_CARD',
-      subtype: card.productType || 'CREDIT',
-      balance: -currentInvoice, // Negative because it's debt
-      currency: 'BRL',
-      institution: card.brandName || card.bacenName || 'Instituição',
-      itemId: linkId,
-      providerId: 'klavi',
-      creditLimit: finalCreditLimit,
-      availableCreditLimit: finalAvailableLimit,
-      balanceDueDate: openStatement.dueDate || null,
-      balanceCloseDate: openStatement.billingDate || null,
-      // Store bills history for monthly view
-      bills: bills,
-      // Store payment methods info
-      paymentMethods: card.paymentMethods || [],
-      // Store raw transactions for further processing
-      lastUpdated: new Date().toISOString(),
-    };
-  });
-};
-
-
-// Helper: Normalize Klavi checking/savings accounts to ConnectedAccount format
-const normalizeAccounts = (accounts, linkId, defaultType = null) => {
-  if (!accounts || !Array.isArray(accounts)) return [];
+  console.log(`\n${'='.repeat(60)}`);
+  console.log('[PLUGGY] NORMALIZING ACCOUNTS');
+  console.log(`${'='.repeat(60)}`);
+  console.log(`[PLUGGY] Total raw accounts received: ${accounts.length}`);
 
   return accounts.map((acc, index) => {
-    // Debug: Log the account structure to find the correct balance field
-    console.log(`>>> Account ${index} structure:`, JSON.stringify(acc, null, 2).substring(0, 500));
+    console.log(`\n[PLUGGY] --- Account ${index + 1}/${accounts.length} ---`);
+    console.log(`[PLUGGY] Raw Account Data:`);
+    console.log(`  - ID: ${acc.id}`);
+    console.log(`  - Name: ${acc.name}`);
+    console.log(`  - Type: "${acc.type}" (raw)`);
+    console.log(`  - Subtype: "${acc.subtype}" (raw)`);
+    console.log(`  - Balance: ${acc.balance}`);
+    console.log(`  - Number: ${acc.number}`);
+    console.log(`  - Currency: ${acc.currencyCode}`);
+    console.log(`  - Has bankData: ${!!acc.bankData}`);
+    console.log(`  - Has creditData: ${!!acc.creditData}`);
 
-    // Try multiple possible balance locations (Open Finance has various structures)
-    let balance = 0;
-
-    // Try direct balance fields
-    if (acc.availableAmount?.amount) {
-      balance = parseFloat(acc.availableAmount.amount);
-    } else if (acc.balance?.amount) {
-      balance = parseFloat(acc.balance.amount);
-    } else if (acc.automaticallyInvestedAmount?.amount) {
-      balance = parseFloat(acc.automaticallyInvestedAmount.amount);
-    } else if (acc.currentBalance?.amount) {
-      balance = parseFloat(acc.currentBalance.amount);
-    } else if (acc.blockedAmount?.amount !== undefined) {
-      // Sometimes balance is in blockedAmount or availableAmount
-      balance = parseFloat(acc.availableAmount?.amount || '0');
+    if (acc.bankData) {
+      console.log(`  - bankData.transferNumber: ${acc.bankData.transferNumber}`);
+      console.log(`  - bankData.closingBalance: ${acc.bankData.closingBalance}`);
+    }
+    if (acc.creditData) {
+      console.log(`  - creditData.creditLimit: ${acc.creditData.creditLimit}`);
+      console.log(`  - creditData.availableCreditLimit: ${acc.creditData.availableCreditLimit}`);
     }
 
-    // Try nested balances structure (Open Finance pattern)
-    if (balance === 0 && acc.balances) {
-      // balances can be an array with different types (AVAILABLE, CURRENT, etc.)
-      if (Array.isArray(acc.balances)) {
-        const availableBalance = acc.balances.find(b =>
-          b.type === 'AVAILABLE' || b.type === 'DISPONIVEL' || b.type === 'availableAmount'
-        );
-        const currentBalance = acc.balances.find(b =>
-          b.type === 'CURRENT' || b.type === 'BLOQUEADO' || b.type === 'automaticallyInvestedAmount'
-        );
+    // Determine internal type based on Pluggy's type/subtype
+    // Pluggy API: type = "BANK" | "CREDIT" | "PAYMENT_ACCOUNT"
+    // Pluggy API: subtype = "CHECKING_ACCOUNT" | "SAVINGS_ACCOUNT" | "CREDIT_CARD"
+    let normalizedType = 'CHECKING'; // Default
+    const rawType = (acc.type || '').toUpperCase();
+    const rawSubtype = (acc.subtype || '').toUpperCase();
 
-        if (availableBalance?.amount?.amount) {
-          balance = parseFloat(availableBalance.amount.amount);
-        } else if (availableBalance?.amount) {
-          balance = parseFloat(availableBalance.amount);
-        } else if (currentBalance?.amount?.amount) {
-          balance = parseFloat(currentBalance.amount.amount);
-        } else if (currentBalance?.amount) {
-          balance = parseFloat(currentBalance.amount);
-        }
-      } else if (acc.balances.availableAmount?.amount) {
-        balance = parseFloat(acc.balances.availableAmount.amount);
-      }
+    // Credit Card detection (highest priority)
+    if (rawType === 'CREDIT' || rawSubtype === 'CREDIT_CARD' || rawSubtype.includes('CREDIT')) {
+      normalizedType = 'CREDIT_CARD';
+    }
+    // Savings Account detection
+    else if (rawSubtype === 'SAVINGS_ACCOUNT' || rawSubtype.includes('SAVINGS') || rawSubtype.includes('POUPANCA') || rawSubtype.includes('POUPANÇA')) {
+      normalizedType = 'SAVINGS';
+    }
+    // Investment detection
+    else if (rawType === 'INVESTMENT' || rawSubtype.includes('INVEST')) {
+      normalizedType = 'INVESTMENT';
+    }
+    // Loan detection
+    else if (rawType === 'LOAN' || rawSubtype.includes('LOAN') || rawSubtype.includes('EMPRESTIMO') || rawSubtype.includes('EMPRÉSTIMO')) {
+      normalizedType = 'LOAN';
+    }
+    // Bank accounts (Checking is default for BANK type)
+    else if (rawType === 'BANK' || rawType === 'PAYMENT_ACCOUNT' || rawSubtype === 'CHECKING_ACCOUNT' || rawSubtype.includes('CHECKING') || rawSubtype.includes('CORRENTE')) {
+      normalizedType = 'CHECKING';
     }
 
-    // Try amount field directly
-    if (balance === 0 && acc.amount) {
-      balance = parseFloat(typeof acc.amount === 'object' ? acc.amount.amount : acc.amount) || 0;
+    console.log(`  => Normalized Type: "${normalizedType}"`);
+
+    const normalized = {
+      id: acc.id,
+      name: acc.name || `Conta ${acc.number || 'Sem número'}`,
+      type: normalizedType,
+      subtype: acc.subtype || rawType, // Keep original subtype for reference
+      balance: typeof acc.balance === 'number' ? acc.balance : 0,
+      currency: acc.currencyCode || 'BRL',
+      institution: institutionName || 'Instituição',
+      itemId: itemId,
+      providerId: 'pluggy',
+      accountNumber: acc.number,
+      branchCode: acc.agency,
+      // Credit card specifics
+      creditLimit: acc.creditData?.creditLimit || null,
+      availableCreditLimit: acc.creditData?.availableCreditLimit || null,
+      balanceCloseDate: acc.creditData?.balanceCloseDate || null,
+      balanceDueDate: acc.creditData?.balanceDueDate || null,
+      // Bank specifics
+      transferNumber: acc.bankData?.transferNumber || null,
+      closingBalance: acc.bankData?.closingBalance || null,
+      // Metadata
+      lastSyncedAt: new Date().toISOString(),
+      bills: [],
+    };
+
+    return normalized;
+  });
+};
+
+// Helper: Normalize Pluggy Transactions
+const normalizePluggyTransactions = (transactions, accountId = null) => {
+  if (!transactions || !Array.isArray(transactions)) {
+    console.log('[PLUGGY] normalizePluggyTransactions: No transactions to normalize');
+    return [];
+  }
+
+  console.log(`\n[PLUGGY] Normalizing ${transactions.length} transactions...`);
+
+  return transactions.map((tx, index) => {
+    // Log first 3 transactions for debugging
+    if (index < 3) {
+      console.log(`[PLUGGY] Transaction ${index + 1}: ${tx.description?.substring(0, 40)}... | Amount: ${tx.amount} | Type: ${tx.type}`);
     }
 
-    console.log(`>>> Account ${index} extracted balance: ${balance}`);
+    // Determine if it is an expense
+    // Pluggy can send negative amounts OR positive amounts with type="DEBIT"
+    const rawType = (tx.type || '').toUpperCase();
+    const isExpense = rawType === 'DEBIT' || tx.amount < 0;
 
-    // Create stable ID based on account properties (not linkId which changes)
-    const accountNumber = acc.accountNumber || acc.number || `acc_${index}`;
-    const branch = acc.branchCode || acc.agency || 'nobranch';
-    const stableId = `klavi_acc_${acc.companyCnpj || 'unknown'}_${branch}_${accountNumber}`;
-
-    // Determine account type with broader checks
-    const rawType = (acc.accountType || acc.type || '').toUpperCase();
-    const rawSubtype = (acc.accountSubType || acc.subtype || '').toUpperCase();
-
-    let isSavings = false;
-
-    if (defaultType === 'SAVINGS') {
-      isSavings = true;
-    } else {
-      isSavings =
-        rawType === 'CONTA_POUPANCA' ||
-        rawType === 'SAVINGS' ||
-        rawType === 'SAVINGS_ACCOUNT' ||
-        rawSubtype.includes('POUPANCA') ||
-        rawSubtype.includes('SAVINGS');
-    }
+    // Normalize Amount: Negative for expense, Positive for income
+    const finalAmount = isExpense ? -Math.abs(tx.amount) : Math.abs(tx.amount);
 
     return {
-      id: stableId,
-      name: acc.accountName || acc.name || `Conta ${isSavings ? 'Poupança' : (acc.accountType || acc.type || 'Corrente')}`,
-      type: isSavings ? 'SAVINGS' : 'CHECKING',
-      subtype: acc.accountSubType || acc.subtype || acc.compeCode || '',
-      balance: balance,
-      currency: acc.currency || 'BRL',
-      institution: acc.brandName || acc.bacenName || acc.brandCode || 'Instituição',
-      itemId: linkId,
-      providerId: 'klavi',
-      accountNumber: acc.accountNumber || acc.number || '',
-      branchCode: acc.branchCode || acc.agency || '',
+      id: tx.id,
+      description: tx.description || 'Sem descrição',
+      amount: finalAmount,
+      date: tx.date ? tx.date.split('T')[0] : new Date().toISOString().split('T')[0],
+      category: tx.category || 'Outros',
+      subcategory: tx.categoryId || '',
+      type: isExpense ? 'expense' : 'income',
+      status: tx.status || 'completed',
+      accountId: tx.accountId || accountId, // Use tx.accountId first, fallback to passed accountId
+      providerId: 'pluggy',
+      importSource: 'pluggy',
+      // Additional metadata from Pluggy
+      merchant: tx.merchant?.name || null,
+      merchantCategory: tx.merchant?.category || null,
+      paymentMethod: tx.paymentData?.paymentMethod || null,
     };
   });
 };
 
+// Pluggy Endpoints
 
-// Helper: Normalize Klavi transactions to Transaction format
-const normalizeTransactions = (creditCards, accounts, linkId) => {
-  const transactions = [];
+// 1. Create Connect Token
+router.post('/pluggy/create-token', async (req, res) => {
+  const { userId, itemId } = req.body;
 
-  // Extract transactions from credit cards
-  if (creditCards && Array.isArray(creditCards)) {
-    creditCards.forEach((card, cardIndex) => {
-      // Replicate stable ID logic from normalizeCreditCards
-      const cardName = card.name || card.creditCardNetwork || `card_${cardIndex}`;
-      const accountId = `klavi_cc_${card.companyCnpj || 'unknown'}_${cardName.replace(/\s+/g, '_').toLowerCase()}`;
+  console.log('\n[PLUGGY TOKEN] Creating connect token...');
+  console.log(`[PLUGGY TOKEN] User ID: ${userId}`);
+  console.log(`[PLUGGY TOKEN] Item ID (for update): ${itemId || 'none'}`);
 
-      // Open statement transactions
-      const openTxs = card.openStatement?.transactionDetails || [];
-      openTxs.forEach(tx => {
-        transactions.push(normalizeTransaction(tx, accountId, linkId, 'credit_card'));
-      });
-
-      // Closed statements transactions (last 3 months)
-      const closedStatements = (card.closedStatements || []).slice(0, 3);
-      closedStatements.forEach(stmt => {
-        const closedTxs = stmt.transactionDetails || [];
-        closedTxs.forEach(tx => {
-          transactions.push(normalizeTransaction(tx, accountId, linkId, 'credit_card'));
-        });
-      });
-    });
-  }
-
-  // Extract transactions from checking/savings accounts
-  if (accounts && Array.isArray(accounts)) {
-    accounts.forEach((acc, accIndex) => {
-      // Replicate stable ID logic from normalizeAccounts
-      const accountNumber = acc.accountNumber || acc.number || `acc_${accIndex}`;
-      const branch = acc.branchCode || acc.agency || 'nobranch';
-      const accountId = `klavi_acc_${acc.companyCnpj || 'unknown'}_${branch}_${accountNumber}`;
-
-      const accTxs = acc.transactions || acc.transactionDetails || [];
-      accTxs.forEach(tx => {
-        transactions.push(normalizeTransaction(tx, accountId, linkId, 'account'));
-      });
-    });
-  }
-
-  return transactions;
-};
-
-// Helper: Normalize a single transaction
-const normalizeTransaction = (tx, accountId, linkId, sourceType = 'account') => {
-  // Debug: Log raw transaction for checking accounts to investigate missing expenses
-  if (sourceType === 'account') {
-    console.log(`>>> RAW TX CHECK: ID=${tx.transactionId || 'N/A'} Desc="${tx.transactionName || tx.description}" Val=${tx.amount?.amount || tx.value} Type=${tx.type} CD=${tx.creditDebitType}`);
-  }
-
-  // Try multiple possible amount locations (Klavi/Open Finance has various structures)
-  let amount = 0;
-
-  // Try brazilianAmount first (most common for transactions)
-  if (tx.brazilianAmount?.amount) {
-    amount = parseFloat(tx.brazilianAmount.amount);
-  }
-  // Try transactionAmount (used in some transaction types)
-  else if (tx.transactionAmount?.amount) {
-    amount = parseFloat(tx.transactionAmount.amount);
-  }
-  // Try nested amount object
-  else if (tx.amount?.amount) {
-    amount = parseFloat(tx.amount.amount);
-  }
-  // Try direct amount field
-  else if (typeof tx.amount === 'number') {
-    amount = tx.amount;
-  }
-  else if (typeof tx.amount === 'string') {
-    amount = parseFloat(tx.amount);
-  }
-  // Try value field (alternative naming)
-  else if (tx.value?.amount) {
-    amount = parseFloat(tx.value.amount);
-  }
-  else if (typeof tx.value === 'number') {
-    amount = tx.value;
-  }
-  else if (typeof tx.value === 'string') {
-    amount = parseFloat(tx.value);
-  }
-
-  // Log transactions with zero amount for debugging
-  if (amount === 0) {
-    console.log(`>>> WARNING: Zero amount transaction: "${tx.transactionName || tx.description}"`,
-      JSON.stringify({
-        brazilianAmount: tx.brazilianAmount,
-        transactionAmount: tx.transactionAmount,
-        amount: tx.amount,
-        value: tx.value,
-        keys: Object.keys(tx).join(', ')
-      }).substring(0, 300));
-  }
-
-  // Detect if transaction is a debit (expense) - check multiple possible indicators
-  const creditDebitType = (tx.creditDebitType || '').toUpperCase();
-  const txType = (tx.type || '').toUpperCase();
-  const description = (tx.transactionName || tx.description || '').toUpperCase();
-
-  // Check creditDebitType variations
-  const isDebitByType = creditDebitType.includes('DEBITO') || creditDebitType.includes('DEBIT') || creditDebitType === 'D';
-
-  // Check tx.type variations
-  const isDebitByTxType = txType.includes('DEBIT') || txType.includes('DEBITO') || txType === 'D' || txType === 'SAIDA' || txType === 'PAYMENT';
-
-  // Check description for common expense patterns
-  const isDebitByDescription =
-    description.includes('ENVIADO') ||
-    description.includes('ENVIADA') ||
-    description.includes('PAG ') ||
-    description.includes('PAGAMENTO') ||
-    description.includes('DEBITO') ||
-    description.includes('DÉBITO') ||
-    description.includes('EMPRESTIMO') ||
-    description.includes('EMPRÉSTIMO') ||
-    description.includes('TRANSFERENCIA ENVIADA') ||
-    description.includes('TRANSFERÊNCIA ENVIADA') ||
-    description.includes('SAQUE') ||
-    description.includes('COMPRA') ||
-    description.includes('TARIFA');
-
-  // Final decision: is this a debit?
-  const isDebit = isDebitByType || isDebitByTxType || isDebitByDescription || amount < 0;
-
-  // Debug log for expense detection
-  if (isDebit) {
-    console.log(`>>> EXPENSE detected: "${tx.transactionName || tx.description}" - Amount: ${amount}, creditDebitType: ${tx.creditDebitType}, type: ${tx.type}`);
-  }
-
-  return {
-    id: tx.transactionId || `klavi_tx_${linkId}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-    description: tx.transactionName || tx.description || 'Transação',
-    amount: isDebit ? -Math.abs(amount) : Math.abs(amount),
-    date: tx.transactionDate || tx.date || new Date().toISOString().split('T')[0],
-    category: tx.category || 'Outros',
-    subcategory: tx.subcategory || '',
-    type: isDebit ? 'expense' : 'income',
-    status: 'completed',
-    accountId: accountId,
-    providerId: 'klavi',
-    // Source type: 'credit_card' or 'account'
-    sourceType: sourceType,
-    // Tag for UI display
-    tags: sourceType === 'credit_card' ? ['Cartão de Crédito'] : [],
-    // Additional metadata
-    transactionType: tx.transactionType || '',
-    paymentType: tx.paymentType || '',
-    identificationNumber: tx.identificationNumber || '',
-    // Mark imported transactions
-    importSource: 'klavi',
-  };
-};
-
-
-// Klavi Endpoints
-
-
-
-// Store the current linkId for reference
-let currentKlaviLinkId = null;
-
-// 1. Create Link (Generate the widget URL)
-router.post('/klavi/create-link', async (req, res) => {
   try {
-    // DON'T clear store - keep previous data for reliability
-    // The sync function aggregates all data anyway
-    console.log(">>> Creating new Klavi link (preserving existing webhook data)");
-    console.log(`>>> Current store has ${klaviDataStore.size} entries`);
-
-    dotenv.config();
-    // User explicitly requested these keys for SANDBOX
-    const ACCESS_KEY = process.env.KLAVI_ACCESS_KEY || "121DEABF-DDD2-4ABB-8185-5348082FCA9D";
-    const SECRET_KEY = process.env.KLAVI_SECRET_KEY || "0ED8D6F1-9730-4D1F-BB39-1992186DEF6F";
-
-    // Explicitly requested SANDBOX URL
-    const KLAVI_BASE = 'https://api-sandbox.klavi.ai/data/v1';
-
-    const REDIRECT_BASE = process.env.REDIRECT_BASE || 'https://schematically-oscitant-herbert.ngrok-free.dev';
-    const webhookUrl = process.env.KLAVI_WEBHOOK_URL || `${REDIRECT_BASE}/api/klavi/webhook`;
-
-    console.log(">>> Starting Klavi Flow (REAL SANDBOX)...");
-    console.log("    Target:", `${KLAVI_BASE}/auth`);
-
-
-    // STEP 1: Authenticate (Get Access Token)
-    console.log("1. Authenticating with Klavi...");
-    const authResponse = await axios.post(`${KLAVI_BASE}/auth`, {
-      accessKey: ACCESS_KEY.trim(),
-      secretKey: SECRET_KEY.trim()
-    }, {
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
     });
 
-    const accessToken = authResponse.data.accessToken;
-    console.log("   > Auth Successful. Token received.");
+    const apiKey = authResponse.data.apiKey;
 
-    // STEP 2: Create Link
-    console.log("2. Creating Link...");
-    // Docs say: redirectURL, productsCallbackURL (not webhookURL)
-    const linkPayload = {
-      redirectURL: REDIRECT_BASE,
-      productsCallbackURL: {
-        all: webhookUrl
-      }
+    // IMPORTANTE: Solicitar EXPLICITAMENTE todos os produtos
+    // Isso garante que o fluxo de consentimento do Open Finance
+    // irá pedir autorização para conta corrente, cartões, etc.
+    const payload = {
+      clientUserId: userId,
+      // Solicitar TODOS os produtos explicitamente para garantir
+      // que o usuário seja perguntado sobre cada um no consentimento
+      products: [
+        'ACCOUNTS',           // Conta corrente e poupança
+        'CREDIT_CARDS',       // Cartões de crédito
+        'TRANSACTIONS',       // Histórico de transações
+        'IDENTITY',           // Dados pessoais
+        'INVESTMENTS',        // Investimentos
+        'INVESTMENTS_TRANSACTIONS', // Transações de investimentos
+        'PAYMENT_DATA',       // Dados de pagamento
+        'LOANS'               // Empréstimos
+      ]
     };
 
-    const linkResponse = await axios.post(`${KLAVI_BASE}/links`, linkPayload, {
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      }
+    if (itemId) {
+      payload.itemId = itemId;
+    }
+
+    console.log(`[PLUGGY TOKEN] Requesting products: ${payload.products.join(', ')}`);
+
+    const tokenResponse = await axios.post(`${PLUGGY_API_URL}/connect_token`, payload, {
+      headers: { 'X-API-KEY': apiKey }
     });
 
-    console.log("   > Link Response:", JSON.stringify(linkResponse.data, null, 2));
-
-    // Docs say response has: linkURL, linkId, linkToken
-    const linkUrl = linkResponse.data.linkURL;
-    const linkId = linkResponse.data.linkId;
-
-    // Store the linkId for webhook association
-    if (linkId) {
-      currentKlaviLinkId = linkId;
-      console.log(`   > Stored linkId for webhook: ${linkId}`);
-    }
-
-    if (linkUrl) {
-      res.json({ success: true, url: linkUrl, linkId: linkId });
-    } else {
-      console.error("   > Error: linkURL not found in response", linkResponse.data);
-      res.status(500).json({ error: "linkURL not found in Klavi response", data: linkResponse.data });
-    }
+    console.log(`[PLUGGY TOKEN] ✓ Token created successfully (Update Mode: ${!!itemId})`);
+    res.json({ accessToken: tokenResponse.data.accessToken });
 
   } catch (error) {
-    console.error('!!! Klavi Integration Error !!!');
-    if (error.response) {
-      console.error("Status:", error.response.status);
-      console.error("Data:", JSON.stringify(error.response.data, null, 2));
-      res.status(error.response.status).json({
-        error: 'Klavi API Error',
-        details: error.response.data
-      });
-    } else {
-      console.error("Message:", error.message);
-      res.status(500).json({ error: 'Internal Server Error', details: error.message });
-    }
+    console.error('[PLUGGY TOKEN] ✗ Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to authenticate with Pluggy' });
   }
 });
 
-// 2. Sync Data (Fetch Accounts & Transactions from stored webhook data)
-router.post('/klavi/sync', async (req, res) => {
-  const { itemId, accessToken: clientToken, startDate, endDate } = req.body;
+// 2. Sync Data - REFACTORED with comprehensive logging
+router.post('/pluggy/sync', async (req, res) => {
+  const { itemId } = req.body;
 
-  // itemId from frontend is the link_id
-  console.log(`>>> Syncing data for Link ID: ${itemId}`);
+  console.log(`\n${'#'.repeat(70)}`);
+  console.log(`[PLUGGY SYNC] Starting sync for itemId: ${itemId}`);
+  console.log(`[PLUGGY SYNC] Timestamp: ${new Date().toISOString()}`);
+  console.log(`${'#'.repeat(70)}\n`);
 
-  // Helper function to check for data in store with deduplication
-  const checkForData = () => {
-    const creditCardsMap = new Map(); // Key: companyCnpj + name
-    const checkingAccountsMap = new Map(); // Key: number + branchCode
-    const savingsAccountsMap = new Map();
-
-    for (const [key, value] of klaviDataStore.entries()) {
-      // Deduplicate credit cards by companyCnpj + name
-      if (value.creditCards && value.creditCards.length > 0) {
-        for (const card of value.creditCards) {
-          const uniqueKey = `${card.companyCnpj}_${card.name || card.creditCardNetwork}`;
-          // Only keep the first occurrence (or update with newer data)
-          if (!creditCardsMap.has(uniqueKey)) {
-            creditCardsMap.set(uniqueKey, card);
-          }
-        }
-      }
-
-      // Deduplicate checking accounts by number + branchCode
-      if (value.checkingAccounts && value.checkingAccounts.length > 0) {
-        for (const acc of value.checkingAccounts) {
-          const uniqueKey = `${acc.number}_${acc.branchCode}`;
-          if (!checkingAccountsMap.has(uniqueKey)) {
-            checkingAccountsMap.set(uniqueKey, acc);
-          }
-        }
-      }
-
-      // Deduplicate savings accounts
-      if (value.savingsAccounts && value.savingsAccounts.length > 0) {
-        for (const acc of value.savingsAccounts) {
-          const uniqueKey = `${acc.number}_${acc.branchCode}`;
-          if (!savingsAccountsMap.has(uniqueKey)) {
-            savingsAccountsMap.set(uniqueKey, acc);
-          }
-        }
-      }
-    }
-
-    const allCreditCards = Array.from(creditCardsMap.values());
-    const allCheckingAccounts = Array.from(checkingAccountsMap.values());
-    const allSavingsAccounts = Array.from(savingsAccountsMap.values());
-
-    const hasData = allCreditCards.length > 0 || allCheckingAccounts.length > 0 || allSavingsAccounts.length > 0;
-    return { hasData, allCreditCards, allCheckingAccounts, allSavingsAccounts };
-  };
-
-
-  // Sleep helper
-  const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+  if (!itemId) {
+    console.log('[PLUGGY SYNC] ERROR: itemId is required');
+    return res.status(400).json({ error: 'itemId is required' });
+  }
 
   try {
-    console.log(`>>> Current store has ${klaviDataStore.size} entries`);
+    // ========================================
+    // STEP 1: Authenticate with Pluggy API
+    // ========================================
+    console.log('[PLUGGY SYNC] Step 1: Authenticating with Pluggy...');
+    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
+    });
+    const apiKey = authResponse.data.apiKey;
+    const headers = { 'X-API-KEY': apiKey };
+    console.log('[PLUGGY SYNC] Authentication successful!');
 
-    // Polling: Wait for data to arrive (max 15 seconds total)
-    let dataResult = checkForData();
-    let attempts = 0;
-    const maxAttempts = 30; // 30 * 500ms = 15 seconds
+    // ========================================
+    // STEP 2: Fetch Item Details (Institution)
+    // ========================================
+    console.log('\n[PLUGGY SYNC] Step 2: Fetching item details...');
+    let institutionName = 'Instituição';
+    let itemStatus = 'UNKNOWN';
+    let itemProducts = [];
 
-    // Phase 1: Wait until we get ANY data
-    while (!dataResult.hasData && attempts < maxAttempts) {
-      console.log(`>>> Waiting for webhook data... attempt ${attempts + 1}/${maxAttempts}`);
-      await sleep(500);
-      dataResult = checkForData();
-      attempts++;
-    }
-
-    // Phase 2: Once we have data, wait a bit more for additional webhooks
-    // Klavi sends different data types in separate webhooks
-    if (dataResult.hasData) {
-      console.log(`>>> Initial data found! Waiting 5 more seconds for additional webhooks...`);
-      let lastCount = dataResult.allCreditCards.length + dataResult.allCheckingAccounts.length + dataResult.allSavingsAccounts.length;
-
-      // Wait up to 5 more seconds, checking if more data arrives
-      for (let i = 0; i < 10; i++) {
-        await sleep(500);
-        const newResult = checkForData();
-        const newCount = newResult.allCreditCards.length + newResult.allCheckingAccounts.length + newResult.allSavingsAccounts.length;
-
-        if (newCount > lastCount) {
-          console.log(`>>> More data arrived! Total items: ${newCount} (was ${lastCount})`);
-          lastCount = newCount;
-          dataResult = newResult;
-        }
-      }
-    }
-
-    if (dataResult.hasData) {
-      const { allCreditCards, allCheckingAccounts, allSavingsAccounts } = dataResult;
-
-      console.log(`>>> Final data after waiting:`);
-      console.log(`>>> Credit Cards: ${allCreditCards.length}`);
-      console.log(`>>> Checking Accounts: ${allCheckingAccounts.length}`);
-      console.log(`>>> Savings Accounts: ${allSavingsAccounts.length}`);
-
-      // Normalize the data
-      const creditCardAccounts = normalizeCreditCards(allCreditCards, itemId);
-      const checkingAccounts = normalizeAccounts(allCheckingAccounts, itemId, 'CHECKING');
-      const savingsAccounts = normalizeAccounts(allSavingsAccounts, itemId, 'SAVINGS');
-
-      const allAccounts = [
-        ...creditCardAccounts,
-        ...checkingAccounts,
-        ...savingsAccounts
-      ];
-
-      const allTransactions = normalizeTransactions(
-        allCreditCards,
-        [...allCheckingAccounts, ...allSavingsAccounts],
-        itemId
-      );
-
-      // Separate transactions by source type
-      const creditCardTransactions = allTransactions.filter(tx => tx.sourceType === 'credit_card');
-      const accountTransactions = allTransactions.filter(tx => tx.sourceType === 'account');
-
-      console.log(`>>> Normalized ${allAccounts.length} accounts`);
-      console.log(`>>> Credit Card Transactions: ${creditCardTransactions.length}`);
-      console.log(`>>> Account Transactions: ${accountTransactions.length}`);
-
-      return res.json({
-        accounts: allAccounts,
-        transactions: accountTransactions, // Regular transactions go to normal Lançamentos
-        creditCardTransactions: creditCardTransactions, // Credit card transactions go to Cartão de Crédito view
-        source: 'webhook_data'
-      });
-    }
-
-
-
-    // No stored data found - try to trigger report generation
-    console.log(`>>> No stored data found, triggering report generation...`);
-
-    const KLAVI_BASE = 'https://api-sandbox.klavi.ai/data/v1';
-    const ACCESS_KEY = process.env.KLAVI_ACCESS_KEY || "121DEABF-DDD2-4ABB-8185-5348082FCA9D";
-    const SECRET_KEY = process.env.KLAVI_SECRET_KEY || "0ED8D6F1-9730-4D1F-BB39-1992186DEF6F";
-
-    console.log("   > Authenticating...");
-    const authResponse = await axios.post(`${KLAVI_BASE}/auth`, {
-      accessKey: ACCESS_KEY.trim(),
-      secretKey: SECRET_KEY.trim()
-    }, { headers: { 'Content-Type': 'application/json' } });
-
-    const token = authResponse.data.accessToken;
-    const headers = { 'Authorization': `Bearer ${token}`, 'Accept': 'application/json' };
-
-    // Trigger Report Generation (this is async - data will come via webhook)
-    console.log("   > Triggering Report Generation (Async)...");
     try {
-      await axios.post(`${KLAVI_BASE}/personal/institution-data`, {
-        linkId: itemId,
-        taxId: "58427193807",
-        products: ["pf_checking_account", "pf_credit_card", "pf_investment"],
-      }, { headers });
-      console.log("   > Report generation triggered successfully.");
+      let itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
+      let item = itemResponse.data;
+
+      console.log('[PLUGGY SYNC] Item raw data:');
+      console.log(`  - ID: ${item.id}`);
+      console.log(`  - Status: ${item.status}`);
+      console.log(`  - Connector ID: ${item.connector?.id}`);
+      console.log(`  - Connector Name: ${item.connector?.name}`);
+      console.log(`  - Products: ${JSON.stringify(item.products || item.connector?.products)}`);
+      console.log(`  - Created: ${item.createdAt}`);
+      console.log(`  - Updated: ${item.updatedAt}`);
+
+      // Smart Wait: If updating, poll until finished or timeout (max 45s)
+      let attempts = 0;
+      while (item.status === 'UPDATING' && attempts < 15) {
+        console.log(`[PLUGGY SYNC] Item is UPDATING. Waiting 3s... (${attempts + 1}/15)`);
+        await new Promise(r => setTimeout(r, 3000));
+
+        itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
+        item = itemResponse.data;
+        attempts++;
+      }
+
+      if (item.connector?.name) {
+        institutionName = item.connector.name;
+      }
+      itemStatus = item.status;
+      itemProducts = item.products || item.connector?.products || [];
+
+      console.log(`[PLUGGY SYNC] Final Item Status: ${itemStatus}`);
+      console.log(`[PLUGGY SYNC] Institution: ${institutionName}`);
+      console.log(`[PLUGGY SYNC] Products available: ${JSON.stringify(itemProducts)}`);
+
+      if (itemStatus === 'UPDATING') {
+        console.log('[PLUGGY SYNC] WARNING: Item still updating after 45s wait!');
+      }
     } catch (err) {
-      console.error("   > Trigger Warning:", err.response?.data || err.message);
+      console.error(`[PLUGGY SYNC] Failed to fetch item details: ${err.message}`);
     }
 
-    // Return empty with a message - data will come via webhook
-    res.json({
-      accounts: [],
-      transactions: [],
-      source: 'pending',
-      message: 'Dados ainda não disponíveis. Por favor, aguarde o processamento do banco e tente novamente em alguns segundos.'
+    // ========================================
+    // STEP 3: Check Consents (Debug)
+    // ========================================
+    console.log('\n[PLUGGY SYNC] Step 3: Checking consents...');
+    try {
+      const consentsResponse = await axios.get(`${PLUGGY_API_URL}/consents?itemId=${itemId}`, { headers });
+      const consents = consentsResponse.data.results || [];
+      console.log(`[PLUGGY SYNC] Found ${consents.length} consent(s)`);
+
+      consents.forEach((consent, i) => {
+        console.log(`[PLUGGY SYNC] Consent ${i + 1}:`);
+        console.log(`  - ID: ${consent.id}`);
+        console.log(`  - Status: ${consent.status}`);
+        console.log(`  - Products: ${JSON.stringify(consent.products)}`);
+        console.log(`  - Permissions: ${JSON.stringify(consent.permissions)}`);
+        console.log(`  - Expiration: ${consent.expiresAt}`);
+      });
+    } catch (consentErr) {
+      console.log(`[PLUGGY SYNC] Could not fetch consents: ${consentErr.message}`);
+    }
+
+    // ========================================
+    // STEP 4: Fetch ALL Accounts (No Type Filter)
+    // ========================================
+    console.log('\n[PLUGGY SYNC] Step 4: Fetching accounts...');
+
+    // First, get ALL accounts without type filter
+    const accountsResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
+      headers,
+      params: { itemId }
     });
 
-  } catch (error) {
-    console.error('Klavi Sync Error Details:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to sync data', details: error.response?.data });
-  }
-});
+    const rawAccounts = accountsResponse.data.results || [];
+    console.log(`[PLUGGY SYNC] Total accounts found: ${rawAccounts.length}`);
 
+    // Log raw account data for debugging
+    console.log('\n[PLUGGY SYNC] RAW ACCOUNTS DATA:');
+    rawAccounts.forEach((acc, i) => {
+      console.log(`  ${i + 1}. ${acc.name}`);
+      console.log(`     - ID: ${acc.id}`);
+      console.log(`     - Type: "${acc.type}"`);
+      console.log(`     - Subtype: "${acc.subtype}"`);
+      console.log(`     - Balance: ${acc.balance}`);
+      console.log(`     - Currency: ${acc.currencyCode}`);
+      console.log(`     - Has bankData: ${!!acc.bankData}`);
+      console.log(`     - Has creditData: ${!!acc.creditData}`);
+    });
 
-// 3. Webhook - Receive and store Klavi data
-router.post('/klavi/webhook', (req, res) => {
-  const event = req.body;
-  console.log('>>> KLAVI WEBHOOK RECEIVED');
+    // Also try fetching by type separately for comparison
+    console.log('\n[PLUGGY SYNC] Fetching accounts by type for comparison...');
 
-  try {
-    // Try to extract linkId from various places in the payload
-    let linkId = extractLinkId(event);
-
-    // If no linkId found at root, check if it's nested in data
-    if (!linkId && event.data) {
-      linkId = extractLinkId(event.data);
+    // BANK type accounts
+    try {
+      const bankResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
+        headers,
+        params: { itemId, type: 'BANK' }
+      });
+      console.log(`[PLUGGY SYNC] BANK type accounts: ${bankResponse.data.results?.length || 0}`);
+      bankResponse.data.results?.forEach(acc => {
+        console.log(`  - ${acc.name} (${acc.subtype}) Balance: ${acc.balance}`);
+      });
+    } catch (e) {
+      console.log(`[PLUGGY SYNC] Could not fetch BANK accounts: ${e.message}`);
     }
 
-    // Try to get linkId from links array (common in Open Finance responses)
-    if (!linkId && event.links && Array.isArray(event.links) && event.links.length > 0) {
-      linkId = event.links[0].linkId || event.links[0].link_id;
+    // CREDIT type accounts
+    try {
+      const creditResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
+        headers,
+        params: { itemId, type: 'CREDIT' }
+      });
+      console.log(`[PLUGGY SYNC] CREDIT type accounts: ${creditResponse.data.results?.length || 0}`);
+      creditResponse.data.results?.forEach(acc => {
+        console.log(`  - ${acc.name} (${acc.subtype}) Balance: ${acc.balance}`);
+      });
+    } catch (e) {
+      console.log(`[PLUGGY SYNC] Could not fetch CREDIT accounts: ${e.message}`);
     }
 
-    // Use the stored linkId from create-link if we still don't have one
-    if (!linkId && currentKlaviLinkId) {
-      linkId = currentKlaviLinkId;
-      console.log(`>>> Using stored linkId from create-link: ${linkId}`);
-    }
+    // Normalize accounts
+    const normalizedAccounts = normalizePluggyAccounts(rawAccounts, itemId, institutionName);
 
-    // Fallback: use companyCnpj as stable identifier
-    if (!linkId && (event.creditCards || event.checkingAccounts || event.savingsAccounts)) {
-      const firstItem = event.creditCards?.[0] || event.checkingAccounts?.[0] || event.savingsAccounts?.[0];
-      if (firstItem?.companyCnpj) {
-        linkId = `cnpj_${firstItem.companyCnpj}`;
+    // Summary
+    const accountSummary = {
+      total: normalizedAccounts.length,
+      checking: normalizedAccounts.filter(a => a.type === 'CHECKING').length,
+      savings: normalizedAccounts.filter(a => a.type === 'SAVINGS').length,
+      creditCard: normalizedAccounts.filter(a => a.type === 'CREDIT_CARD').length,
+      investment: normalizedAccounts.filter(a => a.type === 'INVESTMENT').length,
+      loan: normalizedAccounts.filter(a => a.type === 'LOAN').length,
+    };
+    console.log('\n[PLUGGY SYNC] ACCOUNT SUMMARY:');
+    console.log(`  - Total: ${accountSummary.total}`);
+    console.log(`  - Checking: ${accountSummary.checking}`);
+    console.log(`  - Savings: ${accountSummary.savings}`);
+    console.log(`  - Credit Card: ${accountSummary.creditCard}`);
+    console.log(`  - Investment: ${accountSummary.investment}`);
+    console.log(`  - Loan: ${accountSummary.loan}`);
+
+    // ========================================
+    // STEP 5: Fetch Transactions for ALL Accounts
+    // ========================================
+    console.log('\n[PLUGGY SYNC] Step 5: Fetching transactions...');
+
+    let allTransactions = [];
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+    for (const acc of normalizedAccounts) {
+      console.log(`\n[PLUGGY SYNC] --- Fetching transactions for: ${acc.name} (${acc.type}) ---`);
+      console.log(`[PLUGGY SYNC] Account ID: ${acc.id}`);
+
+      // Determine date range based on account type
+      const isBankAccount = acc.type === 'CHECKING' || acc.type === 'SAVINGS';
+      const toDate = new Date();
+      const toString = toDate.toISOString().split('T')[0];
+
+      const fromDate = new Date();
+      // Bank accounts: 90 days, Credit cards: 365 days (1 year)
+      const daysBack = isBankAccount ? 90 : 365;
+      fromDate.setDate(fromDate.getDate() - daysBack);
+      const fromString = fromDate.toISOString().split('T')[0];
+
+      console.log(`[PLUGGY SYNC] Date range: ${fromString} to ${toString} (${daysBack} days)`);
+
+      let accountTxs = [];
+      let page = 1;
+      let totalPages = 1;
+      const pageSize = 500; // Fetch more per page
+
+      try {
+        // ATTEMPT 1: Fetch with date filter
+        console.log(`[PLUGGY SYNC] Attempt 1: Fetching with date filter...`);
+
+        do {
+          const txResponse = await axios.get(`${PLUGGY_API_URL}/transactions`, {
+            headers,
+            params: {
+              accountId: acc.id,
+              from: fromString,
+              to: toString,
+              page,
+              pageSize
+            }
+          });
+
+          const results = txResponse.data.results || [];
+          accountTxs = [...accountTxs, ...results];
+          totalPages = txResponse.data.totalPages || 1;
+
+          console.log(`[PLUGGY SYNC] Page ${page}/${totalPages}: ${results.length} transactions (Total so far: ${accountTxs.length})`);
+
+          page++;
+
+          // Safety break
+          if (page > 50) {
+            console.log('[PLUGGY SYNC] Breaking at page 50 for safety');
+            break;
+          }
+
+          await sleep(100);
+        } while (page <= totalPages);
+
+        // ATTEMPT 2: If no transactions found for bank accounts, try without date filter
+        if (isBankAccount && accountTxs.length === 0) {
+          console.log(`[PLUGGY SYNC] Attempt 2: No transactions with date filter. Trying without date filter...`);
+
+          try {
+            const txResponseNoDate = await axios.get(`${PLUGGY_API_URL}/transactions`, {
+              headers,
+              params: {
+                accountId: acc.id,
+                pageSize: 500
+              }
+            });
+
+            console.log(`[PLUGGY SYNC] Response without date: Total=${txResponseNoDate.data.total}, Results=${txResponseNoDate.data.results?.length}`);
+
+            if (txResponseNoDate.data.results?.length > 0) {
+              accountTxs = txResponseNoDate.data.results;
+              console.log(`[PLUGGY SYNC] SUCCESS: Found ${accountTxs.length} transactions without date filter!`);
+            }
+          } catch (noDateErr) {
+            console.error(`[PLUGGY SYNC] Error fetching without date filter: ${noDateErr.message}`);
+          }
+        }
+
+        // Log results
+        console.log(`[PLUGGY SYNC] RESULT: ${accountTxs.length} transactions for ${acc.name}`);
+
+        if (accountTxs.length > 0) {
+          // Log sample transactions
+          console.log(`[PLUGGY SYNC] Sample transactions:`);
+          accountTxs.slice(0, 3).forEach((tx, i) => {
+            console.log(`  ${i + 1}. ${tx.description?.substring(0, 50)} | ${tx.amount} | ${tx.date} | Type: ${tx.type}`);
+          });
+        } else if (isBankAccount) {
+          console.log(`[PLUGGY SYNC] WARNING: No transactions found for bank account "${acc.name}".`);
+          console.log(`[PLUGGY SYNC] This could be due to:`);
+          console.log(`  1. No recent transactions in the account`);
+          console.log(`  2. Open Finance consent doesn't include transaction history`);
+          console.log(`  3. Bank API limitation`);
+        }
+
+        // Normalize and add to collection
+        const normalizedTxs = normalizePluggyTransactions(accountTxs, acc.id);
+        allTransactions = [...allTransactions, ...normalizedTxs];
+
+        // Small delay between accounts
+        await sleep(300);
+
+      } catch (err) {
+        console.error(`[PLUGGY SYNC] ERROR fetching transactions for ${acc.id}:`);
+        console.error(`  Message: ${err.message}`);
+        if (err.response?.data) {
+          console.error(`  API Error: ${JSON.stringify(err.response.data)}`);
+        }
       }
     }
 
-    if (!linkId) {
-      console.log('>>> Warning: No linkId found, using timestamp key');
-      linkId = `unknown_${Date.now()}`;
-    }
+    // ========================================
+    // STEP 6: Separate transactions by account type
+    // ========================================
+    console.log('\n[PLUGGY SYNC] Step 6: Separating transactions by type...');
 
-    console.log(`>>> Processing webhook data for linkId: ${linkId}`);
+    const creditCardTransactions = allTransactions.filter(tx => {
+      const acc = normalizedAccounts.find(a => a.id === tx.accountId);
+      return acc && acc.type === 'CREDIT_CARD';
+    });
 
-    // Get existing data for this linkId (to MERGE, not overwrite)
-    const existingData = klaviDataStore.get(linkId) || {
-      creditCards: [],
-      checkingAccounts: [],
-      savingsAccounts: [],
-      investments: [],
-    };
+    const accountTransactions = allTransactions.filter(tx => {
+      const acc = normalizedAccounts.find(a => a.id === tx.accountId);
+      return acc && acc.type !== 'CREDIT_CARD';
+    });
 
-    // Extract new data from this webhook
-    const newCreditCards = event.creditCards || event.data?.creditCards || [];
-    const newCheckingAccounts = event.checkingAccounts || event.data?.checkingAccounts || [];
-    const newSavingsAccounts = event.savingsAccounts || event.data?.savingsAccounts || [];
-    const newInvestments = event.investments || event.data?.investments || [];
+    // ========================================
+    // FINAL SUMMARY
+    // ========================================
+    console.log(`\n${'='.repeat(70)}`);
+    console.log('[PLUGGY SYNC] SYNC COMPLETE - SUMMARY');
+    console.log(`${'='.repeat(70)}`);
+    console.log(`Institution: ${institutionName}`);
+    console.log(`Total Accounts: ${normalizedAccounts.length}`);
+    console.log(`  - Bank/Savings: ${accountSummary.checking + accountSummary.savings}`);
+    console.log(`  - Credit Cards: ${accountSummary.creditCard}`);
+    console.log(`Total Transactions: ${allTransactions.length}`);
+    console.log(`  - From Bank Accounts: ${accountTransactions.length}`);
+    console.log(`  - From Credit Cards: ${creditCardTransactions.length}`);
+    console.log(`${'='.repeat(70)}\n`);
 
-    // Helper to deduplicate and merge by key
-    const mergeByKey = (existing, newItems, keyFn) => {
-      const map = new Map();
-
-      // Initialize with existing items
-      existing.forEach(item => {
-        const key = keyFn(item);
-        if (key) map.set(key, item);
-      });
-
-      // Merge new items
-      newItems.forEach(newItem => {
-        const key = keyFn(newItem);
-        if (!key) return;
-
-        const existingItem = map.get(key);
-        if (existingItem) {
-          // Merge logic: New data overrides old data, BUT...
-          const merged = { ...existingItem, ...newItem };
-
-          // Preserve transactions if new item doesn't have them (or has empty list while old had data)
-          const hasNewTxs = (newItem.transactions && newItem.transactions.length > 0) || (newItem.transactionDetails && newItem.transactionDetails.length > 0);
-          const hasOldTxs = (existingItem.transactions && existingItem.transactions.length > 0) || (existingItem.transactionDetails && existingItem.transactionDetails.length > 0);
-
-          if (!hasNewTxs && hasOldTxs) {
-            // console.log(`>>> Preserving transactions for ${key} (New update missing txs)`);
-            if (existingItem.transactions) merged.transactions = existingItem.transactions;
-            if (existingItem.transactionDetails) merged.transactionDetails = existingItem.transactionDetails;
-          }
-
-          // Also preserve openStatement/closedStatements for credit cards
-          if (!newItem.openStatement && existingItem.openStatement) {
-            merged.openStatement = existingItem.openStatement;
-          }
-          if ((!newItem.closedStatements || newItem.closedStatements.length === 0) && existingItem.closedStatements && existingItem.closedStatements.length > 0) {
-            merged.closedStatements = existingItem.closedStatements;
-          }
-
-          map.set(key, merged);
-        } else {
-          map.set(key, newItem);
+    // Return response
+    res.json({
+      accounts: normalizedAccounts,
+      transactions: accountTransactions,
+      creditCardTransactions: creditCardTransactions,
+      source: 'pluggy_api',
+      // Debug info
+      debug: {
+        institution: institutionName,
+        itemStatus: itemStatus,
+        products: itemProducts,
+        accountSummary,
+        transactionSummary: {
+          total: allTransactions.length,
+          bank: accountTransactions.length,
+          creditCard: creditCardTransactions.length
         }
+      }
+    });
+
+  } catch (error) {
+    console.error('\n[PLUGGY SYNC] FATAL ERROR:');
+    console.error(`  Message: ${error.message}`);
+    if (error.response?.data) {
+      console.error(`  API Response: ${JSON.stringify(error.response.data)}`);
+    }
+    console.error(`  Stack: ${error.stack}`);
+
+    res.status(500).json({
+      error: 'Failed to sync Pluggy data',
+      details: error.response?.data || error.message
+    });
+  }
+});
+
+// 2.5. Debug: Check what Nubank connector actually supports
+router.get('/pluggy/debug/nubank-connector', async (req, res) => {
+  console.log('\n[PLUGGY DEBUG] Checking Nubank connector capabilities...');
+
+  try {
+    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
+    });
+    const apiKey = authResponse.data.apiKey;
+    const headers = { 'X-API-KEY': apiKey };
+
+    // Get all Open Finance connectors
+    const connectorsResponse = await axios.get(`${PLUGGY_API_URL}/connectors`, {
+      headers,
+      params: { isOpenFinance: true }
+    });
+
+    const allConnectors = connectorsResponse.data.results || [];
+
+    // Find Nubank connector
+    const nubankConnector = allConnectors.find(c =>
+      c.name?.toLowerCase().includes('nubank') ||
+      c.institutionName?.toLowerCase().includes('nubank')
+    );
+
+    if (nubankConnector) {
+      console.log('[PLUGGY DEBUG] Nubank Connector Found:');
+      console.log(JSON.stringify(nubankConnector, null, 2));
+
+      res.json({
+        found: true,
+        connector: {
+          id: nubankConnector.id,
+          name: nubankConnector.name,
+          institutionName: nubankConnector.institutionName,
+          type: nubankConnector.type,
+          country: nubankConnector.country,
+          isOpenFinance: nubankConnector.isOpenFinance,
+          products: nubankConnector.products,
+          credentials: nubankConnector.credentials,
+          imageUrl: nubankConnector.imageUrl,
+          primaryColor: nubankConnector.primaryColor,
+          health: nubankConnector.health,
+          // Important: Check if ACCOUNTS product is supported
+          supportsAccounts: nubankConnector.products?.includes('ACCOUNTS'),
+          supportsCreditCards: nubankConnector.products?.includes('CREDIT_CARDS'),
+          supportsTransactions: nubankConnector.products?.includes('TRANSACTIONS'),
+        },
+        message: nubankConnector.products?.includes('ACCOUNTS')
+          ? 'Nubank SHOULD support bank accounts (ACCOUNTS product available)'
+          : 'WARNING: Nubank may NOT support bank accounts (ACCOUNTS product NOT in list)'
       });
-
-      return Array.from(map.values());
-    };
-
-    // Merge and deduplicate data
-    const mergedData = {
-      receivedAt: new Date().toISOString(),
-      rawPayload: event,
-      creditCards: mergeByKey(
-        existingData.creditCards,
-        newCreditCards,
-        (c) => `${c.companyCnpj}_${c.name || c.creditCardNetwork}`
-      ),
-      checkingAccounts: mergeByKey(
-        existingData.checkingAccounts,
-        newCheckingAccounts,
-        (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
-      ),
-      savingsAccounts: mergeByKey(
-        existingData.savingsAccounts,
-        newSavingsAccounts,
-        (a) => `${a.companyCnpj}_${a.number}_${a.branchCode}`
-      ),
-      investments: mergeByKey(
-        existingData.investments,
-        newInvestments,
-        (i) => `${i.companyCnpj}_${i.name || i.id}`
-      ),
-    };
-
-    klaviDataStore.set(linkId, mergedData);
-    console.log(`>>> MERGED webhook data for linkId: ${linkId}`);
-    console.log(`>>> Credit Cards total: ${mergedData.creditCards.length} (new: ${newCreditCards.length})`);
-    console.log(`>>> Checking Accounts total: ${mergedData.checkingAccounts.length} (new: ${newCheckingAccounts.length})`);
-    console.log(`>>> Savings Accounts total: ${mergedData.savingsAccounts.length} (new: ${newSavingsAccounts.length})`);
-    console.log(`>>> Current store size: ${klaviDataStore.size} entries`);
-
-    // Debug: Log the structure of the raw payload to understand where data is
-    const payloadKeys = Object.keys(event);
-    console.log(`>>> Payload root keys: ${payloadKeys.join(', ')}`);
-    if (event.data) {
-      console.log(`>>> Payload data keys: ${Object.keys(event.data).join(', ')}`);
+    } else {
+      console.log('[PLUGGY DEBUG] Nubank connector NOT found!');
+      res.json({
+        found: false,
+        message: 'Nubank connector not found in Open Finance list',
+        availableConnectors: allConnectors.map(c => c.name).slice(0, 20)
+      });
     }
 
-
-    // Also store with any alternative keys that might be used
-    if (event.consent_id) {
-      klaviDataStore.set(event.consent_id, mergedData);
-      console.log(`>>> Also stored with consent_id: ${event.consent_id}`);
-    }
-
-    // Also store with currentKlaviLinkId if different from extracted linkId
-    if (currentKlaviLinkId && currentKlaviLinkId !== linkId) {
-      klaviDataStore.set(currentKlaviLinkId, mergedData);
-      console.log(`>>> Also stored with currentKlaviLinkId: ${currentKlaviLinkId}`);
-    }
-
-  } catch (err) {
-    console.error('>>> Error processing webhook:', err.message);
-  }
-
-  res.status(200).send('OK');
-});
-
-// Debug endpoint to see stored data (remove in production)
-router.get('/klavi/debug/:linkId', (req, res) => {
-  const { linkId } = req.params;
-  const data = klaviDataStore.get(linkId);
-
-  if (data) {
-    res.json({
-      found: true,
-      linkId,
-      receivedAt: data.receivedAt,
-      creditCardsCount: data.creditCards?.length || 0,
-      checkingAccountsCount: data.checkingAccounts?.length || 0,
-      // Expose full checking accounts for debugging
-      checkingAccounts: data.checkingAccounts,
-      // Expose checking account transactions for debugging
-      checkingAccountTransactions: (data.checkingAccounts || []).flatMap(acc =>
-        (acc.transactions || acc.transactionDetails || []).slice(0, 50)
-      ),
-      // Show raw data for debugging
-      rawPayloadKeys: Object.keys(data.rawPayload || {}),
-    });
-  } else {
-    res.json({
-      found: false,
-      linkId,
-      availableKeys: Array.from(klaviDataStore.keys())
-    });
+  } catch (error) {
+    console.error('[PLUGGY DEBUG] Error:', error.response?.data || error.message);
+    res.status(500).json({ error: error.message });
   }
 });
 
-// Debug endpoint to see ALL stored data
-router.get('/klavi/debug-all', (req, res) => {
-  const allData = [];
-  for (const [key, value] of klaviDataStore.entries()) {
-    allData.push({
-      key,
-      receivedAt: value.receivedAt,
-      creditCardsCount: value.creditCards?.length || 0,
-      checkingAccountsCount: value.checkingAccounts?.length || 0,
-      savingsAccountsCount: value.savingsAccounts?.length || 0,
-      rawPayloadKeys: Object.keys(value.rawPayload || {}),
-      // Show first credit card structure if available
-      firstCreditCard: value.creditCards?.[0] ? Object.keys(value.creditCards[0]) : null,
-      firstCheckingAccount: value.checkingAccounts?.[0] ? Object.keys(value.checkingAccounts[0]) : null,
+// 3. Pluggy Webhook
+router.post('/pluggy/webhook', async (req, res) => {
+  const event = req.body;
+  console.log('>>> PLUGGY WEBHOOK RECEIVED:', event.event);
+  console.log('>>> Item ID:', event.itemId);
+
+  // Here you can handle specific events like 'ITEM_UPDATED', 'TRANSACTIONS_DELETED'
+  // For now, we just log it to ensure connectivity
+
+  res.status(200).json({ received: true });
+});
+
+// 4. Debug: List Nubank connectors and their products
+router.get('/pluggy/debug/connectors', async (req, res) => {
+  try {
+    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
     });
+    const apiKey = authResponse.data.apiKey;
+    const headers = { 'X-API-KEY': apiKey };
+
+    // Get all Open Finance connectors
+    const connectorsResponse = await axios.get(`${PLUGGY_API_URL}/connectors?isOpenFinance=true`, { headers });
+    const allConnectors = connectorsResponse.data.results || [];
+
+    // Filter Nubank connectors
+    const nubankConnectors = allConnectors.filter(c =>
+      c.name?.toLowerCase().includes('nubank') ||
+      c.institutionName?.toLowerCase().includes('nubank')
+    );
+
+    console.log(`>>> Found ${nubankConnectors.length} Nubank connectors:`);
+    nubankConnectors.forEach(c => {
+      console.log(`    > ID: ${c.id} | Name: ${c.name} | Products: ${JSON.stringify(c.products)}`);
+    });
+
+    res.json({
+      total: allConnectors.length,
+      nubankConnectors: nubankConnectors.map(c => ({
+        id: c.id,
+        name: c.name,
+        institutionName: c.institutionName,
+        products: c.products,
+        type: c.type,
+        isOpenFinance: c.isOpenFinance
+      }))
+    });
+
+  } catch (error) {
+    console.error('Connectors Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch connectors' });
   }
-  res.json({
-    totalEntries: klaviDataStore.size,
-    entries: allData
-  });
+});
+
+// 5. Debug: Get item details
+router.get('/pluggy/debug/item/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+  try {
+    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
+    });
+    const apiKey = authResponse.data.apiKey;
+    const headers = { 'X-API-KEY': apiKey };
+
+    const itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
+    const item = itemResponse.data;
+
+    // Get accounts for this item
+    const accountsResponse = await axios.get(`${PLUGGY_API_URL}/accounts?itemId=${itemId}`, { headers });
+    const accounts = accountsResponse.data.results;
+
+    // Get consents
+    let consents = [];
+    try {
+      const consentsResponse = await axios.get(`${PLUGGY_API_URL}/consents?itemId=${itemId}`, { headers });
+      consents = consentsResponse.data.results || [];
+    } catch (e) {
+      console.log('Could not fetch consents');
+    }
+
+    res.json({
+      item: {
+        id: item.id,
+        status: item.status,
+        connector: item.connector,
+        products: item.products,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      },
+      accounts: accounts.map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        subtype: a.subtype,
+        balance: a.balance
+      })),
+      consents: consents.map(c => ({
+        id: c.id,
+        products: c.products,
+        permissions: c.permissions,
+        status: c.status
+      }))
+    });
+
+  } catch (error) {
+    console.error('Item Debug Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Failed to fetch item details' });
+  }
 });
 
 
@@ -1072,7 +907,7 @@ router.post('/admin/send-email', async (req, res) => {
       <style>
         /* Reset for email clients */
         body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-        table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+        table,td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
         img { -ms-interpolation-mode: bicubic; }
       </style>
     </head>
@@ -1149,24 +984,16 @@ router.post('/admin/send-email', async (req, res) => {
   `;
 
   try {
-    // Send to recipients
-    // For bulk, using BCC is often better, or loop.
-    // Here we will loop to simulate individual "To" fields which is more personal,
-    // but in high volume production, use a bulk service.
-
-    // NOTE: If using Gmail free tier, there are strict limits (e.g. 500/day).
-
     const sendPromises = recipients.map(email => {
       return smtpTransporter.sendMail({
         from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
         to: email,
         subject: subject,
         html: htmlTemplate,
-        text: body // Fallback plain text
+        text: body 
       });
     });
 
-    // Wait for all (or handle errors individually to not fail batch)
     const results = await Promise.allSettled(sendPromises);
 
     const successCount = results.filter(r => r.status === 'fulfilled').length;
@@ -1179,9 +1006,7 @@ router.post('/admin/send-email', async (req, res) => {
       console.error(">>> First failure reason:", failures[0].reason);
     }
 
-    // Determine status code
     if (successCount === 0 && failCount > 0) {
-      // Total failure
       const firstError = failures[0].reason;
       return res.status(500).json({
         error: 'Falha ao enviar todos os emails.',
@@ -1244,17 +1069,14 @@ router.post('/asaas/customer', async (req, res) => {
   }
 
   try {
-    // Check if customer already exists by CPF/CNPJ
     const searchResult = await asaasRequest('GET', `/customers?cpfCnpj=${cpfCnpj.replace(/\D/g, '')}`);
 
     let customer;
 
     if (searchResult.data && searchResult.data.length > 0) {
-      // Customer exists, update it
       customer = searchResult.data[0];
       console.log(`>>> Found existing customer: ${customer.id}`);
 
-      // Update customer data
       const updateData = {
         name,
         email,
@@ -1265,7 +1087,6 @@ router.post('/asaas/customer', async (req, res) => {
 
       customer = await asaasRequest('PUT', `/customers/${customer.id}`, updateData);
     } else {
-      // Create new customer
       const customerData = {
         name,
         email,
@@ -1308,17 +1129,12 @@ router.post('/asaas/subscription', async (req, res) => {
   }
 
   try {
-    // Determine billing cycle
     const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
     const nextDueDate = new Date();
-    nextDueDate.setDate(nextDueDate.getDate() + 1); // Next day
+    nextDueDate.setDate(nextDueDate.getDate() + 1); 
     const dueDateStr = nextDueDate.toISOString().split('T')[0];
 
-    // For annual plans with installments, we create a single payment (parcelado)
-    // For monthly, we create a subscription
-
     if (billingCycle === 'annual' && installmentCount && installmentCount > 1) {
-      // Annual plan with installments - Create a single installment payment
       const paymentData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
@@ -1351,7 +1167,6 @@ router.post('/asaas/subscription', async (req, res) => {
 
       console.log('>>> Payment created:', payment.id, payment.status);
 
-      // Check payment status
       if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {
         return res.json({
           success: true,
@@ -1375,7 +1190,6 @@ router.post('/asaas/subscription', async (req, res) => {
         });
       }
     } else {
-      // Monthly or Annual without installments - Create subscription
       const subscriptionData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
@@ -1407,7 +1221,6 @@ router.post('/asaas/subscription', async (req, res) => {
 
       console.log('>>> Subscription created:', subscription.id, subscription.status);
 
-      // Get the first payment to check status
       const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
       const firstPayment = payments.data?.[0];
 
@@ -1462,13 +1275,10 @@ router.post('/asaas/webhook', async (req, res) => {
   console.log('>>> Status:', event.payment?.status);
 
   try {
-    // Handle different event types
     switch (event.event) {
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED':
         console.log(`>>> Payment confirmed: ${event.payment?.id}`);
-        // Here you would update the user's subscription in Firebase
-        // This is handled client-side for now
         break;
 
       case 'PAYMENT_OVERDUE':

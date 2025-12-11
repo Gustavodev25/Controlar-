@@ -427,17 +427,24 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             </span>
             <button
               onClick={() => {
-                // Se o usuário está no plano gratuito e tenta ativar o modo Auto, redireciona para upgrade
-                if (userPlan === 'starter' && !isProMode) {
-                  onUpgradeClick?.();
+                // Usuários Starter (gratuito) estão sempre bloqueados em modo Manual
+                // Não podem ativar Auto - redireciona para upgrade
+                if (userPlan === 'starter') {
+                  if (!isProMode) {
+                    // Tentando ativar Auto - mostrar upgrade
+                    onUpgradeClick?.();
+                  }
+                  // Mesmo que isProMode seja true por algum bug, ignoramos o clique para Starter
                   return;
                 }
+                // Pro/Family podem alternar livremente - o sistema mantém a constância da escolha
                 onToggleProMode?.(!isProMode);
               }}
+              disabled={userPlan === 'starter'}
               className={`relative w-12 h-6 rounded-full transition-colors ${isProMode
                 ? 'bg-[#d97757]'
                 : 'bg-gray-700'
-                }`}
+                } ${userPlan === 'starter' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${isProMode ? 'translate-x-7' : 'translate-x-1'}`} />
             </button>
@@ -445,7 +452,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
               <span className={`text-xs font-medium transition-colors ${isProMode ? 'text-[#d97757]' : 'text-gray-500'}`}>
                 Auto
               </span>
-              {userPlan === 'starter' && !isProMode && (
+              {userPlan === 'starter' && (
                 <Lock size={12} className="text-amber-500" />
               )}
             </div>

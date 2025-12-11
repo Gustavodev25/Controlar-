@@ -381,7 +381,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({ transactions, 
         <div className="flex items-center gap-2">
           <span>Total Fatura:</span>
           <span className={`font-mono font-bold text-sm text-white`}>
-            {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
+            {formatCurrency(filteredTransactions.reduce((acc, curr) => {
+               const description = (curr.description || '').toLowerCase();
+               if (description.includes('pagamento fatura') || description.includes('credit card payment')) return acc;
+               return curr.type === 'income' ? acc + curr.amount : acc - curr.amount;
+            }, 0))}
           </span>
         </div>
       </div>

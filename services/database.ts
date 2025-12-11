@@ -13,11 +13,52 @@ import {
   orderBy,
   getDocs,
   limit,
-  writeBatch
+  writeBatch,
+  increment
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon } from "../types";
 import { AppNotification } from "../types";
+
+// --- System Stats Services ---
+export const incrementPluggyUsage = async () => {
+  if (!db) return;
+  const statsRef = doc(db, "system_stats", "pluggy");
+  
+  // Use setDoc with merge to ensure doc exists, but increment needs updateDoc or setDoc with specific field logic
+  // Increment is an atomic operation
+  try {
+    await updateDoc(statsRef, {
+        total_connections: increment(1),
+        last_connection: new Date().toISOString()
+    });
+  } catch (error: any) {
+    // If doc doesn't exist, create it
+    if (error.code === 'not-found') {
+        await setDoc(statsRef, {
+            total_connections: 1,
+            last_connection: new Date().toISOString()
+        });
+    } else {
+        console.error("Error incrementing Pluggy usage:", error);
+    }
+  }
+};
+
+export const getPluggyUsage = async (): Promise<{ total_connections: number; last_connection?: string }> => {
+  if (!db) return { total_connections: 0 };
+  try {
+    const statsRef = doc(db, "system_stats", "pluggy");
+    const snap = await getDoc(statsRef);
+    if (snap.exists()) {
+        return snap.data() as { total_connections: number; last_connection?: string };
+    }
+    return { total_connections: 0 };
+  } catch (error) {
+    console.error("Error getting Pluggy usage:", error);
+    return { total_connections: 0 };
+  }
+};
 
 // --- User Services ---
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {

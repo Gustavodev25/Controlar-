@@ -79,6 +79,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [syncProgress, setSyncProgress] = useState<SyncProgress>({ step: '', current: 0, total: 0 });
   const [showSyncTooltip, setShowSyncTooltip] = useState(false);
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [itemToUpdate, setItemToUpdate] = useState<string | null>(null);
   const accountsPerPage = 3;
   const toast = useToasts();
   
@@ -161,6 +162,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
 
 
+  const handleUpdateConnection = (itemId: string) => {
+    setItemToUpdate(itemId);
+    setIsConnectModalOpen(true);
+  };
+
   const handleDeleteInstitution = async () => {
     if (!userId || !deleteData) return;
 
@@ -183,6 +189,73 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
+  const handleSyncInstitution = async (itemId: string) => {
+    if (!userId) return;
+    setIsSyncing(true);
+    const initialProgress: SyncProgress = {
+        step: 'Sincronizando contas...',
+        current: 10,
+        total: 100,
+        startedAt: Date.now()
+    };
+    persistSyncProgress(initialProgress);
+
+    try {
+        const response = await axios.post('/api/pluggy/sync', { itemId });
+        
+        // Process response data (update local DB)
+        const { accounts: syncedAccounts, transactions, creditCardTransactions } = response.data;
+        const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
+        
+        // Save accounts
+        if (syncedAccounts && syncedAccounts.length > 0) {
+            for (const acc of syncedAccounts) {
+                await dbService.addConnectedAccount(userId, acc);
+            }
+        }
+        
+        // Save transactions
+        if (allTxs.length > 0) {
+            for (const tx of allTxs) {
+                await dbService.addTransaction(userId, tx, tx.id);
+            }
+        }
+
+        const completeProgress: SyncProgress = {
+            step: 'Sincronização concluída!',
+            current: 100,
+            total: 100,
+            isComplete: true,
+            startedAt: initialProgress.startedAt
+        };
+        persistSyncProgress(completeProgress);
+        
+        await dbService.incrementPluggyUsage();
+        
+        toast.success("Sincronização realizada com sucesso!");
+        if (onRefresh) onRefresh();
+        
+        setTimeout(() => {
+            setSyncProgress({ step: '', current: 0, total: 0 });
+            clearSyncProgress();
+        }, 3000);
+
+    } catch (error) {
+        console.error("Erro ao sincronizar:", error);
+        toast.error("Erro ao sincronizar. Tente novamente.");
+        const errorProgress: SyncProgress = {
+            step: 'Erro na sincronização',
+            current: 0,
+            total: 0,
+            error: 'Falha ao conectar com o banco.',
+            startedAt: initialProgress.startedAt
+        };
+        persistSyncProgress(errorProgress);
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
   const handleConnectSuccess = async (data: any) => {
     if (!userId) return;
 
@@ -192,7 +265,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     setIsSyncing(true);
 
     const initialProgress: SyncProgress = {
-      step: 'Conectando ao banco...',
+      step: 'Processando dados...',
       current: 0,
       total: 100,
       startedAt: Date.now()
@@ -205,25 +278,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
          throw new Error("Modo manual ativado. Sincronização interrompida.");
       }
 
-      // Update progress: fetching data
-      const fetchingProgress: SyncProgress = {
-        step: 'Buscando dados do banco...',
-        current: 10,
-        total: 100,
-        startedAt: initialProgress.startedAt
-      };
-      persistSyncProgress(fetchingProgress);
+      // Data is already synced from BankConnectModal
+      const { accounts: syncedAccounts, transactions, creditCardTransactions } = data;
 
-      const response = await axios.post('/api/klavi/sync', {
-        itemId: data.itemId,
-        userId
-      });
-
-      if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
-         throw new Error("Modo manual ativado. Sincronização interrompida.");
-      }
-
-      const { accounts: syncedAccounts, transactions, creditCardTransactions } = response.data;
       accountCount = syncedAccounts?.length || 0;
       const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
       txCount = allTxs.length;
@@ -273,6 +330,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         startedAt: initialProgress.startedAt
       };
       persistSyncProgress(completeProgress);
+
+      // Increment Global Pluggy Usage Counter
+      await dbService.incrementPluggyUsage();
 
       // Send notification to notification center
       await sendSyncNotification(true, accountCount, txCount);
@@ -379,7 +439,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         <div className="flex items-center gap-3">
           {/* Connect Button */}
           <button
-            onClick={() => setIsConnectModalOpen(true)}
+            onClick={() => {
+              setItemToUpdate(null);
+              setIsConnectModalOpen(true);
+            }}
             className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20"
           >
             <Plus size={18} />
@@ -424,6 +487,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             onClose={() => setIsConnectModalOpen(false)}
             onSuccess={handleConnectSuccess}
             userId={userId}
+            itemIdToUpdate={itemToUpdate}
           />
         </>
       )}
@@ -474,6 +538,14 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   </div>
 
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleUpdateConnection(data.itemId)}
+                      disabled={isSyncing || isDeleting !== null}
+                      className="text-xs text-blue-400 hover:text-blue-300 font-semibold uppercase border border-blue-500/30 hover:border-blue-500/50 rounded-lg px-2 py-1 flex items-center gap-1.5 transition-all hover:bg-blue-500/10 disabled:opacity-50"
+                    >
+                      <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
+                      Reconectar
+                    </button>
                     <button
                       onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
                       disabled={isDeleting !== null || isSyncing}

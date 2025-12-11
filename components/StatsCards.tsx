@@ -139,6 +139,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     // Sum up the amounts
     // Convention: expenses are positive amounts with type 'expense'
     const total = monthTransactions.reduce((sum, tx) => {
+      // Ignore payment transactions to prevent double counting or incorrect invoice inflation
+      const description = (tx.description || '').toLowerCase();
+      if (description.includes('pagamento fatura') || description.includes('credit card payment')) {
+        return sum;
+      }
+
       // For credit card transactions, expenses increase the invoice
       if (tx.type === 'expense') {
         return sum + Math.abs(tx.amount);
@@ -199,6 +205,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         // Sum up expenses for the selected month
         invoiceValue = filteredTransactions.reduce((sum, tx) => {
           if ((tx as any).ignored) return sum;
+
+          // Ignore payment transactions
+          const description = (tx.description || '').toLowerCase();
+          if (description.includes('pagamento fatura') || description.includes('credit card payment')) {
+            return sum;
+          }
+
           // For credit cards: expenses add to invoice, income/payments reduce it
           if (tx.type === 'expense') {
             return sum + Math.abs(tx.amount);
@@ -344,7 +357,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   return (
     <div className="space-y-4 mb-6 animate-fade-in">
       {/* Account Balances & Toggles Row */}
-      {!hideCards && accountBalances && toggles && (isProMode || userPlan === 'starter') && (
+      {!hideCards && accountBalances && toggles && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Checking Account */}
           <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-[#30302E] border-gray-800' : 'bg-[#30302E]/50 border-gray-800/50'}`}>
