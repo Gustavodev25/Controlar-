@@ -161,7 +161,7 @@ const BlurredStagger = ({ text, className = '' }: { text: string; className?: st
 
   const letterAnimation = {
     hidden: { opacity: 0, filter: 'blur(10px)' },
-    show: { opacity: 1, filter: 'blur(0px)' }
+    show: { opacity: 1, filter: 'blur(0)' }
   };
 
   return (

@@ -130,7 +130,7 @@ export const NotificationCenter: React.FC<NotificationCenterProps> = ({
         {isOpen && (
           <motion.div
             initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
             exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
             transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
             className="absolute right-0 mt-3 w-80 md:w-96 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 overflow-hidden z-50 origin-top-right"

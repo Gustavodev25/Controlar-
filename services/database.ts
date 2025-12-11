@@ -13,52 +13,12 @@ import {
   orderBy,
   getDocs,
   limit,
-  writeBatch,
-  increment
+  writeBatch
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon } from "../types";
 import { AppNotification } from "../types";
 
-// --- System Stats Services ---
-export const incrementPluggyUsage = async () => {
-  if (!db) return;
-  const statsRef = doc(db, "system_stats", "pluggy");
-  
-  // Use setDoc with merge to ensure doc exists, but increment needs updateDoc or setDoc with specific field logic
-  // Increment is an atomic operation
-  try {
-    await updateDoc(statsRef, {
-        total_connections: increment(1),
-        last_connection: new Date().toISOString()
-    });
-  } catch (error: any) {
-    // If doc doesn't exist, create it
-    if (error.code === 'not-found') {
-        await setDoc(statsRef, {
-            total_connections: 1,
-            last_connection: new Date().toISOString()
-        });
-    } else {
-        console.error("Error incrementing Pluggy usage:", error);
-    }
-  }
-};
-
-export const getPluggyUsage = async (): Promise<{ total_connections: number; last_connection?: string }> => {
-  if (!db) return { total_connections: 0 };
-  try {
-    const statsRef = doc(db, "system_stats", "pluggy");
-    const snap = await getDoc(statsRef);
-    if (snap.exists()) {
-        return snap.data() as { total_connections: number; last_connection?: string };
-    }
-    return { total_connections: 0 };
-  } catch (error) {
-    console.error("Error getting Pluggy usage:", error);
-    return { total_connections: 0 };
-  }
-};
 
 // --- User Services ---
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
@@ -91,6 +51,7 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
         hasProfile: !!data.profile,
         profileIsAdmin: data.profile?.isAdmin,
         rootIsAdmin: data.isAdmin,
+        hasRootSubscription: !!data.subscription,
         userId
       });
 
@@ -103,7 +64,15 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
       // Use root isAdmin if it's true, otherwise use profile isAdmin
       profile.isAdmin = rootIsAdmin || profileIsAdmin;
 
+      // IMPORTANT: subscription can be stored at root level (for family members)
+      // or inside profile (for regular users). Check both locations.
+      // Priority: root subscription (for family members via joinFamily) > profile subscription
+      if (data.subscription && !profile.subscription) {
+        profile.subscription = data.subscription;
+      }
+
       console.log('[DB getUserProfile] Final profile.isAdmin:', profile.isAdmin);
+      console.log('[DB getUserProfile] Final profile.subscription:', profile.subscription);
 
       // If there was no profile at all but we have root isAdmin, still return it
       if (Object.keys(profile).length === 1 && profile.isAdmin !== undefined) {
@@ -124,24 +93,27 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
   try {
     const usersRef = collection(db, "users");
     const snapshot = await getDocs(usersRef);
-    
+
     const users = snapshot.docs.map(doc => {
       const data = doc.data();
       // Merge root data with profile data, prioritizing profile if structure varies
       const profile = data.profile || {};
-      
+
+      // IMPORTANT: subscription can be at root level (for family members) or inside profile
+      const subscription = profile.subscription || data.subscription;
+
       // Construct a user object
       return {
         id: doc.id,
         name: profile.name || data.name || 'Usuário',
         email: profile.email || data.email || '',
-        // Include other necessary fields
-        subscription: profile.subscription,
+        // Include other necessary fields - use merged subscription
+        subscription: subscription,
         isAdmin: data.isAdmin === true || profile.isAdmin === true,
         ...profile
       } as User & { id: string };
     });
-    
+
     return users;
   } catch (error) {
     console.error("Error fetching all users:", error);
@@ -162,6 +134,7 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
         hasProfile: !!data.profile,
         profileIsAdmin: data.profile?.isAdmin,
         rootIsAdmin: data.isAdmin,
+        hasRootSubscription: !!data.subscription,
         userId
       });
 
@@ -174,7 +147,15 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       // Use root isAdmin if it's true, otherwise use profile isAdmin
       profile.isAdmin = rootIsAdmin || profileIsAdmin;
 
+      // IMPORTANT: subscription can be stored at root level (for family members)
+      // or inside profile (for regular users). Check both locations.
+      // Priority: root subscription (for family members via joinFamily) > profile subscription
+      if (data.subscription && !profile.subscription) {
+        profile.subscription = data.subscription;
+      }
+
       console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
+      console.log('[DB listenToUserProfile] Returning profile with subscription:', profile.subscription);
 
       callback(profile);
     } else {
@@ -500,6 +481,116 @@ export const listenToTransactions = (userId: string, callback: (transactions: Tr
     transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     callback(transactions);
   });
+};
+
+// --- Credit Card Transactions Services ---
+export interface CreditCardTransaction {
+  id: string;
+  date: string;
+  description: string;
+  amount: number;
+  category: string;
+  type: 'income' | 'expense';
+  status: 'completed' | 'pending';
+  cardId: string;
+  cardName?: string;
+  installmentNumber?: number;
+  totalInstallments?: number;
+  importSource: string;
+  providerId?: string;
+  providerItemId?: string;
+}
+
+export const addCreditCardTransaction = async (userId: string, transaction: Omit<CreditCardTransaction, 'id'>, customId?: string) => {
+  if (!db) return "";
+  const txRef = collection(db, "users", userId, "creditCardTransactions");
+
+  if (customId) {
+    const docRef = doc(txRef, customId);
+    const snap = await getDoc(docRef);
+    if (snap.exists()) return customId;
+    await setDoc(docRef, transaction);
+    return customId;
+  } else {
+    const docRef = await addDoc(txRef, transaction);
+    return docRef.id;
+  }
+};
+
+export const creditCardTransactionExists = async (userId: string, providerId: string) => {
+  if (!db) return false;
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    const q = query(txRef, where("providerId", "==", providerId), limit(1));
+    const snap = await getDocs(q);
+    return !snap.empty;
+  } catch (err) {
+    console.error("Error checking credit card transaction:", err);
+    return false;
+  }
+};
+
+export const updateCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction) => {
+  if (!db) return;
+  const txRef = doc(db, "users", userId, "creditCardTransactions", transaction.id);
+  const { id, ...data } = transaction;
+  await updateDoc(txRef, data);
+};
+
+export const deleteCreditCardTransaction = async (userId: string, transactionId: string) => {
+  if (!db) return;
+  const txRef = doc(db, "users", userId, "creditCardTransactions", transactionId);
+  await deleteDoc(txRef);
+};
+
+export const listenToCreditCardTransactions = (userId: string, callback: (transactions: CreditCardTransaction[]) => void) => {
+  if (!db) return () => { };
+  const txRef = collection(db, "users", userId, "creditCardTransactions");
+
+  return onSnapshot(txRef, (snapshot) => {
+    const transactions: CreditCardTransaction[] = [];
+    snapshot.forEach(doc => {
+      transactions.push({ id: doc.id, ...doc.data() } as CreditCardTransaction);
+    });
+    // Sort by date descending
+    transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    callback(transactions);
+  });
+};
+
+export const deleteAllCreditCardTransactions = async (userId: string) => {
+  if (!db) return 0;
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    const snapshot = await getDocs(txRef);
+
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+    let totalDeleted = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      batch.delete(docSnapshot.ref);
+      operationCount++;
+      totalDeleted++;
+
+      if (operationCount >= batchSize) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
+      }
+    }
+
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Deleted ${totalDeleted} credit card transactions for user ${userId}`);
+    return totalDeleted;
+  } catch (error) {
+    console.error("Error deleting credit card transactions:", error);
+    throw error;
+  }
 };
 
 // --- Reminders Services ---
@@ -842,12 +933,12 @@ export const deleteAllConnectedAccounts = async (userId: string) => {
   try {
     const accountsRef = collection(db, "users", userId, "accounts");
     const snapshot = await getDocs(accountsRef);
-    
+
     const batch = writeBatch(db);
     snapshot.docs.forEach((doc) => {
       batch.delete(doc.ref);
     });
-    
+
     await batch.commit();
     console.log(`Deleted ${snapshot.size} connected accounts for user ${userId}`);
   } catch (error) {
@@ -943,7 +1034,7 @@ export const addCoupon = async (coupon: Omit<Coupon, 'id'>) => {
   if (!snap.empty) {
     throw new Error("Código de cupom já existe.");
   }
-  
+
   const docRef = await addDoc(couponsRef, coupon);
   return docRef.id;
 };
@@ -973,30 +1064,30 @@ export const getCouponByCode = async (code: string): Promise<Coupon | null> => {
   const couponsRef = collection(db, "coupons");
   const q = query(couponsRef, where("code", "==", code), limit(1));
   const snap = await getDocs(q);
-  
+
   if (snap.empty) return null;
   return { id: snap.docs[0].id, ...snap.docs[0].data() } as Coupon;
 };
 
 export const validateCoupon = async (code: string): Promise<{ isValid: boolean; coupon?: Coupon; error?: string }> => {
   const coupon = await getCouponByCode(code);
-  
+
   if (!coupon) {
     return { isValid: false, error: "Cupom não encontrado." };
   }
-  
+
   if (!coupon.isActive) {
     return { isValid: false, error: "Este cupom está inativo." };
   }
-  
+
   if (coupon.expirationDate && new Date(coupon.expirationDate) < new Date()) {
     return { isValid: false, error: "Este cupom expirou." };
   }
-  
+
   if (coupon.maxUses && coupon.currentUses >= coupon.maxUses) {
     return { isValid: false, error: "Limite de uso do cupom atingido." };
   }
-  
+
   return { isValid: true, coupon };
 };
 

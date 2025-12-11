@@ -49,7 +49,6 @@ import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
 import { NotificationCenter, SystemNotification } from './components/NotificationCenter';
 import { Analytics } from '@vercel/analytics/react';
 import { AIChatAssistant } from './components/AIChatAssistant';
-import { BankConnect } from './components/BankConnect';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
 import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
@@ -364,6 +363,7 @@ const App: React.FC = () => {
   const [connectedAccounts, setConnectedAccounts] = useState<ConnectedAccount[]>([]);
   const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
+  const [separateCreditCardTxs, setSeparateCreditCardTxs] = useState<dbService.CreditCardTransaction[]>([]);
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -403,7 +403,7 @@ const App: React.FC = () => {
   // Force Manual Mode for users on free plan (starter)
   useEffect(() => {
     if (!currentUser) return;
-    
+
     // Only force downgrade if explicitly on starter plan.
     // If subscription is undefined (loading/error), preserve current mode to prevent Pro users from being kicked to Manual on reload.
     if (currentUser.subscription?.plan === 'starter' && isProMode) {
@@ -764,6 +764,10 @@ const App: React.FC = () => {
       setConnectedAccounts(data);
     });
 
+    const unsubCreditCardTxs = dbService.listenToCreditCardTransactions(userId, (data) => {
+      setSeparateCreditCardTxs(data);
+    });
+
     return () => {
       unsubTx();
       unsubRem();
@@ -772,6 +776,7 @@ const App: React.FC = () => {
       unsubBudgets();
       unsubSubs();
       unsubAccounts();
+      unsubCreditCardTxs();
     };
   }, [userId, currentUser?.name]);
 
@@ -1213,7 +1218,8 @@ const App: React.FC = () => {
   }, [memberFilteredTransactions, accountMap]);
 
   const creditCardTransactions = useMemo(() => {
-    return memberFilteredTransactions.filter(t => {
+    // 1. Get credit card transactions from main transactions collection
+    const fromMainCollection = memberFilteredTransactions.filter(t => {
       // Check linked account first
       if (t.accountId) {
         const account = accountMap.get(t.accountId);
@@ -1241,7 +1247,38 @@ const App: React.FC = () => {
         sourceType === 'credit_card' ||
         tags.includes('Cartão de Crédito');
     });
-  }, [memberFilteredTransactions, accountMap]);
+
+    // 2. Convert separateCreditCardTxs to Transaction format and merge
+    const fromSeparateCollection: Transaction[] = separateCreditCardTxs.map(ccTx => ({
+      id: ccTx.id,
+      date: ccTx.date,
+      description: ccTx.description,
+      amount: ccTx.amount,
+      category: ccTx.category,
+      type: ccTx.type,
+      status: ccTx.status,
+      importSource: ccTx.importSource,
+      providerId: ccTx.providerId,
+      providerItemId: ccTx.providerItemId,
+      accountId: ccTx.cardId, // Map cardId to accountId
+      accountType: 'CREDIT_CARD',
+    }));
+
+    // 3. Merge and deduplicate by id
+    const allCCTransactions = [...fromMainCollection];
+    const existingIds = new Set(fromMainCollection.map(t => t.id));
+
+    for (const tx of fromSeparateCollection) {
+      if (!existingIds.has(tx.id)) {
+        allCCTransactions.push(tx);
+      }
+    }
+
+    // Sort by date descending
+    allCCTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return allCCTransactions;
+  }, [memberFilteredTransactions, accountMap, separateCreditCardTxs]);
 
 
   const savingsTransactions = useMemo(() => {

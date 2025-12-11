@@ -95,7 +95,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
         {isOpen && (
           <motion.span
             initial={{ opacity: 0, x: -10, filter: "blur(5px)" }}
-            animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+            animate={{ opacity: 1, x: 0, filter: "blur(0)" }}
             exit={{ opacity: 0, x: -10, filter: "blur(5px)" }}
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="font-medium text-sm truncate whitespace-nowrap ml-0"
@@ -114,7 +114,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
         {!isOpen && isHovered && (
           <motion.div
             initial={{ opacity: 0, scale: 0.9, x: -5, filter: "blur(4px)" }}
-            animate={{ opacity: 1, scale: 1, x: 0, filter: "blur(0px)" }}
+            animate={{ opacity: 1, scale: 1, x: 0, filter: "blur(0)" }}
             exit={{ opacity: 0, scale: 0.9, x: -5, filter: "blur(4px)" }}
             transition={{ type: "spring", stiffness: 300, damping: 20 }}
             style={{
@@ -507,7 +507,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {!isOpen && (
                       <motion.div
                         initial={{ opacity: 0, scale: 0.9, x: -5, filter: "blur(4px)" }}
-                        whileHover={{ opacity: 1, scale: 1, x: 0, filter: "blur(0px)" }}
+                        whileHover={{ opacity: 1, scale: 1, x: 0, filter: "blur(0)" }}
                         transition={{ type: "spring", stiffness: 300, damping: 20 }}
                         style={{
                           position: 'absolute',
@@ -530,7 +530,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isOpen && (
                     <motion.span
                       initial={{ opacity: 0, x: -10, filter: "blur(5px)" }}
-                      animate={{ opacity: 1, x: 0, filter: "blur(0px)" }}
+                      animate={{ opacity: 1, x: 0, filter: "blur(0)" }}
                       exit={{ opacity: 0, x: -10, filter: "blur(5px)" }}
                       transition={{ duration: 0.3 }}
                       className="font-bold text-sm tracking-wide whitespace-nowrap ml-3"

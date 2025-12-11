@@ -1,8 +1,19 @@
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import express from 'express';
+import dotenv from 'dotenv';
 import apiRoutes from './api/routes.js';
+
+// Get the directory of the current file
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables for the API from the correct path
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+console.log('[Vite] PLUGGY_CLIENT_ID loaded:', process.env.PLUGGY_CLIENT_ID ? 'Yes' : 'No');
 
 const expressPlugin = () => {
   return {

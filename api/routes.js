@@ -7,6 +7,7 @@ import axios from 'axios';
 import geminiHandler from './gemini.js';
 import path from 'path';
 
+
 // Explicitly load .env from root
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
@@ -16,746 +17,12 @@ router.use(cors());
 router.use(express.urlencoded({ extended: false, limit: '50mb' }));
 router.use(express.json({ limit: '50mb' }));
 
+
+
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
 const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';
-
-const PLUGGY_API_URL = 'https://api.pluggy.ai';
-const PLUGGY_CLIENT_ID = process.env.PLUGGY_CLIENT_ID || 'd93b0176-0cd8-4563-b9c1-bcb9c6e510bd';
-const PLUGGY_CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET || '2b45852a-9638-4677-8232-6b2da7c54967';
-
-const normalizePluggyAccounts = (accounts, itemId, institutionName) => {
-  if (!accounts || !Array.isArray(accounts)) {
-    console.log('[PLUGGY] normalizePluggyAccounts: No accounts to normalize');
-    return [];
-  }
-
-  console.log(`\n${'='.repeat(60)}`);
-  console.log('[PLUGGY] NORMALIZING ACCOUNTS');
-  console.log(`${'='.repeat(60)}`);
-  console.log(`[PLUGGY] Total raw accounts received: ${accounts.length}`);
-
-  return accounts.map((acc, index) => {
-    console.log(`\n[PLUGGY] --- Account ${index + 1}/${accounts.length} ---`);
-    console.log(`[PLUGGY] Raw Account Data:`);
-    console.log(`  - ID: ${acc.id}`);
-    console.log(`  - Name: ${acc.name}`);
-    console.log(`  - Type: "${acc.type}" (raw)`);
-    console.log(`  - Subtype: "${acc.subtype}" (raw)`);
-    console.log(`  - Balance: ${acc.balance}`);
-    console.log(`  - Number: ${acc.number}`);
-    console.log(`  - Currency: ${acc.currencyCode}`);
-    console.log(`  - Has bankData: ${!!acc.bankData}`);
-    console.log(`  - Has creditData: ${!!acc.creditData}`);
-
-    if (acc.bankData) {
-      console.log(`  - bankData.transferNumber: ${acc.bankData.transferNumber}`);
-      console.log(`  - bankData.closingBalance: ${acc.bankData.closingBalance}`);
-    }
-    if (acc.creditData) {
-      console.log(`  - creditData.creditLimit: ${acc.creditData.creditLimit}`);
-      console.log(`  - creditData.availableCreditLimit: ${acc.creditData.availableCreditLimit}`);
-    }
-
-    // Determine internal type based on Pluggy's type/subtype
-    // Pluggy API: type = "BANK" | "CREDIT" | "PAYMENT_ACCOUNT"
-    // Pluggy API: subtype = "CHECKING_ACCOUNT" | "SAVINGS_ACCOUNT" | "CREDIT_CARD"
-    let normalizedType = 'CHECKING'; // Default
-    const rawType = (acc.type || '').toUpperCase();
-    const rawSubtype = (acc.subtype || '').toUpperCase();
-
-    // Credit Card detection (highest priority)
-    if (rawType === 'CREDIT' || rawSubtype === 'CREDIT_CARD' || rawSubtype.includes('CREDIT')) {
-      normalizedType = 'CREDIT_CARD';
-    }
-    // Savings Account detection
-    else if (rawSubtype === 'SAVINGS_ACCOUNT' || rawSubtype.includes('SAVINGS') || rawSubtype.includes('POUPANCA') || rawSubtype.includes('POUPANÇA')) {
-      normalizedType = 'SAVINGS';
-    }
-    // Investment detection
-    else if (rawType === 'INVESTMENT' || rawSubtype.includes('INVEST')) {
-      normalizedType = 'INVESTMENT';
-    }
-    // Loan detection
-    else if (rawType === 'LOAN' || rawSubtype.includes('LOAN') || rawSubtype.includes('EMPRESTIMO') || rawSubtype.includes('EMPRÉSTIMO')) {
-      normalizedType = 'LOAN';
-    }
-    // Bank accounts (Checking is default for BANK type)
-    else if (rawType === 'BANK' || rawType === 'PAYMENT_ACCOUNT' || rawSubtype === 'CHECKING_ACCOUNT' || rawSubtype.includes('CHECKING') || rawSubtype.includes('CORRENTE')) {
-      normalizedType = 'CHECKING';
-    }
-
-    console.log(`  => Normalized Type: "${normalizedType}"`);
-
-    const normalized = {
-      id: acc.id,
-      name: acc.name || `Conta ${acc.number || 'Sem número'}`,
-      type: normalizedType,
-      subtype: acc.subtype || rawType, // Keep original subtype for reference
-      balance: typeof acc.balance === 'number' ? acc.balance : 0,
-      currency: acc.currencyCode || 'BRL',
-      institution: institutionName || 'Instituição',
-      itemId: itemId,
-      providerId: 'pluggy',
-      accountNumber: acc.number,
-      branchCode: acc.agency,
-      // Credit card specifics
-      creditLimit: acc.creditData?.creditLimit || null,
-      availableCreditLimit: acc.creditData?.availableCreditLimit || null,
-      balanceCloseDate: acc.creditData?.balanceCloseDate || null,
-      balanceDueDate: acc.creditData?.balanceDueDate || null,
-      // Bank specifics
-      transferNumber: acc.bankData?.transferNumber || null,
-      closingBalance: acc.bankData?.closingBalance || null,
-      // Metadata
-      lastSyncedAt: new Date().toISOString(),
-      bills: [],
-    };
-
-    return normalized;
-  });
-};
-
-// Helper: Normalize Pluggy Transactions
-const normalizePluggyTransactions = (transactions, accountId = null) => {
-  if (!transactions || !Array.isArray(transactions)) {
-    console.log('[PLUGGY] normalizePluggyTransactions: No transactions to normalize');
-    return [];
-  }
-
-  console.log(`\n[PLUGGY] Normalizing ${transactions.length} transactions...`);
-
-  return transactions.map((tx, index) => {
-    // Log first 3 transactions for debugging
-    if (index < 3) {
-      console.log(`[PLUGGY] Transaction ${index + 1}: ${tx.description?.substring(0, 40)}... | Amount: ${tx.amount} | Type: ${tx.type}`);
-    }
-
-    // Determine if it is an expense
-    // Pluggy can send negative amounts OR positive amounts with type="DEBIT"
-    const rawType = (tx.type || '').toUpperCase();
-    const isExpense = rawType === 'DEBIT' || tx.amount < 0;
-
-    // Normalize Amount: Negative for expense, Positive for income
-    const finalAmount = isExpense ? -Math.abs(tx.amount) : Math.abs(tx.amount);
-
-    return {
-      id: tx.id,
-      description: tx.description || 'Sem descrição',
-      amount: finalAmount,
-      date: tx.date ? tx.date.split('T')[0] : new Date().toISOString().split('T')[0],
-      category: tx.category || 'Outros',
-      subcategory: tx.categoryId || '',
-      type: isExpense ? 'expense' : 'income',
-      status: tx.status || 'completed',
-      accountId: tx.accountId || accountId, // Use tx.accountId first, fallback to passed accountId
-      providerId: 'pluggy',
-      importSource: 'pluggy',
-      // Additional metadata from Pluggy
-      merchant: tx.merchant?.name || null,
-      merchantCategory: tx.merchant?.category || null,
-      paymentMethod: tx.paymentData?.paymentMethod || null,
-    };
-  });
-};
-
-// Pluggy Endpoints
-
-// 1. Create Connect Token
-router.post('/pluggy/create-token', async (req, res) => {
-  const { userId, itemId } = req.body;
-
-  console.log('\n[PLUGGY TOKEN] Creating connect token...');
-  console.log(`[PLUGGY TOKEN] User ID: ${userId}`);
-  console.log(`[PLUGGY TOKEN] Item ID (for update): ${itemId || 'none'}`);
-
-  try {
-    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
-
-    const apiKey = authResponse.data.apiKey;
-
-    // IMPORTANTE: Solicitar EXPLICITAMENTE todos os produtos
-    // Isso garante que o fluxo de consentimento do Open Finance
-    // irá pedir autorização para conta corrente, cartões, etc.
-    const payload = {
-      clientUserId: userId,
-      // Solicitar TODOS os produtos explicitamente para garantir
-      // que o usuário seja perguntado sobre cada um no consentimento
-      products: [
-        'ACCOUNTS',           // Conta corrente e poupança
-        'CREDIT_CARDS',       // Cartões de crédito
-        'TRANSACTIONS',       // Histórico de transações
-        'IDENTITY',           // Dados pessoais
-        'INVESTMENTS',        // Investimentos
-        'INVESTMENTS_TRANSACTIONS', // Transações de investimentos
-        'PAYMENT_DATA',       // Dados de pagamento
-        'LOANS'               // Empréstimos
-      ]
-    };
-
-    if (itemId) {
-      payload.itemId = itemId;
-    }
-
-    console.log(`[PLUGGY TOKEN] Requesting products: ${payload.products.join(', ')}`);
-
-    const tokenResponse = await axios.post(`${PLUGGY_API_URL}/connect_token`, payload, {
-      headers: { 'X-API-KEY': apiKey }
-    });
-
-    console.log(`[PLUGGY TOKEN] ✓ Token created successfully (Update Mode: ${!!itemId})`);
-    res.json({ accessToken: tokenResponse.data.accessToken });
-
-  } catch (error) {
-    console.error('[PLUGGY TOKEN] ✗ Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to authenticate with Pluggy' });
-  }
-});
-
-// 2. Sync Data - REFACTORED with comprehensive logging
-router.post('/pluggy/sync', async (req, res) => {
-  const { itemId } = req.body;
-
-  console.log(`\n${'#'.repeat(70)}`);
-  console.log(`[PLUGGY SYNC] Starting sync for itemId: ${itemId}`);
-  console.log(`[PLUGGY SYNC] Timestamp: ${new Date().toISOString()}`);
-  console.log(`${'#'.repeat(70)}\n`);
-
-  if (!itemId) {
-    console.log('[PLUGGY SYNC] ERROR: itemId is required');
-    return res.status(400).json({ error: 'itemId is required' });
-  }
-
-  try {
-    // ========================================
-    // STEP 1: Authenticate with Pluggy API
-    // ========================================
-    console.log('[PLUGGY SYNC] Step 1: Authenticating with Pluggy...');
-    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
-    const apiKey = authResponse.data.apiKey;
-    const headers = { 'X-API-KEY': apiKey };
-    console.log('[PLUGGY SYNC] Authentication successful!');
-
-    // ========================================
-    // STEP 2: Fetch Item Details (Institution)
-    // ========================================
-    console.log('\n[PLUGGY SYNC] Step 2: Fetching item details...');
-    let institutionName = 'Instituição';
-    let itemStatus = 'UNKNOWN';
-    let itemProducts = [];
-
-    try {
-      let itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
-      let item = itemResponse.data;
-
-      console.log('[PLUGGY SYNC] Item raw data:');
-      console.log(`  - ID: ${item.id}`);
-      console.log(`  - Status: ${item.status}`);
-      console.log(`  - Connector ID: ${item.connector?.id}`);
-      console.log(`  - Connector Name: ${item.connector?.name}`);
-      console.log(`  - Products: ${JSON.stringify(item.products || item.connector?.products)}`);
-      console.log(`  - Created: ${item.createdAt}`);
-      console.log(`  - Updated: ${item.updatedAt}`);
-
-      // Smart Wait: If updating, poll until finished or timeout (max 45s)
-      let attempts = 0;
-      while (item.status === 'UPDATING' && attempts < 15) {
-        console.log(`[PLUGGY SYNC] Item is UPDATING. Waiting 3s... (${attempts + 1}/15)`);
-        await new Promise(r => setTimeout(r, 3000));
-
-        itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
-        item = itemResponse.data;
-        attempts++;
-      }
-
-      if (item.connector?.name) {
-        institutionName = item.connector.name;
-      }
-      itemStatus = item.status;
-      itemProducts = item.products || item.connector?.products || [];
-
-      console.log(`[PLUGGY SYNC] Final Item Status: ${itemStatus}`);
-      console.log(`[PLUGGY SYNC] Institution: ${institutionName}`);
-      console.log(`[PLUGGY SYNC] Products available: ${JSON.stringify(itemProducts)}`);
-
-      if (itemStatus === 'UPDATING') {
-        console.log('[PLUGGY SYNC] WARNING: Item still updating after 45s wait!');
-      }
-    } catch (err) {
-      console.error(`[PLUGGY SYNC] Failed to fetch item details: ${err.message}`);
-    }
-
-    // ========================================
-    // STEP 3: Check Consents (Debug)
-    // ========================================
-    console.log('\n[PLUGGY SYNC] Step 3: Checking consents...');
-    try {
-      const consentsResponse = await axios.get(`${PLUGGY_API_URL}/consents?itemId=${itemId}`, { headers });
-      const consents = consentsResponse.data.results || [];
-      console.log(`[PLUGGY SYNC] Found ${consents.length} consent(s)`);
-
-      consents.forEach((consent, i) => {
-        console.log(`[PLUGGY SYNC] Consent ${i + 1}:`);
-        console.log(`  - ID: ${consent.id}`);
-        console.log(`  - Status: ${consent.status}`);
-        console.log(`  - Products: ${JSON.stringify(consent.products)}`);
-        console.log(`  - Permissions: ${JSON.stringify(consent.permissions)}`);
-        console.log(`  - Expiration: ${consent.expiresAt}`);
-      });
-    } catch (consentErr) {
-      console.log(`[PLUGGY SYNC] Could not fetch consents: ${consentErr.message}`);
-    }
-
-    // ========================================
-    // STEP 4: Fetch ALL Accounts (No Type Filter)
-    // ========================================
-    console.log('\n[PLUGGY SYNC] Step 4: Fetching accounts...');
-
-    // First, get ALL accounts without type filter
-    const accountsResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
-      headers,
-      params: { itemId }
-    });
-
-    const rawAccounts = accountsResponse.data.results || [];
-    console.log(`[PLUGGY SYNC] Total accounts found: ${rawAccounts.length}`);
-
-    // Log raw account data for debugging
-    console.log('\n[PLUGGY SYNC] RAW ACCOUNTS DATA:');
-    rawAccounts.forEach((acc, i) => {
-      console.log(`  ${i + 1}. ${acc.name}`);
-      console.log(`     - ID: ${acc.id}`);
-      console.log(`     - Type: "${acc.type}"`);
-      console.log(`     - Subtype: "${acc.subtype}"`);
-      console.log(`     - Balance: ${acc.balance}`);
-      console.log(`     - Currency: ${acc.currencyCode}`);
-      console.log(`     - Has bankData: ${!!acc.bankData}`);
-      console.log(`     - Has creditData: ${!!acc.creditData}`);
-    });
-
-    // Also try fetching by type separately for comparison
-    console.log('\n[PLUGGY SYNC] Fetching accounts by type for comparison...');
-
-    // BANK type accounts
-    try {
-      const bankResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
-        headers,
-        params: { itemId, type: 'BANK' }
-      });
-      console.log(`[PLUGGY SYNC] BANK type accounts: ${bankResponse.data.results?.length || 0}`);
-      bankResponse.data.results?.forEach(acc => {
-        console.log(`  - ${acc.name} (${acc.subtype}) Balance: ${acc.balance}`);
-      });
-    } catch (e) {
-      console.log(`[PLUGGY SYNC] Could not fetch BANK accounts: ${e.message}`);
-    }
-
-    // CREDIT type accounts
-    try {
-      const creditResponse = await axios.get(`${PLUGGY_API_URL}/accounts`, {
-        headers,
-        params: { itemId, type: 'CREDIT' }
-      });
-      console.log(`[PLUGGY SYNC] CREDIT type accounts: ${creditResponse.data.results?.length || 0}`);
-      creditResponse.data.results?.forEach(acc => {
-        console.log(`  - ${acc.name} (${acc.subtype}) Balance: ${acc.balance}`);
-      });
-    } catch (e) {
-      console.log(`[PLUGGY SYNC] Could not fetch CREDIT accounts: ${e.message}`);
-    }
-
-    // Normalize accounts
-    const normalizedAccounts = normalizePluggyAccounts(rawAccounts, itemId, institutionName);
-
-    // Summary
-    const accountSummary = {
-      total: normalizedAccounts.length,
-      checking: normalizedAccounts.filter(a => a.type === 'CHECKING').length,
-      savings: normalizedAccounts.filter(a => a.type === 'SAVINGS').length,
-      creditCard: normalizedAccounts.filter(a => a.type === 'CREDIT_CARD').length,
-      investment: normalizedAccounts.filter(a => a.type === 'INVESTMENT').length,
-      loan: normalizedAccounts.filter(a => a.type === 'LOAN').length,
-    };
-    console.log('\n[PLUGGY SYNC] ACCOUNT SUMMARY:');
-    console.log(`  - Total: ${accountSummary.total}`);
-    console.log(`  - Checking: ${accountSummary.checking}`);
-    console.log(`  - Savings: ${accountSummary.savings}`);
-    console.log(`  - Credit Card: ${accountSummary.creditCard}`);
-    console.log(`  - Investment: ${accountSummary.investment}`);
-    console.log(`  - Loan: ${accountSummary.loan}`);
-
-    // ========================================
-    // STEP 5: Fetch Transactions for ALL Accounts
-    // ========================================
-    console.log('\n[PLUGGY SYNC] Step 5: Fetching transactions...');
-
-    let allTransactions = [];
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
-    for (const acc of normalizedAccounts) {
-      console.log(`\n[PLUGGY SYNC] --- Fetching transactions for: ${acc.name} (${acc.type}) ---`);
-      console.log(`[PLUGGY SYNC] Account ID: ${acc.id}`);
-
-      // Determine date range based on account type
-      const isBankAccount = acc.type === 'CHECKING' || acc.type === 'SAVINGS';
-      const toDate = new Date();
-      const toString = toDate.toISOString().split('T')[0];
-
-      const fromDate = new Date();
-      // Bank accounts: 90 days, Credit cards: 365 days (1 year)
-      const daysBack = isBankAccount ? 90 : 365;
-      fromDate.setDate(fromDate.getDate() - daysBack);
-      const fromString = fromDate.toISOString().split('T')[0];
-
-      console.log(`[PLUGGY SYNC] Date range: ${fromString} to ${toString} (${daysBack} days)`);
-
-      let accountTxs = [];
-      let page = 1;
-      let totalPages = 1;
-      const pageSize = 500; // Fetch more per page
-
-      try {
-        // ATTEMPT 1: Fetch with date filter
-        console.log(`[PLUGGY SYNC] Attempt 1: Fetching with date filter...`);
-
-        do {
-          const txResponse = await axios.get(`${PLUGGY_API_URL}/transactions`, {
-            headers,
-            params: {
-              accountId: acc.id,
-              from: fromString,
-              to: toString,
-              page,
-              pageSize
-            }
-          });
-
-          const results = txResponse.data.results || [];
-          accountTxs = [...accountTxs, ...results];
-          totalPages = txResponse.data.totalPages || 1;
-
-          console.log(`[PLUGGY SYNC] Page ${page}/${totalPages}: ${results.length} transactions (Total so far: ${accountTxs.length})`);
-
-          page++;
-
-          // Safety break
-          if (page > 50) {
-            console.log('[PLUGGY SYNC] Breaking at page 50 for safety');
-            break;
-          }
-
-          await sleep(100);
-        } while (page <= totalPages);
-
-        // ATTEMPT 2: If no transactions found for bank accounts, try without date filter
-        if (isBankAccount && accountTxs.length === 0) {
-          console.log(`[PLUGGY SYNC] Attempt 2: No transactions with date filter. Trying without date filter...`);
-
-          try {
-            const txResponseNoDate = await axios.get(`${PLUGGY_API_URL}/transactions`, {
-              headers,
-              params: {
-                accountId: acc.id,
-                pageSize: 500
-              }
-            });
-
-            console.log(`[PLUGGY SYNC] Response without date: Total=${txResponseNoDate.data.total}, Results=${txResponseNoDate.data.results?.length}`);
-
-            if (txResponseNoDate.data.results?.length > 0) {
-              accountTxs = txResponseNoDate.data.results;
-              console.log(`[PLUGGY SYNC] SUCCESS: Found ${accountTxs.length} transactions without date filter!`);
-            }
-          } catch (noDateErr) {
-            console.error(`[PLUGGY SYNC] Error fetching without date filter: ${noDateErr.message}`);
-          }
-        }
-
-        // Log results
-        console.log(`[PLUGGY SYNC] RESULT: ${accountTxs.length} transactions for ${acc.name}`);
-
-        if (accountTxs.length > 0) {
-          // Log sample transactions
-          console.log(`[PLUGGY SYNC] Sample transactions:`);
-          accountTxs.slice(0, 3).forEach((tx, i) => {
-            console.log(`  ${i + 1}. ${tx.description?.substring(0, 50)} | ${tx.amount} | ${tx.date} | Type: ${tx.type}`);
-          });
-        } else if (isBankAccount) {
-          console.log(`[PLUGGY SYNC] WARNING: No transactions found for bank account "${acc.name}".`);
-          console.log(`[PLUGGY SYNC] This could be due to:`);
-          console.log(`  1. No recent transactions in the account`);
-          console.log(`  2. Open Finance consent doesn't include transaction history`);
-          console.log(`  3. Bank API limitation`);
-        }
-
-        // Normalize and add to collection
-        const normalizedTxs = normalizePluggyTransactions(accountTxs, acc.id);
-        allTransactions = [...allTransactions, ...normalizedTxs];
-
-        // Small delay between accounts
-        await sleep(300);
-
-      } catch (err) {
-        console.error(`[PLUGGY SYNC] ERROR fetching transactions for ${acc.id}:`);
-        console.error(`  Message: ${err.message}`);
-        if (err.response?.data) {
-          console.error(`  API Error: ${JSON.stringify(err.response.data)}`);
-        }
-      }
-    }
-
-    // ========================================
-    // STEP 6: Separate transactions by account type
-    // ========================================
-    console.log('\n[PLUGGY SYNC] Step 6: Separating transactions by type...');
-
-    const creditCardTransactions = allTransactions.filter(tx => {
-      const acc = normalizedAccounts.find(a => a.id === tx.accountId);
-      return acc && acc.type === 'CREDIT_CARD';
-    });
-
-    const accountTransactions = allTransactions.filter(tx => {
-      const acc = normalizedAccounts.find(a => a.id === tx.accountId);
-      return acc && acc.type !== 'CREDIT_CARD';
-    });
-
-    // ========================================
-    // FINAL SUMMARY
-    // ========================================
-    console.log(`\n${'='.repeat(70)}`);
-    console.log('[PLUGGY SYNC] SYNC COMPLETE - SUMMARY');
-    console.log(`${'='.repeat(70)}`);
-    console.log(`Institution: ${institutionName}`);
-    console.log(`Total Accounts: ${normalizedAccounts.length}`);
-    console.log(`  - Bank/Savings: ${accountSummary.checking + accountSummary.savings}`);
-    console.log(`  - Credit Cards: ${accountSummary.creditCard}`);
-    console.log(`Total Transactions: ${allTransactions.length}`);
-    console.log(`  - From Bank Accounts: ${accountTransactions.length}`);
-    console.log(`  - From Credit Cards: ${creditCardTransactions.length}`);
-    console.log(`${'='.repeat(70)}\n`);
-
-    // Return response
-    res.json({
-      accounts: normalizedAccounts,
-      transactions: accountTransactions,
-      creditCardTransactions: creditCardTransactions,
-      source: 'pluggy_api',
-      // Debug info
-      debug: {
-        institution: institutionName,
-        itemStatus: itemStatus,
-        products: itemProducts,
-        accountSummary,
-        transactionSummary: {
-          total: allTransactions.length,
-          bank: accountTransactions.length,
-          creditCard: creditCardTransactions.length
-        }
-      }
-    });
-
-  } catch (error) {
-    console.error('\n[PLUGGY SYNC] FATAL ERROR:');
-    console.error(`  Message: ${error.message}`);
-    if (error.response?.data) {
-      console.error(`  API Response: ${JSON.stringify(error.response.data)}`);
-    }
-    console.error(`  Stack: ${error.stack}`);
-
-    res.status(500).json({
-      error: 'Failed to sync Pluggy data',
-      details: error.response?.data || error.message
-    });
-  }
-});
-
-// 2.5. Debug: Check what Nubank connector actually supports
-router.get('/pluggy/debug/nubank-connector', async (req, res) => {
-  console.log('\n[PLUGGY DEBUG] Checking Nubank connector capabilities...');
-
-  try {
-    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
-    const apiKey = authResponse.data.apiKey;
-    const headers = { 'X-API-KEY': apiKey };
-
-    // Get all Open Finance connectors
-    const connectorsResponse = await axios.get(`${PLUGGY_API_URL}/connectors`, {
-      headers,
-      params: { isOpenFinance: true }
-    });
-
-    const allConnectors = connectorsResponse.data.results || [];
-
-    // Find Nubank connector
-    const nubankConnector = allConnectors.find(c =>
-      c.name?.toLowerCase().includes('nubank') ||
-      c.institutionName?.toLowerCase().includes('nubank')
-    );
-
-    if (nubankConnector) {
-      console.log('[PLUGGY DEBUG] Nubank Connector Found:');
-      console.log(JSON.stringify(nubankConnector, null, 2));
-
-      res.json({
-        found: true,
-        connector: {
-          id: nubankConnector.id,
-          name: nubankConnector.name,
-          institutionName: nubankConnector.institutionName,
-          type: nubankConnector.type,
-          country: nubankConnector.country,
-          isOpenFinance: nubankConnector.isOpenFinance,
-          products: nubankConnector.products,
-          credentials: nubankConnector.credentials,
-          imageUrl: nubankConnector.imageUrl,
-          primaryColor: nubankConnector.primaryColor,
-          health: nubankConnector.health,
-          // Important: Check if ACCOUNTS product is supported
-          supportsAccounts: nubankConnector.products?.includes('ACCOUNTS'),
-          supportsCreditCards: nubankConnector.products?.includes('CREDIT_CARDS'),
-          supportsTransactions: nubankConnector.products?.includes('TRANSACTIONS'),
-        },
-        message: nubankConnector.products?.includes('ACCOUNTS')
-          ? 'Nubank SHOULD support bank accounts (ACCOUNTS product available)'
-          : 'WARNING: Nubank may NOT support bank accounts (ACCOUNTS product NOT in list)'
-      });
-    } else {
-      console.log('[PLUGGY DEBUG] Nubank connector NOT found!');
-      res.json({
-        found: false,
-        message: 'Nubank connector not found in Open Finance list',
-        availableConnectors: allConnectors.map(c => c.name).slice(0, 20)
-      });
-    }
-
-  } catch (error) {
-    console.error('[PLUGGY DEBUG] Error:', error.response?.data || error.message);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// 3. Pluggy Webhook
-router.post('/pluggy/webhook', async (req, res) => {
-  const event = req.body;
-  console.log('>>> PLUGGY WEBHOOK RECEIVED:', event.event);
-  console.log('>>> Item ID:', event.itemId);
-
-  // Here you can handle specific events like 'ITEM_UPDATED', 'TRANSACTIONS_DELETED'
-  // For now, we just log it to ensure connectivity
-
-  res.status(200).json({ received: true });
-});
-
-// 4. Debug: List Nubank connectors and their products
-router.get('/pluggy/debug/connectors', async (req, res) => {
-  try {
-    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
-    const apiKey = authResponse.data.apiKey;
-    const headers = { 'X-API-KEY': apiKey };
-
-    // Get all Open Finance connectors
-    const connectorsResponse = await axios.get(`${PLUGGY_API_URL}/connectors?isOpenFinance=true`, { headers });
-    const allConnectors = connectorsResponse.data.results || [];
-
-    // Filter Nubank connectors
-    const nubankConnectors = allConnectors.filter(c =>
-      c.name?.toLowerCase().includes('nubank') ||
-      c.institutionName?.toLowerCase().includes('nubank')
-    );
-
-    console.log(`>>> Found ${nubankConnectors.length} Nubank connectors:`);
-    nubankConnectors.forEach(c => {
-      console.log(`    > ID: ${c.id} | Name: ${c.name} | Products: ${JSON.stringify(c.products)}`);
-    });
-
-    res.json({
-      total: allConnectors.length,
-      nubankConnectors: nubankConnectors.map(c => ({
-        id: c.id,
-        name: c.name,
-        institutionName: c.institutionName,
-        products: c.products,
-        type: c.type,
-        isOpenFinance: c.isOpenFinance
-      }))
-    });
-
-  } catch (error) {
-    console.error('Connectors Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to fetch connectors' });
-  }
-});
-
-// 5. Debug: Get item details
-router.get('/pluggy/debug/item/:itemId', async (req, res) => {
-  const { itemId } = req.params;
-  try {
-    const authResponse = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
-    const apiKey = authResponse.data.apiKey;
-    const headers = { 'X-API-KEY': apiKey };
-
-    const itemResponse = await axios.get(`${PLUGGY_API_URL}/items/${itemId}`, { headers });
-    const item = itemResponse.data;
-
-    // Get accounts for this item
-    const accountsResponse = await axios.get(`${PLUGGY_API_URL}/accounts?itemId=${itemId}`, { headers });
-    const accounts = accountsResponse.data.results;
-
-    // Get consents
-    let consents = [];
-    try {
-      const consentsResponse = await axios.get(`${PLUGGY_API_URL}/consents?itemId=${itemId}`, { headers });
-      consents = consentsResponse.data.results || [];
-    } catch (e) {
-      console.log('Could not fetch consents');
-    }
-
-    res.json({
-      item: {
-        id: item.id,
-        status: item.status,
-        connector: item.connector,
-        products: item.products,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt
-      },
-      accounts: accounts.map(a => ({
-        id: a.id,
-        name: a.name,
-        type: a.type,
-        subtype: a.subtype,
-        balance: a.balance
-      })),
-      consents: consents.map(c => ({
-        id: c.id,
-        products: c.products,
-        permissions: c.permissions,
-        status: c.status
-      }))
-    });
-
-  } catch (error) {
-    console.error('Item Debug Error:', error.response?.data || error.message);
-    res.status(500).json({ error: 'Failed to fetch item details' });
-  }
-});
-
 
 // Initialize Twilio client if credentials are present
 let client;
@@ -990,7 +257,7 @@ router.post('/admin/send-email', async (req, res) => {
         to: email,
         subject: subject,
         html: htmlTemplate,
-        text: body 
+        text: body
       });
     });
 
@@ -1131,7 +398,7 @@ router.post('/asaas/subscription', async (req, res) => {
   try {
     const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
     const nextDueDate = new Date();
-    nextDueDate.setDate(nextDueDate.getDate() + 1); 
+    nextDueDate.setDate(nextDueDate.getDate() + 1);
     const dueDateStr = nextDueDate.toISOString().split('T')[0];
 
     if (billingCycle === 'annual' && installmentCount && installmentCount > 1) {
@@ -1340,6 +607,468 @@ router.get('/asaas/payment/:paymentId', async (req, res) => {
     res.status(500).json({
       error: 'Erro ao buscar pagamento.',
       details: error.response?.data
+    });
+  }
+});
+
+// ========================================
+// PLUGGY OPEN FINANCE INTEGRATION
+// ========================================
+
+const PLUGGY_CLIENT_ID = 'd93b0176-0cd8-4563-b9c1-bcb9c6e510bd';
+const PLUGGY_CLIENT_SECRET = '2b45852a-9638-4677-8232-6b2da7c54967';
+const PLUGGY_API_URL = 'https://api.pluggy.ai';
+const NGROK_URL = 'https://toney-nonreversing-cedrick.ngrok-free.dev';
+
+// Helper: Get Pluggy API Key (valid 2 hours)
+const getPluggyApiKey = async () => {
+  console.log('>>> Pluggy Auth - ClientID:', PLUGGY_CLIENT_ID);
+  console.log('>>> Pluggy Auth - Secret:', PLUGGY_CLIENT_SECRET?.substring(0, 8) + '...');
+  try {
+    const response = await axios.post(`${PLUGGY_API_URL}/auth`, {
+      clientId: PLUGGY_CLIENT_ID,
+      clientSecret: PLUGGY_CLIENT_SECRET
+    });
+    console.log('>>> Pluggy Auth Success - API Key obtained');
+    return response.data.apiKey;
+  } catch (error) {
+    console.error('>>> Pluggy Auth Error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Helper: Make Pluggy API request
+const pluggyRequest = async (method, endpoint, apiKey, data = null) => {
+  const config = {
+    method,
+    url: `${PLUGGY_API_URL}${endpoint}`,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-KEY': apiKey,
+    },
+  };
+
+  if (data) {
+    config.data = data;
+  }
+
+  console.log(`>>> PLUGGY ${method.toUpperCase()} ${endpoint}`);
+
+  try {
+    const response = await axios(config);
+    return response.data;
+  } catch (error) {
+    console.error('>>> Pluggy Request Error:', error.response?.data || error.message);
+    throw error;
+  }
+};
+
+// Helper: Fetch Pluggy items, optionally filtered by clientUserId
+const getPluggyItems = async (apiKey, userId = null) => {
+  const endpoint = userId
+    ? `/items?clientUserId=${encodeURIComponent(userId)}&pageSize=200`
+    : '/items';
+
+  const response = await pluggyRequest('GET', endpoint, apiKey);
+  const results = response.results || [];
+
+  // Defensive filter in case Pluggy ignores query param
+  if (userId) {
+    return results.filter(item => item.clientUserId === userId);
+  }
+
+  return results;
+};
+
+// Helper: Normalize Pluggy item for frontend consumption
+const mapPluggyItem = (item) => ({
+  id: item.id,
+  clientUserId: item.clientUserId,
+  connector: item.connector
+    ? { name: item.connector.name, imageUrl: item.connector.imageUrl }
+    : null,
+  status: item.status,
+  executionStatus: item.executionStatus,
+  createdAt: item.createdAt,
+  updatedAt: item.updatedAt,
+});
+
+// Helper: Map Pluggy category to app category
+const mapPluggyCategory = (pluggyCategory, description) => {
+  const categoryMap = {
+    'Transfer': 'Transferência',
+    'Shopping': 'Compras',
+    'Food': 'Alimentação',
+    'Transport': 'Transporte',
+    'Health': 'Saúde',
+    'Education': 'Educação',
+    'Entertainment': 'Lazer',
+    'Bills': 'Contas',
+    'Other': 'Outros',
+    'Income': 'Salário',
+    'Investment': 'Investimentos',
+  };
+
+  // Try to match by Pluggy category
+  for (const [key, value] of Object.entries(categoryMap)) {
+    if (pluggyCategory?.toLowerCase().includes(key.toLowerCase())) {
+      return value;
+    }
+  }
+
+  // Fallback based on description keywords
+  const desc = (description || '').toLowerCase();
+  if (desc.includes('salario') || desc.includes('salário') || desc.includes('pagamento')) return 'Salário';
+  if (desc.includes('pix') || desc.includes('ted') || desc.includes('transferencia')) return 'Transferência';
+  if (desc.includes('supermercado') || desc.includes('mercado') || desc.includes('ifood')) return 'Alimentação';
+  if (desc.includes('uber') || desc.includes('99') || desc.includes('combustivel')) return 'Transporte';
+  if (desc.includes('netflix') || desc.includes('spotify') || desc.includes('cinema')) return 'Lazer';
+
+  return 'Outros';
+};
+
+// 1. Create Connect Token for frontend widget
+router.post('/pluggy/create-token', async (req, res) => {
+  const { userId } = req.body;
+
+  if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
+    return res.status(500).json({ error: 'Pluggy credentials not configured.' });
+  }
+
+  try {
+    // Get API Key first
+    const apiKey = await getPluggyApiKey();
+    console.log('>>> Pluggy API Key obtained');
+
+    // Fetch existing items for this user to help frontend avoid duplicate attempts
+    let existingItems = [];
+    if (userId) {
+      try {
+        const userItems = await getPluggyItems(apiKey, userId);
+        existingItems = userItems.map(mapPluggyItem);
+
+        if (existingItems.length > 0) {
+          console.log(`>>> Found ${existingItems.length} existing Pluggy item(s) for user ${userId}`);
+        }
+      } catch (err) {
+        console.error('>>> Pluggy existing items lookup failed:', err.response?.data || err.message);
+      }
+    }
+
+    // Create Connect Token
+    const connectTokenResponse = await pluggyRequest('POST', '/connect_token', apiKey, {
+      clientUserId: userId || 'anonymous',
+      webhookUrl: `${NGROK_URL}/api/pluggy/webhook`,
+      options: {
+        avoidDuplicates: true
+      }
+    });
+
+    console.log('>>> Connect Token created:', connectTokenResponse.accessToken?.substring(0, 20) + '...');
+
+    res.json({
+      success: true,
+      accessToken: connectTokenResponse.accessToken,
+      existingItems
+    });
+  } catch (error) {
+    console.error('>>> Create Token Error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao criar token de conexão.',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+// 2. Sync transactions from connected item
+router.post('/pluggy/sync', async (req, res) => {
+  const { itemId, userId } = req.body;
+
+  if (!itemId || !userId) {
+    return res.status(400).json({ error: 'itemId e userId são obrigatórios.' });
+  }
+
+  try {
+    const apiKey = await getPluggyApiKey();
+    console.log(`>>> Starting sync for item ${itemId}, user ${userId}`);
+
+    // Get item details
+    const item = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+    const connectorName = item.connector?.name || 'Banco';
+    console.log(`>>> Item connector: ${connectorName}`);
+
+    // Get accounts for this item
+    const accountsResponse = await pluggyRequest('GET', `/accounts?itemId=${itemId}`, apiKey);
+    const accounts = accountsResponse.results || [];
+    console.log(`>>> Found ${accounts.length} accounts`);
+
+    const syncResults = {
+      accounts: [],
+      transactions: {
+        checking: [],
+        creditCard: [],
+        counts: {
+          checking: 0,
+          creditCard: 0,
+          total: 0
+        }
+      }
+    };
+
+    // Process each account
+    for (const account of accounts) {
+      const accountType = account.type; // BANK or CREDIT
+      const accountSubtype = account.subtype; // CHECKING_ACCOUNT, SAVINGS_ACCOUNT, CREDIT_CARD
+      const isCreditCard = accountType === 'CREDIT' || accountSubtype === 'CREDIT_CARD';
+
+      console.log(`>>> Processing account: ${account.name} (${accountType}/${accountSubtype})`);
+
+      // Build account data for Firebase
+      const connectedAccount = {
+        id: account.id,
+        itemId: itemId,
+        name: account.name || account.marketingName || 'Conta',
+        type: accountType,
+        subtype: accountSubtype,
+        institution: connectorName,
+        balance: account.balance || 0,
+        currency: account.currencyCode || 'BRL',
+        lastUpdated: new Date().toISOString(),
+        connectionMode: 'AUTO'
+      };
+
+      // Add credit card specific data
+      if (isCreditCard && account.creditData) {
+        connectedAccount.creditLimit = account.creditData.creditLimit || 0;
+        connectedAccount.availableCreditLimit = account.creditData.availableCreditLimit || 0;
+        connectedAccount.brand = account.creditData.brand || '';
+        connectedAccount.balanceCloseDate = account.creditData.balanceCloseDate || null;
+        connectedAccount.balanceDueDate = account.creditData.balanceDueDate || null;
+        connectedAccount.minimumPayment = account.creditData.minimumPayment || 0;
+      }
+
+      syncResults.accounts.push(connectedAccount);
+
+      // Fetch transactions for this account (last 90 days)
+      const fromDate = new Date();
+      fromDate.setDate(fromDate.getDate() - 90);
+      const fromDateStr = fromDate.toISOString().split('T')[0];
+
+      let page = 1;
+      let hasMore = true;
+
+      while (hasMore) {
+        const txResponse = await pluggyRequest(
+          'GET',
+          `/transactions?accountId=${account.id}&from=${fromDateStr}&pageSize=500&page=${page}`,
+          apiKey
+        );
+
+        const transactions = txResponse.results || [];
+        console.log(`>>> Fetched ${transactions.length} transactions (page ${page})`);
+
+        for (const tx of transactions) {
+          // Map transaction to our format
+          const mappedTx = {
+            date: tx.date?.split('T')[0] || new Date().toISOString().split('T')[0],
+            description: tx.description || tx.descriptionRaw || 'Sem descrição',
+            amount: Math.abs(tx.amount || 0),
+            category: mapPluggyCategory(tx.category, tx.description),
+            type: tx.type === 'CREDIT' ? 'income' : 'expense',
+            status: tx.status === 'PENDING' ? 'pending' : 'completed',
+            importSource: 'pluggy',
+            providerId: tx.id,
+            providerItemId: itemId,
+            accountId: account.id,
+            accountType: accountSubtype
+          };
+
+          // For credit cards: positive = expense, negative = payment/credit
+          if (isCreditCard) {
+            if (tx.amount > 0) {
+              mappedTx.type = 'expense';
+            } else {
+              mappedTx.type = 'income'; // Payment or credit
+              mappedTx.category = 'Pagamento de Fatura';
+            }
+
+            // Add credit card metadata
+            if (tx.creditCardMetadata) {
+              mappedTx.installmentNumber = tx.creditCardMetadata.installmentNumber;
+              mappedTx.totalInstallments = tx.creditCardMetadata.totalInstallments;
+            }
+
+            // Add card info for credit card transactions
+            mappedTx.cardId = account.id;
+            mappedTx.cardName = account.name || 'Cartão';
+
+            syncResults.transactions.creditCard.push(mappedTx);
+            syncResults.transactions.counts.creditCard++;
+          } else {
+            syncResults.transactions.checking.push(mappedTx);
+            syncResults.transactions.counts.checking++;
+          }
+
+          syncResults.transactions.counts.total++;
+        }
+
+        hasMore = txResponse.page < txResponse.totalPages;
+        page++;
+      }
+    }
+
+    console.log(`>>> Sync complete. Accounts: ${syncResults.accounts.length}, Transactions: ${syncResults.transactions.counts.total}`);
+
+    res.json({
+      success: true,
+      connector: connectorName,
+      accounts: syncResults.accounts,
+      transactions: {
+        checking: syncResults.transactions.checking,
+        creditCard: syncResults.transactions.creditCard
+      },
+      transactionCounts: syncResults.transactions.counts
+    });
+
+  } catch (error) {
+    console.error('>>> Sync Error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao sincronizar dados.',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+// 3. Webhook to receive Pluggy events
+router.post('/pluggy/webhook', async (req, res) => {
+  const event = req.body;
+
+  console.log('>>> PLUGGY WEBHOOK RECEIVED:', JSON.stringify(event, null, 2));
+
+  try {
+    const eventType = event.event;
+
+    switch (eventType) {
+      case 'item/created':
+        console.log(`>>> Item created: ${event.id}`);
+        break;
+
+      case 'item/updated':
+        console.log(`>>> Item updated: ${event.id}, status: ${event.status}`);
+        // If status is UPDATED, data is ready to be fetched
+        if (event.status === 'UPDATED') {
+          console.log('>>> Item data is ready for sync');
+        }
+        break;
+
+      case 'item/error':
+        console.log(`>>> Item error: ${event.id}, error: ${event.error?.message}`);
+        break;
+
+      case 'item/deleted':
+        console.log(`>>> Item deleted: ${event.id}`);
+        break;
+
+      default:
+        console.log(`>>> Unknown event type: ${eventType}`);
+    }
+
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('>>> Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing failed' });
+  }
+});
+
+// 4. Get item status
+router.get('/pluggy/item/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+
+  try {
+    const apiKey = await getPluggyApiKey();
+    const item = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+
+    res.json({
+      success: true,
+      item: {
+        id: item.id,
+        status: item.status,
+        executionStatus: item.executionStatus,
+        connector: item.connector?.name,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao buscar item.',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+// 5. Delete item (disconnect bank)
+router.delete('/pluggy/item/:itemId', async (req, res) => {
+  const { itemId } = req.params;
+
+  try {
+    const apiKey = await getPluggyApiKey();
+    await pluggyRequest('DELETE', `/items/${itemId}`, apiKey);
+
+    res.json({ success: true, message: 'Conexão removida com sucesso.' });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao remover conexão.',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+// 6. List all items (for debugging/management)
+router.get('/pluggy/items', async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const apiKey = await getPluggyApiKey();
+    const itemsRaw = await getPluggyItems(apiKey, userId);
+    const items = itemsRaw.map(mapPluggyItem);
+
+    console.log(`>>> Found ${items.length} existing Pluggy items${userId ? ` for user ${userId}` : ''}`);
+
+    res.json({
+      success: true,
+      items
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao listar items.',
+      details: error.response?.data?.message || error.message
+    });
+  }
+});
+
+// 7. Delete all items (clean up for testing)
+router.delete('/pluggy/items/all', async (req, res) => {
+  try {
+    const apiKey = await getPluggyApiKey();
+    const response = await pluggyRequest('GET', '/items', apiKey);
+    const items = response.results || [];
+
+    console.log(`>>> Deleting ${items.length} Pluggy items...`);
+
+    for (const item of items) {
+      try {
+        await pluggyRequest('DELETE', `/items/${item.id}`, apiKey);
+        console.log(`>>> Deleted item ${item.id}`);
+      } catch (err) {
+        console.error(`>>> Failed to delete item ${item.id}:`, err.message);
+      }
+    }
+
+    res.json({ success: true, message: `${items.length} conexões removidas.` });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao remover conexões.',
+      details: error.response?.data?.message || error.message
     });
   }
 });

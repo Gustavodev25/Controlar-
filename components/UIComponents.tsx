@@ -301,7 +301,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
         {isOpen && (
           <motion.div
             initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
             exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
             transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
             className="absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 max-h-60 overflow-y-auto custom-scrollbar"
@@ -311,7 +311,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
                 <motion.div
                   key={String(opt.value)}
                   initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
-                  animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
+                  animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0)" }}
                   transition={{
                     duration: 0.3,
                     delay: index * 0.03,
@@ -440,7 +440,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
         {isOpen && (
           <motion.div
             initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
             exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
             transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
             className="absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
@@ -482,7 +482,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
                   <motion.button
                     key={m}
                     initial={{ opacity: 0, scale: 0.8, filter: "blur(5px)" }}
-                    animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                    animate={{ opacity: 1, scale: 1, filter: "blur(0)" }}
                     transition={{
                       delay: 0.05 + i * 0.02,
                       type: "spring",
@@ -640,7 +640,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
         {isOpen && (
           <motion.div
             initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
             exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
             transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
             className={dropdownMode === 'absolute'

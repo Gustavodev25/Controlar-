@@ -1,20 +1,12 @@
-import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
+import React, { useMemo, useState } from "react";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Loader2, Plus, Settings, Lock, RefreshCw } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Lock, Plus } from "./Icons";
 
 import { EmptyState } from "./EmptyState";
-import axios from "axios";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
-import { BankConnectModal } from "./BankConnectModal";
 import { ConfirmationCard } from "./UIComponents";
-import {
-  SyncProgress,
-  clearSyncProgress,
-  isRecentSyncProgress,
-  readSyncProgress,
-  saveSyncProgress,
-} from "../utils/syncProgress";
+import { BankConnectModal } from "./BankConnectModal";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -36,33 +28,6 @@ const formatCurrency = (value?: number, currency: string = "BRL") => {
   }
 };
 
-// Sync Progress Tooltip Component - Now appears BELOW to avoid topbar cutoff
-const SyncProgressTooltip: React.FC<{ progress: SyncProgress }> = ({ progress }) => (
-  <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 z-[100] pointer-events-none">
-    {/* Arrow pointing up */}
-    <div className="absolute left-1/2 -translate-x-1/2 -top-2">
-      <div className="w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-b-[8px] border-b-gray-700" />
-      <div className="absolute top-[1px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-b-[7px] border-b-gray-900" />
-    </div>
-    <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 shadow-xl min-w-[220px]">
-      <p className="text-white text-sm font-medium text-center whitespace-nowrap">
-        {progress.step}
-      </p>
-      <div className="mt-2 flex items-center justify-center gap-2">
-        <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-          <div
-            className="h-full bg-[#d97757] rounded-full transition-all duration-300"
-            style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
-          />
-        </div>
-        <span className="text-xs text-gray-400 font-mono">
-          {progress.current}/{progress.total}
-        </span>
-      </div>
-    </div>
-  </div>
-);
-
 export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   accounts,
   isLoading = false,
@@ -73,62 +38,16 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 }) => {
   const [limitView, setLimitView] = useState<Set<string>>(new Set());
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
-  const [syncProgress, setSyncProgress] = useState<SyncProgress>({ step: '', current: 0, total: 0 });
-  const [showSyncTooltip, setShowSyncTooltip] = useState(false);
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [itemToUpdate, setItemToUpdate] = useState<string | null>(null);
+  const [showBankModal, setShowBankModal] = useState(false);
   const accountsPerPage = 3;
   const toast = useToasts();
-  
-  // Track Pro Mode for interrupting sync
-  const isProModeRef = useRef(isProMode);
-  
-  useEffect(() => {
-    isProModeRef.current = isProMode;
-  }, [isProMode]);
 
-  // Persist sync progress to local state + storage
-  const persistSyncProgress = useCallback((progress: SyncProgress) => {
-    setSyncProgress(progress);
-    saveSyncProgress(progress);
-  }, []);
-
-  // Restore sync state on mount
-  useEffect(() => {
-    const stored = readSyncProgress();
-    if (stored) {
-      if (isRecentSyncProgress(stored)) {
-        setSyncProgress(stored);
-        if (!stored.isComplete && !stored.error) {
-          setIsSyncing(true);
-        }
-      } else {
-        clearSyncProgress();
-      }
-    }
-  }, []);
-
-  // Send notification to notification center
-  const sendSyncNotification = useCallback(async (success: boolean, accountCount: number, txCount: number) => {
-    if (!userId) return;
-
-    try {
-      await dbService.addNotification(userId, {
-        type: success ? 'system' : 'alert',
-        title: success ? 'Sincronização Concluída' : 'Erro na Sincronização',
-        message: success
-          ? `${accountCount} conta(s) e ${txCount} transação(ões) sincronizadas com sucesso.`
-          : 'Não foi possível sincronizar os dados do banco. Tente novamente.',
-        date: new Date().toISOString(),
-        read: false
-      });
-    } catch (error) {
-      console.error('Error sending notification:', error);
-    }
-  }, [userId]);
+  const handleBankConnected = (newAccounts: ConnectedAccount[]) => {
+    toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+    if (onRefresh) onRefresh();
+  };
 
 
   // Agrupa contas por instituicao e itemId
@@ -162,10 +81,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
 
 
-  const handleUpdateConnection = (itemId: string) => {
-    setItemToUpdate(itemId);
-    setIsConnectModalOpen(true);
-  };
+  // Open Finance disabled - no connection functionality
 
   const handleDeleteInstitution = async () => {
     if (!userId || !deleteData) return;
@@ -189,199 +105,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
-  const handleSyncInstitution = async (itemId: string) => {
-    if (!userId) return;
-    setIsSyncing(true);
-    const initialProgress: SyncProgress = {
-        step: 'Sincronizando contas...',
-        current: 10,
-        total: 100,
-        startedAt: Date.now()
-    };
-    persistSyncProgress(initialProgress);
 
-    try {
-        const response = await axios.post('/api/pluggy/sync', { itemId });
-        
-        // Process response data (update local DB)
-        const { accounts: syncedAccounts, transactions, creditCardTransactions } = response.data;
-        const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
-        
-        // Save accounts
-        if (syncedAccounts && syncedAccounts.length > 0) {
-            for (const acc of syncedAccounts) {
-                await dbService.addConnectedAccount(userId, acc);
-            }
-        }
-        
-        // Save transactions
-        if (allTxs.length > 0) {
-            for (const tx of allTxs) {
-                await dbService.addTransaction(userId, tx, tx.id);
-            }
-        }
-
-        const completeProgress: SyncProgress = {
-            step: 'Sincronização concluída!',
-            current: 100,
-            total: 100,
-            isComplete: true,
-            startedAt: initialProgress.startedAt
-        };
-        persistSyncProgress(completeProgress);
-        
-        await dbService.incrementPluggyUsage();
-        
-        toast.success("Sincronização realizada com sucesso!");
-        if (onRefresh) onRefresh();
-        
-        setTimeout(() => {
-            setSyncProgress({ step: '', current: 0, total: 0 });
-            clearSyncProgress();
-        }, 3000);
-
-    } catch (error) {
-        console.error("Erro ao sincronizar:", error);
-        toast.error("Erro ao sincronizar. Tente novamente.");
-        const errorProgress: SyncProgress = {
-            step: 'Erro na sincronização',
-            current: 0,
-            total: 0,
-            error: 'Falha ao conectar com o banco.',
-            startedAt: initialProgress.startedAt
-        };
-        persistSyncProgress(errorProgress);
-    } finally {
-        setIsSyncing(false);
-    }
-  };
-
-  const handleConnectSuccess = async (data: any) => {
-    if (!userId) return;
-
-    let accountCount = 0;
-    let txCount = 0;
-
-    setIsSyncing(true);
-
-    const initialProgress: SyncProgress = {
-      step: 'Processando dados...',
-      current: 0,
-      total: 100,
-      startedAt: Date.now()
-    };
-    persistSyncProgress(initialProgress);
-
-    try {
-      const globalMode = localStorage.getItem('finances_pro_mode');
-      if (!isProModeRef.current || globalMode === 'false') {
-         throw new Error("Modo manual ativado. Sincronização interrompida.");
-      }
-
-      // Data is already synced from BankConnectModal
-      const { accounts: syncedAccounts, transactions, creditCardTransactions } = data;
-
-      accountCount = syncedAccounts?.length || 0;
-      const allTxs = [...(transactions || []), ...(creditCardTransactions || [])];
-      txCount = allTxs.length;
-
-      // Save accounts
-      if (syncedAccounts && syncedAccounts.length > 0) {
-        for (let i = 0; i < syncedAccounts.length; i++) {
-          if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
-             throw new Error("Modo manual ativado. Sincronização interrompida.");
-          }
-          const progress: SyncProgress = {
-            step: `Salvando conta ${i + 1}/${syncedAccounts.length}...`,
-            current: i + 1,
-            total: syncedAccounts.length + allTxs.length,
-            startedAt: initialProgress.startedAt
-          };
-          persistSyncProgress(progress);
-
-          await dbService.addConnectedAccount(userId, syncedAccounts[i]);
-        }
-      }
-
-      // Save transactions
-      if (allTxs.length > 0) {
-        for (let i = 0; i < allTxs.length; i++) {
-          if (!isProModeRef.current || localStorage.getItem('finances_pro_mode') === 'false') {
-             throw new Error("Modo manual ativado. Sincronização interrompida.");
-          }
-          const progress: SyncProgress = {
-            step: `Salvando transação ${i + 1}/${allTxs.length}...`,
-            current: accountCount + i + 1,
-            total: accountCount + allTxs.length,
-            startedAt: initialProgress.startedAt
-          };
-          persistSyncProgress(progress);
-
-          await dbService.addTransaction(userId, allTxs[i], allTxs[i].id);
-        }
-      }
-
-      // Success!
-      const completeProgress: SyncProgress = {
-        step: `${accountCount} contas e ${txCount} transações sincronizadas!`,
-        current: accountCount + txCount,
-        total: accountCount + txCount,
-        isComplete: true,
-        startedAt: initialProgress.startedAt
-      };
-      persistSyncProgress(completeProgress);
-
-      // Increment Global Pluggy Usage Counter
-      await dbService.incrementPluggyUsage();
-
-      // Send notification to notification center
-      await sendSyncNotification(true, accountCount, txCount);
-
-      toast.success("Sincronização concluída com sucesso!");
-      if (onRefresh) onRefresh();
-
-      // Auto-dismiss toast after 5 seconds
-      setTimeout(() => {
-        setSyncProgress({ step: '', current: 0, total: 0 });
-        clearSyncProgress();
-      }, 5000);
-
-    } catch (error: any) {
-      console.error("Erro na sincronização:", error);
-      
-      const isInterrupted = error.message === "Modo manual ativado. Sincronização interrompida.";
-      
-      if (isInterrupted) {
-         setSyncProgress({ step: '', current: 0, total: 0 });
-         clearSyncProgress();
-         setIsSyncing(false);
-         return; // Don't show error toast for intentional interruption
-      }
-
-      const errorProgress: SyncProgress = {
-        step: 'Erro ao sincronizar',
-        current: 0,
-        total: 0,
-        error: 'Não foi possível sincronizar os dados do banco.',
-        startedAt: initialProgress.startedAt
-      };
-      persistSyncProgress(errorProgress);
-
-      // Send error notification
-      await sendSyncNotification(false, 0, 0);
-
-      toast.error("Erro ao sincronizar os dados do banco.");
-
-      // Auto-dismiss error toast after 5 seconds
-      setTimeout(() => {
-        setSyncProgress({ step: '', current: 0, total: 0 });
-        clearSyncProgress();
-      }, 5000);
-
-    } finally {
-      setIsSyncing(false);
-    }
-  };
 
 
 
@@ -407,21 +131,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   // --- MANUAL MODE BLOCK ---
   if (!isProMode) {
     return (
-        <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
-            {/* Header */}
-            <div className="flex items-center justify-between">
-                <div>
-                    <h2 className="text-2xl font-bold text-white tracking-tight">Open Finance Bloqueado</h2>
-                    <p className="text-gray-400 text-sm mt-1">Sincronização bancária desativada</p>
-                </div>
-            </div>
-
-            <EmptyState
-                title="Modo Manual Ativado"
-                description="Para conectar seus bancos e sincronizar transações automaticamente, ative o Modo Automático na Visão Geral."
-                icon={<Lock size={48} className="text-[#d97757]" />}
-            />
+      <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Open Finance Bloqueado</h2>
+            <p className="text-gray-400 text-sm mt-1">Sincronização bancária desativada</p>
+          </div>
         </div>
+
+        <EmptyState
+          title="Modo Manual Ativado"
+          description="Para conectar seus bancos e sincronizar transações automaticamente, ative o Modo Automático na Visão Geral."
+          icon={<Lock size={48} className="text-[#d97757]" />}
+        />
+      </div>
     );
   }
 
@@ -437,60 +161,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
-          {/* Connect Button */}
           <button
-            onClick={() => {
-              setItemToUpdate(null);
-              setIsConnectModalOpen(true);
-            }}
-            className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20"
+            onClick={() => setShowBankModal(true)}
+            className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
           >
             <Plus size={18} />
-            <span className="hidden sm:inline font-bold text-sm">Conectar Conta</span>
+            <span className="hidden sm:inline">Conectar Banco</span>
           </button>
-
-          {/* Sync Progress Indicator */}
-          {isSyncing && (
-            <div
-              className="relative flex items-center gap-2 px-4 py-2.5 bg-gray-900 border border-gray-800 rounded-xl cursor-pointer"
-              onMouseEnter={() => setShowSyncTooltip(true)}
-              onMouseLeave={() => setShowSyncTooltip(false)}
-            >
-              <Loader2 size={18} className="text-[#d97757] animate-spin" />
-              <span className="text-sm text-gray-400 font-medium hidden sm:inline">Sincronizando...</span>
-
-              {/* Tooltip */}
-              {showSyncTooltip && syncProgress.step && (
-                <SyncProgressTooltip progress={syncProgress} />
-              )}
-            </div>
-          )}
-
-          {onRefresh && accounts.length > 0 && !isSyncing && (
+          {onRefresh && accounts.length > 0 && (
             <button
               onClick={onRefresh}
-              disabled={isSyncing}
               className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-gray-800 hover:border-gray-700 shadow-lg"
             >
-              <RotateCcw size={18} className={isSyncing ? "animate-spin" : ""} />
+              <RotateCcw size={18} />
               <span className="hidden sm:inline font-bold text-sm">Atualizar</span>
             </button>
           )}
         </div>
       </div>
-
-      {/* Modal */}
-      {userId && (
-        <>
-          <BankConnectModal
-            isOpen={isConnectModalOpen}
-            onClose={() => setIsConnectModalOpen(false)}
-            onSuccess={handleConnectSuccess}
-            userId={userId}
-            itemIdToUpdate={itemToUpdate}
-          />
-        </>
-      )}
 
 
       {/* List Header */}
@@ -539,16 +227,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
                   <div className="flex items-center gap-2">
                     <button
-                      onClick={() => handleUpdateConnection(data.itemId)}
-                      disabled={isSyncing || isDeleting !== null}
-                      className="text-xs text-blue-400 hover:text-blue-300 font-semibold uppercase border border-blue-500/30 hover:border-blue-500/50 rounded-lg px-2 py-1 flex items-center gap-1.5 transition-all hover:bg-blue-500/10 disabled:opacity-50"
-                    >
-                      <RefreshCw size={14} className={isSyncing ? "animate-spin" : ""} />
-                      Reconectar
-                    </button>
-                    <button
                       onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
-                      disabled={isDeleting !== null || isSyncing}
+                      disabled={isDeleting !== null}
                       className="text-xs text-red-400 hover:text-red-300 font-semibold uppercase border border-red-500/30 hover:border-red-500/50 rounded-lg px-2 py-1 flex items-center gap-1.5 transition-all hover:bg-red-500/10 disabled:opacity-50"
                     >
                       <Trash2 size={14} />
@@ -581,8 +261,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                               </div>
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
-                                   <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
-                                   {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
+                                  <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                  {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
                                 </div>
                                 <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
                                   {acc.type} {acc.subtype ? `- ${acc.subtype}` : ""}
@@ -703,6 +383,14 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         confirmText="Sim, excluir"
         cancelText="Cancelar"
         isDestructive
+      />
+
+      {/* Bank Connect Modal */}
+      <BankConnectModal
+        isOpen={showBankModal}
+        onClose={() => setShowBankModal(false)}
+        userId={userId || null}
+        onSuccess={handleBankConnected}
       />
 
     </div>
