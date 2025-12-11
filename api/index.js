@@ -7,6 +7,9 @@ dotenv.config();
 
 const app = express();
 
+// Trust Vercel proxy to get real client IP
+app.set('trust proxy', true);
+
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: false, limit: '50mb' }));

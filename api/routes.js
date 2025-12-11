@@ -1158,6 +1158,7 @@ router.post('/asaas/subscription', async (req, res) => {
           addressNumber: creditCardHolderInfo.addressNumber,
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined,
         },
+        remoteIp: req.ip,
         externalReference: `${planId}_annual_${Date.now()}`,
       };
 
@@ -1212,6 +1213,7 @@ router.post('/asaas/subscription', async (req, res) => {
           addressNumber: creditCardHolderInfo.addressNumber,
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined,
         },
+        remoteIp: req.ip,
         externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`,
       };
 
