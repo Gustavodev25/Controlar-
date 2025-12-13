@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle } from './Icons';
-import { CustomSelect, CustomDatePicker, ConfirmationCard } from './UIComponents';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown } from './Icons';
+import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete } from './UIComponents';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
@@ -10,9 +10,11 @@ interface ExcelTableProps {
   transactions: Transaction[];
   onDelete: (id: string) => void;
   onUpdate: (transaction: Transaction) => void;
+  isManualMode?: boolean;
+  onAdd?: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
 }
 
-export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate }) => {
+export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
@@ -30,6 +32,37 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditVisible, setIsEditVisible] = useState(false);
   const [isEditAnimating, setIsEditAnimating] = useState(false);
+
+  // Add Modal State
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isAddVisible, setIsAddVisible] = useState(false);
+  const [isAddAnimating, setIsAddAnimating] = useState(false);
+  const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
+    description: '',
+    amount: 0,
+    date: new Date().toISOString().split('T')[0],
+    category: '',
+    type: 'expense',
+    status: 'completed'
+  });
+
+  React.useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+    if (isAddModalOpen) {
+      setIsAddVisible(true);
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setIsAddAnimating(true);
+        });
+      });
+    } else {
+      setIsAddAnimating(false);
+      timeoutId = setTimeout(() => {
+        setIsAddVisible(false);
+      }, 300);
+    }
+    return () => clearTimeout(timeoutId);
+  }, [isAddModalOpen]);
 
   const toast = useToasts();
 
@@ -149,7 +182,28 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             </div>
           </div>
 
-          <div className="relative w-full sm:w-64 group">
+          <div className="flex items-center gap-3">
+             {isManualMode && onAdd && (
+              <button
+                onClick={() => {
+                  setNewTransaction({
+                    description: '',
+                    amount: 0,
+                    date: new Date().toISOString().split('T')[0],
+                    category: 'Outros',
+                    type: 'expense',
+                    status: 'completed'
+                  });
+                  setIsAddModalOpen(true);
+                }}
+                className="hidden sm:flex items-center gap-2 px-4 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50"
+              >
+                <Plus size={18} strokeWidth={3} />
+                <span>Novo Lançamento</span>
+              </button>
+             )}
+
+            <div className="relative w-full sm:w-64 group">
             <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
             <input
               type="text"
@@ -160,6 +214,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             />
           </div>
         </div>
+      </div>
 
         <div className="flex flex-wrap gap-2 items-center pt-2">
           {/* Year Selector */}
@@ -554,6 +609,169 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               >
                 <Check size={20} strokeWidth={3} />
                 Salvar Alterações
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* Add Transaction Modal - Reminders Style */}
+      {isAddVisible && createPortal(
+        <div className={`
+            fixed inset-0 z-[100] flex items-center justify-center p-4 
+            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+            ${isAddAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
+        `}>
+          <div className={`
+                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 
+                flex flex-col max-h-[90vh] relative 
+                transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+                ${isAddAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
+          `}>
+            {/* Background Glow */}
+            <div className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 ${newTransaction.type === 'income' ? 'bg-emerald-500' : 'bg-red-500'}`} />
+
+            {/* Header */}
+            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+              <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                <Plus size={18} className="text-[#d97757]" />
+                Novo Lançamento
+              </h3>
+              <button onClick={() => setIsAddModalOpen(false)} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all">
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 relative z-10">
+              
+              {/* Tipo Segmentado */}
+              <div className="flex p-1 bg-gray-900/50 rounded-xl">
+                <button
+                  type="button"
+                  onClick={() => setNewTransaction({ ...newTransaction, type: 'expense' })}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${newTransaction.type === 'expense' ? 'bg-red-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  <TrendingDown size={14} /> Despesa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewTransaction({ ...newTransaction, type: 'income' })}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-all ${newTransaction.type === 'income' ? 'bg-emerald-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  <TrendingUp size={14} /> Receita
+                </button>
+              </div>
+
+              {/* Descrição */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
+                <div className="relative">
+                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                  <input
+                    type="text"
+                    value={newTransaction.description}
+                    onChange={(e) => setNewTransaction({ ...newTransaction, description: e.target.value })}
+                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+                    placeholder={newTransaction.type === 'income' ? "Ex: Salário" : "Ex: Almoço"}
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Valor */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newTransaction.amount?.toString()}
+                      onChange={(e) => setNewTransaction({ ...newTransaction, amount: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
+                  <CustomDatePicker
+                    value={newTransaction.date || ''}
+                    onChange={(val) => setNewTransaction({ ...newTransaction, date: val })}
+                  />
+                </div>
+              </div>
+
+              {/* Categoria */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                <CustomAutocomplete
+                  value={newTransaction.category || ''}
+                  onChange={(val) => setNewTransaction({ ...newTransaction, category: val })}
+                  options={CATEGORIES}
+                  icon={<Tag size={16} />}
+                  placeholder="Selecione ou digite..."
+                />
+              </div>
+
+              {/* Status Toggle */}
+              <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+                <div className="flex items-center gap-2.5">
+                  {newTransaction.status === 'completed' 
+                    ? <Check size={16} className="text-emerald-500" />
+                    : <AlertCircle size={16} className="text-amber-500" />
+                  }
+                  <div>
+                    <span className="block text-sm font-medium text-gray-300">Status</span>
+                    <span className="block text-[10px] text-gray-500">
+                      {newTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
+                   <button
+                      type="button"
+                      onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'pending' ? 'bg-amber-500/20 text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                   >
+                      Pendente
+                   </button>
+                   <button
+                      type="button"
+                      onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
+                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'completed' ? 'bg-emerald-500/20 text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                   >
+                      Pago
+                   </button>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={async () => {
+                   if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
+                      toast.error("Preencha a descrição, valor e data.");
+                      return;
+                   }
+                   if (onAdd) {
+                      await onAdd(newTransaction as any);
+                      toast.success("Lançamento adicionado!");
+                      setIsAddModalOpen(false);
+                   }
+                }}
+                className={`w-full py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${newTransaction.type === 'income'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                  : 'bg-[#d97757] hover:bg-[#e08868] text-white'
+                  }`}
+              >
+                <Check size={18} strokeWidth={2.5} />
+                Confirmar
               </button>
             </div>
           </div>

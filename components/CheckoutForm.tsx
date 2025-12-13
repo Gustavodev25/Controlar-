@@ -31,13 +31,13 @@ interface CheckoutFormProps {
   isLoading: boolean;
 }
 
-export const CheckoutForm: React.FC<CheckoutFormProps> = ({ 
-  planName, 
-  price, 
-  billingCycle = 'monthly', 
-  onSubmit, 
-  onBack, 
-  isLoading 
+export const CheckoutForm: React.FC<CheckoutFormProps> = ({
+  planName,
+  price,
+  billingCycle = 'monthly',
+  onSubmit,
+  onBack,
+  isLoading
 }) => {
   const [cardData, setCardData] = useState<CreditCardData>({
     holderName: '',
@@ -46,7 +46,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     expiryYear: '',
     ccv: ''
   });
-  
+
   const [holderInfo, setHolderInfo] = useState<HolderInfo>({
     name: '',
     email: '',
@@ -57,13 +57,104 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   });
 
   const [installments, setInstallments] = useState(1);
-  
+
   // Coupon State
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
   const toast = useToasts();
+
+  // Luhn Algorithm for Credit Card Validation
+  const validateCardNumber = (number: string): boolean => {
+    const cleaned = number.replace(/\s/g, '');
+
+    // Check if it's only digits
+    if (!/^\d+$/.test(cleaned)) return false;
+
+    // Check length (most cards are 13-19 digits)
+    if (cleaned.length < 13 || cleaned.length > 19) return false;
+
+    // Check for obvious fake patterns (all same digits)
+    if (/^(.)\1+$/.test(cleaned)) return false;
+
+    // Luhn Algorithm
+    let sum = 0;
+    let isEven = false;
+
+    for (let i = cleaned.length - 1; i >= 0; i--) {
+      let digit = parseInt(cleaned[i], 10);
+
+      if (isEven) {
+        digit *= 2;
+        if (digit > 9) {
+          digit -= 9;
+        }
+      }
+
+      sum += digit;
+      isEven = !isEven;
+    }
+
+    return sum % 10 === 0;
+  };
+
+  // Validate card expiry date
+  const validateExpiryDate = (month: string, year: string): boolean => {
+    if (!month || !year) return false;
+
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth() + 1;
+
+    const expMonth = parseInt(month, 10);
+    const expYear = parseInt(year, 10);
+
+    // Check if month is valid
+    if (expMonth < 1 || expMonth > 12) return false;
+
+    // Check if card is expired
+    if (expYear < currentYear) return false;
+    if (expYear === currentYear && expMonth < currentMonth) return false;
+
+    return true;
+  };
+
+  // Validate CVV
+  const validateCVV = (cvv: string): boolean => {
+    // CVV must be 3-4 digits
+    return /^\d{3,4}$/.test(cvv);
+  };
+
+  // Validate CPF (Brazilian ID)
+  const validateCPF = (cpf: string): boolean => {
+    const cleaned = cpf.replace(/\D/g, '');
+
+    // CPF must have 11 digits
+    if (cleaned.length !== 11) return false;
+
+    // Check for known invalid CPFs (all same digits)
+    if (/^(.)\1+$/.test(cleaned)) return false;
+
+    // Validate CPF checksum
+    let sum = 0;
+    for (let i = 0; i < 9; i++) {
+      sum += parseInt(cleaned[i]) * (10 - i);
+    }
+    let remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cleaned[9])) return false;
+
+    sum = 0;
+    for (let i = 0; i < 10; i++) {
+      sum += parseInt(cleaned[i]) * (11 - i);
+    }
+    remainder = (sum * 10) % 11;
+    if (remainder === 10 || remainder === 11) remainder = 0;
+    if (remainder !== parseInt(cleaned[10])) return false;
+
+    return true;
+  };
 
   // Função para colocar espaços no número do cartão (visual)
   const formatCardNumber = (value: string) => {
@@ -87,11 +178,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   const handleApplyCoupon = async () => {
     if (!couponCode) return;
-    
+
     setIsValidatingCoupon(true);
     try {
       const result = await dbService.validateCoupon(couponCode.toUpperCase());
-      
+
       if (result.isValid && result.coupon) {
         setAppliedCoupon(result.coupon);
         toast.success("Cupom aplicado com sucesso!");
@@ -131,11 +222,37 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Basic required fields check
     if (!cardData.number || !cardData.holderName || !cardData.ccv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
-    
+
+    // Validate card number with Luhn algorithm
+    if (!validateCardNumber(cardData.number)) {
+      toast.error("Número do cartão inválido. Verifique os dígitos.");
+      return;
+    }
+
+    // Validate expiry date
+    if (!validateExpiryDate(cardData.expiryMonth, cardData.expiryYear)) {
+      toast.error("Data de validade inválida ou cartão expirado.");
+      return;
+    }
+
+    // Validate CVV
+    if (!validateCVV(cardData.ccv)) {
+      toast.error("CVV inválido. Deve ter 3 ou 4 dígitos.");
+      return;
+    }
+
+    // Validate CPF
+    if (!validateCPF(holderInfo.cpfCnpj)) {
+      toast.error("CPF inválido. Verifique os dígitos.");
+      return;
+    }
+
     // If coupon used, increment usage
     if (appliedCoupon) {
       dbService.incrementCouponUsage(appliedCoupon.id);
@@ -370,14 +487,14 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 <label className="block text-xs font-semibold text-gray-400 mb-2">Cupom de Desconto</label>
                 {!appliedCoupon ? (
                   <div className="flex gap-2">
-                    <input 
-                      type="text" 
+                    <input
+                      type="text"
                       value={couponCode}
                       onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                       placeholder="Código"
                       className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 h-10 text-white text-sm focus:border-[#d97757] focus:outline-none uppercase"
                     />
-                    <button 
+                    <button
                       type="button"
                       onClick={handleApplyCoupon}
                       disabled={!couponCode || isValidatingCoupon}
@@ -394,7 +511,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       </div>
                       <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
                     </div>
-                    <button 
+                    <button
                       type="button"
                       onClick={handleRemoveCoupon}
                       className="text-gray-400 hover:text-white transition-colors"
@@ -409,7 +526,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 <span className="text-lg font-bold text-white">Total</span>
                 <div className="text-right">
                   <span className="text-2xl font-bold text-[#d97757]">
-                    {installments > 1 
+                    {installments > 1
                       ? `${installments}x R$ ${(finalPrice / installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                       : `R$ ${finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
                     }

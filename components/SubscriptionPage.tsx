@@ -186,9 +186,9 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 throw new Error(subscriptionData.error || 'Erro ao processar pagamento.');
             }
 
-            // 4. Check payment status
-            if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'PENDING') {
-                // Payment was successful or is being processed - Activate plan
+            // 4. Check payment status - ONLY activate on confirmed payment
+            if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'RECEIVED') {
+                // Payment was successful - Activate plan
                 const nextBillingDate = new Date();
                 if (cycleToBuy === 'annual') {
                     nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
@@ -219,16 +219,11 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 };
 
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
-
-                if (subscriptionData.status === 'CONFIRMED') {
-                    toast.success('Pagamento confirmado! Plano ativado com sucesso.');
-                } else {
-                    toast.success('Pagamento em processamento. Seu plano será ativado em breve!');
-                }
-
+                toast.success('Pagamento confirmado! Plano ativado com sucesso.');
                 onBack();
             } else {
-                // Payment failed
+                // Payment failed - DO NOT activate the plan
+                // The backend already handles error messages with specific reasons
                 throw new Error(subscriptionData.error || 'Pagamento não foi aprovado. Verifique os dados do cartão.');
             }
 

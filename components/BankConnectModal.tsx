@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { PluggyConnect } from 'react-pluggy-connect';
 import { X, Loader2, Building, CheckCircle, AlertCircle } from './Icons';
+import { ConnectedAccount, ProviderBill, Transaction } from '../types';
 import * as dbService from '../services/database';
-import { ConnectedAccount } from '../types';
+import type { CreditCardTransaction } from '../services/database';
 
 interface BankConnectModalProps {
     isOpen: boolean;
@@ -13,6 +14,86 @@ interface BankConnectModalProps {
 }
 
 const API_BASE = '/api';
+
+const pad2 = (val: number) => String(val).padStart(2, '0');
+
+const toDateOnly = (value?: string | null) => {
+    if (!value) return null;
+    return value.split('T')[0];
+};
+
+const parseDay = (value?: string | null) => {
+    if (!value) return null;
+    const [, , dayStr] = value.split('T')[0].split('-');
+    const day = parseInt(dayStr, 10);
+    return Number.isFinite(day) ? day : null;
+};
+
+const addMonthsUTC = (dateStr: string, months: number) => {
+    const iso = toDateOnly(dateStr);
+    if (!iso) return null;
+    const [y, m, d] = iso.split('-').map(Number);
+    if (!y || !m || !d) return null;
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCMonth(dt.getUTCMonth() + months);
+    return dt.toISOString().split('T')[0];
+};
+
+const computeInvoiceMonthKey = (dateStr: string | null, closingDay?: number | null, dueDay?: number | null) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    if (!y || !m || !d) return null;
+
+    let month = m;
+    let year = y;
+
+    if (closingDay && d > closingDay) {
+        month += 1;
+        if (month > 12) {
+            month = 1;
+            year += 1;
+        }
+    }
+
+    // Adjust for due date falling in the next month relative to closing
+    if (closingDay && dueDay && dueDay < closingDay) {
+        month += 1;
+        if (month > 12) {
+            month = 1;
+            year += 1;
+        }
+    }
+
+    return `${year}-${pad2(month)}`;
+};
+
+const buildDueDateFromMonth = (monthKey: string | null, dueDay?: number | null) => {
+    if (!monthKey || !dueDay) return null;
+    const [y, m] = monthKey.split('-');
+    if (!y || !m) return null;
+    return `${y}-${m}-${pad2(dueDay)}`;
+};
+
+const mapBills = (raw: any[] = []): ProviderBill[] => {
+    return raw
+        .map((bill) => {
+            const dueDate = bill.dueDate || bill.balanceDueDate;
+            if (!dueDate) return null;
+            return {
+                id: bill.id,
+                dueDate,
+                totalAmount: bill.totalAmount ?? 0,
+                totalAmountCurrencyCode: bill.totalAmountCurrencyCode ?? null,
+                minimumPaymentAmount: bill.minimumPaymentAmount ?? null,
+                allowsInstallments: bill.allowsInstallments ?? null,
+                financeCharges: bill.financeCharges ?? null,
+                balanceCloseDate: bill.balanceCloseDate ?? null,
+                state: bill.state ?? null,
+                paidAmount: bill.paidAmount ?? null
+            } as ProviderBill;
+        })
+        .filter(Boolean) as ProviderBill[];
+};
 
 export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     isOpen,
@@ -34,6 +115,298 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
     const [existingItems, setExistingItems] = useState<any[]>([]);
     const [isDeletingItem, setIsDeletingItem] = useState<string | null>(null);
+
+    const normalizeAccount = useCallback((account: any, bills: ProviderBill[]): ConnectedAccount => {
+        const creditData = account.creditData || {};
+
+        // Helper to determine the best display name for the account (avoid raw account numbers)
+        const getAccountDisplayName = () => {
+            // Priority: marketingName > name (if not a number format) > brand > subtype > generic
+            if (account.marketingName) return account.marketingName;
+            if (account.name && !/^\d{3}\/\d{4}\//.test(account.name) && !/^\d+[-\/]/.test(account.name)) {
+                return account.name;
+            }
+            if (creditData.brand) return creditData.brand;
+            if (account.subtype) return account.subtype;
+            if (account.type === 'CREDIT_CARD' || account.type === 'CREDIT') return 'Cartão de Crédito';
+            if (account.type === 'BANK' || account.type === 'CHECKING') return 'Conta Corrente';
+            return 'Conta';
+        };
+
+        // Helper to determine the best display name for the institution
+        const getInstitutionName = () => {
+            if (account.connector?.name) return account.connector.name;
+            // Don't use transferNumber or raw numbers as institution name
+            return 'Banco';
+        };
+
+        return {
+            id: account.id,
+            itemId: account.itemId,
+            name: getAccountDisplayName(),
+            type: account.type ?? null,
+            subtype: account.subtype ?? null,
+            institution: getInstitutionName(),
+            balance: account.balance ?? 0,
+            currency: account.currencyCode ?? null,
+            lastUpdated: new Date().toISOString(),
+            connectionMode: 'AUTO',
+            creditLimit: creditData.creditLimit ?? null,
+            availableCreditLimit: creditData.availableCreditLimit ?? null,
+            brand: creditData.brand ?? null,
+            balanceCloseDate: creditData.balanceCloseDate ?? null,
+            balanceDueDate: creditData.balanceDueDate ?? null,
+            minimumPayment: creditData.minimumPayment ?? null,
+            bills
+        };
+    }, []);
+
+    const mapBankTransaction = useCallback((tx: any, account: ConnectedAccount): Omit<Transaction, 'id'> | null => {
+        const date = toDateOnly(tx?.date);
+        if (!date) return null;
+
+        const rawAmount = Number(tx?.amount || 0);
+        const amount = Math.abs(rawAmount);
+        const pluggyType = (tx?.type || '').toUpperCase();
+        const isIncome = pluggyType === 'CREDIT' || rawAmount > 0;
+        const status = (tx?.status || '').toUpperCase() === 'PENDING' ? 'pending' : 'completed';
+
+        return {
+            description: tx?.description || 'Movimentacao',
+            amount,
+            date,
+            category: tx?.category || 'Outros',
+            type: isIncome ? 'income' : 'expense',
+            status,
+            importSource: 'pluggy',
+            providerId: tx?.id,
+            providerItemId: account.itemId,
+            accountId: account.id,
+            accountType: account.subtype || account.type,
+            pluggyRaw: tx
+        };
+    }, []);
+
+    const buildCardTransaction = useCallback(
+        (
+            tx: any,
+            account: ConnectedAccount,
+            billsMap: Map<string, ProviderBill>,
+            closingDay: number | null,
+            dueDay: number | null,
+            isProjected: boolean = false,
+            overrideInstallment?: number,
+            overrideTotal?: number,
+            providerIdOverride?: string,
+            projectedAmountOverride?: number
+        ): Omit<CreditCardTransaction, 'id'> | null => {
+            const meta = tx?.creditCardMetadata || {};
+            const purchaseDate = toDateOnly(meta.purchaseDate || tx?.date);
+            const postDate = toDateOnly(tx?.date || purchaseDate);
+            const anchorDate = postDate || purchaseDate;
+            if (!anchorDate) return null;
+
+            const rawAmount = Number(projectedAmountOverride ?? tx?.amount ?? 0);
+            const totalInstallments = overrideTotal ?? meta.totalInstallments;
+            const installmentNumber = overrideInstallment ?? meta.installmentNumber;
+
+            const billId = meta.billId || null;
+            const bill = billId ? billsMap.get(billId) : undefined;
+
+            let invoiceMonthKey = bill?.dueDate ? bill.dueDate.slice(0, 7) : computeInvoiceMonthKey(anchorDate, closingDay, dueDay);
+            let invoiceSource = bill?.dueDate ? 'pluggy_billId' : 'pluggy_close_rule';
+
+            let invoiceDueDate = bill?.dueDate || buildDueDateFromMonth(invoiceMonthKey, dueDay) || undefined;
+            if (!invoiceMonthKey && invoiceDueDate) {
+                invoiceMonthKey = invoiceDueDate.slice(0, 7);
+            }
+
+            const amount = Math.abs(totalInstallments && meta.totalAmount
+                ? (meta.totalAmount / totalInstallments)
+                : rawAmount);
+            const type = rawAmount >= 0 ? 'expense' : 'income';
+            const status = isProjected
+                ? 'pending'
+                : (tx?.status || '').toUpperCase() === 'PENDING'
+                    ? 'pending'
+                    : 'completed';
+
+            return {
+                date: postDate,
+                description: tx?.description || 'Lancamento Cartao',
+                amount,
+                category: tx?.category || 'Outros',
+                type,
+                status,
+                cardId: account.id,
+                cardName: account.name,
+                installmentNumber: installmentNumber || undefined,
+                totalInstallments: totalInstallments || undefined,
+                importSource: 'pluggy',
+                providerId: providerIdOverride || tx?.id,
+                providerItemId: account.itemId,
+                invoiceDate: invoiceMonthKey ? `${invoiceMonthKey}-01` : undefined,
+                invoiceDueDate: invoiceDueDate || undefined,
+                invoiceMonthKey: invoiceMonthKey || undefined,
+                pluggyBillId: billId,
+                invoiceSource,
+                pluggyRaw: tx,
+                isProjected
+            };
+        },
+        []
+    );
+
+    const generateProjectedInstallments = useCallback(
+        async (
+            tx: any,
+            account: ConnectedAccount,
+            billsMap: Map<string, ProviderBill>,
+            closingDay: number | null,
+            dueDay: number | null
+        ) => {
+            if (!userId) return 0;
+            const meta = tx?.creditCardMetadata || {};
+            const totalInstallments = meta.totalInstallments;
+            const currentInstallment = meta.installmentNumber || 1;
+            const purchaseDate = toDateOnly(meta.purchaseDate || tx?.date);
+
+            if (!totalInstallments || totalInstallments <= currentInstallment) return 0;
+
+            let projectedCount = 0;
+            for (let i = currentInstallment + 1; i <= totalInstallments; i++) {
+                const providerId = `${tx?.id || account.id}_installment_${i}`;
+                const projectedDate = purchaseDate ? addMonthsUTC(purchaseDate, i - 1) : null;
+                const projectedTx = buildCardTransaction(
+                    {
+                        ...tx,
+                        date: projectedDate || tx?.date,
+                        creditCardMetadata: {
+                            ...meta,
+                            installmentNumber: i,
+                            totalInstallments,
+                            billId: null // Clear billId for future installments so they don't get stuck in the current invoice
+                        }
+                    },
+                    account,
+                    billsMap,
+                    closingDay,
+                    dueDay,
+                    true,
+                    i,
+                    totalInstallments,
+                    providerId
+                );
+
+                if (projectedTx) {
+                    await dbService.upsertCreditCardTransaction(userId, projectedTx);
+                    projectedCount++;
+                }
+            }
+
+            return projectedCount;
+        },
+        [buildCardTransaction, userId]
+    );
+
+    const syncBankTransactions = useCallback(
+        async (account: ConnectedAccount, txs: any[]) => {
+            if (!userId) return 0;
+            let count = 0;
+
+            for (const tx of txs || []) {
+                const mapped = mapBankTransaction(tx, account);
+                if (!mapped) continue;
+                await dbService.upsertImportedTransaction(userId, mapped, tx?.id);
+                count++;
+            }
+
+            return count;
+        },
+        [mapBankTransaction, userId]
+    );
+
+    const syncCreditCardTransactions = useCallback(
+        async (account: ConnectedAccount, txs: any[], bills: ProviderBill[]) => {
+            if (!userId) return { saved: 0, projected: 0 };
+
+            const billsMap = new Map<string, ProviderBill>();
+            bills.forEach((bill) => billsMap.set(bill.id, bill));
+
+            const closingDay = parseDay(account.balanceCloseDate);
+            const dueDay = parseDay(account.balanceDueDate);
+
+            let saved = 0;
+            let projected = 0;
+
+            for (const tx of txs || []) {
+                const mapped = buildCardTransaction(tx, account, billsMap, closingDay, dueDay, false);
+                if (mapped) {
+                    await dbService.upsertCreditCardTransaction(userId, mapped);
+                    saved++;
+                }
+
+                projected += await generateProjectedInstallments(tx, account, billsMap, closingDay, dueDay);
+            }
+
+            return { saved, projected };
+        },
+        [buildCardTransaction, generateProjectedInstallments, userId]
+    );
+
+    const runFullSync = useCallback(
+        async (itemId: string) => {
+            if (!userId) return [];
+
+            setSyncStatus('syncing');
+            setSyncMessage('Sincronizando contas e transacoes...');
+
+            const response = await fetch(`${API_BASE}/pluggy/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ itemId, monthsBack: 2, monthsForward: 4 })
+            });
+
+            const data = await response.json();
+            if (!response.ok) {
+                throw new Error(data.error || 'Erro ao sincronizar dados do Pluggy.');
+            }
+
+            const syncedAccounts: ConnectedAccount[] = [];
+            let bankCount = 0;
+            let cardCount = 0;
+            let projectedCount = 0;
+
+            for (const entry of data.accounts || []) {
+                if (!entry?.account) continue;
+                const bills = mapBills(entry.bills || []);
+                const account = normalizeAccount(entry.account, bills);
+                await dbService.addConnectedAccount(userId, account);
+                syncedAccounts.push(account);
+
+                const type = (account.type || '').toUpperCase();
+                const subtype = (account.subtype || '').toUpperCase();
+                const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+
+                if (isCredit) {
+                    const { saved, projected } = await syncCreditCardTransactions(account, entry.transactions || [], bills);
+                    cardCount += saved;
+                    projectedCount += projected;
+                } else {
+                    bankCount += await syncBankTransactions(account, entry.transactions || []);
+                }
+            }
+
+            setSyncStatus('success');
+            const summary = projectedCount > 0
+                ? `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao (+${projectedCount} parcelas futuras).`
+                : `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao.`;
+            setSyncMessage(summary);
+
+            return syncedAccounts;
+        },
+        [normalizeAccount, syncBankTransactions, syncCreditCardTransactions, userId]
+    );
 
     // Animation effect (igual Reminders modal)
     useEffect(() => {
@@ -80,8 +453,14 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 setError(null);
             } else {
                 console.error('Failed to fetch items:', data);
-                // Fallback if fetch fails
-                setError('Não foi possível carregar as conexões existentes.');
+                if (response.status === 401 || response.status === 403) {
+                    setError('Sessão Pluggy expirada. Clique em conectar novamente.');
+                    setView('connect');
+                    setConnectToken(null);
+                } else {
+                    // Fallback if fetch fails
+                    setError('Não foi possível carregar as conexões existentes.');
+                }
             }
         } catch (err) {
             console.error('Error fetching items:', err);
@@ -99,7 +478,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             const response = await fetch(`${API_BASE}/pluggy/item/${itemId}?userId=${userId}`, {
                 method: 'DELETE',
             });
-            
+
             if (response.ok) {
                 setExistingItems(prev => {
                     const next = prev.filter(i => i.id !== itemId);
@@ -111,7 +490,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                     return next;
                 });
             } else {
-               console.error('Failed to delete item'); 
+                console.error('Failed to delete item');
             }
         } catch (err) {
             console.error('Error deleting item:', err);
@@ -124,7 +503,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         setIsLoading(true);
         setError(null);
         setSyncStatus('idle'); // Reset sync status
-        
+
         try {
             const response = await fetch(`${API_BASE}/pluggy/create-token`, {
                 method: 'POST',
@@ -141,6 +520,10 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             setConnectToken(data.accessToken);
             if (Array.isArray(data.existingItems)) {
                 setExistingItems(data.existingItems);
+                if (data.existingItems.length > 0) {
+                    setView('manage');
+                    setError('Você já tem este banco conectado. Gerencie ou remova a conexão abaixo.');
+                }
             }
         } catch (err: any) {
             console.error('Error fetching connect token:', err);
@@ -151,85 +534,51 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     };
 
     const handleSuccess = useCallback(async (data: { item: { id: string } }) => {
-        if (!userId) return;
+        console.log('Pluggy connection success, item:', data.item?.id);
 
-        const itemId = data.item.id;
-        console.log('Pluggy connection success, item:', itemId);
-
-        setSyncStatus('syncing');
-        setSyncMessage('Sincronizando dados bancários...');
+        if (!userId) {
+            setSyncStatus('error');
+            setSyncMessage('Usuario nao identificado para salvar as transacoes.');
+            return;
+        }
 
         try {
-            const response = await fetch(`${API_BASE}/pluggy/sync`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId, userId })
-            });
+            setSyncStatus('syncing');
+            setSyncMessage('Conexao autenticada. Sincronizando transacoes...');
 
-            const syncData = await response.json();
+            const synced = await runFullSync(data.item?.id);
+            await fetchExistingItems();
 
-            if (!response.ok) {
-                throw new Error(syncData.error || 'Erro na sincronização');
-            }
-
-            console.log('Sync complete:', syncData);
-
-            // Save accounts to Firebase
-            if (syncData.accounts && syncData.accounts.length > 0) {
-                for (const account of syncData.accounts) {
-                    await dbService.addConnectedAccount(userId, account);
-                }
-            }
-
-            // Save checking account transactions
-            if (syncData.transactions?.checking && syncData.transactions.checking.length > 0) {
-                setSyncMessage(`Salvando ${syncData.transactions.checking.length} transações de conta corrente...`);
-                for (const tx of syncData.transactions.checking) {
-                    const exists = await dbService.transactionExists(userId, tx);
-                    if (!exists) {
-                        await dbService.addTransaction(userId, tx);
-                    }
-                }
-            }
-
-            // Save credit card transactions
-            if (syncData.transactions?.creditCard && syncData.transactions.creditCard.length > 0) {
-                setSyncMessage(`Salvando ${syncData.transactions.creditCard.length} transações de cartão de crédito...`);
-                for (const tx of syncData.transactions.creditCard) {
-                    const exists = await dbService.creditCardTransactionExists(userId, tx.providerId);
-                    if (!exists) {
-                        await dbService.addCreditCardTransaction(userId, tx);
-                    }
-                }
-            }
-
-            const totalTx = (syncData.transactionCounts?.checking || 0) + (syncData.transactionCounts?.creditCard || 0);
-            setSyncStatus('success');
-            setSyncMessage(`${syncData.accounts?.length || 0} conta(s) e ${totalTx} transação(ões) sincronizada(s)!`);
-
-            if (onSuccess && syncData.accounts) {
-                onSuccess(syncData.accounts);
-            }
+            if (onSuccess) onSuccess(synced);
 
             setTimeout(() => {
                 onClose();
-            }, 2000);
-
+            }, 1500);
         } catch (err: any) {
-            console.error('Sync error:', err);
+            console.error('Error syncing after connect:', err);
+            setError(err?.message || 'Erro ao sincronizar transacoes.');
             setSyncStatus('error');
-            setSyncMessage(err.message || 'Erro ao sincronizar');
         }
-    }, [userId, onSuccess, onClose]);
+    }, [fetchExistingItems, onClose, onSuccess, runFullSync, userId]);
+
+
 
     const handleError = useCallback((error: { message?: string; code?: string; data?: any }) => {
         const errorCode = error.message || error.code || '';
-        
-        // Handle expected errors gracefully without spamming console.error
-        if (errorCode === 'ITEM_USER_ALREADY_EXISTS') {
+        const errorDataMessage = typeof error.data === 'string' ? error.data : error.data?.message || '';
+        const duplicateError =
+            errorCode === 'ITEM_USER_ALREADY_EXISTS' ||
+            errorCode === 'ITEM_ALREADY_EXISTS' ||
+            /existing item/i.test(errorCode) ||
+            /existing item/i.test(errorDataMessage);
+
+        // Handle expected duplicate-item errors by redirecting user to manage view
+        if (duplicateError) {
             console.log('Pluggy: User attempted to add an existing item.');
-            setError('Este banco já está conectado. Você não pode adicionar a mesma conta duas vezes.');
-            setSyncStatus('error');
+            setError('Este banco já está conectado. Você pode gerenciar ou remover a conexão existente.');
+            setSyncStatus('idle');
+            setSyncMessage('');
+            fetchExistingItems();
             return;
         }
 
@@ -256,7 +605,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
         setError(errorMessage);
         setSyncStatus('error');
-    }, []);
+    }, [fetchExistingItems]);
+
 
     if (!isVisible) return null;
 
@@ -299,15 +649,17 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
                 {/* Content */}
                 <div className="flex-1 overflow-hidden relative z-10 p-5 overflow-y-auto custom-scrollbar">
-                    
+
                     {/* View: MANAGE Existing Connections */}
                     {view === 'manage' && (
                         <div className="space-y-4 animate-fade-in">
                             <p className="text-sm text-gray-400 text-center mb-2">
                                 Identificamos conexões ativas na sua conta Pluggy. Você pode removê-las para conectar novamente.
                             </p>
-                            
-                            {existingItems.length === 0 && !isLoading ? (
+
+                            {isLoading ? (
+                                <p className="text-center text-gray-500 py-8">Carregando conexões...</p>
+                            ) : existingItems.length === 0 ? (
                                 <p className="text-center text-gray-500 py-8">Nenhuma conexão encontrada.</p>
                             ) : (
                                 <div className="space-y-3">
@@ -373,7 +725,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                                         <p className="text-white font-medium mb-1">Erro na conexão</p>
                                         <p className="text-gray-400 text-sm max-w-xs">{error}</p>
                                     </div>
-                                    
+
                                     <div className="flex flex-col gap-2 mt-4 w-full max-w-[200px]">
                                         {error.includes('já está conectado') ? (
                                             <>
@@ -419,7 +771,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                                                 <CheckCircle className="text-emerald-500" size={32} />
                                             </div>
                                             <div className="text-center">
-                                                <p className="text-white font-medium mb-1">Sincronização completa!</p>
+                                                <p className="text-white font-medium mb-1">Conexao concluida!</p>
                                                 <p className="text-gray-400 text-sm">{syncMessage}</p>
                                             </div>
                                         </>
@@ -449,7 +801,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                                 <div className="min-h-[400px] animate-fade-in">
                                     <PluggyConnect
                                         connectToken={connectToken}
-                                        includeSandbox={true}
+                                        includeSandbox={false}
                                         onSuccess={handleSuccess}
                                         onError={handleError}
                                         onClose={onClose}

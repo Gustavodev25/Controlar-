@@ -29,8 +29,11 @@ let realtimeDb;
 try {
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
-  // Long polling helps in restricted networks that block WebSockets
-  database = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  // Force long polling and disable fetch streams to avoid QUIC/HTTP3 issues in some networks
+  database = initializeFirestore(app, {
+    experimentalForceLongPolling: true,
+    useFetchStreams: false
+  });
   realtimeDb = getDatabase(app);
 } catch (error) {
   console.error("Erro ao inicializar Firebase:", error);

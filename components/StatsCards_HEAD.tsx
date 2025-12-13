@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
@@ -33,8 +33,6 @@ interface StatsCardsProps {
     setIncludeOpenFinance?: (v: boolean) => void;
     enabledCreditCardIds?: string[];
     setEnabledCreditCardIds?: (ids: string[]) => void;
-    cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
-    setCardInvoiceTypes?: (types: Record<string, 'current' | 'next' | 'used_total'>) => void;
   };
   isProMode?: boolean;
   onActivateProMode?: () => void;
@@ -80,7 +78,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         type === 'SAVINGS_ACCOUNT' ||
         subtype === 'SAVINGS' || 
         subtype === 'SAVINGS_ACCOUNT' ||
-        name.includes('POUPANCA') ||
+        name.includes('POUPAN+çA') ||
         name.includes('POUPANCA');
 
     return !isSavings;
@@ -118,29 +116,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
-  // Track which invoice type each card uses for expenses (current or next)
-  // Format: { cardId: 'current' | 'next' | 'used_total' }
-  const [localCardInvoiceType, setLocalCardInvoiceType] = useState<Record<string, 'current' | 'next' | 'used_total'>>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('finances_card_invoice_types');
-      if (stored) {
-        try {
-          return JSON.parse(stored);
-        } catch { }
-      }
-    }
-    return {};
-  });
-
-  const cardInvoiceType = toggles?.cardInvoiceTypes ?? localCardInvoiceType;
-  const setCardInvoiceType = toggles?.setCardInvoiceTypes ?? setLocalCardInvoiceType;
-
-  useEffect(() => {
-    if (!toggles?.cardInvoiceTypes && typeof window !== 'undefined') {
-      localStorage.setItem('finances_card_invoice_types', JSON.stringify(localCardInvoiceType));
-    }
-  }, [localCardInvoiceType, toggles?.cardInvoiceTypes]);
-
   // Calculate credit card invoice for the filtered month
   // This calculates the total expenses on credit cards for the displayed period
   const creditCardInvoice = useMemo(() => {
@@ -149,18 +124,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       return accountBalances?.credit?.used || 0;
     }
 
-    // Filter transactions that belong to the selected month's INVOICE
+    // Filter transactions that belong to the selected month
     // Only count expenses (positive amounts or expense type transactions)
     const monthTransactions = creditCardTransactions.filter(tx => {
-      // PRIMARY: Check if invoiceDate matches the dashboard month (YYYY-MM)
-      // invoiceDate format is YYYY-MM-01, so we compare the first 7 chars
-      const txInvoiceMonth = (tx as any).invoiceDate?.slice(0, 7);
-      if (txInvoiceMonth && txInvoiceMonth !== dashboardDate) return false;
-
-      // FALLBACK: If no invoiceDate, use transaction date (for manual transactions)
-      if (!txInvoiceMonth && !tx.date.startsWith(dashboardDate)) return false;
-
-      // Only count completed or pending transactions
+      // Check if transaction date starts with the dashboard month (YYYY-MM)
+      if (!tx.date.startsWith(dashboardDate)) return false;
+      // Only count completed transactions
       if (tx.status !== 'completed' && tx.status !== 'pending') return false;
       // Only count non-ignored transactions
       if ((tx as any).ignored) return false;
@@ -195,321 +164,95 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   const creditLimit = accountBalances?.credit?.limit || 0;
   const creditAvailable = accountBalances?.credit?.available || 0;
 
-  const currentMonthKey = useMemo(() => {
-    const now = new Date();
-    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-  }, []);
-
-  const isCurrentMonthView = !dashboardDate || dashboardDate === currentMonthKey;
-
-  type InvoiceMode = 'due_current' | 'due_next' | 'used_total';
-  const [invoiceMode, setInvoiceMode] = useState<InvoiceMode>(() => {
-    if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('finances_invoice_mode');
-      if (stored === 'due_current' || stored === 'due_next' || stored === 'used_total') return stored;
-    }
-    return 'due_current';
-  });
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('finances_invoice_mode', invoiceMode);
-    }
-  }, [invoiceMode]);
-
-  const getBillAmounts = useCallback((card: ConnectedAccount) => {
-    const bills = card.bills || [];
-    if (!bills.length) {
-      return { currentBill: null, nextBill: null, currentAmount: null, nextAmount: null };
-    }
-
-    const today = new Date();
-    const sortedBills = [...bills].sort((a, b) =>
-      new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
-
-    // Prioriza fatura OPEN; senÃ£o, a prÃ³xima com dueDate futuro; fallback Ãºltima conhecida
-    const openBill = sortedBills.find(b => b.state === 'OPEN');
-    const futureBill = sortedBills.find(b => new Date(b.dueDate) >= today);
-    const currentBill = openBill || futureBill || sortedBills[sortedBills.length - 1] || null;
-
-    const currentBillIndex = currentBill ? sortedBills.indexOf(currentBill) : -1;
-    const nextBill = currentBillIndex >= 0 && currentBillIndex < sortedBills.length - 1
-      ? sortedBills[currentBillIndex + 1]
-      : null;
-
-    const currentAmount = currentBill ? Math.abs(currentBill.totalAmount || 0) : null;
-    const nextAmount = nextBill ? Math.abs(nextBill.totalAmount || 0) : null;
-
-    return { currentBill, nextBill, currentAmount, nextAmount };
-  }, []);
-
-  const resolveConnectedInvoice = useCallback((card: ConnectedAccount) => {
-    const hasBalance = card.balance !== undefined && card.balance !== null;
-    const normalizedBalance = hasBalance ? Math.abs(card.balance as number) : null;
-
-    if (normalizedBalance !== null && normalizedBalance > 0) {
-      return normalizedBalance;
-    }
-
-    if (card.bills && card.bills.length > 0) {
-      const today = new Date();
-      const sortedByDue = [...card.bills].sort((a, b) =>
-        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-      );
-      const futureBill = sortedByDue.find(bill => new Date(bill.dueDate) > today);
-      const targetBill = futureBill || sortedByDue[sortedByDue.length - 1];
-      if (targetBill) {
-        const billAmount = Math.abs(targetBill.totalAmount || 0);
-        if (billAmount > 0) return billAmount;
-      }
-    }
-
-    if (normalizedBalance !== null) return normalizedBalance;
-    return null;
-  }, []);
-
-  const getInvoiceByMode = useCallback((card: ConnectedAccount, transactionsForCard: Transaction[]) => {
-    const bills = card.bills || [];
-    const today = new Date();
-
-    const sortedBills = [...bills].sort((a, b) =>
-      new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
-
-    const currentBill = sortedBills.find(b => {
-      const dueDate = new Date(b.dueDate);
-      return dueDate >= today || b.state === 'OPEN';
-    }) || sortedBills.find(b => b.state === 'OPEN');
-
-    const currentBillIndex = currentBill ? sortedBills.indexOf(currentBill) : -1;
-    const nextBill = currentBillIndex >= 0 && currentBillIndex < sortedBills.length - 1
-      ? sortedBills[currentBillIndex + 1]
-      : null;
-
-    if (invoiceMode === 'due_current' && currentBill) {
-      const amount = Math.abs(currentBill.totalAmount || 0);
-      if (amount > 0) return amount;
-    }
-
-    if (invoiceMode === 'due_next' && nextBill) {
-      const amount = Math.abs(nextBill.totalAmount || 0);
-      if (amount > 0) return amount;
-    }
-
-    const openBill = sortedBills.find(b => b.state === 'OPEN');
-    if (openBill && Math.abs(openBill.totalAmount || 0) > 0) {
-      return Math.abs(openBill.totalAmount);
-    }
-
-    const connectedInvoice = resolveConnectedInvoice(card);
-    if (connectedInvoice !== null) return connectedInvoice;
-
-    if (transactionsForCard.length > 0) {
-      const txSum = transactionsForCard.reduce((sum, tx) => {
-        if ((tx as any).ignored) return sum;
-        const description = (tx.description || '').toLowerCase();
-        if (description.includes('pagamento fatura') || description.includes('credit card payment')) return sum;
-        if (tx.type === 'expense') return sum + Math.abs(tx.amount);
-        if (tx.type === 'income') return sum - Math.abs(tx.amount);
-        return sum;
-      }, 0);
-      return Math.max(0, txSum);
-    }
-
-    return 0;
-  }, [invoiceMode, resolveConnectedInvoice]);
-
   // Calculate invoice per individual card - matches transactions to cards and filters by month
   const cardInvoices = useMemo(() => {
+    // Get unique accountIds from transactions for fallback matching strategy
     const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId).filter(Boolean))];
 
-    const resolveTxMonthKey = (tx: Transaction) => {
-      if (tx.invoiceDueDate) return tx.invoiceDueDate.slice(0, 7);
-      if (tx.dueDate) return tx.dueDate.slice(0, 7);
-      if (tx.invoiceDate) return tx.invoiceDate.slice(0, 7);
-      if (tx.date) return tx.date.slice(0, 7);
-      return '';
-    };
-
     return creditAccounts.map((card, cardIndex) => {
-      const isConnectedCard = card.connectionMode !== 'MANUAL';
+      // Try to match transactions by accountId first
+      let cardTransactions = creditCardTransactions.filter(tx =>
+        tx.accountId === card.id
+      );
 
-      let cardTransactions = creditCardTransactions.filter(tx => tx.accountId === card.id);
-
+      // If no match by accountId, try alternative matching strategies
       if (cardTransactions.length === 0) {
+        // Strategy 1: If there are exactly N unique accountIds for N cards, map by index
         if (uniqueAccountIds.length === creditAccounts.length && uniqueAccountIds.length > 0) {
           const sortedAccountIds = [...uniqueAccountIds].sort();
           const targetAccountId = sortedAccountIds[cardIndex];
           cardTransactions = creditCardTransactions.filter(tx => tx.accountId === targetAccountId);
         }
 
+        // Strategy 2: If still no match, and this is the only card, use all transactions
         if (cardTransactions.length === 0 && creditAccounts.length === 1) {
           cardTransactions = creditCardTransactions;
         }
       }
 
-            let filteredTransactions = cardTransactions;
+      // Filter by dashboard date (month) if specified
+      let filteredTransactions = cardTransactions;
       if (dashboardDate) {
-        filteredTransactions = cardTransactions.filter(tx => {
-          const key = tx.invoiceDueDate?.slice(0, 7)
-            || tx.dueDate?.slice(0, 7)
-            || tx.invoiceDate?.slice(0, 7)
-            || tx.date?.slice(0, 7);
-          return key && key.startsWith(dashboardDate);
-        });
+        filteredTransactions = cardTransactions.filter(tx =>
+          tx.date && tx.date.startsWith(dashboardDate)
+        );
       }
 
-      // Soma mensal apenas deste cartao (invoiceDueDate > dueDate > invoiceDate > date)
-      const cardMonthSums = new Map<string, number>();
-      cardTransactions.forEach((tx) => {
-        if ((tx as any).ignored) return;
-        const key = tx.invoiceDueDate?.slice(0, 7)
-          || tx.dueDate?.slice(0, 7)
-          || tx.invoiceDate?.slice(0, 7)
-          || tx.date?.slice(0, 7);
-        if (!key) return;
-        const isPayment = (tx.type === 'income') || (tx.amount < 0);
-        const delta = Math.abs(tx.amount || 0) * (isPayment ? -1 : 1);
-        cardMonthSums.set(key, (cardMonthSums.get(key) || 0) + delta);
-      });
-
-      const sortedMonthKeys = Array.from(cardMonthSums.keys()).sort();
-
-      const { currentBill, nextBill, currentAmount, nextAmount } = getBillAmounts(card);
-      const deriveNextDueDate = (dateStr?: string) => {
-        if (!dateStr) return null;
-        const d = new Date(dateStr);
-        if (isNaN(d.getTime())) return null;
-        d.setMonth(d.getMonth() + 1);
-        return d.toISOString().split('T')[0];
-      };
-
-      // Se Pluggy trouxe faturas, priorize valores de fatura; senÃ£o, caia para transaÃ§Ãµes/calculado
+      // Calculate invoice from filtered transactions (simple sum for the month)
       let invoiceValue = 0;
-      if (currentAmount !== null || nextAmount !== null) {
-        if (invoiceMode === 'used_total') {
-          invoiceValue = getInvoiceByMode(card, filteredTransactions);
-        } else if (invoiceMode === 'due_next') {
-          invoiceValue = (nextAmount ?? currentAmount ?? 0);
-        } else {
-          // default: due_current
-          invoiceValue = (currentAmount ?? nextAmount ?? 0);
-        }
+
+      if (filteredTransactions.length > 0) {
+        // Sum up expenses for the selected month
+        invoiceValue = filteredTransactions.reduce((sum, tx) => {
+          if ((tx as any).ignored) return sum;
+
+          // Ignore payment transactions
+          const description = (tx.description || '').toLowerCase();
+          if (description.includes('pagamento fatura') || description.includes('credit card payment')) {
+            return sum;
+          }
+
+          // For credit cards: expenses add to invoice, income/payments reduce it
+          if (tx.type === 'expense') {
+            return sum + Math.abs(tx.amount);
+          } else if (tx.type === 'income') {
+            return sum - Math.abs(tx.amount);
+          }
+          return sum;
+        }, 0);
+        invoiceValue = Math.max(0, invoiceValue); // Invoice can't be negative
       } else {
-        invoiceValue = getInvoiceByMode(card, filteredTransactions);
-      }
-      invoiceValue = Math.max(0, invoiceValue);
-
-      const currentMonthKeyFromBill = currentBill?.dueDate?.slice(0, 7);
-      const nextMonthKeyFromBill = nextBill?.dueDate?.slice(0, 7);
-
-      // Se nÃ£o hÃ¡ bill futura, pegue o prÃ³ximo mÃªs com transaÃ§Ãµes projetadas
-      let currentMonthKey = currentMonthKeyFromBill;
-      if (!currentMonthKey) {
-        const todayKey = new Date().toISOString().slice(0, 7);
-        currentMonthKey = sortedMonthKeys.find(k => k >= todayKey) || sortedMonthKeys[0];
+        // Fallback to card balance (from API)
+        invoiceValue = Math.abs(card.balance || 0);
       }
 
-      const incrementMonthKey = (key?: string | null) => {
-        if (!key) return null;
-        const [y, m] = key.split('-').map(Number);
-        if (!y || !m) return null;
-        const d = new Date(y, m - 1, 1);
-        d.setMonth(d.getMonth() + 1);
-        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      };
-
-      let nextMonthKey = nextMonthKeyFromBill;
-      if (!nextMonthKey && currentMonthKey) {
-        nextMonthKey = sortedMonthKeys.find(k => k > currentMonthKey) || incrementMonthKey(currentMonthKey);
-      }
-
-      const currentInvoiceValue = Math.max(0, currentAmount !== null
-        ? currentAmount
-        : (cardMonthSums.get(currentMonthKey || '') || invoiceValue));
-
-      const nextInvoiceValue = Math.max(0, nextAmount !== null
-        ? nextAmount
-        : (cardMonthSums.get(nextMonthKey || '') || 0));
-
+      // Calculate limit and available for this card
+      // If card has its own values, use them. Otherwise, estimate proportionally
       let cardLimit = card.creditLimit || 0;
       let cardAvailable = card.availableCreditLimit || 0;
 
+      // If this card doesn't have its own limit data,
+      // estimate proportionally from the global totals
       if (cardLimit === 0 && creditLimit > 0) {
         const totalBalance = creditAccounts.reduce((sum, c) => sum + Math.abs(c.balance || 0), 0);
         const cardProportion = totalBalance > 0 ? Math.abs(card.balance || 0) / totalBalance : 1 / creditAccounts.length;
         cardLimit = creditLimit * cardProportion;
       }
 
+      // IMPORTANT: Calculate available based on the CURRENT month's invoice, not the fixed balance
+      // This makes the available value change when the month filter changes
       if (cardLimit > 0) {
-        // Use API available limit if present, otherwise estimate
-        if (card.availableCreditLimit !== undefined && card.availableCreditLimit !== null) {
-           cardAvailable = card.availableCreditLimit;
-        } else {
-           cardAvailable = Math.max(0, cardLimit - invoiceValue);
-        }
+        cardAvailable = Math.max(0, cardLimit - invoiceValue);
       }
-
-      const payableAmount = invoiceValue;
-
-      // Build future month list (current + next months)
-      const futureMonthKeys: string[] = [];
-      const pushUnique = (key?: string | null) => {
-        if (!key) return;
-        if (!futureMonthKeys.includes(key)) futureMonthKeys.push(key);
-      };
-      pushUnique(currentMonthKey);
-      pushUnique(nextMonthKey);
-      pushUnique(incrementMonthKey(nextMonthKey || currentMonthKey) || undefined);
-      pushUnique(incrementMonthKey(incrementMonthKey(nextMonthKey || currentMonthKey) || undefined) || undefined);
-
-      const futureInvoices = futureMonthKeys.map((key, idx) => {
-        let amount = Math.max(0, cardMonthSums.get(key) || 0);
-        if (idx === 0) amount = currentInvoiceValue;
-        if (idx === 1) amount = nextInvoiceValue || amount;
-        const dueDate =
-          idx === 0 ? (currentBill?.dueDate) :
-          idx === 1 ? (nextBill?.dueDate || deriveNextDueDate(currentBill?.dueDate)) :
-          null;
-        return { monthKey: key, amount, dueDate };
-      });
-
-      const usedTotal = resolveConnectedInvoice(card) || 0;
 
       return {
         cardId: card.id,
         invoice: invoiceValue,
-        usedTotal,
-        payable: payableAmount,
         limit: cardLimit,
-        available: cardAvailable,
-        currentInvoice: currentInvoiceValue,
-        nextInvoice: nextInvoiceValue,
-        currentBillDueDate: currentBill?.dueDate,
-        nextBillDueDate: nextBill?.dueDate || deriveNextDueDate(currentBill?.dueDate),
-        futureInvoices
+        available: cardAvailable
       };
     });
-  }, [creditAccounts, creditCardTransactions, dashboardDate, creditLimit, getInvoiceByMode, getBillAmounts, invoiceMode, resolveConnectedInvoice]);
-
-  // Total that will be added to expenses based on selected invoice type per card
-  const selectedCardInvoiceTotal = useMemo(() => {
-    return cardInvoices.reduce((sum, cardInvoice, idx) => {
-      const card = creditAccounts[idx];
-      if (!card || !cardsIncludedInExpenses.has(card.id)) return sum;
-
-      const selectedType = cardInvoiceType[card.id] || 'current';
-      const currentValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-      const nextValue = cardInvoice?.nextInvoice ?? 0;
-      
-      let chosenValue = currentValue;
-      if (selectedType === 'next') chosenValue = nextValue;
-      else if (selectedType === 'used_total') chosenValue = cardInvoice?.usedTotal ?? 0;
-
-      return sum + chosenValue;
-    }, 0);
-  }, [cardInvoices, cardInvoiceType, cardsIncludedInExpenses, creditAccounts]);
+  }, [creditAccounts, creditCardTransactions, dashboardDate, creditLimit]);
 
   // Navigation functions for credit card carousel
   const goToNextCard = () => {
@@ -578,13 +321,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     const type = (acc.type || '').toUpperCase();
     const subtype = (acc.subtype || '').toUpperCase();
 
-    // Se o type for CHECKING, +Â® conta corrente
+    // Se o type for CHECKING, +® conta corrente
     if (type === 'CHECKING') return 'Conta Corrente';
 
     if (subtype === 'CHECKING_ACCOUNT' || subtype === 'CHECKING') return 'Conta Corrente';
-    if (subtype === 'SALARY_ACCOUNT' || subtype === 'SALARY') return 'Conta Salario';
+    if (subtype === 'SALARY_ACCOUNT' || subtype === 'SALARY') return 'Conta Sal+írio';
     if (subtype === 'PAYMENT_ACCOUNT' || subtype === 'PAYMENT') return 'Conta de Pagamento';
-    if (subtype === 'SAVINGS_ACCOUNT' || subtype === 'SAVINGS') return 'Poupan+Âºa';
+    if (subtype === 'SAVINGS_ACCOUNT' || subtype === 'SAVINGS') return 'Poupan+ºa';
     if (subtype === 'INDIVIDUAL') return 'Conta Corrente';
 
     // Fallback: mostra o subtype ou type
@@ -633,7 +376,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     Funcionalidade Pro
                   </span>
                 ) : (
-                  <p className="text-xs text-gray-400 mt-1">Ative para ver saldo automatico</p>
+                  <p className="text-xs text-gray-400 mt-1">Ative para ver saldo autom+ítico</p>
                 )}
               </div>
             )}
@@ -758,7 +501,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     Funcionalidade Pro
                   </span>
                 ) : (
-                  <p className="text-xs text-gray-400 mt-1">Ative para ver cartoes conectados</p>
+                  <p className="text-xs text-gray-400 mt-1">Ative para ver cart+Áes conectados</p>
                 )}
               </div>
             )}
@@ -789,14 +532,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                   }
 
                   const cardInvoice = cardInvoices[index] || { invoice: 0, limit: 0, available: 0 };
-                  const currentInvoiceValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-                  const nextInvoiceValue = cardInvoice?.nextInvoice ?? 0;
-                  const formatDueDate = (dateStr?: string) => {
-                    if (!dateStr) return '--/--/----';
-                    const d = new Date(dateStr);
-                    if (isNaN(d.getTime())) return '--/--/----';
-                    return d.toLocaleDateString('pt-BR');
-                  };
                   const isCurrent = offset === 0;
                   const isNext = offset === 1;
                   const isNextNext = offset === 2;
@@ -853,147 +588,113 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                       {/* Card Content */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                                                    <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-[#D97757]/10 text-[#D97757]' : 'bg-gray-700/20 text-gray-500'}`}>
-                                                      <CreditCard size={20} />
-                                                    </div>
-                                                    <div>
-                                                      <div className="flex items-center gap-2">
-                                                        <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                          {card.institution || card.name || 'Cartao'}
-                                                        </p>
-                                                        {isCurrent && creditAccounts.length > 1 && (
-                                                          <span className="text-[10px] text-[#D97757] bg-[#D97757]/10 px-1.5 py-0.5 rounded font-mono border border-[#D97757]/20">
-                                                            {index + 1}/{creditAccounts.length}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      <div className="flex items-baseline gap-2">
-                                                        <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
-                                                          <NumberFlow
-                                                            value={(cardInvoice.payable ?? cardInvoice.invoice)}
-                                                            format={{ style: 'currency', currency: 'BRL' }}
-                                                            locales="pt-BR"
-                                                          />
-                                                        </p>
-                                                        {isCurrent && (
-                                                          <span className="text-xs text-gray-500 font-medium">
-                                                            {dashboardDate ? 'mes' : 'atual'}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                  {isCurrent && (
-                                                    <div className="mt-2 space-y-1 text-xs">
-                          
-                          
-                                                    </div>
-                                                  )}
-                                                  {/* Settings button and Swipe Hint (only on current) */}
-                                                  {isCurrent && (
-                                                    <div className="flex items-center gap-2">
-                                                      {/* Settings Button */}
-                                                       <Dropdown>
-                                                          <DropdownTrigger asChild>
-                                                            <motion.button
-                                                              initial={{ opacity: 0 }}
-                                                              animate={{ opacity: 1 }}
-                                                              onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
-                                                              className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
-                                                                ? 'bg-[#D97757]/20 text-[#D97757]'
-                                                                : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-[#D97757]'
-                                                                }`}
-                                                              title="Configuracoes do cartao"
-                                                            >
-                                                              <Settings size={14} />
-                                                            </motion.button>
-                                                          </DropdownTrigger>
-                                                          
-                                                          <DropdownContent width="w-[320px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
-                                                             <DropdownLabel>ConfiguraÃ§Ãµes dos CartÃµes</DropdownLabel>
-                                                             <div className="px-3 py-2 space-y-3">
-                                                                  {creditAccounts.map((card, index) => {
-                                                                    const cardInvoice = cardInvoices[index];
-                                                                    const isEnabled = cardsIncludedInExpenses.has(card.id);
-                                                                    const selectedType = cardInvoiceType[card.id] || 'current';
-                                                                    
-                                                                    const toggleCard = () => {
-                                                                      const newSet = new Set(cardsIncludedInExpenses);
-                                                                      if (isEnabled) newSet.delete(card.id);
-                                                                      else newSet.add(card.id);
-                                                                      
-                                                                      if (toggles?.setEnabledCreditCardIds) {
-                                                                        toggles.setEnabledCreditCardIds(Array.from(newSet));
-                                                                      }
-                                                                    };
-                          
-                                                                    const setMode = (mode: 'current' | 'next' | 'used_total') => {
-                                                                       if (setCardInvoiceType) {
-                                                                          setCardInvoiceType({ ...cardInvoiceType, [card.id]: mode });
-                                                                       }
-                                                                    };
-                          
-                                                                    const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-                                                                    const usedVal = cardInvoice?.usedTotal ?? 0;
-                          
-                                                                    return (
-                                                                      <div
-                                                                        key={`expense-${card.id}`}
-                                                                        className={`rounded-xl border transition-all overflow-hidden ${isEnabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/20 border-gray-800'}`}
-                                                                      >
-                                                                        {/* Header - Enable/Disable Card */}
-                                                                        <div 
-                                                                          onClick={(e) => { e.stopPropagation(); toggleCard(); }}
-                                                                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800/50 transition-colors"
-                                                                        >
-                                                                                                                          <div className="flex items-center gap-2.5">
-                                                                                                                            <div className={`w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center shadow-inner ${isEnabled ? 'text-[#D97757]' : 'text-gray-600'}`}>
-                                                                                                                              <Building size={14} />
-                                                                                                                            </div>
-                                                                                                                            <span className={`text-sm font-medium ${isEnabled ? 'text-gray-200' : 'text-gray-500'}`}>
-                                                                                                                              {card.institution || card.name || 'CartÃ£o'}
-                                                                                                                            </span>
-                                                                                                                          </div>                                                                                                                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${isEnabled ? 'bg-[#D97757] border-[#D97757] text-white shadow-lg shadow-[#D97757]/20' : 'bg-gray-800 border-gray-700 text-transparent hover:border-gray-600'}`}>
-                                                                                                                            <Check size={12} strokeWidth={4} />
-                                                                                                                          </div>                                                                        </div>
-                          
-                                                                        {/* Modes - Only visible if enabled */}
-                                                                        {isEnabled && (
-                                                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
-                                                                             <div 
-                                                                                onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current' 
-                                                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner' 
-                                                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                                             >
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                                                  Fatura Atual
-                                                                                </span>
-                                                                                <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
-                                                                                  {formatCurrency(currentVal)}
-                                                                                </span>
-                                                                             </div>
-                          
-                                                                             <div 
-                                                                                onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total' 
-                                                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner' 
-                                                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                                             >
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                                                  Total Usado
-                                                                                </span>
-                                                                                <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                                                  {formatCurrency(usedVal)}
-                                                                                </span>
-                                                                             </div>
-                                                                          </div>
-                                                                        )}
-                                                                      </div>
-                                                                    );
-                                                                  })}
-                                                             </div>
-                                                          </DropdownContent>                             </Dropdown>
+                          <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-orange-900/20 text-orange-400' : 'bg-gray-700/20 text-gray-500'}`}>
+                            <CreditCard size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {card.institution || card.name || 'Cart+úo'}
+                              </p>
+                              {isCurrent && creditAccounts.length > 1 && (
+                                <span className="text-[10px] text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded font-mono border border-orange-500/30">
+                                  {index + 1}/{creditAccounts.length}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                              <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
+                                <NumberFlow
+                                  value={cardInvoice.invoice}
+                                  format={{ style: 'currency', currency: 'BRL' }}
+                                  locales="pt-BR"
+                                />
+                              </p>
+                              {isCurrent && (
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {dashboardDate ? 'm+¬s' : 'atual'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {/* Settings button and Swipe Hint (only on current) */}
+                        {isCurrent && (
+                          <div className="flex items-center gap-2">
+                            {/* Settings Button */}
+                             <Dropdown>
+                                <DropdownTrigger asChild>
+                                  <motion.button
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+                                    className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
+                                      ? 'bg-orange-900/50 text-orange-400'
+                                      : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-orange-400'
+                                      }`}
+                                    title="Configura+º+Áes do cart+úo"
+                                  >
+                                    <Settings size={14} />
+                                  </motion.button>
+                                </DropdownTrigger>
+                                
+                                <DropdownContent width="w-[280px]" align="right" className="max-h-[300px] overflow-y-auto custom-scrollbar" portal>
+                                   <DropdownLabel>Configura+º+Áes do Cart+úo</DropdownLabel>
+                                   <div className="px-2.5 py-1">
+                                      <p className="text-[10px] text-gray-500 uppercase tracking-wide mb-2 font-medium">Fatura nas Despesas</p>
+                                      <div className="space-y-1">
+                                        {creditAccounts.map((card, index) => {
+                                          const cardInvoice = cardInvoices[index];
+                                          const isEnabled = cardsIncludedInExpenses.has(card.id);
+
+                                          const toggleCard = () => {
+                                            const newSet = new Set(cardsIncludedInExpenses);
+                                            if (isEnabled) newSet.delete(card.id);
+                                            else newSet.add(card.id);
+                                            
+                                            // Update parent state (App.tsx)
+                                            if (toggles?.setEnabledCreditCardIds) {
+                                              toggles.setEnabledCreditCardIds(Array.from(newSet));
+                                            }
+                                          };
+
+                                          return (
+                                            <div
+                                              key={`expense-${card.id}`}
+                                              onClick={(e) => { e.stopPropagation(); toggleCard(); }}
+                                              className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-all ${isEnabled ? 'bg-orange-900/30 border border-orange-500/30' : 'bg-transparent hover:bg-gray-800'
+                                                }`}
+                                            >
+                                              <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                <div className={`p-1 rounded ${isEnabled ? 'bg-orange-900/30 text-orange-400' : 'bg-gray-700/50 text-gray-500'}`}>
+                                                  <TrendingDown size={10} />
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="text-xs text-white font-medium truncate">{card.institution || card.name || 'Cart+úo'}</p>
+                                                </div>
+                                                <p className="text-[10px] text-gray-500 font-mono">{formatCurrency(cardInvoice?.invoice || 0)}</p>
+                                              </div>
+                                              {isEnabled && <Check size={12} className="text-orange-400 ml-1" />}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                   </div>
+                                   
+                                   {/* Summary */}
+                                    {cardsIncludedInExpenses.size > 0 && (
+                                      <>
+                                        <DropdownSeparator />
+                                        <div className="px-2.5 py-2">
+                                          <p className="text-orange-400 text-xs">
+                                            + {formatCurrency(cardInvoices.filter((_, i) => cardsIncludedInExpenses.has(creditAccounts[i]?.id)).reduce((sum, c) => sum + c.invoice, 0))} ser+í somado +ás despesas
+                                          </p>
+                                        </div>
+                                      </>
+                                    )}
+
+                                </DropdownContent>
+                             </Dropdown>
 
                             {/* Swipe Hint */}
                             {creditAccounts.length > 1 && !isDragging && (
@@ -1017,7 +718,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                             // Use the card's calculated limit (may be proportional)
                             const limit = cardInvoice.limit || 0;
                             // Use absolute value as extra safety for progress bar
-                            const invoice = Math.abs((cardInvoice.payable ?? cardInvoice.invoice) || 0);
+                            const invoice = Math.abs(cardInvoice.invoice || 0);
 
                             // Calculate percentage width
                             let widthPercentage = 0;
@@ -1049,7 +750,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                 transition={{ duration: 0.6, ease: "easeOut" }}
                                 style={{
                                   opacity: isCurrent ? 1 : 0.5,
-                                  minWidth: invoice > 0 ? '8px' : '0px' // Garantir visibilidade minima
+                                  minWidth: invoice > 0 ? '8px' : '0px' // Garantir visibilidade m+¡nima
                                 }}
                               />
                             );
@@ -1076,7 +777,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               </div>
                             )}
                             <span className="text-gray-500">
-                              Usado: {formatCurrency((cardInvoice.limit || 0) - (cardInvoice.available || 0))}
+                              Lim: {formatCurrency(cardInvoice.limit || 0)}
                             </span>
                           </div>
                         )}
@@ -1093,7 +794,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                         <CreditCard size={20} />
                       </div>
                       <div>
-                        <p className="text-sm text-gray-400 font-medium">Cartao de Credito</p>
+                        <p className="text-sm text-gray-400 font-medium">Cart+úo de Cr+®dito</p>
                         <div className="flex items-baseline gap-2">
                           <p className="text-2xl font-bold text-white mt-0.5">
                             <NumberFlow
@@ -1103,7 +804,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                             />
                           </p>
                           <span className="text-xs text-gray-500 font-medium">
-                            {dashboardDate ? 'fatura do mes' : 'fatura atual'}
+                            {dashboardDate ? 'fatura do m+¬s' : 'fatura atual'}
                           </span>
                         </div>
                       </div>
@@ -1177,7 +878,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               <p className="text-sm text-gray-400 font-medium">{labels?.expense || 'Despesas'}</p>
               {!hideCards && cardsIncludedInExpenses.size > 0 && (
                 <span className="text-[10px] text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded font-medium">
-                  + {cardsIncludedInExpenses.size} cartao{cardsIncludedInExpenses.size > 1 ? 'es' : ''}
+                  + {cardsIncludedInExpenses.size} cart+úo{cardsIncludedInExpenses.size > 1 ? 'es' : ''}
                 </span>
               )}
             </div>
@@ -1197,7 +898,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
           <div className="relative z-10">
             {/* Changed generic label to accommodate Year/Custom filters */}
-            <p className="text-sm text-gray-400 font-medium">{labels?.savings || 'Resultado do Periodo'}</p>
+            <p className="text-sm text-gray-400 font-medium">{labels?.savings || 'Resultado do Per+¡odo'}</p>
             <p className="text-2xl font-bold mt-1 text-purple-400">
               <NumberFlow
                 value={stats.monthlySavings}
@@ -1216,4 +917,3 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     </div >
   );
 };  
-

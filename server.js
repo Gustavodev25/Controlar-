@@ -2,7 +2,7 @@ import express from 'express';
 import routes from './api/routes.js';
 import dotenv from 'dotenv';
 
-dotenv.config();
+dotenv.config({ override: true });
 
 const app = express();
 const PORT = process.env.PORT || 3001;

@@ -396,6 +396,46 @@ export const addTransaction = async (userId: string, transaction: Omit<Transacti
   }
 };
 
+// Helper to remove undefined values for regular transactions (Firebase doesn't accept undefined)
+const removeUndefinedTx = <T extends Record<string, any>>(obj: T): T => {
+  const result = {} as T;
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+};
+
+// Upsert helper for imported transactions (uses providerId or customId)
+export const upsertImportedTransaction = async (userId: string, transaction: Omit<Transaction, 'id'>, customId?: string) => {
+  if (!db) return "";
+  const txRef = collection(db, "users", userId, "transactions");
+  const cleanTransaction = removeUndefinedTx(transaction);
+
+  // Priority 1: customId (explicit doc id)
+  if (customId) {
+    const docRef = doc(txRef, customId);
+    await setDoc(docRef, cleanTransaction, { merge: true });
+    return docRef.id;
+  }
+
+  // Priority 2: providerId (stable id from provider)
+  if (cleanTransaction.providerId) {
+    const q = query(txRef, where("providerId", "==", cleanTransaction.providerId), limit(1));
+    const snap = await getDocs(q);
+    if (!snap.empty) {
+      const existingRef = snap.docs[0].ref;
+      await setDoc(existingRef, cleanTransaction, { merge: true });
+      return existingRef.id;
+    }
+  }
+
+  // Fallback: create new document
+  const docRef = await addDoc(txRef, cleanTransaction);
+  return docRef.id;
+};
+
 export const transactionExists = async (userId: string, data: Omit<Transaction, 'id'>) => {
   if (!db) return false;
   try {
@@ -499,34 +539,392 @@ export interface CreditCardTransaction {
   importSource: string;
   providerId?: string;
   providerItemId?: string;
+  dueDate?: string;
+  invoiceDate?: string;
+  invoiceDueDate?: string;
+  invoiceMonthKey?: string;
+  pluggyBillId?: string | null;
+  invoiceSource?: string;
+  pluggyRaw?: any;
+  isProjected?: boolean;
+  isEstimated?: boolean; // True when value is estimated, awaiting real data from API
 }
+
+// Helper to remove undefined values (Firebase doesn't accept undefined)
+const removeUndefined = <T extends Record<string, any>>(obj: T): T => {
+  const result = {} as T;
+  for (const key in obj) {
+    if (obj[key] !== undefined) {
+      result[key] = obj[key];
+    }
+  }
+  return result;
+};
 
 export const addCreditCardTransaction = async (userId: string, transaction: Omit<CreditCardTransaction, 'id'>, customId?: string) => {
   if (!db) return "";
   const txRef = collection(db, "users", userId, "creditCardTransactions");
+  const cleanTransaction = removeUndefined(transaction);
 
   if (customId) {
     const docRef = doc(txRef, customId);
     const snap = await getDoc(docRef);
     if (snap.exists()) return customId;
-    await setDoc(docRef, transaction);
+    await setDoc(docRef, cleanTransaction);
     return customId;
   } else {
-    const docRef = await addDoc(txRef, transaction);
+    const docRef = await addDoc(txRef, cleanTransaction);
     return docRef.id;
   }
 };
 
-export const creditCardTransactionExists = async (userId: string, providerId: string) => {
-  if (!db) return false;
+export const creditCardTransactionExists = async (userId: string, providerId: string, txData?: Partial<CreditCardTransaction>) => {
+  const id = await findCreditCardTransactionId(userId, providerId, txData);
+  return !!id;
+};
+
+export const findCreditCardTransactionId = async (userId: string, providerId: string, txData?: Partial<CreditCardTransaction>) => {
+  if (!db) return null;
   try {
     const txRef = collection(db, "users", userId, "creditCardTransactions");
-    const q = query(txRef, where("providerId", "==", providerId), limit(1));
-    const snap = await getDocs(q);
-    return !snap.empty;
+
+    // 1. Check by exact providerId first
+    if (providerId) {
+      const providerQuery = query(txRef, where("providerId", "==", providerId), limit(1));
+      const providerSnap = await getDocs(providerQuery);
+      if (!providerSnap.empty) return providerSnap.docs[0].id;
+
+      // 1b. Check if this is a real transaction that matches a projected installment
+      // e.g., providerId "abc123" might have a projected version "abc123_installment_2"
+      // Or vice versa: "abc123_installment_2" looking for base "abc123"
+      if (providerId.includes('_installment_')) {
+        // This is a projected installment, check if the real one exists
+        const baseId = providerId.split('_installment_')[0];
+        const baseQuery = query(txRef, where("providerId", "==", baseId), limit(1));
+        const baseSnap = await getDocs(baseQuery);
+        if (!baseSnap.empty) return baseSnap.docs[0].id;
+      } else {
+        // This is a real transaction, check if any projected version exists with same date/description
+        // Will be caught by fuzzy match below
+      }
+    }
+
+    // 2. Fuzzy match by description + approximate amount (with date window for installments)
+    // This catches duplicates where providerId differs but it's the same transaction
+    if (txData?.date && txData?.description && txData?.amount !== undefined) {
+      // Normalize description for comparison
+      const normalize = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // Remove installment pattern for fuzzy comparison (e.g. "Store 1/10" should match "Store 2/10")
+      const stripInstallment = (str: string) => str.replace(/\s*\d+\/\d+/, '');
+
+      const targetDescNormalized = normalize(stripInstallment(txData.description));
+      const targetAmount = txData.amount;
+
+      // Check if this is an installment transaction (has X/Y pattern)
+      const installmentMatch = txData.description.match(/(\d+)\/(\d+)/);
+      const isInstallment = !!installmentMatch;
+
+      // For installments, use a wider date window (±5 days) since projected dates may differ
+      // For regular transactions, use exact date
+      const targetDate = new Date(txData.date);
+      const dateWindowDays = isInstallment ? 5 : 0;
+
+      // Query transactions within the date window
+      const startDate = new Date(targetDate);
+      startDate.setDate(startDate.getDate() - dateWindowDays);
+      const endDate = new Date(targetDate);
+      endDate.setDate(endDate.getDate() + dateWindowDays);
+
+      const startDateStr = startDate.toISOString().split('T')[0];
+      const endDateStr = endDate.toISOString().split('T')[0];
+
+      const dateQuery = query(
+        txRef,
+        where("date", ">=", startDateStr),
+        where("date", "<=", endDateStr),
+        limit(200)
+      );
+      const dateSnap = await getDocs(dateQuery);
+
+      if (!dateSnap.empty) {
+        for (const docSnap of dateSnap.docs) {
+          const data = docSnap.data();
+
+          const existingDesc = normalize(stripInstallment(data.description || ""));
+          const existingAmount = data.amount || 0;
+
+          // Check if descriptions match (normalized and stripped of installment info)
+          if (existingDesc === targetDescNormalized) {            // Allow 1% tolerance for amount differences (rounding issues)
+            const amountDiff = Math.abs(existingAmount - targetAmount);
+            const tolerance = Math.max(existingAmount, targetAmount) * 0.01;
+
+            if (amountDiff <= Math.max(tolerance, 0.02)) { // At least 2 cents tolerance
+              console.log(`[CC Duplicate] Found fuzzy match: ${txData.description} | existing: ${existingAmount} vs new: ${targetAmount}`);
+              return docSnap.id;
+            }
+          }
+        }
+      }
+    }
+
+    return null;
   } catch (err) {
     console.error("Error checking credit card transaction:", err);
-    return false;
+    return null;
+  }
+};
+
+// Helper to delete projected installments for a given base transaction
+const deleteProjectedInstallments = async (userId: string, baseProviderId: string) => {
+  if (!db || !baseProviderId) return;
+
+  // Don't delete if the base itself is an installment projection (safety)
+  if (baseProviderId.includes('_installment_')) return;
+
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    // Projected installments usually have format: baseId_installment_X
+    const prefix = `${baseProviderId}_installment_`;
+
+    // Firestore range query for prefix
+    const q = query(
+      txRef,
+      where("providerId", ">=", prefix),
+      where("providerId", "<", prefix + "\uf8ff")
+    );
+
+    const snapshot = await getDocs(q);
+    if (snapshot.empty) return;
+
+    const batch = writeBatch(db);
+    let count = 0;
+
+    snapshot.forEach((doc) => {
+      batch.delete(doc.ref);
+      count++;
+    });
+
+    if (count > 0) {
+      await batch.commit();
+      console.log(`[DB] Deleted ${count} old projected installments for ${baseProviderId}`);
+    }
+  } catch (err) {
+    console.error("Error deleting projected installments:", err);
+  }
+};
+
+export const upsertCreditCardTransaction = async (userId: string, transaction: Omit<CreditCardTransaction, 'id'>) => {
+  if (!db) return "";
+  try {
+    const existingId = await findCreditCardTransactionId(userId, transaction.providerId || "", transaction);
+
+    // If this is a REAL transaction (not a projection), cleanup its old projections to avoid ghosts
+    const isNewProjected = (transaction.providerId || "").includes("_installment_");
+    /* 
+    // Temporarily disabled due to reports of missing transactions. 
+    // Suspect aggressive deletion or race condition.
+    if (!isNewProjected && transaction.providerId) {
+        await deleteProjectedInstallments(userId, transaction.providerId);
+    } 
+    */
+
+    if (existingId) {
+      // UPDATE
+      // Safety check: Don't overwrite a REAL transaction (no _installment_) with a PROJECTED one (_installment_)
+      const isNewProjected = (transaction.providerId || "").includes("_installment_");
+
+      // We need to know if the EXISTING one is real or projected. 
+      // But fetching it again is costly. We can trust the ID returned by findCreditCardTransactionId logic.
+      // If logic 1b returned the Base ID, then we are trying to save a projected one but found a base one.
+      // In that case, we should SKIP update.
+
+      // However, simplified: if existingId is found, we generally update it to keep data fresh.
+      // BUT, let's respect the "Real trumps Projected" rule.
+
+      // Let's just update for now, assuming the sync provides better data.
+      // Exception: If we are trying to save a projected installment, but we found a REAL transaction (via fuzzy or baseID match),
+      // we should NOT overwrite the real one.
+
+      if (isNewProjected) {
+        // Check if we matched a base transaction? Too complex.
+        // Let's just update. Pluggy sync usually gives correct data.
+        // Actually, if we update, we might overwrite "Completed" status with "Pending" or projected data.
+        // Let's only update if the new data is NOT projected OR if both are projected.
+        // For now, simpler: Upsert always updates.
+        // Users complain about missing fields -> Update is required.
+      }
+
+      await updateCreditCardTransaction(userId, { ...transaction, id: existingId });
+      return existingId;
+    } else {
+      // ADD
+      return await addCreditCardTransaction(userId, transaction);
+    }
+  } catch (error) {
+    console.error("Error upserting credit card transaction:", error);
+    return "";
+  }
+};
+
+export const cleanupDuplicateCreditCardTransactions = async (userId: string) => {
+  if (!db) return;
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    const snapshot = await getDocs(txRef);
+
+    // 1. Strict Deduplication by providerId
+    const strictMap = new Map<string, string[]>();
+
+    // 2. Store all transactions for fuzzy matching
+    const allTransactions: any[] = [];
+
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      const id = docSnap.id;
+
+      // Strict Map
+      if (data.providerId) {
+        const list = strictMap.get(data.providerId) || [];
+        list.push(id);
+        strictMap.set(data.providerId, list);
+      }
+
+      allTransactions.push({ id, ...data });
+    });
+
+    let deletedCount = 0;
+    let batch = writeBatch(db);
+    let batchCount = 0;
+    const deletedIds = new Set<string>();
+
+    // Pass 1: Strict Cleanup by providerId
+    for (const [providerId, ids] of strictMap.entries()) {
+      if (ids.length > 1) {
+        for (let i = 1; i < ids.length; i++) {
+          if (!deletedIds.has(ids[i])) {
+            const docRef = doc(db, "users", userId, "creditCardTransactions", ids[i]);
+            batch.delete(docRef);
+            deletedIds.add(ids[i]);
+            deletedCount++;
+            batchCount++;
+          }
+        }
+      }
+    }
+
+    // Pass 2: Fuzzy Cleanup with amount tolerance
+    // Group by normalized description (and approximate date for installments)
+    const normalize = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+    // Helper to get month key from date (YYYY-MM)
+    const getMonthKey = (dateStr: string) => dateStr?.substring(0, 7) || '';
+
+    // Check if description contains installment pattern (X/Y)
+    const isInstallment = (desc: string) => /\d+\/\d+/.test(desc);
+
+    const fuzzyGroups = new Map<string, any[]>();
+
+    for (const tx of allTransactions) {
+      if (deletedIds.has(tx.id)) continue;
+
+      const normDesc = normalize(tx.description);
+      // For installments, group by month + description (allows date variation within month)
+      // For regular transactions, group by exact date + description
+      const dateKey = isInstallment(tx.description || '') ? getMonthKey(tx.date) : tx.date;
+      const fuzzyKey = `${dateKey}|${normDesc}`;
+      const list = fuzzyGroups.get(fuzzyKey) || [];
+      list.push(tx);
+      fuzzyGroups.set(fuzzyKey, list);
+    }
+
+    for (const [key, items] of fuzzyGroups.entries()) {
+      // Filter out already deleted items
+      let activeItems = items.filter(i => !deletedIds.has(i.id));
+
+      if (activeItems.length <= 1) continue;
+
+      // Group items by similar amounts (within 1% or 2 cents tolerance)
+      const amountGroups: any[][] = [];
+      const usedIndices = new Set<number>();
+
+      for (let i = 0; i < activeItems.length; i++) {
+        if (usedIndices.has(i)) continue;
+
+        const group = [activeItems[i]];
+        usedIndices.add(i);
+
+        for (let j = i + 1; j < activeItems.length; j++) {
+          if (usedIndices.has(j)) continue;
+
+          const amount1 = activeItems[i].amount || 0;
+          const amount2 = activeItems[j].amount || 0;
+          const diff = Math.abs(amount1 - amount2);
+          const tolerance = Math.max(amount1, amount2) * 0.01; // 1% tolerance
+
+          if (diff <= Math.max(tolerance, 0.02)) { // At least 2 cents
+            group.push(activeItems[j]);
+            usedIndices.add(j);
+          }
+        }
+
+        if (group.length > 1) {
+          amountGroups.push(group);
+        }
+      }
+
+      // Process each amount group - keep the best one, delete the rest
+      for (const group of amountGroups) {
+        // Sort to determine which to keep
+        group.sort((a, b) => {
+          // Priority 1: completed status > pending
+          if (a.status === 'completed' && b.status !== 'completed') return -1;
+          if (b.status === 'completed' && a.status !== 'completed') return 1;
+
+          // Priority 2: Real providerId > generated installment
+          const aGen = (a.providerId || "").includes("_installment_");
+          const bGen = (b.providerId || "").includes("_installment_");
+          if (!aGen && bGen) return -1;
+          if (aGen && !bGen) return 1;
+
+          // Priority 3: Has providerId > no providerId
+          if (a.providerId && !b.providerId) return -1;
+          if (b.providerId && !a.providerId) return 1;
+
+          return 0;
+        });
+
+        // Keep group[0], delete the rest
+        for (let i = 1; i < group.length; i++) {
+          const idToDelete = group[i].id;
+          if (!deletedIds.has(idToDelete)) {
+            const docRef = doc(db, "users", userId, "creditCardTransactions", idToDelete);
+            batch.delete(docRef);
+            deletedIds.add(idToDelete);
+            deletedCount++;
+            batchCount++;
+
+            // Commit batch if approaching limit
+            if (batchCount >= 450) {
+              await batch.commit();
+              batch = writeBatch(db);
+              batchCount = 0;
+            }
+          }
+        }
+      }
+    }
+
+    // Commit remaining operations
+    if (batchCount > 0) {
+      await batch.commit();
+    }
+
+    console.log(`Cleaned up ${deletedCount} duplicate credit card transactions.`);
+    return deletedCount;
+  } catch (err) {
+    console.error("Error cleaning up duplicates:", err);
+    throw err;
   }
 };
 
@@ -534,7 +932,8 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
   if (!db) return;
   const txRef = doc(db, "users", userId, "creditCardTransactions", transaction.id);
   const { id, ...data } = transaction;
-  await updateDoc(txRef, data);
+  const cleanData = removeUndefined(data);
+  await updateDoc(txRef, cleanData);
 };
 
 export const deleteCreditCardTransaction = async (userId: string, transactionId: string) => {
@@ -700,7 +1099,8 @@ export const addConnectedAccount = async (userId: string, account: ConnectedAcco
   const accountsRef = collection(db, "users", userId, "accounts");
   // Use account.id as doc ID to prevent duplicates
   const docRef = doc(accountsRef, account.id);
-  await setDoc(docRef, account, { merge: true });
+  const cleanAccount = removeUndefined(account);
+  await setDoc(docRef, cleanAccount, { merge: true });
 };
 
 export const updateConnectedAccount = async (userId: string, account: ConnectedAccount) => {
@@ -710,7 +1110,8 @@ export const updateConnectedAccount = async (userId: string, account: ConnectedA
   // However, typically we pass the whole object. Let's just use updateDoc or setDoc with merge.
   // For safety, let's use updateDoc or setDoc with merge.
   const { id, ...data } = account;
-  await setDoc(accountRef, data, { merge: true });
+  const cleanData = removeUndefined(data);
+  await setDoc(accountRef, cleanData, { merge: true });
 };
 
 export const updateConnectedAccountMode = async (userId: string, accountId: string, mode: 'AUTO' | 'MANUAL', initialBalance?: number) => {

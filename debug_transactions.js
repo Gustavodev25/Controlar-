@@ -1,9 +1,16 @@
 import axios from 'axios';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-// Pluggy Credentials (PROD)
-const PLUGGY_API_URL = 'https://api.pluggy.ai';
-const PLUGGY_CLIENT_ID = 'd93b0176-0cd8-4563-b9c1-bcb9c6e510bd';
-const PLUGGY_CLIENT_SECRET = '2b45852a-9638-4677-8232-6b2da7c54967';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, '.env') });
+
+// Pluggy Credentials
+const PLUGGY_API_URL = process.env.PLUGGY_API_URL || 'https://api.pluggy.ai';
+const PLUGGY_CLIENT_ID = process.env.PLUGGY_CLIENT_ID;
+const PLUGGY_CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET;
 
 async function debugTransactions() {
   console.log('--- STARTING PLUGGY DEBUG ---');
@@ -25,7 +32,7 @@ async function debugTransactions() {
 
     // 2. List Items
     console.log('2. Listing Items...');
-    const itemsResponse = await axios.get(`${PLUGGY_API_URL}/items`, { headers });
+    const itemsResponse = await axios.get(`${PLUGGY_API_URL}/items?clientUserId=QhSwFzrJ9kSiR2h2GYeLm8xeCky1`, { headers });
     const items = itemsResponse.data.results;
     console.log(`   > Found ${items.length} items.`);
 

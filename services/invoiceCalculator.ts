@@ -208,3 +208,39 @@ export function getTotalsByType(
         return acc;
     }, {} as Record<string, number>);
 }
+
+/**
+ * Calculates the invoice month key (YYYY-MM) for a transaction based on the card's closing day.
+ * 
+ * Rule: 
+ * - If transaction day < closingDay: belongs to CURRENT month's invoice.
+ * - If transaction day >= closingDay: belongs to NEXT month's invoice.
+ * 
+ * Example:
+ * Closing Day: 10
+ * Tx Date: 2025-12-05 -> belongs to invoice 2025-12
+ * Tx Date: 2025-12-15 -> belongs to invoice 2026-01
+ * 
+ * @param transactionDate Date object or ISO string (YYYY-MM-DD)
+ * @param closingDay The day of the month the invoice closes (1-31)
+ */
+export function getInvoiceMonthKey(transactionDate: Date | string, closingDay: number): string {
+    const date = typeof transactionDate === 'string' ? parseISO(transactionDate) : transactionDate;
+    if (!isValid(date)) return '';
+
+    const day = date.getDate();
+    let month = date.getMonth(); // 0-indexed
+    let year = date.getFullYear();
+
+    // If transaction is on or after closing day, it goes to the next month
+    if (day >= closingDay) {
+        month += 1;
+        if (month > 11) {
+            month = 0;
+            year += 1;
+        }
+    }
+
+    // Format YYYY-MM
+    return `${year}-${String(month + 1).padStart(2, '0')}`;
+}

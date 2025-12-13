@@ -49,7 +49,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (onRefresh) onRefresh();
   };
 
-
   // Agrupa contas por instituicao e itemId
   const groupedAccounts = useMemo(() => {
     const groups: Record<string, { accounts: ConnectedAccount[], itemId: string }> = {};
@@ -160,10 +159,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowBankModal(true)}
-            className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => setShowBankModal(true)}
+          className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
           >
             <Plus size={18} />
             <span className="hidden sm:inline">Conectar Banco</span>
@@ -179,7 +178,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           )}
         </div>
       </div>
-
 
       {/* List Header */}
       <div className="flex items-center justify-between mt-2">

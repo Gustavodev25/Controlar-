@@ -40,6 +40,7 @@ import { FamilyDashboard } from './components/FamilyDashboard';
 import { FamilyOverview } from './components/FamilyOverview';
 import { ToastContainer, useToasts } from './components/Toast';
 import { GlobalSyncToast } from './components/GlobalSyncToast';
+import { saveSyncProgress, clearSyncProgress } from './utils/syncProgress';
 import { TwoFactorPrompt } from './components/TwoFactorPrompt';
 import { auth } from './services/firebase';
 import { onAuthStateChanged } from "firebase/auth";
@@ -66,6 +67,7 @@ import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
+import { getInvoiceMonthKey } from './services/invoiceCalculator';
 
 type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
 
@@ -352,6 +354,13 @@ const App: React.FC = () => {
     return isAltLanding ? 'auth' : 'waitlist';
   });
 
+  const effectivePlan = useMemo(() => {
+    const sub = currentUser?.subscription;
+    // Only grant plan features if status is strictly 'active'
+    if (sub?.status === 'active') return sub.plan;
+    return 'starter';
+  }, [currentUser]);
+
   // Data State
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -364,6 +373,7 @@ const App: React.FC = () => {
   const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
   const [notifications, setNotifications] = useState<SystemNotification[]>([]);
   const [separateCreditCardTxs, setSeparateCreditCardTxs] = useState<dbService.CreditCardTransaction[]>([]);
+  const [isSyncingCards, setIsSyncingCards] = useState(false);
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -465,6 +475,18 @@ const App: React.FC = () => {
     return [];
   });
 
+  const [cardInvoiceTypes, setCardInvoiceTypes] = useState<Record<string, 'current' | 'next' | 'used_total'>>(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('finances_card_invoice_types');
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch { }
+      }
+    }
+    return {};
+  });
+
   useEffect(() => {
     localStorage.setItem('finances_include_checking', JSON.stringify(includeCheckingInStats));
   }, [includeCheckingInStats]);
@@ -488,6 +510,10 @@ const App: React.FC = () => {
   useEffect(() => {
     localStorage.setItem('finances_enabled_cc_ids', JSON.stringify(enabledCreditCardIds));
   }, [enabledCreditCardIds]);
+
+  useEffect(() => {
+    localStorage.setItem('finances_card_invoice_types', JSON.stringify(cardInvoiceTypes));
+  }, [cardInvoiceTypes]);
 
   // Member Management State
   const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
@@ -647,7 +673,36 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
-
+  // Poll for pending subscription status
+  useEffect(() => {
+    if (userId && currentUser?.subscription?.status === 'pending_payment' && currentUser.subscription.asaasSubscriptionId) {
+      const checkStatus = async () => {
+        try {
+          const res = await fetch(`/api/asaas/subscription/${currentUser.subscription!.asaasSubscriptionId}`);
+          const data = await res.json();
+          if (data.success && data.subscription) {
+             if (data.subscription.status === 'ACTIVE') {
+                 // UPDATE DB to ACTIVE
+                 const updatedUser = {
+                     ...currentUser,
+                     subscription: {
+                         ...currentUser.subscription!,
+                         status: 'active' as const
+                     }
+                 };
+                 await dbService.updateUserProfile(userId, updatedUser);
+                 // No need to set state here, the listener will pick it up
+                 toast.success("Sua assinatura foi confirmada! Aproveite os recursos Pro.");
+             }
+          }
+        } catch (e) {
+            console.error("Error checking subscription status", e);
+        }
+      };
+      
+      checkStatus();
+    }
+  }, [userId, currentUser?.subscription?.status, currentUser?.subscription?.asaasSubscriptionId]);
 
   // Auto-close sidebar on mobile, auto-open on desktop (on resize only)
   useEffect(() => {
@@ -962,13 +1017,7 @@ const App: React.FC = () => {
 
   // Helper: Get current invoice amount from Bills API
   const getCurrentInvoiceAmount = React.useCallback((account: ConnectedAccount): number => {
-    // Priority 1: Use account balance (most reliable for current invoice)
-    // The balance field represents the current outstanding amount on the card
-    if (account.balance !== undefined && account.balance !== null && account.balance > 0) {
-      return account.balance;
-    }
-
-    // Priority 2: Try to find upcoming bill from Bills API
+    // Priority 1: Check for bills (Bills API) - More accurate for "Invoice Amount"
     if (account.bills && account.bills.length > 0) {
       const today = new Date();
 
@@ -977,16 +1026,26 @@ const App: React.FC = () => {
         new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
       );
 
-      // Find the next bill to pay (due date is in the future)
-      const futureBills = sortedByDue.filter(bill => new Date(bill.dueDate) > today);
+      // Find the "current" bill logic:
+      // 1. First "OPEN" bill
+      // 2. OR First future bill (if no OPEN)
+      // 3. Fallback to last known bill
+      const openBill = sortedByDue.find(b => b.state === 'OPEN');
+      const futureBill = sortedByDue.find(b => new Date(b.dueDate) >= today);
+      const targetBill = openBill || futureBill || sortedByDue[sortedByDue.length - 1];
 
-      if (futureBills.length > 0) {
-        return futureBills[0].totalAmount;
+      if (targetBill) {
+        const amount = Math.abs(targetBill.totalAmount || 0);
+        if (amount > 0) return amount;
       }
+    }
 
-      // If no future bills, get the most recent one
-      if (sortedByDue.length > 0) {
-        return sortedByDue[sortedByDue.length - 1].totalAmount;
+    // Priority 2: Use the connected balance (Total Used)
+    // This acts as a fallback if bills API is not available or empty
+    if (account.balance !== undefined && account.balance !== null) {
+      const normalized = Math.abs(account.balance);
+      if (normalized > 0) {
+        return normalized;
       }
     }
 
@@ -1260,6 +1319,13 @@ const App: React.FC = () => {
       importSource: ccTx.importSource,
       providerId: ccTx.providerId,
       providerItemId: ccTx.providerItemId,
+      invoiceDate: (ccTx as any).invoiceDate,
+      invoiceDueDate: (ccTx as any).invoiceDueDate || (ccTx as any).dueDate,
+      invoiceMonthKey: (ccTx as any).invoiceMonthKey,
+      pluggyBillId: (ccTx as any).pluggyBillId,
+      invoiceSource: (ccTx as any).invoiceSource,
+      isProjected: (ccTx as any).isProjected,
+      pluggyRaw: (ccTx as any).pluggyRaw,
       accountId: ccTx.cardId, // Map cardId to accountId
       accountType: 'CREDIT_CARD',
     }));
@@ -1350,6 +1416,8 @@ const App: React.FC = () => {
   // Stats based on DASHBOARD Filtered
   const stats: DashboardStats = React.useMemo(() => {
     const todayStr = toLocalISODate();
+    const currentMonthKey = todayStr.slice(0, 7);
+    const isCurrentMonthView = filterMode === 'month' && dashboardDate === currentMonthKey;
 
     // Build a Set of all credit card account IDs for fast lookup
     const creditCardAccountIds = new Set<string>();
@@ -1597,6 +1665,14 @@ const App: React.FC = () => {
         allCreditAccounts.forEach((card, cardIndex) => {
           if (!enabledCreditCardIds.includes(card.id)) return;
 
+          const selectedType = cardInvoiceTypes[card.id] || 'current';
+          const isConnectedCard = card.connectionMode !== 'MANUAL';
+          const connectedInvoiceAmount = isConnectedCard ? getCurrentInvoiceAmount(card) : Math.abs(card.balance || 0);
+          const hasConnectedData = isConnectedCard && (
+            (card.balance !== undefined && card.balance !== null) ||
+            ((card.bills || []).length > 0)
+          );
+
           // Robust Matching Strategy
           let cardTransactions = currentViewCCTransactions.filter(tx => tx.accountId === card.id);
 
@@ -1615,19 +1691,61 @@ const App: React.FC = () => {
           }
 
           let accInvoice = 0;
-          if (cardTransactions.length > 0) {
+
+          if (isConnectedCard && hasConnectedData && isCurrentMonthView) {
+            accInvoice = connectedInvoiceAmount;
+          } else if (cardTransactions.length > 0) {
             accInvoice = cardTransactions.reduce((sum, t) => {
               if (t.type === 'expense') return sum + Math.abs(t.amount);
               if (t.type === 'income') return sum - Math.abs(t.amount);
               return sum;
             }, 0);
+          } else if (isConnectedCard && hasConnectedData) {
+            // If we have connected data but no transactions matched (or we're viewing another period), use the provider invoice
+            accInvoice = connectedInvoiceAmount;
           } else {
             // Fallback to absolute balance if no transactions found (Aligns with StatsCards)
             // This fixes issues where negative balances (liabilities) were ignored by getCurrentInvoiceAmount
             accInvoice = Math.abs(card.balance || 0);
           }
 
-          finalCCExpense += Math.max(0, accInvoice);
+          const currentInvoiceAmount = Math.max(0, accInvoice);
+
+          // Determine next invoice amount from bills when available
+          const nextInvoiceAmount = (() => {
+            const bills = card.bills || [];
+            if (bills.length === 0) return null;
+
+            const today = new Date();
+            const sortedBills = [...bills].sort((a, b) =>
+              new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+            );
+
+            const currentBill = sortedBills.find(b => {
+              const dueDate = new Date(b.dueDate);
+              return dueDate >= today || b.state === 'OPEN';
+            }) || sortedBills.find(b => b.state === 'OPEN');
+
+            const currentBillIndex = currentBill ? sortedBills.indexOf(currentBill) : -1;
+            const nextBill = currentBillIndex >= 0 && currentBillIndex < sortedBills.length - 1
+              ? sortedBills[currentBillIndex + 1]
+              : null;
+
+            if (nextBill) {
+              const amount = Math.abs(nextBill.totalAmount || 0);
+              if (amount > 0) return amount;
+            }
+
+            return null;
+          })();
+
+          const selectedInvoiceAmount = selectedType === 'next' && nextInvoiceAmount !== null
+            ? nextInvoiceAmount
+            : selectedType === 'used_total'
+              ? Math.abs(card.balance || 0)
+              : currentInvoiceAmount;
+
+          finalCCExpense += selectedInvoiceAmount;
         });
       }
     }
@@ -1743,7 +1861,7 @@ const App: React.FC = () => {
       monthlySavings: finalMonthlySavings,
       creditCardSpending: finalCCExpense
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds, creditCardTransactions]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds, creditCardTransactions, cardInvoiceTypes]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -1756,7 +1874,7 @@ const App: React.FC = () => {
 
   const handleAddMember = async (name: string, avatarUrl: string) => {
     if (userId) {
-      const plan = currentUser?.subscription?.plan || 'starter';
+      const plan = effectivePlan;
       const currentCount = members.length;
 
       // Limits:
@@ -1809,6 +1927,302 @@ const App: React.FC = () => {
       });
     } catch (e) {
       toast.error("Erro ao remover membro.");
+    }
+  };
+
+  // Sync credit card transactions from Pluggy without reconnecting
+  const handleSyncCreditCards = async () => {
+    if (!userId || isSyncingCards) return;
+
+    // Get unique itemIds from connected credit card accounts
+    const creditAccounts = connectedAccounts.filter(acc => {
+      const type = (acc.type || '').toUpperCase();
+      const subtype = (acc.subtype || '').toUpperCase();
+      return type.includes('CREDIT') || subtype.includes('CREDIT');
+    });
+
+    const itemIds = [...new Set(creditAccounts.map(acc => acc.itemId).filter(Boolean))];
+
+    if (itemIds.length === 0) {
+      toast.error("Nenhum cartão conectado para sincronizar.");
+      return;
+    }
+
+    setIsSyncingCards(true);
+    clearSyncProgress();
+    
+    // Initial Progress
+    saveSyncProgress({
+      step: 'Iniciando sincronizacao...',
+      current: 0,
+      total: itemIds.length,
+      startedAt: Date.now()
+    });
+
+    try {
+      let totalCards = 0;
+
+      // Clear all existing credit card transactions first to avoid duplicates
+      // This ensures a fresh sync each time
+      saveSyncProgress({
+        step: 'Limpando dados antigos...',
+        current: 0,
+        total: itemIds.length,
+        startedAt: Date.now()
+      });
+      
+      await dbService.deleteAllCreditCardTransactions(userId);
+
+      for (let i = 0; i < itemIds.length; i++) {
+        const itemId = itemIds[i];
+        
+        saveSyncProgress({
+          step: `Sincronizando conexao ${i + 1} de ${itemIds.length}...`,
+          current: i,
+          total: itemIds.length,
+          startedAt: Date.now()
+        });
+
+        const response = await fetch('/api/pluggy/sync', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ itemId, monthsBack: 12, monthsForward: 1 })
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          console.error('Sync error for item', itemId, data);
+          continue;
+        }
+
+        // Process each account in the sync response
+        for (const entry of data.accounts || []) {
+          if (!entry?.account) continue;
+
+          const account = entry.account;
+          const type = (account.type || '').toUpperCase();
+          const subtype = (account.subtype || '').toUpperCase();
+          const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+
+          if (!isCredit) continue;
+
+          // Update account with bills (resolve due date from any available field)
+          const bills = (entry.bills || []).map((bill: any) => {
+            const resolvedDueDate =
+              bill.dueDate ||
+              bill.balanceDueDate ||
+              bill.currentBillDueDate ||
+              bill.balanceCloseDate;
+
+            return {
+              id: bill.id,
+              dueDate: resolvedDueDate || bill.dueDate,
+              totalAmount: bill.totalAmount,
+              totalAmountCurrencyCode: bill.totalAmountCurrencyCode ?? null,
+              minimumPaymentAmount: bill.minimumPaymentAmount ?? null,
+              allowsInstallments: bill.allowsInstallments ?? null,
+              financeCharges: bill.financeCharges ?? null,
+              balanceCloseDate: bill.balanceCloseDate ?? null,
+              state: bill.state ?? null,
+              paidAmount: bill.paidAmount ?? null
+            };
+          });
+
+          // Calculate currentMonthKey based on the most recent bill from Pluggy
+          // This handles sandbox/test data that may have future dates (e.g., 2025)
+          let currentMonthKey: string;
+          let nextMonthKey: string;
+
+          const sortedBills = [...bills].sort((a: any, b: any) =>
+            new Date(b.dueDate || 0).getTime() - new Date(a.dueDate || 0).getTime()
+          );
+
+          if (sortedBills.length > 0 && sortedBills[0].dueDate) {
+            // Use the most recent bill's month as current month
+            const billDate = new Date(sortedBills[0].dueDate);
+            currentMonthKey = `${billDate.getFullYear()}-${String(billDate.getMonth() + 1).padStart(2, '0')}`;
+
+            // Next month is one month after the bill
+            const nextMonth = new Date(billDate.getFullYear(), billDate.getMonth() + 1, 1);
+            nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+          } else {
+            // Fallback to system date if no bills
+            const now = new Date();
+            currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+            const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+            nextMonthKey = `${nextMonth.getFullYear()}-${String(nextMonth.getMonth() + 1).padStart(2, '0')}`;
+          }
+
+          // Save updated account with bills
+          // Determine the best name for the account (avoid raw account numbers)
+          const getAccountDisplayName = () => {
+            // Priority: marketingName > name (if not a number) > brand > type + subtype > generic
+            if (account.marketingName) return account.marketingName;
+            if (account.name && !/^\d{3}\/\d{4}\//.test(account.name) && !/^\d+[-\/]/.test(account.name)) {
+              return account.name;
+            }
+            if (account.creditData?.brand) return account.creditData.brand;
+            if (account.subtype) return account.subtype;
+            if (account.type === 'CREDIT_CARD' || account.type === 'CREDIT') return 'Cartão de Crédito';
+            if (account.type === 'BANK' || account.type === 'CHECKING') return 'Conta Corrente';
+            return 'Conta';
+          };
+
+          // Determine the institution name (always use connector.name)
+          const getInstitutionName = () => {
+            if (account.connector?.name) return account.connector.name;
+            // If no connector, try to extract from other fields
+            if (account.bankData?.transferNumber) {
+              // Don't use transferNumber as institution
+              return 'Banco';
+            }
+            return 'Banco';
+          };
+
+          // Extract Closing and Due Days
+          const closingDay = account.creditData?.balanceCloseDate
+            ? parseInt(account.creditData.balanceCloseDate.split('T')[0].split('-')[2], 10)
+            : null;
+          const dueDay = account.creditData?.balanceDueDate
+            ? parseInt(account.creditData.balanceDueDate.split('T')[0].split('-')[2], 10)
+            : null;
+
+          await dbService.addConnectedAccount(userId, {
+            id: account.id,
+            itemId: account.itemId,
+            name: getAccountDisplayName(),
+            type: account.type,
+            subtype: account.subtype,
+            institution: getInstitutionName(),
+            balance: account.balance ?? 0,
+            currency: account.currencyCode || 'BRL',
+            lastUpdated: new Date().toISOString(),
+            connectionMode: 'AUTO',
+            creditLimit: account.creditData?.creditLimit ?? null,
+            availableCreditLimit: account.creditData?.availableCreditLimit ?? null,
+            brand: account.creditData?.brand ?? null,
+            balanceCloseDate: account.creditData?.balanceCloseDate ?? null,
+            balanceDueDate: account.creditData?.balanceDueDate ?? null,
+            closingDay: closingDay || undefined,
+            dueDay: dueDay || undefined,
+            minimumPayment: account.creditData?.minimumPayment ?? null,
+            bills
+          });
+
+          // Process credit card transactions
+          const billsMap = new Map<string, any>();
+          bills.forEach((bill: any) => billsMap.set(bill.id, bill));
+
+          for (const tx of entry.transactions || []) {
+            const meta = tx?.creditCardMetadata || {};
+            const purchaseDate = (meta.purchaseDate || tx?.date)?.split('T')[0];
+            const postDate = (tx?.date || purchaseDate)?.split('T')[0];
+            const anchorDate = postDate || purchaseDate;
+
+            if (!anchorDate) continue;
+
+            const rawAmount = Number(tx?.amount || 0);
+            const totalInstallments = meta.totalInstallments;
+            const installmentNumber = meta.installmentNumber;
+
+            // Calculate invoice month
+            let invoiceMonthKey: string | null = null;
+            const billId = meta.billId || null;
+            const bill = billId ? billsMap.get(billId) : undefined;
+
+            if (bill?.dueDate) {
+              // Priority 1: Use Bill Due Date if available
+              invoiceMonthKey = bill.dueDate.slice(0, 7);
+            } else if (closingDay) {
+               // Priority 2: Calculate based on Closing Day
+               invoiceMonthKey = getInvoiceMonthKey(anchorDate, closingDay);
+               
+               // Adjust for due date falling in the next month relative to closing (e.g. closes 25th, due 5th next month)
+               // The getInvoiceMonthKey function handles the "next month" logic for the invoice cycle itself.
+               // We just need to ensure the due date logic is consistent if we derived it.
+            } else {
+               // Fallback: Use transaction date's month
+               invoiceMonthKey = anchorDate.slice(0, 7);
+            }
+
+            const invoiceDueDate = bill?.dueDate || (invoiceMonthKey && dueDay
+              ? `${invoiceMonthKey}-${String(dueDay).padStart(2, '0')}`
+              : undefined);
+
+            const amount = Math.abs(totalInstallments && meta.totalAmount
+              ? (meta.totalAmount / totalInstallments)
+              : rawAmount);
+
+            const txData: Omit<dbService.CreditCardTransaction, 'id'> = {
+              date: postDate,
+              description: tx?.description || 'Lançamento Cartão',
+              amount,
+              category: tx?.category || 'Outros',
+              type: rawAmount >= 0 ? 'expense' : 'income',
+              status: (tx?.status || '').toUpperCase() === 'PENDING' ? 'pending' : 'completed',
+              cardId: account.id,
+              cardName: account.name || account.marketingName || 'Cartão',
+              installmentNumber: installmentNumber || 0, // 0 as fallback, removed undefined
+              totalInstallments: totalInstallments || 0, // 0 as fallback
+              importSource: 'pluggy',
+              providerId: tx?.id,
+              providerItemId: account.itemId,
+              invoiceDate: invoiceMonthKey ? `${invoiceMonthKey}-01` : undefined,
+              invoiceDueDate: invoiceDueDate || undefined,
+              invoiceMonthKey: invoiceMonthKey || undefined,
+              pluggyBillId: billId,
+              invoiceSource: bill?.dueDate ? 'pluggy_billId' : (closingDay ? 'calculated_rule' : 'date_fallback'),
+              pluggyRaw: tx,
+              isProjected: false
+            };
+
+            // Determine the effective invoice month for this transaction
+            // Priority 1: Use billId to get actual invoice month from Pluggy
+            // Priority 2: Use calculated invoiceMonthKey
+            const billMonth = bill?.dueDate?.slice(0, 7);
+            const effectiveInvoiceMonth = billMonth || invoiceMonthKey;
+
+            // Update invoiceMonthKey to use the effective one
+            txData.invoiceMonthKey = effectiveInvoiceMonth || invoiceMonthKey;
+
+            // Save ALL transactions from Pluggy (no period filter)
+            // The API already limits data with monthsBack/monthsForward
+            await dbService.upsertCreditCardTransaction(userId, txData);
+            totalCards++;
+          }
+        }
+      }
+
+      const summary = `Sincronizamos ${totalCards} lançamentos de cartão.`;
+
+      // Final Success State
+      saveSyncProgress({
+        step: summary,
+        current: itemIds.length,
+        total: itemIds.length,
+        isComplete: true,
+        startedAt: Date.now()
+      });
+      
+      // Delay cleaning progress to let user see "Completed" state
+      setTimeout(() => clearSyncProgress(), 5000);
+
+    } catch (error) {
+      console.error('Sync error:', error);
+      
+      // Error State
+      saveSyncProgress({
+        step: 'Falha na sincronizacao',
+        error: "Erro ao sincronizar transações.",
+        current: 0,
+        total: itemIds.length,
+        isComplete: true, // Stop spinner
+        startedAt: Date.now()
+      });
+      
+      toast.error("Erro ao sincronizar transações.");
+    } finally {
+      setIsSyncingCards(false);
     }
   };
 
@@ -2202,7 +2616,7 @@ const App: React.FC = () => {
         onSelectMember={setActiveMemberId}
         onAddMember={handleAddMember}
         onDeleteMember={handleDeleteMember}
-        userPlan={currentUser?.subscription?.plan || 'starter'}
+        userPlan={effectivePlan}
         isAdmin={currentUser?.isAdmin}
         overdueRemindersCount={overdueRemindersCount}
         onOpenAIModal={() => handleOpenAIModal('transaction')}
@@ -2538,7 +2952,7 @@ const App: React.FC = () => {
                 }}
                 isProMode={isProMode}
                 onActivateProMode={() => setIsProMode(true)}
-                userPlan={currentUser?.subscription?.plan || 'starter'}
+                userPlan={effectivePlan}
                 onUpgradeClick={() => setActiveTab('subscription')}
                 onAddGoal={handleAddGoal}
                 onUpdateGoal={handleUpdateGoal}
@@ -2588,38 +3002,39 @@ const App: React.FC = () => {
                             setShowGlobalModeModal('MANUAL');
                           }
                         }}
-                        userPlan={currentUser?.subscription?.plan || 'starter'}
+                        userPlan={effectivePlan}
                         onUpgradeClick={() => setActiveTab('subscription')}
                         includeOpenFinance={includeOpenFinanceInStats}
                         onToggleOpenFinance={setIncludeOpenFinanceInStats}
                       />
                     )}
-                    <StatsCards
-                      stats={stats}
-                      isLoading={isLoadingData}
-                      accountBalances={accountBalances}
-                      creditCardTransactions={creditCardTransactions}
-                      dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                      toggles={{
-                        includeChecking: includeCheckingInStats,
-                        setIncludeChecking: setIncludeCheckingInStats,
-                        includeCredit: includeCreditCardInStats,
-                        setIncludeCredit: setIncludeCreditCardInStats,
-                        creditCardUseTotalLimit: creditCardUseTotalLimit,
-                        setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                        creditCardUseFullLimit: creditCardUseFullLimit,
-                        setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                        includeOpenFinance: includeOpenFinanceInStats,
-                        setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                        enabledCreditCardIds: enabledCreditCardIds,
-                        setEnabledCreditCardIds: setEnabledCreditCardIds
-                      }}
-                      isProMode={isProMode}
-                      onActivateProMode={() => setIsProMode(true)}
-                      userPlan={currentUser?.subscription?.plan || 'starter'}
-                      onUpgradeClick={() => setActiveTab('subscription')}
-                    />
-                    <div className="animate-fade-in space-y-6">
+                                          <StatsCards
+                                            stats={stats}
+                                            isLoading={isLoadingData}
+                                            accountBalances={accountBalances}
+                                            creditCardTransactions={creditCardTransactions}
+                                            dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                                            toggles={{
+                                              includeChecking: includeCheckingInStats,
+                                              setIncludeChecking: setIncludeCheckingInStats,
+                                              includeCredit: includeCreditCardInStats,
+                                              setIncludeCredit: setIncludeCreditCardInStats,
+                                              creditCardUseTotalLimit: creditCardUseTotalLimit,
+                                              setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                                              creditCardUseFullLimit: creditCardUseFullLimit,
+                                              setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                                              includeOpenFinance: includeOpenFinanceInStats,
+                                              setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                                              enabledCreditCardIds: enabledCreditCardIds,
+                                              setEnabledCreditCardIds: setEnabledCreditCardIds,
+                                              cardInvoiceTypes: cardInvoiceTypes,
+                                              setCardInvoiceTypes: setCardInvoiceTypes
+                                            }}
+                                            isProMode={isProMode}
+                                            onActivateProMode={() => setIsProMode(true)}
+                                            userPlan={effectivePlan}
+                                            onUpgradeClick={() => setActiveTab('subscription')}
+                                          />                    <div className="animate-fade-in space-y-6">
                       <DashboardCharts
                         transactions={reviewedDashboardTransactions}
                         reminders={filteredReminders}
@@ -2645,6 +3060,8 @@ const App: React.FC = () => {
                       transactions={checkingTransactions}
                       onDelete={handleDeleteTransaction}
                       onUpdate={handleUpdateTransaction}
+                      isManualMode={!isProMode}
+                      onAdd={handleAddTransaction}
                     />
                   </div>
                 )}
@@ -2655,6 +3072,12 @@ const App: React.FC = () => {
                       transactions={creditCardTransactions}
                       onDelete={handleDeleteTransaction}
                       onUpdate={handleUpdateTransaction}
+                      creditCardAccounts={accountBalances?.credit?.accounts}
+                      userId={userId || undefined}
+                      onSync={handleSyncCreditCards}
+                      isSyncing={isSyncingCards}
+                      isManualMode={!isProMode}
+                      onAdd={handleAddTransaction}
                     />
                   </div>
                 )}
@@ -2689,7 +3112,7 @@ const App: React.FC = () => {
                       onUpdate={handleUpdateInvestment}
                       onDelete={handleDeleteInvestment}
                       onAddTransaction={handleAddTransaction}
-                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                      userPlan={effectivePlan}
                     />
                   </div>
                 )}
@@ -2700,7 +3123,7 @@ const App: React.FC = () => {
                       netWorth={totalMemberInvestments}
                       averageMonthlySavings={averageMonthlySavings}
                       averageMonthlyExpense={averageMonthlyExpense}
-                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                      userPlan={effectivePlan}
                       onUpgradeClick={() => {
                         setSettingsInitialTab('plan');
                         setIsSettingsOpen(true);
@@ -2736,7 +3159,7 @@ const App: React.FC = () => {
                       members={members}
                       activeMemberId={activeMemberId}
                       budgets={budgets}
-                      userPlan={currentUser?.subscription?.plan || 'starter'}
+                      userPlan={effectivePlan}
                     />
                   </div>
                 )}
@@ -2751,7 +3174,7 @@ const App: React.FC = () => {
         transactions={transactions}
         budgets={budgets}
         investments={investments}
-        userPlan={currentUser?.subscription?.plan || 'starter'}
+        userPlan={effectivePlan}
         userName={currentUser?.name}
       />
 

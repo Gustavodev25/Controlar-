@@ -1,16 +1,17 @@
 import axios from 'axios';
 
-async function testSync() {
-  console.log('Testing /api/pluggy/sync...');
+async function testPluggyAuth() {
+  console.log('Testing /api/pluggy/create-token (auth only)...');
   try {
-    const response = await axios.post('http://localhost:3001/api/pluggy/sync', {
-      itemId: '3bcea3dc-d829-4b55-85dd-a868d8eb9dfb'
+    const response = await axios.post('http://localhost:3001/api/pluggy/create-token', {
+      userId: 'test-user'
     });
-    console.log('Sync Success!');
-    console.log('Accounts:', response.data.accounts?.length);
-    console.log('Transactions:', response.data.transactions?.length);
+
+    console.log('Auth Success!');
+    console.log('AccessToken present:', !!response.data.accessToken);
+    console.log('Existing items:', Array.isArray(response.data.existingItems) ? response.data.existingItems.length : 0);
   } catch (error) {
-    console.error('Sync Error:');
+    console.error('Auth Error:');
     if (error.response) {
       console.error('Status:', error.response.status);
       console.error('Data:', JSON.stringify(error.response.data, null, 2));
@@ -20,4 +21,4 @@ async function testSync() {
   }
 }
 
-testSync();
+testPluggyAuth();
