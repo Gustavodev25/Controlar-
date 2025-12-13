@@ -239,6 +239,23 @@ const App: React.FC = () => {
     loadInvite();
   }, [userId]);
 
+  // Automatic Category Fix (One-time migration)
+  useEffect(() => {
+    if (userId && typeof window !== 'undefined') {
+      const hasFixed = localStorage.getItem('fixed_categories_v1');
+      if (!hasFixed) {
+        console.log('[Auto Fix] Starting category translation...');
+        dbService.fixCategoriesForUser(userId).then((count) => {
+          console.log(`[Auto Fix] Completed. Updated ${count} transactions.`);
+          localStorage.setItem('fixed_categories_v1', 'true');
+          if (count > 0) {
+             toast.success(`Categorias atualizadas automaticamente (${count} registros).`);
+          }
+        }).catch(err => console.error('[Auto Fix] Error:', err));
+      }
+    }
+  }, [userId]);
+
 
   // Landing variant selector (default waitlist, alt URL unlocks auth landing)
   useEffect(() => {

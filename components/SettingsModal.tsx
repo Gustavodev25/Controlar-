@@ -19,7 +19,7 @@ import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 import NumberFlow from '@number-flow/react';
-import { deleteUserAccount, fixCategoriesForUser } from '../services/database';
+import { deleteUserAccount } from '../services/database';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
@@ -65,7 +65,7 @@ interface BadgeDefinition {
    requirement: string;
 }
 
-type SettingsTab = 'account' | 'badges' | 'family' | 'finance' | 'security' | 'plan' | 'data';
+type SettingsTab = 'account' | 'badges' | 'family' | 'finance' | 'security' | 'plan';
 
 // --- COMPONENTE DELETE ACCOUNT MODAL ---
 interface DeleteAccountModalProps {
@@ -692,7 +692,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
       { id: 'family', label: 'Família', icon: <Users size={18} /> },
       { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
-      { id: 'data', label: 'Dados', icon: <Bot size={18} /> },
       { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
       { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
    ];
@@ -1879,37 +1878,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               className="px-6 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
                            >
                               <Save size={16} /> Salvar Alterações
-                           </button>
-                        </div>
-                     </div>
-                  )}
-
-                  {/* --- TAB: DATA --- */}
-                  {activeTab === 'data' && (
-                     <div className="space-y-10 animate-fade-in max-w-2xl">
-                        <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Gerenciamento de Dados</h3>
-                           <p className="text-gray-400">Ferramentas avançadas para corrigir e organizar seus registros.</p>
-                        </div>
-
-                        <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
-                           <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                              <Wand2 size={20} className="text-[#d97757]" /> Correção de Categorias
-                           </h4>
-                           <p className="text-sm text-gray-400 mb-6">
-                              Se você tem transações antigas com nomes de categorias em inglês (ex: "Same person transfer"), 
-                              use esta ferramenta para traduzi-las automaticamente para o padrão atual.
-                           </p>
-                           <button
-                              onClick={async () => {
-                                 if (userId) {
-                                    const count = await fixCategoriesForUser(userId);
-                                    toast.success(`Correção concluída! ${count} transações atualizadas.`);
-                                 }
-                              }}
-                              className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all border border-gray-700 hover:border-gray-600 text-sm flex items-center gap-2"
-                           >
-                              <Wand2 size={16} /> Traduzir Categorias Antigas
                            </button>
                         </div>
                      </div>
