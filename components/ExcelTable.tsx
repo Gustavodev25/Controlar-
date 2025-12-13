@@ -5,6 +5,7 @@ import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete } 
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
+import { translatePluggyCategory } from '../services/openFinanceService';
 
 interface ExcelTableProps {
   transactions: Transaction[];
@@ -162,28 +163,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
   const translateCategory = (category: string) => {
-    const map: Record<string, string> = {
-      'food': 'Alimentação',
-      'transport': 'Transporte',
-      'shopping': 'Compras',
-      'health': 'Saúde',
-      'education': 'Educação',
-      'housing': 'Moradia',
-      'entertainment': 'Lazer',
-      'utilities': 'Contas',
-      'salary': 'Salário',
-      'income': 'Receita',
-      'transfer': 'Transferência',
-      'investment': 'Investimento',
-      'services': 'Serviços',
-      'others': 'Outros',
-      'credit card payment': 'Pagamento de Cartão',
-      'taxes': 'Impostos',
-      'travel': 'Viagem',
-      'withdraw': 'Saque'
-    };
-    const lower = (category || '').toLowerCase();
-    return map[lower] || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Outros');
+    return translatePluggyCategory(category);
   };
 
   return (

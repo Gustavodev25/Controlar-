@@ -8,6 +8,7 @@ import { ConfirmationCard, CustomAutocomplete, CustomDatePicker, CustomSelect } 
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
+import { translatePluggyCategory } from '../services/openFinanceService';
 
 // ============================================================ 
 // COMPONENTE PRINCIPAL
@@ -329,9 +330,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 <td className="px-6 py-4 text-gray-400">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-gray-900 rounded-lg text-gray-500 border border-gray-800">
-                      {getCategoryIcon(t.category || "Outros", 14)}
+                      {getCategoryIcon(translatePluggyCategory(t.category), 14)}
                     </div>
-                    <span className="text-xs">{t.category || "Outros"}</span>
+                    <span className="text-xs">{translatePluggyCategory(t.category)}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -414,8 +415,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
                   <div className="flex items-center gap-3 text-xs text-gray-500">
                     <span className="flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded-md border border-gray-800">
-                      {getCategoryIcon(t.category || "Outros", 12)}
-                      {t.category || "Outros"}
+                      {getCategoryIcon(translatePluggyCategory(t.category), 12)}
+                      {translatePluggyCategory(t.category)}
                     </span>
                     <span className="font-mono flex items-center gap-1.5">
                       <Calendar size={12} /> {formatDate(t.date)}
