@@ -198,7 +198,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({ onAddTransacti
                 id: Date.now().toString(),
                 role: 'ai',
                 type: 'text',
-                content: '🔒 Você atingiu o limite de mensagens do plano Starter. Faça o upgrade para o plano Plus para ter acesso ilimitado ao Consultor IA.',
+                content: '🔒 Você atingiu o limite de mensagens do plano Starter. Faça o upgrade para o plano Pro para ter acesso ilimitado ao Consultor IA.',
                 timestamp: Date.now()
             }]);
             setInputValue('');

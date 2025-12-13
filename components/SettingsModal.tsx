@@ -551,7 +551,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             gradient: 'bg-gradient-to-br from-gray-900 to-[#d97757]/20 border-[#d97757]/30',
             text: 'text-[#d97757]',
             icon: <img src={fogueteImg} alt="Pro" className="w-8 h-8 object-contain" />,
-            label: 'Plus'
+            label: 'Pro'
          };
          case 'family': return {
             gradient: 'bg-gradient-to-br from-gray-900 to-[#D4B996]/20 border-[#D4B996]/30',

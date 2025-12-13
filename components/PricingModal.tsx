@@ -13,7 +13,7 @@ interface PricingModalProps {
 export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, currentPlan = 'starter', onSelectPlan }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [view, setView] = useState<'plans' | 'checkout'>('plans');
-  const [selectedPlan, setSelectedPlan] = useState<{id: 'starter' | 'pro' | 'family', name: string, price: number} | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<{ id: 'starter' | 'pro' | 'family', name: string, price: number } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   if (!isOpen) return null;
@@ -39,7 +39,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
     },
     {
       id: 'pro',
-      name: 'Plus',
+      name: 'Pro',
       price: 34.90,
       annualPrice: 399.00,
       description: 'Todos os recursos avançados agora acessíveis.',
@@ -52,7 +52,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
         'Relatórios avançados'
       ],
       icon: Rocket,
-      buttonText: 'Assinar Plus',
+      buttonText: 'Assinar Pro',
       popular: true
     },
     {
@@ -62,7 +62,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       annualPrice: 749.00,
       description: 'Gestão completa para toda a casa.',
       features: [
-        'Tudo do Plus',
+        'Tudo do Pro',
         'Até 3 perfis familiares',
         'Visão consolidada',
         'Metas compartilhadas',
@@ -75,23 +75,23 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
   ];
 
   const handleSelectClick = async (planId: 'starter' | 'pro' | 'family', name: string, price: number) => {
-      // Se o preço for 0, processa direto sem checkout (simulação) ou abre checkout se necessário
-      if (price === 0) {
-          await onSelectPlan(planId, billingCycle);
-          return;
-      }
-      setSelectedPlan({ id: planId, name, price });
-      setView('checkout');
+    // Se o preço for 0, processa direto sem checkout (simulação) ou abre checkout se necessário
+    if (price === 0) {
+      await onSelectPlan(planId, billingCycle);
+      return;
+    }
+    setSelectedPlan({ id: planId, name, price });
+    setView('checkout');
   };
 
   const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string) => {
-      if (!selectedPlan) return;
-      setIsLoading(true);
-      try {
-          await onSelectPlan(selectedPlan.id, billingCycle, cardData, holderInfo);
-      } finally {
-          setIsLoading(false);
-      }
+    if (!selectedPlan) return;
+    setIsLoading(true);
+    try {
+      await onSelectPlan(selectedPlan.id, billingCycle, cardData, holderInfo);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -99,8 +99,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       {view === 'plans' ? (
         <div className="relative w-full max-w-6xl mx-auto">
           {/* Botão de Fechar */}
-          <button 
-            onClick={onClose} 
+          <button
+            onClick={onClose}
             className="absolute -top-12 right-0 p-2 text-gray-400 hover:text-white transition-colors"
           >
             <X size={24} />
@@ -110,7 +110,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {plans.map((plan) => {
               const Icon = plan.icon;
-              
+
               return (
                 <div
                   key={plan.id}
@@ -136,16 +136,16 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
                       ${plan.id === 'pro' ? 'text-[#d97757] drop-shadow-lg' : ''} 
                       ${plan.id === 'family' ? 'text-[#D4B996] drop-shadow-lg' : ''}
                     `}>
-                        {/* Renderizando o ícone com cor específica de estilo "cobre/ouro" para Family/Starter se quiser, ou usando classes de cor */}
-                        <Icon 
-                            size={48} 
-                            weight="fill"
-                            className={`
+                      {/* Renderizando o ícone com cor específica de estilo "cobre/ouro" para Family/Starter se quiser, ou usando classes de cor */}
+                      <Icon
+                        size={48}
+                        weight="fill"
+                        className={`
                                 ${plan.id === 'starter' ? 'fill-stone-600 text-stone-400' : ''}
                                 ${plan.id === 'pro' ? 'fill-[#d97757]/20 text-[#d97757]' : ''}
                                 ${plan.id === 'family' ? 'fill-stone-600 text-stone-400' : ''}
                             `}
-                        />
+                      />
                     </div>
                   </div>
 
