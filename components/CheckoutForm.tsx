@@ -26,7 +26,7 @@ interface CheckoutFormProps {
   planName: string;
   price: number;
   billingCycle?: 'monthly' | 'annual';
-  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string) => Promise<void>;
+  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number) => Promise<void>;
   onBack: () => void;
   isLoading: boolean;
 }
@@ -258,7 +258,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       dbService.incrementCouponUsage(appliedCoupon.id);
     }
 
-    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id);
+    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice);
   };
 
   const inputStyle = "w-full bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] rounded-xl px-4 h-11 text-[#faf9f5] text-sm placeholder-gray-500 focus:outline-none focus:border-[#d97757] focus:bg-[rgba(58,59,57,0.8)] hover:border-gray-500 transition-all";

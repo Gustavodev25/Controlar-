@@ -77,35 +77,19 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
     const handleSelectClick = async (planId: 'starter' | 'pro' | 'family', name: string, price: number) => {
         if (planId === 'starter') {
-            handleCheckoutSubmit({}, {}, undefined, undefined, planId, 'monthly');
-            return;
-        }
-        setSelectedPlan({ id: planId, name, price });
-        setView('checkout');
-    };
-
-    const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, planIdOverride?: 'starter' | 'pro' | 'family', cycleOverride?: 'monthly' | 'annual') => {
-        const planToBuy = planIdOverride || selectedPlan?.id;
-        const cycleToBuy = cycleOverride || billingCycle;
-
-        if (!planToBuy) return;
-
-        // For free plan, just update directly
-        if (planToBuy === 'starter') {
+            // For free plan, activate directly
             setIsLoading(true);
             try {
                 const newSubscription = {
-                    plan: planToBuy,
+                    plan: planId,
                     status: 'active' as const,
                     billingCycle: 'monthly' as const,
                     nextBillingDate: toLocalISODate(new Date(Date.now() + 30 * 24 * 60 * 60 * 1000)),
                 };
-
                 const updatedUser = {
                     ...user,
                     subscription: newSubscription as any,
                 };
-
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
                 toast.success('Plano Starter ativado com sucesso!');
                 onBack();
@@ -116,6 +100,15 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
             }
             return;
         }
+        setSelectedPlan({ id: planId, name, price });
+        setView('checkout');
+    };
+
+    const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number) => {
+        const planToBuy = selectedPlan?.id;
+        const cycleToBuy = billingCycle;
+
+        if (!planToBuy) return;
 
         setIsLoading(true);
         try {
@@ -142,11 +135,16 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
             console.log('>>> Customer created:', customerData.customer.id);
 
-            // 2. Get the correct price
+            // 2. Get the correct price (use finalPrice from checkout form if provided, which includes coupon discount)
             const planConfig = plans.find(p => p.id === planToBuy);
-            let finalValue = cycleToBuy === 'annual'
+            const originalPrice = cycleToBuy === 'annual'
                 ? (planConfig?.annualPrice || selectedPlan?.price || 0)
                 : (planConfig?.price || selectedPlan?.price || 0);
+
+            // Use the discounted price from checkout if provided, otherwise use original
+            const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
+
+            console.log('>>> Price calculation:', { originalPrice, finalPrice, finalValue });
 
             // 3. Create subscription/payment in Asaas
             console.log('>>> Creating subscription in Asaas...');
