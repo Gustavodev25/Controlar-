@@ -372,7 +372,7 @@ export const AdminCoupons: React.FC = () => {
                     <td className="p-4 text-gray-300">
                       {coupon.type === 'progressive' ? (
                         <span className="text-[#d97757]" title={coupon.progressiveDiscounts?.map(d => `Mês ${d.month}: ${d.discount}%`).join(', ')}>
-                          🎯 Progressivo
+                          Progressivo
                         </span>
                       ) : coupon.type === 'percentage' ? `${coupon.value}%` : `R$ ${coupon.value.toFixed(2)}`}
                     </td>
@@ -501,7 +501,7 @@ export const AdminCoupons: React.FC = () => {
                     options={[
                       { value: 'percentage', label: 'Porcentagem (%)' },
                       { value: 'fixed', label: 'Valor Fixo (R$)' },
-                      { value: 'progressive', label: '🎯 Progressivo' }
+                      { value: 'progressive', label: 'Progressivo' }
                     ]}
                   />
                 </div>
@@ -607,9 +607,6 @@ export const AdminCoupons: React.FC = () => {
                     ))}
                   </div>
 
-                  <p className="text-[10px] text-gray-500">
-                    💡 Ex: Mês 1 = 100% (grátis), Mês 2 = 50%, Mês 3 = 0% (valor cheio)
-                  </p>
                 </div>
               )}
 
