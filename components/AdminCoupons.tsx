@@ -27,13 +27,14 @@ export const AdminCoupons: React.FC = () => {
   // Form State
   const [formData, setFormData] = useState({
     code: '',
-    type: 'percentage' as 'percentage' | 'fixed',
+    type: 'percentage' as 'percentage' | 'fixed' | 'progressive',
     value: 0,
     isActive: true,
     maxUses: '' as string | number,
     expirationDate: '',
     validityMode: 'none' as 'none' | 'date' | 'months',
-    validityMonths: '' as string | number
+    validityMonths: '' as string | number,
+    progressiveDiscounts: [{ month: 1, discount: 100 }] as { month: number; discount: number }[]
   });
 
   // Filter States
@@ -89,7 +90,8 @@ export const AdminCoupons: React.FC = () => {
         maxUses: coupon.maxUses || '',
         expirationDate: coupon.expirationDate || '',
         validityMode: coupon.expirationDate ? 'date' : 'none',
-        validityMonths: ''
+        validityMonths: '',
+        progressiveDiscounts: coupon.progressiveDiscounts || [{ month: 1, discount: 100 }]
       });
     } else {
       setEditingCoupon(null);
@@ -101,7 +103,8 @@ export const AdminCoupons: React.FC = () => {
         maxUses: '',
         expirationDate: '',
         validityMode: 'none',
-        validityMonths: ''
+        validityMonths: '',
+        progressiveDiscounts: [{ month: 1, discount: 100 }]
       });
     }
     setIsModalOpen(true);
@@ -119,7 +122,8 @@ export const AdminCoupons: React.FC = () => {
         maxUses: '',
         expirationDate: '',
         validityMode: 'none',
-        validityMonths: ''
+        validityMonths: '',
+        progressiveDiscounts: [{ month: 1, discount: 100 }]
       });
     }, 300);
   };
@@ -127,8 +131,19 @@ export const AdminCoupons: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!formData.code || formData.value <= 0) {
-      toast.error("Preencha os campos obrigatórios.");
+    // Validation
+    if (!formData.code) {
+      toast.error("Código do cupom é obrigatório.");
+      return;
+    }
+
+    if (formData.type === 'progressive') {
+      if (formData.progressiveDiscounts.length === 0) {
+        toast.error("Adicione pelo menos uma regra de desconto.");
+        return;
+      }
+    } else if (formData.value <= 0) {
+      toast.error("O valor do desconto deve ser maior que zero.");
       return;
     }
 
@@ -136,11 +151,16 @@ export const AdminCoupons: React.FC = () => {
       const payload: any = {
         code: formData.code.toUpperCase(),
         type: formData.type,
-        value: Number(formData.value),
+        value: formData.type === 'progressive' ? 0 : Number(formData.value),
         isActive: formData.isActive,
         createdAt: editingCoupon?.createdAt || new Date().toISOString(),
         currentUses: editingCoupon?.currentUses || 0
       };
+
+      // Save progressive discounts
+      if (formData.type === 'progressive') {
+        payload.progressiveDiscounts = formData.progressiveDiscounts.sort((a, b) => a.month - b.month);
+      }
 
       if (formData.maxUses) payload.maxUses = Number(formData.maxUses);
 
@@ -350,7 +370,11 @@ export const AdminCoupons: React.FC = () => {
                   <tr key={coupon.id} className="hover:bg-white/5 transition-colors text-sm">
                     <td className="p-4 font-bold text-white">{coupon.code}</td>
                     <td className="p-4 text-gray-300">
-                      {coupon.type === 'percentage' ? `${coupon.value}%` : `R$ ${coupon.value.toFixed(2)}`}
+                      {coupon.type === 'progressive' ? (
+                        <span className="text-[#d97757]" title={coupon.progressiveDiscounts?.map(d => `Mês ${d.month}: ${d.discount}%`).join(', ')}>
+                          🎯 Progressivo
+                        </span>
+                      ) : coupon.type === 'percentage' ? `${coupon.value}%` : `R$ ${coupon.value.toFixed(2)}`}
                     </td>
                     <td className="p-4 text-gray-300">
                       {coupon.currentUses} {coupon.maxUses ? `/ ${coupon.maxUses}` : '(Ilimitado)'}
@@ -476,30 +500,118 @@ export const AdminCoupons: React.FC = () => {
                     onChange={(v) => setFormData(prev => ({ ...prev, type: v as any }))}
                     options={[
                       { value: 'percentage', label: 'Porcentagem (%)' },
-                      { value: 'fixed', label: 'Valor Fixo (R$)' }
+                      { value: 'fixed', label: 'Valor Fixo (R$)' },
+                      { value: 'progressive', label: '🎯 Progressivo' }
                     ]}
                   />
                 </div>
 
-                {/* Valor */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor</label>
-                  <div className="relative">
-                    {formData.type === 'percentage' ? (
-                      <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                    ) : (
-                      <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                    )}
-                    <input
-                      type="number"
-                      value={formData.value}
-                      onChange={(e) => setFormData(prev => ({ ...prev, value: Number(e.target.value) }))}
-                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                      placeholder="0"
-                    />
+                {/* Valor - Only for non-progressive */}
+                {formData.type !== 'progressive' && (
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor</label>
+                    <div className="relative">
+                      {formData.type === 'percentage' ? (
+                        <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                      ) : (
+                        <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                      )}
+                      <input
+                        type="number"
+                        value={formData.value}
+                        onChange={(e) => setFormData(prev => ({ ...prev, value: Number(e.target.value) }))}
+                        className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                        placeholder="0"
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
+
+              {/* Progressive Discounts Editor */}
+              {formData.type === 'progressive' && (
+                <div className="space-y-3 animate-fade-in border border-[#d97757]/20 rounded-xl p-4 bg-[#d97757]/5">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[11px] font-medium text-[#d97757] uppercase tracking-wide flex items-center gap-1.5">
+                      <Ticket size={12} />
+                      Descontos por Mês
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextMonth = formData.progressiveDiscounts.length > 0
+                          ? Math.max(...formData.progressiveDiscounts.map(d => d.month)) + 1
+                          : 1;
+                        setFormData(prev => ({
+                          ...prev,
+                          progressiveDiscounts: [...prev.progressiveDiscounts, { month: nextMonth, discount: 0 }]
+                        }));
+                      }}
+                      className="text-[10px] text-[#d97757] hover:text-white font-bold uppercase flex items-center gap-1 transition-colors bg-[#d97757]/10 hover:bg-[#d97757]/20 px-2 py-1 rounded-lg"
+                    >
+                      <Plus size={10} />
+                      Adicionar
+                    </button>
+                  </div>
+
+                  <div className="space-y-2">
+                    {formData.progressiveDiscounts.map((rule, idx) => (
+                      <div key={idx} className="flex items-center gap-2">
+                        <div className="flex-1 grid grid-cols-2 gap-2">
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Mês</span>
+                            <input
+                              type="number"
+                              min="1"
+                              value={rule.month}
+                              onChange={(e) => {
+                                const newRules = [...formData.progressiveDiscounts];
+                                newRules[idx].month = Number(e.target.value);
+                                setFormData(prev => ({ ...prev, progressiveDiscounts: newRules }));
+                              }}
+                              className="w-full bg-gray-900/40 border border-gray-800/60 rounded-lg text-white pl-12 pr-3 py-2 text-sm focus:border-gray-700 outline-none transition-all font-mono"
+                            />
+                          </div>
+                          <div className="relative">
+                            <Percent className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" size={12} />
+                            <input
+                              type="number"
+                              min="0"
+                              max="100"
+                              value={rule.discount}
+                              onChange={(e) => {
+                                const newRules = [...formData.progressiveDiscounts];
+                                newRules[idx].discount = Math.min(100, Math.max(0, Number(e.target.value)));
+                                setFormData(prev => ({ ...prev, progressiveDiscounts: newRules }));
+                              }}
+                              className="w-full bg-gray-900/40 border border-gray-800/60 rounded-lg text-white px-3 py-2 text-sm focus:border-gray-700 outline-none transition-all font-mono pr-8"
+                              placeholder="Desconto"
+                            />
+                          </div>
+                        </div>
+                        {formData.progressiveDiscounts.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFormData(prev => ({
+                                ...prev,
+                                progressiveDiscounts: prev.progressiveDiscounts.filter((_, i) => i !== idx)
+                              }));
+                            }}
+                            className="p-1.5 hover:bg-red-500/10 rounded-lg text-gray-500 hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  <p className="text-[10px] text-gray-500">
+                    💡 Ex: Mês 1 = 100% (grátis), Mês 2 = 50%, Mês 3 = 0% (valor cheio)
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-3">
                 {/* Limite de Uso */}

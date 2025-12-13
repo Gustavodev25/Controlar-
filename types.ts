@@ -259,11 +259,14 @@ export interface AppNotification {
 export interface Coupon {
   id: string;
   code: string;
-  type: 'percentage' | 'fixed';
-  value: number; // Percentage (0-100) or Fixed Amount
+  type: 'percentage' | 'fixed' | 'progressive';
+  value: number; // Percentage (0-100) or Fixed Amount (for non-progressive)
   isActive: boolean;
   maxUses?: number; // Optional limit
   currentUses: number;
   expirationDate?: string; // ISO Date
   createdAt: string;
+  // Progressive discount: different discount per billing month
+  // Example: [{month: 1, discount: 100}, {month: 2, discount: 50}, {month: 3, discount: 0}]
+  progressiveDiscounts?: { month: number; discount: number }[];
 }
