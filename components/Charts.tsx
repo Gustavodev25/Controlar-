@@ -20,8 +20,8 @@ interface ChartsProps {
   isLoading?: boolean;
 }
 
-// Updated Palette: Primarily Orange/Terracotta shades, then complementary neutral/warm tones
-const COLORS = ['#d97757', '#e68e70', '#c56a4d', '#b55a3d', '#767775', '#4a4b49'];
+// Updated Palette: Vibrant Orange Gradient
+const COLORS = ['#d97757', '#FF9F7F', '#A64D36', '#FFC69F', '#7D3C2C', '#C48F65'];
 
 const translateCategory = (category: string) => {
   const map: Record<string, string> = {
