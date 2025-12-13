@@ -242,12 +242,12 @@ const App: React.FC = () => {
   // Automatic Category Fix (One-time migration)
   useEffect(() => {
     if (userId && typeof window !== 'undefined') {
-      const hasFixed = localStorage.getItem('fixed_categories_v1');
+      const hasFixed = localStorage.getItem('fixed_categories_v2');
       if (!hasFixed) {
         console.log('[Auto Fix] Starting category translation...');
         dbService.fixCategoriesForUser(userId).then((count) => {
           console.log(`[Auto Fix] Completed. Updated ${count} transactions.`);
-          localStorage.setItem('fixed_categories_v1', 'true');
+          localStorage.setItem('fixed_categories_v2', 'true');
           if (count > 0) {
              toast.success(`Categorias atualizadas automaticamente (${count} registros).`);
           }

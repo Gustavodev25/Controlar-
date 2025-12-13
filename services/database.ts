@@ -1626,6 +1626,25 @@ const translateCategoryMigration = (category: string | undefined | null): string
         'Transfer - TED': 'Transferência TED',
         'Third party transfer - PIX': 'Transf. Terceiros Pix',
         'Investments': 'Investimentos',
+        // Credit Card Specifics
+        'Shopping': 'Compras',
+        'Credit card fees': 'Tarifas cartão',
+        'Groceries': 'Supermercado',
+        'Accomodation': 'Hospedagem',
+        'Insurance': 'Seguros',
+        'Entrepreneurial activities': 'Empreendedorismo',
+        'Tolls and in vehicle payment': 'Pedágios',
+        'Services': 'Serviços',
+        'Mileage programs': 'Milhas',
+        'Bookstore': 'Livraria',
+        'Pet supplies and vet': 'Pet Shop / Vet',
+        'Houseware': 'Casa e Decoração',
+        'Transfers': 'Transferências',
+        'Gambling': 'Jogos / Apostas',
+        'Tickets': 'Ingressos',
+        'Vehicle maintenance': 'Manutenção Auto',
+        'Dentist': 'Dentista',
+        'Transfer - Foreign Exchange': 'Câmbio',
     };
 
     // Strict match first, then fallback to original if not found
