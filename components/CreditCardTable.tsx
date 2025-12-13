@@ -3,7 +3,7 @@ import { Transaction, ConnectedAccount } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
   ArrowUpCircle, ArrowDownCircle, AlertCircle, Code, RefreshCw, Loader2,
-  Download, FileSpreadsheet, Plus, FileText, DollarSign, Tag
+  Download, FileSpreadsheet, Plus, FileText, DollarSign, Tag, CreditCard
 } from './Icons';
 import { ConfirmationCard, CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { createPortal } from 'react-dom';
@@ -50,6 +50,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [isEditAnimating, setIsEditAnimating] = useState(false);
 
   const [jsonViewTransaction, setJsonViewTransaction] = useState<any | null>(null);
+
+  // Cards Details Modal State
+  const [isCardsModalOpen, setIsCardsModalOpen] = useState(false);
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -243,7 +246,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     description: '',
                     amount: 0,
                     date: new Date().toISOString().split('T')[0],
-                    category: 'Outros',
+                    category: '',
                     type: 'expense',
                     status: 'pending',
                     accountType: 'CREDIT_CARD',
@@ -292,6 +295,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
             {/* Botões de Exportação */}
             <div className="flex items-center gap-1">
+              <button
+                onClick={() => setIsCardsModalOpen(true)}
+                className="p-2.5 bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-white rounded-xl border border-gray-700 hover:border-gray-600 transition-all"
+                title="Ver Dados dos Cartões"
+              >
+                <CreditCard size={16} />
+              </button>
               <button
                 onClick={() => {
                   // Exportar JSON de TODAS as transações
@@ -632,6 +642,89 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         confirmText="Excluir"
         cancelText="Cancelar"
       />
+
+      {/* Modal de Detalhes dos Cartões */}
+      {isCardsModalOpen && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 flex flex-col max-h-[90vh]">
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
+              <h3 className="font-bold text-white text-lg flex items-center gap-2">
+                <CreditCard size={20} className="text-[#d97757]" />
+                Dados dos Cartões Conectados
+              </h3>
+              <button onClick={() => setIsCardsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
+                <X size={20} />
+              </button>
+            </div>
+            <div className="p-6 overflow-auto custom-scrollbar bg-[#1e1e1e] space-y-4">
+              {creditCardAccounts.length === 0 ? (
+                <EmptyState
+                  title="Nenhum cartão conectado"
+                  description="Conecte suas contas para ver os detalhes aqui."
+                />
+              ) : (
+                <div className="grid grid-cols-1 gap-4">
+                  {creditCardAccounts.map(acc => (
+                    <div key={acc.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-colors">
+                      <div className="flex justify-between items-start mb-4">
+                        <div>
+                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">{acc.institution || 'Banco'}</p>
+                          <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                            {acc.name}
+                            {acc.brand && <span className="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-700 text-gray-400 uppercase">{acc.brand}</span>}
+                          </h4>
+                        </div>
+                        <div className="text-right">
+                           <p className="text-xs text-gray-500 font-medium">Limite Total</p>
+                           <p className="text-white font-mono font-bold">{acc.creditLimit ? formatCurrency(acc.creditLimit) : '---'}</p>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-gray-800">
+                         <div>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Limite Disponível</p>
+                            <p className="text-emerald-400 font-mono font-bold text-sm">
+                              {acc.availableCreditLimit ? formatCurrency(acc.availableCreditLimit) : '---'}
+                            </p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Fechamento</p>
+                            <p className="text-white font-medium text-sm flex items-center gap-1">
+                               <Calendar size={12} className="text-gray-600" />
+                               Dia {acc.closingDay || acc.balanceCloseDate?.split('T')[0].split('-')[2] || '--'}
+                            </p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Vencimento</p>
+                            <p className="text-white font-medium text-sm flex items-center gap-1">
+                               <Calendar size={12} className="text-gray-600" />
+                               Dia {acc.dueDay || acc.balanceDueDate?.split('T')[0].split('-')[2] || '--'}
+                            </p>
+                         </div>
+                         <div>
+                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Última Sinc.</p>
+                            <p className="text-gray-400 text-xs">
+                               {acc.lastUpdated ? new Date(acc.lastUpdated).toLocaleDateString() : 'Nunca'}
+                            </p>
+                         </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="p-4 border-t border-gray-800 bg-gray-900/30 flex justify-end">
+                <button 
+                  onClick={() => setIsCardsModalOpen(false)}
+                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold text-xs transition-colors"
+                >
+                  Fechar
+                </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {jsonViewTransaction && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">

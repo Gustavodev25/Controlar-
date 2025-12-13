@@ -161,6 +161,31 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
+  const translateCategory = (category: string) => {
+    const map: Record<string, string> = {
+      'food': 'Alimentação',
+      'transport': 'Transporte',
+      'shopping': 'Compras',
+      'health': 'Saúde',
+      'education': 'Educação',
+      'housing': 'Moradia',
+      'entertainment': 'Lazer',
+      'utilities': 'Contas',
+      'salary': 'Salário',
+      'income': 'Receita',
+      'transfer': 'Transferência',
+      'investment': 'Investimento',
+      'services': 'Serviços',
+      'others': 'Outros',
+      'credit card payment': 'Pagamento de Cartão',
+      'taxes': 'Impostos',
+      'travel': 'Viagem',
+      'withdraw': 'Saque'
+    };
+    const lower = (category || '').toLowerCase();
+    return map[lower] || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Outros');
+  };
+
   return (
     <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
       
@@ -190,7 +215,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                     description: '',
                     amount: 0,
                     date: new Date().toISOString().split('T')[0],
-                    category: 'Outros',
+                    category: '',
                     type: 'expense',
                     status: 'completed'
                   });
@@ -304,9 +329,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <td className="px-6 py-4 text-gray-400">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-gray-900 rounded-lg text-gray-500 border border-gray-800">
-                        {getCategoryIcon(t.category || "Outros", 14)}
+                        {getCategoryIcon(translateCategory(t.category || "Outros"), 14)}
                     </div>
-                    <span className="text-xs">{t.category || "Outros"}</span>
+                    <span className="text-xs">{translateCategory(t.category || "Outros")}</span>
                   </div>
                 </td>
                 <td className="px-6 py-4 text-right">
@@ -371,8 +396,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   <h4 className="font-bold text-gray-100 text-base mb-1 truncate">{t.description}</h4>
                   <div className="flex items-center gap-3 text-xs text-gray-500">
                     <span className="flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded-md border border-gray-800">
-                      {getCategoryIcon(t.category || "Outros", 12)}
-                      {t.category || "Outros"}
+                      {getCategoryIcon(translateCategory(t.category || "Outros"), 12)}
+                      {translateCategory(t.category || "Outros")}
                     </span>
                     <span className="font-mono flex items-center gap-1.5">
                         <Calendar size={12} /> {formatDate(t.date)}
