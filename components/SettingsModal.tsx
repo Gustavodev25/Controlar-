@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
    X, User, Mail, Check, Save, Sparkles, Shield, CreditCard,
-   Bell, Download, Trash2, Upload, Smartphone,
+   Bell, Trash2, Upload, Smartphone,
    CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
    PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
    Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
-   Puzzle, Rocket, Wallet, Plus
+   Puzzle, Rocket, Wallet, Plus, AlertTriangle
 } from 'lucide-react';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
@@ -19,6 +19,9 @@ import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 import NumberFlow from '@number-flow/react';
+import { deleteUserAccount, fixCategoriesForUser } from '../services/database';
+import { deleteUser, signOut } from 'firebase/auth';
+import { auth } from '../services/firebase';
 
 interface SettingsModalProps {
    isOpen: boolean;
@@ -62,7 +65,160 @@ interface BadgeDefinition {
    requirement: string;
 }
 
-type SettingsTab = 'account' | 'badges' | 'family' | 'finance' | 'security' | 'plan';
+type SettingsTab = 'account' | 'badges' | 'family' | 'finance' | 'security' | 'plan' | 'data';
+
+// --- COMPONENTE DELETE ACCOUNT MODAL ---
+interface DeleteAccountModalProps {
+   isOpen: boolean;
+   onClose: () => void;
+   onConfirm: () => Promise<void>;
+}
+
+const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, onClose, onConfirm }) => {
+   const [step, setStep] = useState<'terms' | 'confirm'>('terms');
+   const [confirmationText, setConfirmationText] = useState('');
+   const [isDeleting, setIsDeleting] = useState(false);
+   const [acceptedTerms, setAcceptedTerms] = useState(false);
+   const [isVisible, setIsVisible] = useState(false);
+   const [isAnimating, setIsAnimating] = useState(false);
+
+   useEffect(() => {
+      if (isOpen) {
+         setIsVisible(true);
+         setStep('terms');
+         setConfirmationText('');
+         setAcceptedTerms(false);
+         requestAnimationFrame(() => requestAnimationFrame(() => setIsAnimating(true)));
+      } else {
+         setIsAnimating(false);
+         setTimeout(() => setIsVisible(false), 300);
+      }
+   }, [isOpen]);
+
+   const handleDelete = async () => {
+      if (confirmationText !== "Eu desejo deletar minha conta") return;
+
+      try {
+         setIsDeleting(true);
+         await onConfirm();
+      } catch (error) {
+         console.error("Error deleting account:", error);
+         setIsDeleting(false);
+      }
+   };
+
+   if (!isVisible) return null;
+
+   return createPortal(
+      <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'bg-black/60 backdrop-blur-md' : 'bg-black/0 backdrop-blur-0'}`}>
+         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+
+            {/* Background Effects */}
+            <div className="absolute inset-0 pointer-events-none">
+               <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
+            </div>
+
+            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/50">
+               <div className="flex items-center gap-3">
+                  <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20 text-red-500">
+                     <AlertTriangle size={20} />
+                  </div>
+                  <h3 className="font-bold text-white">Excluir Conta</h3>
+               </div>
+               <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-lg transition-colors">
+                  <X size={18} />
+               </button>
+            </div>
+
+            <div className="p-8 relative z-10 flex flex-col gap-6">
+               <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 text-red-200 text-sm leading-relaxed">
+                  <p className="font-bold mb-2 text-red-400 flex items-center gap-2">
+                     <AlertTriangle size={16} /> Ação Irreversível
+                  </p>
+                  <p className="text-xs text-gray-300">
+                     Ao confirmar, <strong>todos</strong> os seus dados, incluindo transações, metas, orçamentos e cartões conectados serão apagados permanentemente.
+                     Sua assinatura também será cancelada.
+                  </p>
+               </div>
+
+               {step === 'terms' ? (
+                  <>
+                     <div
+                        className="flex items-start gap-3 cursor-pointer group"
+                        onClick={() => setAcceptedTerms(!acceptedTerms)}
+                     >
+                        <div className={`mt-0.5 w-5 h-5 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 ${acceptedTerms ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                           <Check size={12} strokeWidth={4} />
+                        </div>
+                        <p className="text-sm text-gray-300 select-none group-hover:text-gray-200 transition-colors">
+                           Estou ciente de que esta ação apagará permanentemente todos os meus dados do sistema e não poderá ser desfeita.
+                        </p>
+                     </div>
+
+                     <div className="flex gap-3 pt-2">
+                        <button
+                           onClick={onClose}
+                           className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors text-sm"
+                        >
+                           Cancelar
+                        </button>
+                        <button
+                           onClick={() => setStep('confirm')}
+                           disabled={!acceptedTerms}
+                           className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                        >
+                           Avançar <ChevronRight size={16} />
+                        </button>
+                     </div>
+                  </>
+               ) : (
+                  <>
+                     <div className="animate-fade-in space-y-6">
+                        <div>
+                           <label className="block text-xs font-medium text-gray-400 mb-2 uppercase tracking-wide">
+                              Digite <strong className="text-white">Eu desejo deletar minha conta</strong>
+                           </label>
+                           <input
+                              type="text"
+                              value={confirmationText}
+                              onChange={(e) => setConfirmationText(e.target.value)}
+                              placeholder="Eu desejo deletar minha conta"
+                              className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all placeholder:text-gray-600 text-sm"
+                              onPaste={(e) => e.preventDefault()}
+                              autoFocus
+                           />
+                        </div>
+
+                        <div className="flex gap-3 pt-2">
+                           <button
+                              onClick={() => setStep('terms')}
+                              disabled={isDeleting}
+                              className="flex-1 py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-colors disabled:opacity-50 text-sm flex items-center justify-center gap-2"
+                           >
+                              <ArrowLeft size={16} /> Voltar
+                           </button>
+                           <button
+                              onClick={handleDelete}
+                              disabled={confirmationText !== "Eu desejo deletar minha conta" || isDeleting}
+                              className="flex-1 py-3 bg-red-600 hover:bg-red-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-red-900/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm"
+                           >
+                              {isDeleting ? (
+                                 <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                              ) : (
+                                 <Trash2 size={16} />
+                              )}
+                              Excluir Tudo
+                           </button>
+                        </div>
+                     </div>
+                  </>
+               )}
+            </div>
+         </div>
+      </div>,
+      document.body
+   );
+};
 
 // --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
@@ -522,6 +678,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
    const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab as SettingsTab);
    const [formData, setFormData] = useState(user);
+   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
    const [isVisible, setIsVisible] = useState(false);
    const [autoRenew, setAutoRenew] = useState(true); // Moved to top level
    const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
@@ -535,6 +692,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
       { id: 'family', label: 'Família', icon: <Users size={18} /> },
       { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
+      { id: 'data', label: 'Dados', icon: <Bot size={18} /> },
       { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
       { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
    ];
@@ -1028,25 +1186,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setIsVerifying2FA(false);
    };
 
-   // --- DATA EXPORT ---
-   const handleExportData = () => {
-      if (transactions.length === 0) {
-         toast.error("Sem dados para exportar.");
-         return;
+   // --- DELETE ACCOUNT ---
+   const handleDeleteAccount = async () => {
+      try {
+         if (auth.currentUser) {
+            // 1. Delete Firestore Data
+            await deleteUserAccount(auth.currentUser.uid);
+            // 2. Delete Auth User
+            await deleteUser(auth.currentUser);
+            
+            toast.success("Conta excluída com sucesso.");
+            onClose();
+            // App should handle auth state change automatically
+         }
+      } catch (error: any) {
+         console.error("Error deleting account:", error);
+         if (error.code === 'auth/requires-recent-login') {
+            toast.error("Por segurança, faça login novamente para excluir sua conta.");
+            await signOut(auth);
+            onClose();
+         } else {
+            toast.error("Erro ao excluir conta. Tente novamente.");
+         }
       }
-      const headers = ["Data", "Descrição", "Categoria", "Valor", "Tipo", "Status"];
-      const rows = transactions.map(t => [
-         t.date, `"${t.description}"`, t.category, t.amount.toFixed(2), t.type, t.status
-      ]);
-      const csvContent = "data:text/csv;charset=utf-8," + headers.join(",") + "\n" + rows.map(e => e.join(",")).join("\n");
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", "minhas_financas.csv");
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      toast.success("Download iniciado!");
    };
 
    const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -1104,6 +1266,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Tab Buttons */}
                   <button
                      onClick={() => setActiveTab('account')}
+                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                        }`}
+                  >
+                     <User size={18} className="flex-shrink-0" />
+                     <span>Minha Conta</span>
+                  </button>
+                  <button
+                     onClick={() => setActiveTab('badges')}
                      className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
                         }`}
                   >
@@ -1292,25 +1462,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            </div>
                         </div>
 
-                        {/* Exportar Dados */}
-                        <div className="space-y-4">
-                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                              <Download size={18} className="text-[#d97757]" />
-                              Exportar Dados
-                           </h4>
-                           <div className="bg-gray-900/30 border border-gray-800 rounded-xl p-5">
-                              <p className="text-sm text-gray-400 mb-4">
-                                 Baixe uma cópia de todas as suas transações e dados financeiros.
-                              </p>
-                              <button
-                                 onClick={handleExportData}
-                                 className="px-4 py-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 border border-emerald-600/30 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
-                              >
-                                 <Download size={16} /> Exportar CSV
-                              </button>
-                           </div>
-                        </div>
-
                         {/* Zona de Perigo */}
                         <div className="space-y-4 pt-4">
                            <h4 className="text-lg font-bold text-red-400 flex items-center gap-2">
@@ -1322,6 +1473,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  Ações irreversíveis relacionadas à sua conta.
                               </p>
                               <button
+                                 onClick={() => setIsDeleteModalOpen(true)}
                                  className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
                               >
                                  <Trash2 size={16} /> Excluir Conta
@@ -1732,6 +1884,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      </div>
                   )}
 
+                  {/* --- TAB: DATA --- */}
+                  {activeTab === 'data' && (
+                     <div className="space-y-10 animate-fade-in max-w-2xl">
+                        <div>
+                           <h3 className="text-3xl font-bold text-white mb-2">Gerenciamento de Dados</h3>
+                           <p className="text-gray-400">Ferramentas avançadas para corrigir e organizar seus registros.</p>
+                        </div>
+
+                        <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
+                           <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
+                              <Wand2 size={20} className="text-[#d97757]" /> Correção de Categorias
+                           </h4>
+                           <p className="text-sm text-gray-400 mb-6">
+                              Se você tem transações antigas com nomes de categorias em inglês (ex: "Same person transfer"), 
+                              use esta ferramenta para traduzi-las automaticamente para o padrão atual.
+                           </p>
+                           <button
+                              onClick={async () => {
+                                 if (userId) {
+                                    const count = await fixCategoriesForUser(userId);
+                                    toast.success(`Correção concluída! ${count} transações atualizadas.`);
+                                 }
+                              }}
+                              className="px-4 py-2.5 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all border border-gray-700 hover:border-gray-600 text-sm flex items-center gap-2"
+                           >
+                              <Wand2 size={16} /> Traduzir Categorias Antigas
+                           </button>
+                        </div>
+                     </div>
+                  )}
+
                   {/* --- TAB: SECURITY --- */}
                   {activeTab === 'security' && (
                      <div className="space-y-10 animate-fade-in max-w-2xl">
@@ -2024,6 +2207,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             isOpen={isCardModalOpen}
             onClose={() => setIsCardModalOpen(false)}
             onSave={handleUpdateCard}
+         />
+
+         {/* Delete Account Modal */}
+         <DeleteAccountModal
+            isOpen={isDeleteModalOpen}
+            onClose={() => setIsDeleteModalOpen(false)}
+            onConfirm={handleDeleteAccount}
          />
 
          {/* Auto Renew Confirmation */}
