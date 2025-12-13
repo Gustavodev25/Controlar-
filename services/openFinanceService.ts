@@ -110,3 +110,66 @@ export const generateMockData = async (userId: string, bankName: string): Promis
     
     return transactions.length;
 };
+
+export const translatePluggyCategory = (category: string | undefined | null): string => {
+    if (!category) return 'Outros';
+    
+    const map: Record<string, string> = {
+        'Salary': 'Salário',
+        'Retirement': 'Aposentadoria',
+        'Government aid': 'Benefícios',
+        'Non-recurring income': 'Rendimentos extras',
+        'Loans': 'Empréstimos',
+        'Interests charged': 'Juros',
+        'Fixed income': 'Renda fixa',
+        'Variable income': 'Renda variável',
+        'Proceeds interests and dividends': 'Juros e dividendos',
+        'Same person transfer - PIX': 'Transf. própria Pix',
+        'Transfer - PIX': 'Transf. Pix',
+        'Credit card payment': 'Cartão de crédito',
+        'Bank slip': 'Boleto',
+        'Debt card': 'Cartão débito',
+        'Alimony': 'Pensão',
+        'Telecommunications': 'Telecom',
+        'Internet': 'Internet',
+        'Mobile': 'Celular',
+        'School': 'Escola',
+        'University': 'Universidade',
+        'Gyms and fitness centers': 'Academia',
+        'Wellness': 'Bem-estar',
+        'Cinema, theater and concerts': 'Cinema / shows',
+        'Online shopping': 'Online',
+        'Electronics': 'Eletrônicos',
+        'Clothing': 'Roupas',
+        'Video streaming': 'Streaming vídeo',
+        'Music streaming': 'Streaming música',
+        'N/A': 'Supermercado',
+        'Eating out': 'Restaurante',
+        'Food delivery': 'Delivery',
+        'Airport and airlines': 'Passagens aéreas',
+        'Accommodation': 'Hospedagem',
+        'Lottery': 'Loterias',
+        'Income taxes': 'IR',
+        'Account fees': 'Tarifas conta',
+        'Rent': 'Aluguel',
+        'Electricity': 'Luz',
+        'Water': 'Água',
+        'Pharmacy': 'Farmácia',
+        'Hospital clinics and labs': 'Clínicas / exames',
+        'Taxi and ride-hailing': 'Táxi / apps',
+        'Public transportation': 'Ônibus / metrô',
+        'Car rental': 'Aluguel carro',
+        'Bicycle': 'Bicicleta',
+        'Gas stations': 'Combustível',
+        'Parking': 'Estacionamento',
+        'Health insurance': 'Plano de saúde',
+        'Vehicle insurance': 'Seguro auto',
+        // Common Fallbacks
+        'Donation': 'Doações',
+        'Donations': 'Doações',
+        'Leisure': 'Lazer',
+        'Entertainment': 'Lazer'
+    };
+
+    return map[category] || category || 'Outros';
+};

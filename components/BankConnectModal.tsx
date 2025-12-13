@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { PluggyConnect } from 'react-pluggy-connect';
-import { X, Loader2, Building, CheckCircle, AlertCircle } from './Icons';
+import { X, Loader2, Building, CheckCircle, AlertCircle, ShieldCheck, Info, Zap } from './Icons';
 import { ConnectedAccount, ProviderBill, Transaction } from '../types';
 import * as dbService from '../services/database';
 import type { CreditCardTransaction } from '../services/database';
+import { translatePluggyCategory } from '../services/openFinanceService';
 
 interface BankConnectModalProps {
     isOpen: boolean;
@@ -115,6 +116,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
     const [existingItems, setExistingItems] = useState<any[]>([]);
     const [isDeletingItem, setIsDeletingItem] = useState<string | null>(null);
+    const [showPluggyWidget, setShowPluggyWidget] = useState(false);
 
     const normalizeAccount = useCallback((account: any, bills: ProviderBill[]): ConnectedAccount => {
         const creditData = account.creditData || {};
@@ -175,7 +177,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             description: tx?.description || 'Movimentacao',
             amount,
             date,
-            category: tx?.category || 'Outros',
+            category: translatePluggyCategory(tx?.category),
             type: isIncome ? 'income' : 'expense',
             status,
             importSource: 'pluggy',
@@ -235,7 +237,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 date: postDate,
                 description: tx?.description || 'Lancamento Cartao',
                 amount,
-                category: tx?.category || 'Outros',
+                category: translatePluggyCategory(tx?.category),
                 type,
                 status,
                 cardId: account.id,
@@ -433,6 +435,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 setSyncStatus('idle');
                 setSyncMessage('');
                 setExistingItems([]);
+                setShowPluggyWidget(false);
             }, 300);
         }
         return () => clearTimeout(timeoutId);
@@ -535,6 +538,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
     const handleSuccess = useCallback(async (data: { item: { id: string } }) => {
         console.log('Pluggy connection success, item:', data.item?.id);
+        setShowPluggyWidget(false);
 
         if (!userId) {
             setSyncStatus('error');
@@ -564,6 +568,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
 
     const handleError = useCallback((error: { message?: string; code?: string; data?: any }) => {
+        setShowPluggyWidget(false);
         const errorCode = error.message || error.code || '';
         const errorDataMessage = typeof error.data === 'string' ? error.data : error.data?.message || '';
         const duplicateError =
@@ -610,10 +615,12 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
     if (!isVisible) return null;
 
-    return createPortal(
+    return <>
+    {createPortal(
         <div className={`
-      fixed inset-0 z-[9999] flex items-center justify-center p-4 
+      fixed inset-0 z-[9999] flex items-center justify-center p-4
       transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+      ${showPluggyWidget ? 'hidden' : ''}
       ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
     `}>
             <div className={`
@@ -796,16 +803,59 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                                 </div>
                             )}
 
-                            {/* Pluggy Widget */}
+                            {/* Pluggy Widget Trigger */}
                             {connectToken && !isLoading && !error && syncStatus === 'idle' && (
-                                <div className="min-h-[400px] animate-fade-in">
-                                    <PluggyConnect
-                                        connectToken={connectToken}
-                                        includeSandbox={false}
-                                        onSuccess={handleSuccess}
-                                        onError={handleError}
-                                        onClose={onClose}
-                                    />
+                                <div className="flex flex-col gap-6 animate-fade-in">
+                                    {/* Segurança */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <ShieldCheck size={18} className="text-emerald-500" />
+                                            <h4 className="text-sm font-bold text-white">Segurança dos seus dados</h4>
+                                        </div>
+                                        <ul className="text-xs text-gray-400 space-y-2 ml-6">
+                                            <li>Seus dados são criptografados e protegidos</li>
+                                            <li>Não armazenamos senhas bancárias</li>
+                                            <li>Conexão regulamentada pelo Banco Central</li>
+                                            <li>Você pode revogar o acesso a qualquer momento</li>
+                                        </ul>
+                                    </div>
+
+                                    <div className="border-t border-gray-800/50" />
+
+                                    {/* Sobre a Pluggy */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <Zap size={18} className="text-[#d97757]" />
+                                            <h4 className="text-sm font-bold text-white">Sobre a Pluggy</h4>
+                                        </div>
+                                        <p className="text-xs text-gray-400 ml-6 leading-relaxed">
+                                            Plataforma certificada pelo Open Finance Brasil. Seus dados são acessados apenas para leitura, sem possibilidade de movimentações.
+                                        </p>
+                                    </div>
+
+                                    <div className="border-t border-gray-800/50" />
+
+                                    {/* Instruções */}
+                                    <div className="space-y-3">
+                                        <div className="flex items-center gap-2">
+                                            <Info size={18} className="text-blue-400" />
+                                            <h4 className="text-sm font-bold text-white">Como funciona</h4>
+                                        </div>
+                                        <ol className="text-xs text-gray-400 space-y-2 ml-6">
+                                            <li><span className="text-gray-500 font-medium">1.</span> Clique em "Conectar Banco" abaixo</li>
+                                            <li><span className="text-gray-500 font-medium">2.</span> Selecione seu banco na lista</li>
+                                            <li><span className="text-gray-500 font-medium">3.</span> Faça login com suas credenciais</li>
+                                            <li><span className="text-gray-500 font-medium">4.</span> Autorize o compartilhamento</li>
+                                        </ol>
+                                    </div>
+
+                                    {/* Botão */}
+                                    <button
+                                        onClick={() => setShowPluggyWidget(true)}
+                                        className="w-full mt-2 px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
+                                    >
+                                        Conectar Banco
+                                    </button>
                                 </div>
                             )}
                         </>
@@ -813,7 +863,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 </div>
 
                 {/* Footer */}
-                {view === 'connect' && !isLoading && !error && syncStatus === 'idle' && (
+                {view === 'connect' && !isLoading && !error && syncStatus === 'idle' && !showPluggyWidget && (
                     <div className="px-5 py-4 border-t border-gray-800/50 relative z-10">
                         <p className="text-[11px] text-gray-500 text-center">
                             Sua conexão é segura e criptografada. Seus dados são protegidos pelo Open Finance Brasil.
@@ -823,5 +873,19 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             </div>
         </div>,
         document.body
-    );
+    )}
+    {/* Pluggy Widget - rendered in separate portal outside modal with full screen backdrop */}
+    {showPluggyWidget && connectToken && createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <PluggyConnect
+                connectToken={connectToken}
+                includeSandbox={false}
+                onSuccess={handleSuccess}
+                onError={handleError}
+                onClose={() => setShowPluggyWidget(false)}
+            />
+        </div>,
+        document.body
+    )}
+    </>;
 };

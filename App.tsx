@@ -66,6 +66,7 @@ import * as subscriptionService from './services/subscriptionService';
 import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
+import { translatePluggyCategory } from './services/openFinanceService';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 
@@ -186,6 +187,7 @@ const App: React.FC = () => {
     }
     return false;
   });
+  const [viewFilter, setViewFilter] = useState<'all' | 'credit_card' | 'savings' | 'checking'>('all');
   const toast = useToasts();
 
   // Handle Family Invite Link & Context Loading
@@ -398,9 +400,9 @@ const App: React.FC = () => {
   const [isProMode, setIsProMode] = useState(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('finances_pro_mode');
-      return saved !== null ? JSON.parse(saved) : true; // Default to Pro mode
+      return saved !== null ? JSON.parse(saved) : false; // Default to Manual mode for safety
     }
-    return true;
+    return false;
   });
 
   // Persist Pro Mode preference
@@ -414,9 +416,11 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!currentUser) return;
 
+    const plan = currentUser.subscription?.plan || 'starter';
+
     // Only force downgrade if explicitly on starter plan.
     // If subscription is undefined (loading/error), preserve current mode to prevent Pro users from being kicked to Manual on reload.
-    if (currentUser.subscription?.plan === 'starter' && isProMode) {
+    if (plan === 'starter' && isProMode) {
       setIsProMode(false);
     }
   }, [currentUser, isProMode]);
@@ -1182,16 +1186,54 @@ const App: React.FC = () => {
     return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
   }, [memberInvestments]);
 
+  // Merge separate credit card transactions with main transactions for Dashboard/Calendar/Categories visibility
+  const mergedTransactions = useMemo(() => {
+    // 1. Map Separate CC Transactions to Transaction format
+    const mappedCCTxs: Transaction[] = separateCreditCardTxs.map(ccTx => ({
+      id: ccTx.id,
+      date: ccTx.date,
+      description: ccTx.description,
+      amount: ccTx.amount,
+      category: ccTx.category,
+      type: ccTx.type,
+      status: ccTx.status,
+      importSource: ccTx.importSource,
+      providerId: ccTx.providerId,
+      providerItemId: ccTx.providerItemId,
+      invoiceDate: (ccTx as any).invoiceDate,
+      invoiceDueDate: (ccTx as any).invoiceDueDate || (ccTx as any).dueDate,
+      invoiceMonthKey: (ccTx as any).invoiceMonthKey,
+      pluggyBillId: (ccTx as any).pluggyBillId,
+      invoiceSource: (ccTx as any).invoiceSource,
+      isProjected: (ccTx as any).isProjected,
+      pluggyRaw: (ccTx as any).pluggyRaw,
+      accountId: ccTx.cardId,
+      accountType: 'CREDIT_CARD',
+    }));
+
+    // 2. Combine with Member Filtered Transactions
+    // Create a Set of existing IDs to prevent duplicates if any CC txs are also in main list
+    const existingIds = new Set(memberFilteredTransactions.map(t => t.id));
+    const uniqueCCTxs = mappedCCTxs.filter(t => !existingIds.has(t.id));
+
+    const combined = [...memberFilteredTransactions, ...uniqueCCTxs];
+    
+    // Sort by date desc
+    combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    
+    return combined;
+  }, [memberFilteredTransactions, separateCreditCardTxs]);
+
   // Extract available categories from the filtered transactions
   const availableCategories = useMemo(() => {
-    const cats = new Set(memberFilteredTransactions.map(t => t.category));
+    const cats = new Set(mergedTransactions.map(t => t.category));
     return Array.from(cats).sort().map(c => ({ value: c, label: c }));
-  }, [memberFilteredTransactions]);
+  }, [mergedTransactions]);
 
   // 2. Filter by Date/Period AND Category (Dashboard Only)
   const dashboardFilteredTransactions = useMemo(() => {
-    // First apply Member filter
-    let filtered = memberFilteredTransactions;
+    // First apply Member filter (using merged list)
+    let filtered = mergedTransactions;
 
     // Apply Category Filter
     if (dashboardCategory) {
@@ -1236,6 +1278,97 @@ const App: React.FC = () => {
   const reviewedDashboardTransactions = useMemo(() => {
     return dashboardFilteredTransactions.filter(t => !t.ignored);
   }, [dashboardFilteredTransactions]);
+
+  // Apply View Filter (Global Settings)
+  const filteredDashboardTransactions = useMemo(() => {
+    if (viewFilter === 'all') return reviewedDashboardTransactions;
+    return reviewedDashboardTransactions.filter(t => {
+      if (viewFilter === 'credit_card') {
+        const isCredit = !!(t.cardId || 
+          (t.accountType || '').toUpperCase().includes('CREDIT') || 
+          t.invoiceMonthKey || 
+          t.pluggyBillId ||
+          (t as any).tags?.includes('Cartão de Crédito'));
+
+        if (!isCredit) return false;
+        // Show all credit card transactions when explicitly filtering for them
+        // ignoring the "Stats" enabled/disabled toggle to prevent "zeroing out"
+        return true;
+      }
+      if (viewFilter === 'savings') {
+        const cat = (t.category || '').toLowerCase();
+        return !!(t.isInvestment || 
+          cat === 'investimentos' || 
+          cat === 'poupança' || 
+          cat === 'poupanca' ||
+          (t.accountType || '').toUpperCase().includes('SAVINGS'));
+      }
+      if (viewFilter === 'checking') {
+        const isCredit = !!(t.cardId || 
+          (t.accountType || '').toUpperCase().includes('CREDIT') || 
+          t.invoiceMonthKey || 
+          t.pluggyBillId ||
+          (t as any).tags?.includes('Cartão de Crédito'));
+        if (isCredit) return false;
+
+        const cat = (t.category || '').toLowerCase();
+        const isSavings = !!(t.isInvestment || 
+          cat === 'investimentos' || 
+          cat === 'poupança' || 
+          cat === 'poupanca' ||
+          (t.accountType || '').toUpperCase().includes('SAVINGS'));
+        if (isSavings) return false;
+        
+        return true;
+      }
+      return true;
+    });
+  }, [reviewedDashboardTransactions, viewFilter, enabledCreditCardIds]);
+
+  const filteredCalendarTransactions = useMemo(() => {
+    if (viewFilter === 'all') return dashboardFilteredTransactions;
+    return dashboardFilteredTransactions.filter(t => {
+      if (viewFilter === 'credit_card') {
+        const isCredit = !!(t.cardId || 
+          (t.accountType || '').toUpperCase().includes('CREDIT') || 
+          t.invoiceMonthKey || 
+          t.pluggyBillId ||
+          (t as any).tags?.includes('Cartão de Crédito'));
+
+        if (!isCredit) return false;
+        // Show all credit card transactions when explicitly filtering for them
+        // ignoring the "Stats" enabled/disabled toggle to prevent "zeroing out"
+        return true;
+      }
+      if (viewFilter === 'savings') {
+        const cat = (t.category || '').toLowerCase();
+        return !!(t.isInvestment || 
+          cat === 'investimentos' || 
+          cat === 'poupança' || 
+          cat === 'poupanca' ||
+          (t.accountType || '').toUpperCase().includes('SAVINGS'));
+      }
+      if (viewFilter === 'checking') {
+        const isCredit = !!(t.cardId || 
+          (t.accountType || '').toUpperCase().includes('CREDIT') || 
+          t.invoiceMonthKey || 
+          t.pluggyBillId ||
+          (t as any).tags?.includes('Cartão de Crédito'));
+        if (isCredit) return false;
+
+        const cat = (t.category || '').toLowerCase();
+        const isSavings = !!(t.isInvestment || 
+          cat === 'investimentos' || 
+          cat === 'poupança' || 
+          cat === 'poupanca' ||
+          (t.accountType || '').toUpperCase().includes('SAVINGS'));
+        if (isSavings) return false;
+        
+        return true;
+      }
+      return true;
+    });
+  }, [dashboardFilteredTransactions, viewFilter, enabledCreditCardIds]);
 
   const dashboardCreditCardTransactions = useMemo(() => {
     return reviewedDashboardTransactions.filter(t => (t.accountType || '').toUpperCase().includes('CREDIT'));
@@ -1492,17 +1625,17 @@ const App: React.FC = () => {
       return true;
     };
 
-    const incomes = reviewedDashboardTransactions.filter(incomeFilter);
+    const incomes = filteredDashboardTransactions.filter(incomeFilter);
 
     // DEBUG: Log all transactions to see what's coming from Open Finance
     console.log('=== DEBUG DESPESAS ===');
     console.log('includeOpenFinanceInStats:', includeOpenFinanceInStats);
-    console.log('Total reviewedDashboardTransactions:', reviewedDashboardTransactions.length);
+    console.log('Total filteredDashboardTransactions:', filteredDashboardTransactions.length);
     console.log('checkingAccountIds:', Array.from(checkingAccountIds));
     console.log('creditCardAccountIds:', Array.from(creditCardAccountIds));
 
     // Log transactions that have accountId in checkingAccountIds
-    const checkingTxs = reviewedDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
+    const checkingTxs = filteredDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
     console.log('Transações de conta corrente encontradas:', checkingTxs.length);
 
     // DEBUG: Specific check for checking account expenses
@@ -1551,7 +1684,7 @@ const App: React.FC = () => {
 
     // Base Expenses (All types) - Exclude credit card transactions entirely
     // Credit card expenses will be calculated from the invoice amount of enabled cards
-    const baseExpenses = reviewedDashboardTransactions.filter(t => {
+    const baseExpenses = filteredDashboardTransactions.filter(t => {
       // Check description for expense patterns (for transactions that may have wrong type)
       const desc = (t.description || '').toUpperCase();
       const isExpenseByDescription =
@@ -1651,10 +1784,10 @@ const App: React.FC = () => {
         const stableUniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId).filter(Boolean))];
 
         // 2. Filter current view transactions for Credit Cards
-        // Note: reviewedDashboardTransactions is filtered by Date AND Category. 
-        // StatsCards typically ignores Category for the invoice display, but for the Total Expense stats, 
+        // Note: filteredDashboardTransactions is filtered by Date, Category AND viewFilter.
+        // StatsCards typically ignores Category for the invoice display, but for the Total Expense stats,
         // it makes sense to respect the global category filter if applied.
-        const currentViewCCTransactions = reviewedDashboardTransactions.filter(t => {
+        const currentViewCCTransactions = filteredDashboardTransactions.filter(t => {
           if ((t.accountType || '').toUpperCase().includes('CREDIT')) return true;
           if (t.accountId && creditCardAccountIds.has(t.accountId)) return true;
           if ((t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito')) return true;
@@ -1798,7 +1931,7 @@ const App: React.FC = () => {
         );
 
         activeSubscriptions.forEach(s => {
-          const alreadyPaid = reviewedDashboardTransactions.some(t =>
+          const alreadyPaid = filteredDashboardTransactions.some(t =>
             t.type === 'expense' &&
             t.amount === s.amount &&
             t.description.toLowerCase().includes(s.name.toLowerCase())
@@ -1812,7 +1945,7 @@ const App: React.FC = () => {
 
       // Salary Projection
       if (projectionSettings.salary && currentUser?.baseSalary) {
-        const salaryTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
+        const salaryTx = filteredDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
         if (!salaryTx || (salaryTx.amount === 0 && currentUser.baseSalary > 0)) {
           let advance = currentUser.salaryAdvanceValue || 0;
           if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
@@ -1826,7 +1959,7 @@ const App: React.FC = () => {
 
       // Vale Projection
       if (projectionSettings.vale && currentUser?.baseSalary) {
-        const valeTx = reviewedDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
+        const valeTx = filteredDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
         if (!valeTx || (valeTx.amount === 0 && currentUser.baseSalary > 0)) {
           let advance = currentUser.salaryAdvanceValue || 0;
           if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
@@ -2157,7 +2290,7 @@ const App: React.FC = () => {
               date: postDate,
               description: tx?.description || 'Lançamento Cartão',
               amount,
-              category: tx?.category || 'Outros',
+              category: translatePluggyCategory(tx?.category),
               type: rawAmount >= 0 ? 'expense' : 'income',
               status: (tx?.status || '').toUpperCase() === 'PENDING' ? 'pending' : 'completed',
               cardId: account.id,
@@ -3006,6 +3139,8 @@ const App: React.FC = () => {
                         onUpgradeClick={() => setActiveTab('subscription')}
                         includeOpenFinance={includeOpenFinanceInStats}
                         onToggleOpenFinance={setIncludeOpenFinanceInStats}
+                        viewFilter={viewFilter}
+                        onViewFilterChange={setViewFilter}
                       />
                     )}
                                           <StatsCards
@@ -3036,7 +3171,7 @@ const App: React.FC = () => {
                                             onUpgradeClick={() => setActiveTab('subscription')}
                                           />                    <div className="animate-fade-in space-y-6">
                       <DashboardCharts
-                        transactions={reviewedDashboardTransactions}
+                        transactions={filteredDashboardTransactions}
                         reminders={filteredReminders}
                         stats={stats}
                         dashboardDate={dashboardDate}
@@ -3045,7 +3180,7 @@ const App: React.FC = () => {
                       {filterMode === 'month' && (
                         <FinanceCalendar
                           month={dashboardDate}
-                          transactions={dashboardFilteredTransactions}
+                          transactions={filteredCalendarTransactions}
                           reminders={filteredReminders}
                           isLoading={isLoadingData}
                         />
@@ -3212,9 +3347,8 @@ const App: React.FC = () => {
         onDeleteGoal={handleDeleteGoal}
         onAddTransaction={handleAddTransaction}
         onUpgrade={() => setActiveTab('subscription')}
-        initialTab={settingsInitialTab}
-      />
-
+                          initialTab={settingsInitialTab}
+                        />
       <WhatsAppConnect
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
