@@ -2,8 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Code, RefreshCw, Loader2,
-  Download, FileSpreadsheet, Plus, FileText, DollarSign, Tag, CreditCard
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag
 } from './Icons';
 import { ConfirmationCard, CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { createPortal } from 'react-dom';
@@ -48,11 +47,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditVisible, setIsEditVisible] = useState(false);
   const [isEditAnimating, setIsEditAnimating] = useState(false);
-
-  const [jsonViewTransaction, setJsonViewTransaction] = useState<any | null>(null);
-
-  // Cards Details Modal State
-  const [isCardsModalOpen, setIsCardsModalOpen] = useState(false);
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -274,142 +268,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               />
             </div>
 
-            {onSync && creditCardAccounts.length > 0 && (
-              <button
-                onClick={onSync}
-                disabled={isSyncing}
-                className={`flex items-center gap-2 px-4 py-3 rounded-xl text-sm font-bold transition-all border ${isSyncing
-                  ? 'bg-gray-800 text-gray-500 border-gray-700 cursor-not-allowed'
-                  : 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]/20 hover:bg-[#d97757]/20 hover:border-[#d97757]/40'
-                  }`}
-                title="Sincronizar transações do cartão"
-              >
-                {isSyncing ? (
-                  <Loader2 size={16} className="animate-spin" />
-                ) : (
-                  <RefreshCw size={16} />
-                )}
-                <span className="hidden sm:inline">{isSyncing ? 'Sincronizando...' : 'Sincronizar'}</span>
-              </button>
-            )}
-
-            {/* Botões de Exportação */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setIsCardsModalOpen(true)}
-                className="p-2.5 bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-white rounded-xl border border-gray-700 hover:border-gray-600 transition-all"
-                title="Ver Dados dos Cartões"
-              >
-                <CreditCard size={16} />
-              </button>
-              <button
-                onClick={() => {
-                  // Exportar JSON de TODAS as transações
-                  const exportData = {
-                    exportDate: new Date().toISOString(),
-                    totalTransactions: transactions.length,
-                    transactions: transactions.map(t => {
-                      const tx = t as any;
-                      return {
-                        id: tx.id,
-                        providerId: tx.providerId,
-                        providerItemId: tx.providerItemId,
-                        accountId: tx.accountId,
-                        accountType: tx.accountType,
-
-                        date: tx.date,
-                        description: tx.description,
-                        amount: tx.amount,
-                        category: tx.category,
-                        type: tx.type,
-                        status: tx.status,
-
-                        invoiceDate: tx.invoiceDate,
-                        invoiceDueDate: tx.invoiceDueDate,
-                        invoiceMonthKey: tx.invoiceMonthKey,
-                        invoiceSource: tx.invoiceSource,
-                        computedDueDate: tx.invoiceDueDate || tx.date, // Fallback logic
-
-                        importSource: tx.importSource,
-                        pluggyBillId: tx.pluggyBillId,
-                        pluggyRaw: tx.pluggyRaw,
-
-                        isProjected: tx.isProjected
-                      };
-                    })
-                  };
-                  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `fatura-cartao-${new Date().toISOString().split('T')[0]}.json`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success('JSON exportado com sucesso!');
-                }}
-                className="p-2.5 bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-white rounded-xl border border-gray-700 hover:border-gray-600 transition-all"
-                title="Exportar JSON (todas as transações)"
-              >
-                <Code size={16} />
-              </button>
-              <button
-                onClick={() => {
-                  // Exportar CSV/Excel de TODAS as transações
-                  const headers = [
-                    'id', 'providerId', 'providerItemId', 'accountId', 'accountType',
-                    'date', 'description', 'amount', 'category', 'type', 'status',
-                    'invoiceDate', 'invoiceDueDate', 'invoiceMonthKey', 'invoiceSource', 'computedDueDate',
-                    'importSource', 'pluggyBillId', 'pluggyRaw', 'isProjected'
-                  ];
-
-                  const rows = transactions.map(t => {
-                    const tx = t as any;
-                    return [
-                      tx.id || '',
-                      tx.providerId || '',
-                      tx.providerItemId || '',
-                      tx.accountId || '',
-                      tx.accountType || '',
-
-                      tx.date || '',
-                      `"${(tx.description || '').replace(new RegExp('"', 'g'), '""')}"`,
-                      (tx.amount || 0).toString().replace('.', ','),
-                      tx.category || '',
-                      tx.type || '',
-                      tx.status || '',
-
-                      tx.invoiceDate || '',
-                      tx.invoiceDueDate || '',
-                      tx.invoiceMonthKey || '',
-                      tx.invoiceSource || '',
-                      (tx.invoiceDueDate || tx.date) || '',
-
-                      tx.importSource || '',
-                      tx.pluggyBillId || '',
-                      tx.pluggyRaw ? `"${JSON.stringify(tx.pluggyRaw).replace(new RegExp('"', 'g'), '""')}"` : '',
-                      tx.isProjected ? 'TRUE' : 'FALSE'
-                    ];
-                  });
-
-                  // BOM para Excel reconhecer UTF-8
-                  const BOM = '\uFEFF';
-                  const csvContent = BOM + headers.join(';') + '\n' + rows.map(r => r.join(';')).join('\n');
-                  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-                  const url = URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `fatura-cartao-${new Date().toISOString().split('T')[0]}.csv`;
-                  a.click();
-                  URL.revokeObjectURL(url);
-                  toast.success('Excel/CSV exportado com sucesso!');
-                }}
-                className="p-2.5 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-500 rounded-xl border border-emerald-500/20 hover:border-emerald-500/40 transition-all"
-                title="Exportar Excel/CSV (todas as transações)"
-              >
-                <FileSpreadsheet size={16} />
-              </button>
-            </div>
-
           </div>
         </div>
       </div>
@@ -497,13 +355,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 </td>
                 <td className="px-6 py-4">
                   <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button
-                      onClick={() => setJsonViewTransaction(enrichWithDueDate(t as any))}
-                      className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-xl transition-colors"
-                      title="Ver JSON (Debug)"
-                    >
-                      <Code size={16} />
-                    </button>
                     <button
                       onClick={() => handleEditClick(t)}
                       className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors"
@@ -642,111 +493,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         confirmText="Excluir"
         cancelText="Cancelar"
       />
-
-      {/* Modal de Detalhes dos Cartões */}
-      {isCardsModalOpen && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <CreditCard size={20} className="text-[#d97757]" />
-                Dados dos Cartões Conectados
-              </h3>
-              <button onClick={() => setIsCardsModalOpen(false)} className="text-gray-500 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-6 overflow-auto custom-scrollbar bg-[#1e1e1e] space-y-4">
-              {creditCardAccounts.length === 0 ? (
-                <EmptyState
-                  title="Nenhum cartão conectado"
-                  description="Conecte suas contas para ver os detalhes aqui."
-                />
-              ) : (
-                <div className="grid grid-cols-1 gap-4">
-                  {creditCardAccounts.map(acc => (
-                    <div key={acc.id} className="bg-gray-900 border border-gray-800 rounded-2xl p-4 hover:border-gray-700 transition-colors">
-                      <div className="flex justify-between items-start mb-4">
-                        <div>
-                          <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mb-1">{acc.institution || 'Banco'}</p>
-                          <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                            {acc.name}
-                            {acc.brand && <span className="text-[10px] bg-gray-800 px-2 py-0.5 rounded border border-gray-700 text-gray-400 uppercase">{acc.brand}</span>}
-                          </h4>
-                        </div>
-                        <div className="text-right">
-                           <p className="text-xs text-gray-500 font-medium">Limite Total</p>
-                           <p className="text-white font-mono font-bold">{acc.creditLimit ? formatCurrency(acc.creditLimit) : '---'}</p>
-                        </div>
-                      </div>
-
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-gray-800">
-                         <div>
-                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Limite Disponível</p>
-                            <p className="text-emerald-400 font-mono font-bold text-sm">
-                              {acc.availableCreditLimit ? formatCurrency(acc.availableCreditLimit) : '---'}
-                            </p>
-                         </div>
-                         <div>
-                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Fechamento</p>
-                            <p className="text-white font-medium text-sm flex items-center gap-1">
-                               <Calendar size={12} className="text-gray-600" />
-                               Dia {acc.closingDay || acc.balanceCloseDate?.split('T')[0].split('-')[2] || '--'}
-                            </p>
-                         </div>
-                         <div>
-                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Vencimento</p>
-                            <p className="text-white font-medium text-sm flex items-center gap-1">
-                               <Calendar size={12} className="text-gray-600" />
-                               Dia {acc.dueDay || acc.balanceDueDate?.split('T')[0].split('-')[2] || '--'}
-                            </p>
-                         </div>
-                         <div>
-                            <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Última Sinc.</p>
-                            <p className="text-gray-400 text-xs">
-                               {acc.lastUpdated ? new Date(acc.lastUpdated).toLocaleDateString() : 'Nunca'}
-                            </p>
-                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-            <div className="p-4 border-t border-gray-800 bg-gray-900/30 flex justify-end">
-                <button 
-                  onClick={() => setIsCardsModalOpen(false)}
-                  className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-lg font-bold text-xs transition-colors"
-                >
-                  Fechar
-                </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {jsonViewTransaction && createPortal(
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-          <div className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 flex flex-col max-h-[90vh]">
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center bg-gray-900/50">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <Code size={20} className="text-[#d97757]" />
-                Dados Brutos (Debug)
-              </h3>
-              <button onClick={() => setJsonViewTransaction(null)} className="text-gray-500 hover:text-white transition-colors">
-                <X size={20} />
-              </button>
-            </div>
-            <div className="p-0 overflow-auto custom-scrollbar bg-[#1e1e1e]">
-              <pre className="p-6 text-xs font-mono text-emerald-400 leading-relaxed whitespace-pre-wrap">
-                {JSON.stringify(jsonViewTransaction, null, 2)}
-              </pre>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
 
       {isEditVisible && editTransaction && createPortal(
         <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isEditAnimating ? 'bg-black/80 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
