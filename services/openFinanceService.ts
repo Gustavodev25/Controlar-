@@ -164,6 +164,12 @@ export const translatePluggyCategory = (category: string | undefined | null): st
         'Parking': 'Estacionamento',
         'Health insurance': 'Plano de saúde',
         'Vehicle insurance': 'Seguro auto',
+        // New Additions
+        'Same person transfer': 'Transf. própria',
+        'Digital services': 'Serviços digitais',
+        'Transfer - TED': 'Transferência TED',
+        'Third party transfer - PIX': 'Transf. Terceiros Pix',
+        'Investments': 'Investimentos',
         // Common Fallbacks
         'Donation': 'Doações',
         'Donations': 'Doações',
