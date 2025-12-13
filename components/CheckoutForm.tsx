@@ -207,7 +207,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     let discount = 0;
 
     if (appliedCoupon) {
-      if (appliedCoupon.type === 'percentage') {
+      if (appliedCoupon.type === 'progressive') {
+        // For progressive coupons, use month 1 discount for first subscription
+        const month1Rule = appliedCoupon.progressiveDiscounts?.find(d => d.month === 1);
+        const discountPercent = month1Rule?.discount || 0;
+        discount = price * (discountPercent / 100);
+      } else if (appliedCoupon.type === 'percentage') {
         discount = price * (appliedCoupon.value / 100);
       } else {
         discount = appliedCoupon.value;
