@@ -112,6 +112,51 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
         setIsLoading(true);
         try {
+            // Get the correct price (use finalPrice from checkout form if provided, which includes coupon discount)
+            const planConfig = plans.find(p => p.id === planToBuy);
+            const originalPrice = cycleToBuy === 'annual'
+                ? (planConfig?.annualPrice || selectedPlan?.price || 0)
+                : (planConfig?.price || selectedPlan?.price || 0);
+
+            // Use the discounted price from checkout if provided, otherwise use original
+            const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
+
+            console.log('>>> Price calculation:', { originalPrice, finalPrice, finalValue });
+
+            // SPECIAL CASE: If final price is less than R$ 5 (Asaas minimum), activate plan directly
+            // This handles 100% discount coupons or very high discounts
+            if (finalValue < 5) {
+                console.log('>>> Cupom 100% detectado! Ativando plano diretamente sem cobrança...');
+
+                const nextBillingDate = new Date();
+                if (cycleToBuy === 'annual') {
+                    nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+                } else {
+                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                }
+
+                const newSubscription = {
+                    plan: planToBuy,
+                    status: 'active' as const,
+                    billingCycle: cycleToBuy,
+                    installments: 1,
+                    nextBillingDate: toLocalISODate(nextBillingDate),
+                    paymentMethod: 'COUPON_100',
+                    couponUsed: couponId,
+                };
+
+                const updatedUser = {
+                    ...user,
+                    subscription: newSubscription as any,
+                };
+
+                await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
+                toast.success('🎉 Cupom aplicado! Plano ativado com sucesso sem cobrança.');
+                onBack();
+                return;
+            }
+
+            // NORMAL FLOW: Value >= R$ 5, proceed with Asaas payment
             // 1. Create or update customer in Asaas
             console.log('>>> Creating customer in Asaas...');
             const customerResponse = await fetch('/api/asaas/customer', {
@@ -135,18 +180,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
             console.log('>>> Customer created:', customerData.customer.id);
 
-            // 2. Get the correct price (use finalPrice from checkout form if provided, which includes coupon discount)
-            const planConfig = plans.find(p => p.id === planToBuy);
-            const originalPrice = cycleToBuy === 'annual'
-                ? (planConfig?.annualPrice || selectedPlan?.price || 0)
-                : (planConfig?.price || selectedPlan?.price || 0);
-
-            // Use the discounted price from checkout if provided, otherwise use original
-            const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
-
-            console.log('>>> Price calculation:', { originalPrice, finalPrice, finalValue });
-
-            // 3. Create subscription/payment in Asaas
+            // 2. Create subscription/payment in Asaas
             console.log('>>> Creating subscription in Asaas...');
             const subscriptionResponse = await fetch('/api/asaas/subscription', {
                 method: 'POST',
