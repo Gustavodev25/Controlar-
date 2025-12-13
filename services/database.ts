@@ -1501,3 +1501,173 @@ export const incrementCouponUsage = async (couponId: string) => {
     await updateDoc(couponRef, { currentUses: current + 1 });
   }
 };
+
+// --- Account Deletion Service ---
+
+const deleteCollectionBatch = async (path: string, batchSize: number = 450) => {
+  if (!db) return;
+  const ref = collection(db, path);
+  const snapshot = await getDocs(ref);
+  
+  if (snapshot.empty) return;
+
+  let batch = writeBatch(db);
+  let count = 0;
+
+  for (const doc of snapshot.docs) {
+    batch.delete(doc.ref);
+    count++;
+    if (count >= batchSize) {
+      await batch.commit();
+      batch = writeBatch(db);
+      count = 0;
+    }
+  }
+
+  if (count > 0) {
+    await batch.commit();
+  }
+};
+
+export const deleteUserAccount = async (userId: string) => {
+  if (!db) return;
+  
+  try {
+    // 1. Delete all subcollections
+    const subcollections = [
+      "transactions",
+      "creditCardTransactions",
+      "members",
+      "goals",
+      "budgets",
+      "investments",
+      "reminders",
+      "accounts",
+      "notifications",
+      "auditLogs"
+    ];
+
+    for (const sub of subcollections) {
+      await deleteCollectionBatch(`users/${userId}/${sub}`);
+    }
+
+    // 2. Delete the user document itself
+    const userRef = doc(db, "users", userId);
+    await deleteDoc(userRef);
+
+    console.log(`User account ${userId} fully deleted from Firestore.`);
+  } catch (error) {
+    console.error("Error deleting user account from Firestore:", error);
+    throw error;
+  }
+};
+
+// --- Category Migration Service ---
+
+const translateCategoryMigration = (category: string | undefined | null): string => {
+    if (!category) return 'Outros';
+    
+    const map: Record<string, string> = {
+        'Salary': 'Salário',
+        'Retirement': 'Aposentadoria',
+        'Government aid': 'Benefícios',
+        'Non-recurring income': 'Rendimentos extras',
+        'Loans': 'Empréstimos',
+        'Interests charged': 'Juros',
+        'Fixed income': 'Renda fixa',
+        'Variable income': 'Renda variável',
+        'Proceeds interests and dividends': 'Juros e dividendos',
+        'Same person transfer - PIX': 'Transf. própria',
+        'Transfer - PIX': 'Transf. Pix',
+        'Credit card payment': 'Cartão de crédito',
+        'Bank slip': 'Boleto',
+        'Debt card': 'Cartão débito',
+        'Alimony': 'Pensão',
+        'Telecommunications': 'Telecom',
+        'Internet': 'Internet',
+        'Mobile': 'Celular',
+        'School': 'Escola',
+        'University': 'Universidade',
+        'Gyms and fitness centers': 'Academia',
+        'Wellness': 'Bem-estar',
+        'Cinema, theater and concerts': 'Cinema / shows',
+        'Online shopping': 'Online',
+        'Electronics': 'Eletrônicos',
+        'Clothing': 'Roupas',
+        'Video streaming': 'Streaming vídeo',
+        'Music streaming': 'Streaming música',
+        'N/A': 'Supermercado',
+        'Eating out': 'Restaurante',
+        'Food delivery': 'Delivery',
+        'Airport and airlines': 'Passagens aéreas',
+        'Accommodation': 'Hospedagem',
+        'Lottery': 'Loterias',
+        'Income taxes': 'IR',
+        'Account fees': 'Tarifas conta',
+        'Rent': 'Aluguel',
+        'Electricity': 'Luz',
+        'Water': 'Água',
+        'Pharmacy': 'Farmácia',
+        'Hospital clinics and labs': 'Clínicas / exames',
+        'Taxi and ride-hailing': 'Táxi / apps',
+        'Public transportation': 'Ônibus / metrô',
+        'Car rental': 'Aluguel carro',
+        'Bicycle': 'Bicicleta',
+        'Gas stations': 'Combustível',
+        'Parking': 'Estacionamento',
+        'Health insurance': 'Plano de saúde',
+        'Vehicle insurance': 'Seguro auto',
+        'Donation': 'Doações',
+        'Donations': 'Doações',
+        'Leisure': 'Lazer',
+        'Entertainment': 'Lazer',
+        'Same person transfer': 'Transf. própria',
+        'Digital services': 'Serviços digitais',
+        'Transfer - TED': 'Transferência TED',
+        'Third party transfer - PIX': 'Transf. Terceiros Pix',
+        'Investments': 'Investimentos',
+    };
+
+    // Strict match first, then fallback to original if not found
+    return map[category] || category;
+};
+
+export const fixCategoriesForUser = async (userId: string) => {
+  if (!db) return 0;
+  console.log(`[Migration] Starting category fix for user ${userId}...`);
+  let updatedCount = 0;
+  let batch = writeBatch(db);
+  let opCount = 0;
+
+  const collections = ["transactions", "creditCardTransactions"];
+
+  for (const colName of collections) {
+    const ref = collection(db, "users", userId, colName);
+    const snap = await getDocs(ref);
+
+    for (const doc of snap.docs) {
+      const data = doc.data();
+      const currentCat = data.category as string;
+      const newCat = translateCategoryMigration(currentCat);
+
+      if (newCat !== currentCat) {
+        batch.update(doc.ref, { category: newCat });
+        updatedCount++;
+        opCount++;
+
+        if (opCount >= 450) {
+          await batch.commit();
+          batch = writeBatch(db);
+          opCount = 0;
+        }
+      }
+    }
+  }
+
+  if (opCount > 0) {
+    await batch.commit();
+  }
+
+  console.log(`[Migration] User ${userId}: Updated ${updatedCount} transactions.`);
+  return updatedCount;
+};
