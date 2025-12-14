@@ -1,11 +1,13 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
 import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Lock, Plus } from "./Icons";
+import NumberFlow from '@number-flow/react';
 
 import { EmptyState } from "./EmptyState";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
-import { ConfirmationCard } from "./UIComponents";
+import { ConfirmationCard, TooltipIcon } from "./UIComponents";
 import { BankConnectModal } from "./BankConnectModal";
 
 interface ConnectedAccountsProps {
@@ -41,6 +43,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
+  const [timers, setTimers] = useState<Record<string, { h: number; m: number; s: number } | null>>({});
   const accountsPerPage = 3;
   const toast = useToasts();
 
@@ -48,6 +51,43 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
     if (onRefresh) onRefresh();
   };
+
+  // Helper to calculate time remaining
+  const getTimeRemaining = (lastSyncedStr: string) => {
+    if (!lastSyncedStr) return null;
+    const lastSync = new Date(lastSyncedStr).getTime();
+
+    if (isNaN(lastSync)) return null;
+
+    const nextSync = lastSync + 24 * 60 * 60 * 1000; // +24h
+    const now = Date.now();
+    const diff = nextSync - now;
+
+    if (diff <= 0) return null;
+
+    const hours = Math.floor(diff / (1000 * 60 * 60));
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+
+    return { h: hours, m: minutes, s: seconds };
+  };
+
+  // Update timers every second
+  useEffect(() => {
+    const updateTimers = () => {
+      const newTimers: Record<string, { h: number; m: number; s: number } | null> = {};
+      Object.entries(lastSynced).forEach(([id, dateStr]) => {
+        if (dateStr) {
+          newTimers[id] = getTimeRemaining(dateStr);
+        }
+      });
+      setTimers(newTimers);
+    };
+
+    updateTimers(); // Initial run
+    const interval = setInterval(updateTimers, 1000); // Update every second
+    return () => clearInterval(interval);
+  }, [lastSynced]);
 
   // Agrupa contas por instituicao e itemId
   const groupedAccounts = useMemo(() => {
@@ -159,10 +199,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           </div>
         </div>
 
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => setShowBankModal(true)}
-          className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => setShowBankModal(true)}
+            className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
           >
             <Plus size={18} />
             <span className="hidden sm:inline">Conectar Banco</span>
@@ -200,6 +240,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           {Object.entries(groupedAccounts).map(([institution, data]) => {
             const { accounts: institutionAccounts } = data;
 
+            // Logic for sync header
+            const representativeAccount = institutionAccounts.find(acc => lastSynced[acc.id] && acc.connectionMode !== 'MANUAL');
+            const representativeId = representativeAccount?.id;
+            const timer = representativeId ? timers[representativeId] : null;
+
             const currentPage = accountPages[institution] || 1;
             const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
             const startIndex = (currentPage - 1) * accountsPerPage;
@@ -207,10 +252,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             const paginatedInstitutionAccounts = institutionAccounts.slice(startIndex, endIndex);
 
             return (
-              <div key={institution} className="bg-gray-950 border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden transition-all hover:border-gray-700">
+              <div key={institution} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden transition-all hover:border-gray-700" style={{ backgroundColor: '#30302E' }}>
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757] pointer-events-none transition-opacity group-hover:opacity-10"></div>
 
-                <div className="bg-gray-950/80 backdrop-blur-sm p-5 border-b border-gray-800 flex items-center justify-between gap-3 relative z-10">
+                <div className="backdrop-blur-sm p-5 rounded-t-2xl border-b border-gray-800 flex items-center justify-between gap-3 relative z-10" style={{ backgroundColor: '#333432' }}>
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
                       <Building size={20} />
@@ -223,148 +268,125 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
                   </div>
 
+                  {representativeId && lastSynced[representativeId] && (
+                    <div className="flex flex-col items-end mr-2">
+                      <div className="text-[9px] text-gray-500 font-medium flex items-center gap-1">
+                        <span>Próxima:</span>
+                        {timer ? (
+                          <span className="text-[#d97757] font-bold flex items-center gap-0.5">
+                            <NumberFlow value={timer.h} format={{ minimumIntegerDigits: 2 }} />h{" "}
+                            <NumberFlow value={timer.m} format={{ minimumIntegerDigits: 2 }} />m{" "}
+                            <NumberFlow value={timer.s} format={{ minimumIntegerDigits: 2 }} />s
+                          </span>
+                        ) : (
+                          <span className="text-[#d97757] font-bold">Agora</span>
+                        )}
+                      </div>
+                      <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
+                        <span>Última:</span>
+                        {new Date(lastSynced[representativeId]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
-                      disabled={isDeleting !== null}
-                      className="text-xs text-red-400 hover:text-red-300 font-semibold uppercase border border-red-500/30 hover:border-red-500/50 rounded-lg px-2 py-1 flex items-center gap-1.5 transition-all hover:bg-red-500/10 disabled:opacity-50"
-                    >
-                      <Trash2 size={14} />
-                      Remover
-                    </button>
+                    <TooltipIcon content="Desconectar Instituição">
+                      <button
+                        onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
+                        disabled={isDeleting !== null}
+                        className="text-red-400 hover:text-red-300 p-2 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </TooltipIcon>
                   </div>
                 </div>
 
 
 
 
-                <div className="p-4 space-y-3 bg-gray-950 relative z-10 flex-1">
-                  {paginatedInstitutionAccounts.map((acc) => {
-                    const isCredit = isCardFromInstitution(acc);
-                    const showLimit = limitView.has(acc.id);
+                <div className="p-4 relative z-10 flex-1" style={{ backgroundColor: '#30302E' }}>
+                  <AnimatePresence mode="wait">
+                    <motion.div
+                      key={currentPage}
+                      initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+                      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                      exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+                      transition={{ duration: 0.3, ease: "circInOut" }}
+                      className="space-y-3"
+                    >
+                      {paginatedInstitutionAccounts.map((acc) => {
+                        const isCredit = isCardFromInstitution(acc);
+                        const showLimit = limitView.has(acc.id);
 
-                    const limit = acc.creditLimit || 0;
-                    const available = acc.availableCreditLimit || 0;
-                    const used = limit - available;
-                    const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-                    const isManual = acc.connectionMode === 'MANUAL';
+                        const limit = acc.creditLimit || 0;
+                        const available = acc.availableCreditLimit || 0;
+                        const used = limit - available;
+                        const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+                        const isManual = acc.connectionMode === 'MANUAL';
 
-                    return (
-                      <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
-                        <div className="p-4">
-                          <div className="flex justify-between items-center gap-3 mb-3">
-                            <div className="flex gap-3 items-center flex-1 min-w-0">
-                              <div className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
-                                {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
-                              </div>
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-center gap-2">
-                                  <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
-                                  {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
+                        return (
+                          <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
+                            <div className="p-4">
+                              <div className="flex justify-between items-center gap-3 mb-3">
+                                <div className="flex gap-3 items-center flex-1 min-w-0">
+                                  <div className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
+                                    {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
+                                  </div>
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2">
+                                      <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                      {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
+                                    </div>
+                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
+                                      {acc.type} {acc.subtype ? `- ${acc.subtype}` : ""}
+                                    </p>
+                                  </div>
                                 </div>
-                                <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
-                                  {acc.type} {acc.subtype ? `- ${acc.subtype}` : ""}
-                                </p>
-                              </div>
-                            </div>
 
-                            <div className="text-right flex-shrink-0 flex flex-col items-end">
-                              <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
-                                {formatCurrency(acc.balance, acc.currency)}
-                              </p>
+                                <div className="text-right flex-shrink-0 flex flex-col items-end">
+                                  <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                                    {formatCurrency(acc.balance, acc.currency)}
+                                  </p>
+                                </div>
+                              </div>
                             </div>
                           </div>
-
-                          {isCredit && (
-                            <div
-                              onClick={() => toggleLimitView(acc.id)}
-                              className="mt-3 pt-3 border-t border-gray-800/50 cursor-pointer group/limit select-none w-full"
-                              title="Clique para alternar entre fatura e limite"
-                            >
-                              {showLimit ? (
-                                <div key="limit" className="w-full animate-dropdown-open">
-                                  <div className="w-full bg-gray-800 rounded-full h-1.5 mb-1 overflow-hidden border border-gray-700/50">
-                                    <div
-                                      className={`h-full rounded-full transition-all duration-700 ease-out ${limitPercentage > 90 ? 'bg-red-500' : limitPercentage > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
-                                      style={{ width: `${limitPercentage}%` }}
-                                    ></div>
-                                  </div>
-                                  <div className="flex justify-between text-[8px] font-medium text-gray-400 uppercase tracking-wide">
-                                    <span>{Math.round(limitPercentage)}% Uso</span>
-                                    <span>Disp: {formatCurrency(available).replace('R$', '')}</span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div key="invoice" className="flex items-center justify-between animate-dropdown-open">
-                                  <div className="flex items-center gap-1.5 text-gray-500">
-                                    <PieChart size={12} className="group-hover/limit:text-[#d97757] transition-colors" />
-                                    <span className="text-[9px] font-medium group-hover/limit:text-white transition-colors">Fatura Atual</span>
-                                  </div>
-
-                                  <div className="flex items-center gap-2">
-                                    {acc.balanceCloseDate && (
-                                      <span className="text-[9px] text-gray-600 hidden sm:inline">
-                                        Fecha {new Date(acc.balanceCloseDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                                      </span>
-                                    )}
-                                    {acc.balanceDueDate ? (
-                                      <div className="flex items-center gap-1.5 bg-gray-800/40 group-hover/limit:bg-gray-800 px-2 py-1 rounded-lg border border-gray-800/50 transition-colors">
-                                        <span className="text-[9px] font-bold text-gray-300 uppercase tracking-wide">
-                                          Vence {new Date(acc.balanceDueDate).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                                        </span>
-                                      </div>
-                                    ) : (
-                                      <span className="text-[9px] text-gray-500 italic">Sem vencimento</span>
-                                    )}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-
-                          {lastSynced[acc.id] && !isManual && (
-                            <div className={`mt-2 pt-2 ${!isCredit ? 'border-t border-gray-800/50' : ''} flex justify-end`}>
-                              <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
-                                <RotateCcw size={8} />
-                                {new Date(lastSynced[acc.id]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-
-                  {totalPages > 1 && (
-                    <div className="flex items-center justify-center gap-3 mt-4 pt-3 border-t border-gray-800/50">
-                      <button
-                        onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.max(1, currentPage - 1) }))}
-                        disabled={currentPage === 1}
-                        className={`p-2 rounded-lg transition-all border ${currentPage === 1
-                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                          }`}
-                      >
-                        <ChevronLeft size={16} />
-                      </button>
-
-                      <span className="text-xs text-gray-400 font-medium">
-                        <span className="text-white font-bold">{currentPage}</span> / <span className="text-white font-bold">{totalPages}</span>
-                      </span>
-
-                      <button
-                        onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.min(totalPages, currentPage + 1) }))}
-                        disabled={currentPage === totalPages}
-                        className={`p-2 rounded-lg transition-all border ${currentPage === totalPages
-                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                          }`}
-                      >
-                        <ChevronRight size={16} />
-                      </button>
-                    </div>
-                  )}
+                        );
+                      })}
+                    </motion.div>
+                  </AnimatePresence>
                 </div>
+
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-3 py-3 rounded-b-2xl border-t border-gray-800/50" style={{ backgroundColor: '#333432' }}>
+                    <button
+                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.max(1, currentPage - 1) }))}
+                      disabled={currentPage === 1}
+                      className={`p-2 rounded-lg transition-all border ${currentPage === 1
+                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        }`}
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    <span className="text-xs text-gray-400 font-medium">
+                      <span className="text-white font-bold">{currentPage}</span> / <span className="text-white font-bold">{totalPages}</span>
+                    </span>
+
+                    <button
+                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.min(totalPages, currentPage + 1) }))}
+                      disabled={currentPage === totalPages}
+                      className={`p-2 rounded-lg transition-all border ${currentPage === totalPages
+                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        }`}
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}

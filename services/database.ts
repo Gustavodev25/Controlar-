@@ -767,6 +767,24 @@ export const upsertCreditCardTransaction = async (userId: string, transaction: O
   }
 };
 
+export const addCreditCardTransactionIfNotExists = async (userId: string, transaction: Omit<CreditCardTransaction, 'id'>) => {
+  if (!db) return "";
+  try {
+    const existingId = await findCreditCardTransactionId(userId, transaction.providerId || "", transaction);
+
+    if (existingId) {
+      // console.log(`[DB] Transaction already exists (skipped): ${transaction.description}`);
+      return existingId; // Return existing ID but DO NOT update
+    } else {
+      // ADD
+      return await addCreditCardTransaction(userId, transaction);
+    }
+  } catch (error) {
+    console.error("Error adding credit card transaction if not exists:", error);
+    return "";
+  }
+};
+
 export const cleanupDuplicateCreditCardTransactions = async (userId: string) => {
   if (!db) return;
   try {
@@ -1508,7 +1526,7 @@ const deleteCollectionBatch = async (path: string, batchSize: number = 450) => {
   if (!db) return;
   const ref = collection(db, path);
   const snapshot = await getDocs(ref);
-  
+
   if (snapshot.empty) return;
 
   let batch = writeBatch(db);
@@ -1531,7 +1549,7 @@ const deleteCollectionBatch = async (path: string, batchSize: number = 450) => {
 
 export const deleteUserAccount = async (userId: string) => {
   if (!db) return;
-  
+
   try {
     // 1. Delete all subcollections
     const subcollections = [
@@ -1565,90 +1583,90 @@ export const deleteUserAccount = async (userId: string) => {
 // --- Category Migration Service ---
 
 const translateCategoryMigration = (category: string | undefined | null): string => {
-    if (!category) return 'Outros';
-    
-    const map: Record<string, string> = {
-        'Salary': 'Salário',
-        'Retirement': 'Aposentadoria',
-        'Government aid': 'Benefícios',
-        'Non-recurring income': 'Rendimentos extras',
-        'Loans': 'Empréstimos',
-        'Interests charged': 'Juros',
-        'Fixed income': 'Renda fixa',
-        'Variable income': 'Renda variável',
-        'Proceeds interests and dividends': 'Juros e dividendos',
-        'Same person transfer - PIX': 'Transf. própria',
-        'Transfer - PIX': 'Transf. Pix',
-        'Credit card payment': 'Cartão de crédito',
-        'Bank slip': 'Boleto',
-        'Debt card': 'Cartão débito',
-        'Alimony': 'Pensão',
-        'Telecommunications': 'Telecom',
-        'Internet': 'Internet',
-        'Mobile': 'Celular',
-        'School': 'Escola',
-        'University': 'Universidade',
-        'Gyms and fitness centers': 'Academia',
-        'Wellness': 'Bem-estar',
-        'Cinema, theater and concerts': 'Cinema / shows',
-        'Online shopping': 'Online',
-        'Electronics': 'Eletrônicos',
-        'Clothing': 'Roupas',
-        'Video streaming': 'Streaming vídeo',
-        'Music streaming': 'Streaming música',
-        'N/A': 'Supermercado',
-        'Eating out': 'Restaurante',
-        'Food delivery': 'Delivery',
-        'Airport and airlines': 'Passagens aéreas',
-        'Accommodation': 'Hospedagem',
-        'Lottery': 'Loterias',
-        'Income taxes': 'IR',
-        'Account fees': 'Tarifas conta',
-        'Rent': 'Aluguel',
-        'Electricity': 'Luz',
-        'Water': 'Água',
-        'Pharmacy': 'Farmácia',
-        'Hospital clinics and labs': 'Clínicas / exames',
-        'Taxi and ride-hailing': 'Táxi / apps',
-        'Public transportation': 'Ônibus / metrô',
-        'Car rental': 'Aluguel carro',
-        'Bicycle': 'Bicicleta',
-        'Gas stations': 'Combustível',
-        'Parking': 'Estacionamento',
-        'Health insurance': 'Plano de saúde',
-        'Vehicle insurance': 'Seguro auto',
-        'Donation': 'Doações',
-        'Donations': 'Doações',
-        'Leisure': 'Lazer',
-        'Entertainment': 'Lazer',
-        'Same person transfer': 'Transf. própria',
-        'Digital services': 'Serviços digitais',
-        'Transfer - TED': 'Transferência TED',
-        'Third party transfer - PIX': 'Transf. Terceiros Pix',
-        'Investments': 'Investimentos',
-        // Credit Card Specifics
-        'Shopping': 'Compras',
-        'Credit card fees': 'Tarifas cartão',
-        'Groceries': 'Supermercado',
-        'Accomodation': 'Hospedagem',
-        'Insurance': 'Seguros',
-        'Entrepreneurial activities': 'Empreendedorismo',
-        'Tolls and in vehicle payment': 'Pedágios',
-        'Services': 'Serviços',
-        'Mileage programs': 'Milhas',
-        'Bookstore': 'Livraria',
-        'Pet supplies and vet': 'Pet Shop / Vet',
-        'Houseware': 'Casa e Decoração',
-        'Transfers': 'Transferências',
-        'Gambling': 'Jogos / Apostas',
-        'Tickets': 'Ingressos',
-        'Vehicle maintenance': 'Manutenção Auto',
-        'Dentist': 'Dentista',
-        'Transfer - Foreign Exchange': 'Câmbio',
-    };
+  if (!category) return 'Outros';
 
-    // Strict match first, then fallback to original if not found
-    return map[category] || category;
+  const map: Record<string, string> = {
+    'Salary': 'Salário',
+    'Retirement': 'Aposentadoria',
+    'Government aid': 'Benefícios',
+    'Non-recurring income': 'Rendimentos extras',
+    'Loans': 'Empréstimos',
+    'Interests charged': 'Juros',
+    'Fixed income': 'Renda fixa',
+    'Variable income': 'Renda variável',
+    'Proceeds interests and dividends': 'Juros e dividendos',
+    'Same person transfer - PIX': 'Transf. própria',
+    'Transfer - PIX': 'Transf. Pix',
+    'Credit card payment': 'Cartão de crédito',
+    'Bank slip': 'Boleto',
+    'Debt card': 'Cartão débito',
+    'Alimony': 'Pensão',
+    'Telecommunications': 'Telecom',
+    'Internet': 'Internet',
+    'Mobile': 'Celular',
+    'School': 'Escola',
+    'University': 'Universidade',
+    'Gyms and fitness centers': 'Academia',
+    'Wellness': 'Bem-estar',
+    'Cinema, theater and concerts': 'Cinema / shows',
+    'Online shopping': 'Online',
+    'Electronics': 'Eletrônicos',
+    'Clothing': 'Roupas',
+    'Video streaming': 'Streaming vídeo',
+    'Music streaming': 'Streaming música',
+    'N/A': 'Supermercado',
+    'Eating out': 'Restaurante',
+    'Food delivery': 'Delivery',
+    'Airport and airlines': 'Passagens aéreas',
+    'Accommodation': 'Hospedagem',
+    'Lottery': 'Loterias',
+    'Income taxes': 'IR',
+    'Account fees': 'Tarifas conta',
+    'Rent': 'Aluguel',
+    'Electricity': 'Luz',
+    'Water': 'Água',
+    'Pharmacy': 'Farmácia',
+    'Hospital clinics and labs': 'Clínicas / exames',
+    'Taxi and ride-hailing': 'Táxi / apps',
+    'Public transportation': 'Ônibus / metrô',
+    'Car rental': 'Aluguel carro',
+    'Bicycle': 'Bicicleta',
+    'Gas stations': 'Combustível',
+    'Parking': 'Estacionamento',
+    'Health insurance': 'Plano de saúde',
+    'Vehicle insurance': 'Seguro auto',
+    'Donation': 'Doações',
+    'Donations': 'Doações',
+    'Leisure': 'Lazer',
+    'Entertainment': 'Lazer',
+    'Same person transfer': 'Transf. própria',
+    'Digital services': 'Serviços digitais',
+    'Transfer - TED': 'Transferência TED',
+    'Third party transfer - PIX': 'Transf. Terceiros Pix',
+    'Investments': 'Investimentos',
+    // Credit Card Specifics
+    'Shopping': 'Compras',
+    'Credit card fees': 'Tarifas cartão',
+    'Groceries': 'Supermercado',
+    'Accomodation': 'Hospedagem',
+    'Insurance': 'Seguros',
+    'Entrepreneurial activities': 'Empreendedorismo',
+    'Tolls and in vehicle payment': 'Pedágios',
+    'Services': 'Serviços',
+    'Mileage programs': 'Milhas',
+    'Bookstore': 'Livraria',
+    'Pet supplies and vet': 'Pet Shop / Vet',
+    'Houseware': 'Casa e Decoração',
+    'Transfers': 'Transferências',
+    'Gambling': 'Jogos / Apostas',
+    'Tickets': 'Ingressos',
+    'Vehicle maintenance': 'Manutenção Auto',
+    'Dentist': 'Dentista',
+    'Transfer - Foreign Exchange': 'Câmbio',
+  };
+
+  // Strict match first, then fallback to original if not found
+  return map[category] || category;
 };
 
 export const fixCategoriesForUser = async (userId: string) => {
@@ -1689,4 +1707,62 @@ export const fixCategoriesForUser = async (userId: string) => {
 
   console.log(`[Migration] User ${userId}: Updated ${updatedCount} transactions.`);
   return updatedCount;
+};
+
+// --- Feedback Services ---
+export interface Feedback {
+  id?: string;
+  type: 'bug' | 'suggestion';
+  message: string;
+  userId?: string;
+  userEmail?: string;
+  userName?: string;
+  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  createdAt: string;
+  resolvedAt?: string;
+  adminNotes?: string;
+}
+
+export const addFeedback = async (feedback: Omit<Feedback, 'id'>) => {
+  if (!db) return "";
+  const feedbackRef = collection(db, "feedbacks");
+  const docRef = await addDoc(feedbackRef, feedback);
+  return docRef.id;
+};
+
+export const updateFeedback = async (feedback: Feedback) => {
+  if (!db) return;
+  if (!feedback.id) return;
+  const feedbackRef = doc(db, "feedbacks", feedback.id);
+  const { id, ...data } = feedback;
+  await updateDoc(feedbackRef, data);
+};
+
+export const deleteFeedback = async (feedbackId: string) => {
+  if (!db) return;
+  const feedbackRef = doc(db, "feedbacks", feedbackId);
+  await deleteDoc(feedbackRef);
+};
+
+export const getFeedbacks = async (): Promise<Feedback[]> => {
+  if (!db) return [];
+  const feedbackRef = collection(db, "feedbacks");
+  const q = query(feedbackRef, orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Feedback));
+};
+
+export const listenToFeedbacks = (callback: (feedbacks: Feedback[]) => void) => {
+  if (!db) return () => { };
+  const feedbackRef = collection(db, "feedbacks");
+
+  return onSnapshot(feedbackRef, (snapshot) => {
+    const feedbacks: Feedback[] = [];
+    snapshot.forEach(docSnap => {
+      feedbacks.push({ id: docSnap.id, ...docSnap.data() } as Feedback);
+    });
+    // Sort by createdAt desc
+    feedbacks.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    callback(feedbacks);
+  });
 };

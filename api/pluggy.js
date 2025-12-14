@@ -26,24 +26,45 @@ console.log('>>> Pluggy Config:', {
   EnvVar: process.env.PLUGGY_API_URL
 });
 
-// Retrieve Pluggy API key (auth only)
+// Token cache to avoid multiple auth requests
+let cachedApiKey = null;
+let cachedApiKeyExpiry = 0;
+const TOKEN_TTL_MS = 10 * 60 * 1000; // 10 minutes (Pluggy tokens last ~30 min)
+
+// Retrieve Pluggy API key (auth only) with caching
 const getPluggyApiKey = async () => {
   // Allow injecting a fixed API KEY (useful for debugging to bypass auth issues)
   if (PLUGGY_API_KEY_STATIC) return PLUGGY_API_KEY_STATIC;
+
+  // Return cached token if still valid
+  if (cachedApiKey && Date.now() < cachedApiKeyExpiry) {
+    return cachedApiKey;
+  }
 
   if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
     throw new Error('Pluggy credentials not configured (PLUGGY_CLIENT_ID/PLUGGY_CLIENT_SECRET).');
   }
 
   try {
+    console.log('>>> Pluggy: Requesting new API key...');
     const response = await axios.post(`${PLUGGY_API_URL}/auth`, {
       clientId: PLUGGY_CLIENT_ID,
       clientSecret: PLUGGY_CLIENT_SECRET
     });
 
-    return response.data.apiKey;
+    console.log('>>> Pluggy Auth Response keys:', Object.keys(response.data));
+
+    // Pluggy returns apiKey in the response
+    cachedApiKey = response.data.apiKey;
+    cachedApiKeyExpiry = Date.now() + TOKEN_TTL_MS;
+    console.log('>>> Pluggy: API key obtained and cached, length:', cachedApiKey?.length);
+
+    return cachedApiKey;
   } catch (error) {
     console.error('>>> Pluggy Auth Error:', error.response?.data || error.message);
+    // Clear cache on auth error
+    cachedApiKey = null;
+    cachedApiKeyExpiry = 0;
     throw error;
   }
 };
@@ -62,11 +83,19 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
 
   if (data) config.data = data;
 
+  console.log(`>>> Pluggy Request: ${method} ${endpoint} (apiKey: ${apiKey ? apiKey.substring(0, 10) + '...' : 'NONE'})`);
+
   try {
     const response = await axios(config);
     return response.data;
   } catch (error) {
     console.error('>>> Pluggy Request Error:', error.response?.data || error.message);
+    // If 401, clear cached token to force re-auth
+    if (error.response?.status === 401) {
+      console.log('>>> Pluggy: Clearing cached token due to 401');
+      cachedApiKey = null;
+      cachedApiKeyExpiry = 0;
+    }
     throw error;
   }
 };
@@ -664,6 +693,53 @@ router.post('/item/:itemId/refresh-bills', async (req, res) => {
       error: 'Erro ao atualizar faturas.',
       details: error.response?.data?.message || error.message
     });
+  }
+});
+
+// Webhook endpoint for Pluggy notifications
+router.post('/webhook', async (req, res) => {
+  const event = req.body;
+
+  console.log('>>> PLUGGY WEBHOOK RECEIVED:', JSON.stringify(event, null, 2));
+
+  try {
+    const { event: eventType, id, itemId, clientUserId } = event;
+
+    switch (eventType) {
+      case 'item/created':
+        console.log(`>>> Pluggy: Item created - ${itemId} for user ${clientUserId}`);
+        break;
+
+      case 'item/updated':
+        console.log(`>>> Pluggy: Item updated - ${itemId}, status: ${event.status}`);
+        break;
+
+      case 'item/error':
+        console.log(`>>> Pluggy: Item error - ${itemId}, error: ${event.error?.message || 'Unknown'}`);
+        break;
+
+      case 'item/login_succeeded':
+        console.log(`>>> Pluggy: Login succeeded - ${itemId}`);
+        break;
+
+      case 'item/deleted':
+        console.log(`>>> Pluggy: Item deleted - ${itemId}`);
+        break;
+
+      case 'connector/status_updated':
+        console.log(`>>> Pluggy: Connector status updated - ${event.connectorId}`);
+        break;
+
+      default:
+        console.log(`>>> Pluggy: Unknown event type - ${eventType}`);
+    }
+
+    // Always respond 200 to acknowledge receipt
+    res.status(200).json({ received: true, event: eventType });
+  } catch (error) {
+    console.error('>>> Pluggy Webhook Error:', error);
+    // Still respond 200 to prevent Pluggy from retrying
+    res.status(200).json({ received: true, error: error.message });
   }
 });
 

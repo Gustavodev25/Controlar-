@@ -4,6 +4,7 @@ import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, 
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
+import { Tooltip } from './UIComponents';
 
 interface StatsCardsProps {
   stats: DashboardStats;
@@ -49,21 +50,21 @@ interface StatsCardsProps {
   };
 }
 
-export const StatsCards: React.FC<StatsCardsProps> = ({ 
-  stats, 
-  isLoading = false, 
-  accountBalances, 
-  toggles, 
-  creditCardTransactions = [], 
-  dashboardDate, 
-  isProMode = true, 
-  onActivateProMode, 
-  userPlan = 'starter', 
+export const StatsCards: React.FC<StatsCardsProps> = ({
+  stats,
+  isLoading = false,
+  accountBalances,
+  toggles,
+  creditCardTransactions = [],
+  dashboardDate,
+  isProMode = true,
+  onActivateProMode,
+  userPlan = 'starter',
   onUpgradeClick,
   hideCards = false,
   labels
 }) => {
-  
+
   // Use enabledCreditCardIds from toggles (Synced with App.tsx)
   const cardsIncludedInExpenses = useMemo(() => {
     return new Set(toggles?.enabledCreditCardIds || []);
@@ -73,29 +74,29 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     const type = (acc.type || '').toUpperCase();
     const subtype = (acc.subtype || '').toUpperCase();
     const name = (acc.name || '').toUpperCase();
-    
+
     // Filter out Savings accounts based on multiple criteria
-    const isSavings = 
-        type === 'SAVINGS' || 
-        type === 'SAVINGS_ACCOUNT' ||
-        subtype === 'SAVINGS' || 
-        subtype === 'SAVINGS_ACCOUNT' ||
-        name.includes('POUPANCA') ||
-        name.includes('POUPANCA');
+    const isSavings =
+      type === 'SAVINGS' ||
+      type === 'SAVINGS_ACCOUNT' ||
+      subtype === 'SAVINGS' ||
+      subtype === 'SAVINGS_ACCOUNT' ||
+      name.includes('POUPANCA') ||
+      name.includes('POUPANCA');
 
     return !isSavings;
   });
-  
+
   // Initialize or fallback to the first account if selection is invalid or null
   const [selectedCheckingAccountId, setSelectedCheckingAccountId] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('finances_selected_checking_account');
       // If we have a stored ID, check if it's still valid in the filtered list (optimization: hard to check here without list, so just return it)
-      return stored; 
+      return stored;
     }
     return null;
   });
-  
+
   // Ensure we always have a valid selection if accounts exist
   useEffect(() => {
     if (checkingAccounts.length > 0) {
@@ -105,7 +106,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       }
     }
   }, [checkingAccounts, selectedCheckingAccountId]);
-  
+
   useEffect(() => {
     if (typeof window !== 'undefined') {
       if (selectedCheckingAccountId) {
@@ -349,7 +350,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         }
       }
 
-            let filteredTransactions = cardTransactions;
+      let filteredTransactions = cardTransactions;
       if (dashboardDate) {
         filteredTransactions = cardTransactions.filter(tx => {
           const key = tx.invoiceDueDate?.slice(0, 7)
@@ -445,9 +446,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       if (cardLimit > 0) {
         // Use API available limit if present, otherwise estimate
         if (card.availableCreditLimit !== undefined && card.availableCreditLimit !== null) {
-           cardAvailable = card.availableCreditLimit;
+          cardAvailable = card.availableCreditLimit;
         } else {
-           cardAvailable = Math.max(0, cardLimit - invoiceValue);
+          cardAvailable = Math.max(0, cardLimit - invoiceValue);
         }
       }
 
@@ -470,8 +471,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         if (idx === 1) amount = nextInvoiceValue || amount;
         const dueDate =
           idx === 0 ? (currentBill?.dueDate) :
-          idx === 1 ? (nextBill?.dueDate || deriveNextDueDate(currentBill?.dueDate)) :
-          null;
+            idx === 1 ? (nextBill?.dueDate || deriveNextDueDate(currentBill?.dueDate)) :
+              null;
         return { monthKey: key, amount, dueDate };
       });
 
@@ -502,7 +503,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       const selectedType = cardInvoiceType[card.id] || 'current';
       const currentValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
       const nextValue = cardInvoice?.nextInvoice ?? 0;
-      
+
       let chosenValue = currentValue;
       if (selectedType === 'next') chosenValue = nextValue;
       else if (selectedType === 'used_total') chosenValue = cardInvoice?.usedTotal ?? 0;
@@ -568,7 +569,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     }
 
     const totalChecking = accountBalances.checking || 0;
-    
+
     // Adjust: Remove total, add displayed (which is selected or total)
     return stats.totalBalance - totalChecking + displayedCheckingBalance;
   }, [stats.totalBalance, toggles, accountBalances, displayedCheckingBalance]);
@@ -671,13 +672,15 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               </div>
               <div className="flex items-center gap-1">
                 <Dropdown>
-                  <DropdownTrigger className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors data-[state=open]:bg-gray-800 data-[state=open]:text-white">
-                    <Settings size={16} />
-                  </DropdownTrigger>
-                  
+                  <Tooltip content="Contas Correntes">
+                    <DropdownTrigger className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors data-[state=open]:bg-gray-800 data-[state=open]:text-white">
+                      <Settings size={16} />
+                    </DropdownTrigger>
+                  </Tooltip>
+
                   <DropdownContent width="w-72" align="right" portal>
                     <DropdownLabel>Contas Correntes</DropdownLabel>
-                    
+
                     {/* Toggle include in balance */}
                     <div
                       onClick={() => toggles.setIncludeChecking(!toggles.includeChecking)}
@@ -695,11 +698,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     </div>
 
                     <DropdownSeparator />
-                    
+
                     <DropdownLabel>Suas Contas</DropdownLabel>
-                    
+
                     {checkingAccounts.length === 0 ? (
-                       <div className="px-3 py-2 text-sm text-gray-500 text-center">Nenhuma conta conectada</div>
+                      <div className="px-3 py-2 text-sm text-gray-500 text-center">Nenhuma conta conectada</div>
                     ) : (
                       <div className="p-1 space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
                         {checkingAccounts.map((acc) => (
@@ -853,147 +856,148 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                       {/* Card Content */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                                                    <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-[#D97757]/10 text-[#D97757]' : 'bg-gray-700/20 text-gray-500'}`}>
-                                                      <CreditCard size={20} />
-                                                    </div>
-                                                    <div>
-                                                      <div className="flex items-center gap-2">
-                                                        <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
-                                                          {card.institution || card.name || 'Cartao'}
-                                                        </p>
-                                                        {isCurrent && creditAccounts.length > 1 && (
-                                                          <span className="text-[10px] text-[#D97757] bg-[#D97757]/10 px-1.5 py-0.5 rounded font-mono border border-[#D97757]/20">
-                                                            {index + 1}/{creditAccounts.length}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      <div className="flex items-baseline gap-2">
-                                                        <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
-                                                          <NumberFlow
-                                                            value={(cardInvoice.payable ?? cardInvoice.invoice)}
-                                                            format={{ style: 'currency', currency: 'BRL' }}
-                                                            locales="pt-BR"
-                                                          />
-                                                        </p>
-                                                        {isCurrent && (
-                                                          <span className="text-xs text-gray-500 font-medium">
-                                                            {dashboardDate ? 'mes' : 'atual'}
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                    </div>
-                                                  </div>
-                                                  {isCurrent && (
-                                                    <div className="mt-2 space-y-1 text-xs">
-                          
-                          
-                                                    </div>
-                                                  )}
-                                                  {/* Settings button and Swipe Hint (only on current) */}
-                                                  {isCurrent && (
-                                                    <div className="flex items-center gap-2">
-                                                      {/* Settings Button */}
-                                                       <Dropdown>
-                                                          <DropdownTrigger asChild>
-                                                            <motion.button
-                                                              initial={{ opacity: 0 }}
-                                                              animate={{ opacity: 1 }}
-                                                              onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
-                                                              className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
-                                                                ? 'bg-[#D97757]/20 text-[#D97757]'
-                                                                : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-[#D97757]'
-                                                                }`}
-                                                              title="Configuracoes do cartao"
-                                                            >
-                                                              <Settings size={14} />
-                                                            </motion.button>
-                                                          </DropdownTrigger>
-                                                          
-                                                          <DropdownContent width="w-[320px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
-                                                             <DropdownLabel>Configurações dos Cartões</DropdownLabel>
-                                                             <div className="px-3 py-2 space-y-3">
-                                                                  {creditAccounts.map((card, index) => {
-                                                                    const cardInvoice = cardInvoices[index];
-                                                                    const isEnabled = cardsIncludedInExpenses.has(card.id);
-                                                                    const selectedType = cardInvoiceType[card.id] || 'current';
-                                                                    
-                                                                    const toggleCard = () => {
-                                                                      const newSet = new Set(cardsIncludedInExpenses);
-                                                                      if (isEnabled) newSet.delete(card.id);
-                                                                      else newSet.add(card.id);
-                                                                      
-                                                                      if (toggles?.setEnabledCreditCardIds) {
-                                                                        toggles.setEnabledCreditCardIds(Array.from(newSet));
-                                                                      }
-                                                                    };
-                          
-                                                                    const setMode = (mode: 'current' | 'next' | 'used_total') => {
-                                                                       if (setCardInvoiceType) {
-                                                                          setCardInvoiceType({ ...cardInvoiceType, [card.id]: mode });
-                                                                       }
-                                                                    };
-                          
-                                                                    const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-                                                                    const usedVal = cardInvoice?.usedTotal ?? 0;
-                          
-                                                                    return (
-                                                                      <div
-                                                                        key={`expense-${card.id}`}
-                                                                        className={`rounded-xl border transition-all overflow-hidden ${isEnabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/20 border-gray-800'}`}
-                                                                      >
-                                                                        {/* Header - Enable/Disable Card */}
-                                                                        <div 
-                                                                          onClick={(e) => { e.stopPropagation(); toggleCard(); }}
-                                                                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800/50 transition-colors"
-                                                                        >
-                                                                                                                          <div className="flex items-center gap-2.5">
-                                                                                                                            <div className={`w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center shadow-inner ${isEnabled ? 'text-[#D97757]' : 'text-gray-600'}`}>
-                                                                                                                              <Building size={14} />
-                                                                                                                            </div>
-                                                                                                                            <span className={`text-sm font-medium ${isEnabled ? 'text-gray-200' : 'text-gray-500'}`}>
-                                                                                                                              {card.institution || card.name || 'Cartão'}
-                                                                                                                            </span>
-                                                                                                                          </div>                                                                                                                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${isEnabled ? 'bg-[#D97757] border-[#D97757] text-white shadow-lg shadow-[#D97757]/20' : 'bg-gray-800 border-gray-700 text-transparent hover:border-gray-600'}`}>
-                                                                                                                            <Check size={12} strokeWidth={4} />
-                                                                                                                          </div>                                                                        </div>
-                          
-                                                                        {/* Modes - Only visible if enabled */}
-                                                                        {isEnabled && (
-                                                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
-                                                                             <div 
-                                                                                onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current' 
-                                                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner' 
-                                                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                                             >
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                                                  Fatura Atual
-                                                                                </span>
-                                                                                <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
-                                                                                  {formatCurrency(currentVal)}
-                                                                                </span>
-                                                                             </div>
-                          
-                                                                             <div 
-                                                                                onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total' 
-                                                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner' 
-                                                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                                             >
-                                                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                                                  Total Usado
-                                                                                </span>
-                                                                                <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                                                  {formatCurrency(usedVal)}
-                                                                                </span>
-                                                                             </div>
-                                                                          </div>
-                                                                        )}
-                                                                      </div>
-                                                                    );
-                                                                  })}
-                                                             </div>
-                                                          </DropdownContent>                             </Dropdown>
+                          <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-[#D97757]/10 text-[#D97757]' : 'bg-gray-700/20 text-gray-500'}`}>
+                            <CreditCard size={20} />
+                          </div>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
+                                {card.institution || card.name || 'Cartao'}
+                              </p>
+                              {isCurrent && creditAccounts.length > 1 && (
+                                <span className="text-[10px] text-[#D97757] bg-[#D97757]/10 px-1.5 py-0.5 rounded font-mono border border-[#D97757]/20">
+                                  {index + 1}/{creditAccounts.length}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-baseline gap-2">
+                              <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
+                                <NumberFlow
+                                  value={(cardInvoice.payable ?? cardInvoice.invoice)}
+                                  format={{ style: 'currency', currency: 'BRL' }}
+                                  locales="pt-BR"
+                                />
+                              </p>
+                              {isCurrent && (
+                                <span className="text-xs text-gray-500 font-medium">
+                                  {dashboardDate ? 'mes' : 'atual'}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        {isCurrent && (
+                          <div className="mt-2 space-y-1 text-xs">
+
+
+                          </div>
+                        )}
+                        {/* Settings button and Swipe Hint (only on current) */}
+                        {isCurrent && (
+                          <div className="flex items-center gap-2">
+                            {/* Settings Button */}
+                            <Dropdown>
+                              <Tooltip content="Configurações dos Cartões">
+                                <DropdownTrigger asChild>
+                                  <motion.button
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    onPointerDown={(e) => e.stopPropagation()} // Prevent drag start
+                                    className={`p-1.5 rounded-lg transition-colors ${cardsIncludedInExpenses.size > 0
+                                      ? 'bg-[#D97757]/20 text-[#D97757]'
+                                      : 'bg-gray-800/50 hover:bg-gray-700 text-gray-400 hover:text-[#D97757]'
+                                      }`}
+                                  >
+                                    <Settings size={14} />
+                                  </motion.button>
+                                </DropdownTrigger>
+                              </Tooltip>
+
+                              <DropdownContent width="w-[320px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
+                                <DropdownLabel>Configurações dos Cartões</DropdownLabel>
+                                <div className="px-3 py-2 space-y-3">
+                                  {creditAccounts.map((card, index) => {
+                                    const cardInvoice = cardInvoices[index];
+                                    const isEnabled = cardsIncludedInExpenses.has(card.id);
+                                    const selectedType = cardInvoiceType[card.id] || 'current';
+
+                                    const toggleCard = () => {
+                                      const newSet = new Set(cardsIncludedInExpenses);
+                                      if (isEnabled) newSet.delete(card.id);
+                                      else newSet.add(card.id);
+
+                                      if (toggles?.setEnabledCreditCardIds) {
+                                        toggles.setEnabledCreditCardIds(Array.from(newSet));
+                                      }
+                                    };
+
+                                    const setMode = (mode: 'current' | 'next' | 'used_total') => {
+                                      if (setCardInvoiceType) {
+                                        setCardInvoiceType({ ...cardInvoiceType, [card.id]: mode });
+                                      }
+                                    };
+
+                                    const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
+                                    const usedVal = cardInvoice?.usedTotal ?? 0;
+
+                                    return (
+                                      <div
+                                        key={`expense-${card.id}`}
+                                        className={`rounded-xl border transition-all overflow-hidden ${isEnabled ? 'bg-gray-800/40 border-gray-700' : 'bg-gray-900/20 border-gray-800'}`}
+                                      >
+                                        {/* Header - Enable/Disable Card */}
+                                        <div
+                                          onClick={(e) => { e.stopPropagation(); toggleCard(); }}
+                                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800/50 transition-colors"
+                                        >
+                                          <div className="flex items-center gap-2.5">
+                                            <div className={`w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center shadow-inner ${isEnabled ? 'text-[#D97757]' : 'text-gray-600'}`}>
+                                              <Building size={14} />
+                                            </div>
+                                            <span className={`text-sm font-medium ${isEnabled ? 'text-gray-200' : 'text-gray-500'}`}>
+                                              {card.institution || card.name || 'Cartão'}
+                                            </span>
+                                          </div>                                                                                                                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${isEnabled ? 'bg-[#D97757] border-[#D97757] text-white shadow-lg shadow-[#D97757]/20' : 'bg-gray-800 border-gray-700 text-transparent hover:border-gray-600'}`}>
+                                            <Check size={12} strokeWidth={4} />
+                                          </div>                                                                        </div>
+
+                                        {/* Modes - Only visible if enabled */}
+                                        {isEnabled && (
+                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
+                                            <div
+                                              onClick={(e) => { e.stopPropagation(); setMode('current'); }}
+                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
+                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                            >
+                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                Fatura Atual
+                                              </span>
+                                              <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
+                                                {formatCurrency(currentVal)}
+                                              </span>
+                                            </div>
+
+                                            <div
+                                              onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
+                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
+                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                            >
+                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                Total Usado
+                                              </span>
+                                              <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                {formatCurrency(usedVal)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </DropdownContent>                             </Dropdown>
 
                             {/* Swipe Hint */}
                             {creditAccounts.length > 1 && !isDragging && (
@@ -1215,5 +1219,5 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       </div>
     </div >
   );
-};  
+};
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, type JSX } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
 import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X } from './Icons';
 
@@ -822,5 +823,166 @@ export const ConfirmationCard: React.FC<ConfirmationCardProps> = ({
         </div>
       </div>
     </div>
+  );
+};
+
+export const Tooltip = ({ children, content, className = "" }: { children: React.ReactNode; content: string; className?: string }) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isVisible && triggerRef.current) {
+      const updatePosition = () => {
+        const rect = triggerRef.current!.getBoundingClientRect();
+        setCoords({
+          top: rect.top - 40,
+          left: rect.left + rect.width / 2
+        });
+      };
+      updatePosition();
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [isVisible]);
+
+  const tooltip = (
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ y: 5, opacity: 0, scale: 0.95, filter: "blur(10px)", x: "-50%" }}
+          animate={{ y: -5, opacity: 1, scale: 1, filter: "blur(0px)", x: "-50%" }}
+          exit={{ y: 5, opacity: 0, scale: 0.95, filter: "blur(10px)", x: "-50%" }}
+          transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+          style={{ top: coords.top, left: coords.left, position: 'fixed' }}
+          className="px-3 py-1.5 bg-[#30302E] border border-[#373734] text-xs font-medium text-white rounded-lg shadow-xl whitespace-nowrap z-[9999] pointer-events-none ring-1 ring-white/5 origin-bottom"
+        >
+          {content}
+          {/* Arrow pointing down */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-[6px] w-0 h-0"
+            style={{
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '6px solid #30302E',
+            }}
+          />
+          {/* Arrow border */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-[7px] w-0 h-0 -z-10"
+            style={{
+              borderLeft: '7px solid transparent',
+              borderRight: '7px solid transparent',
+              borderTop: '7px solid #373734',
+            }}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
+        className={`relative flex items-center justify-center ${className}`}
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+      >
+        {children}
+      </div>
+      {createPortal(tooltip, document.body)}
+    </>
+  );
+};
+
+// --- TOOLTIP ICON (Para botões de ícone com tooltip acima) ---
+interface TooltipIconProps {
+  children: React.ReactNode;
+  content: string;
+  className?: string;
+  offset?: number; // Distância do tooltip em relação ao ícone
+}
+
+export const TooltipIcon: React.FC<TooltipIconProps> = ({
+  children,
+  content,
+  className = "",
+  offset = 40
+}) => {
+  const [isVisible, setIsVisible] = useState(false);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isVisible && triggerRef.current) {
+      const updatePosition = () => {
+        const rect = triggerRef.current!.getBoundingClientRect();
+        setCoords({
+          top: rect.top - offset,
+          left: rect.left + rect.width / 2
+        });
+      };
+      updatePosition();
+      window.addEventListener('scroll', updatePosition, true);
+      window.addEventListener('resize', updatePosition);
+      return () => {
+        window.removeEventListener('scroll', updatePosition, true);
+        window.removeEventListener('resize', updatePosition);
+      };
+    }
+  }, [isVisible, offset]);
+
+  const tooltip = (
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          initial={{ y: 5, opacity: 0, scale: 0.95, filter: "blur(10px)", x: "-50%" }}
+          animate={{ y: 0, opacity: 1, scale: 1, filter: "blur(0px)", x: "-50%" }}
+          exit={{ y: 5, opacity: 0, scale: 0.95, filter: "blur(10px)", x: "-50%" }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          style={{ top: coords.top, left: coords.left, position: 'fixed' }}
+          className="px-3 py-1.5 bg-[#30302E] border border-[#373734] text-xs font-medium text-white rounded-lg shadow-xl whitespace-nowrap z-[9999] pointer-events-none ring-1 ring-white/5"
+        >
+          {content}
+          {/* Arrow pointing down */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-[6px] w-0 h-0"
+            style={{
+              borderLeft: '6px solid transparent',
+              borderRight: '6px solid transparent',
+              borderTop: '6px solid #30302E',
+            }}
+          />
+          {/* Arrow border */}
+          <div
+            className="absolute left-1/2 -translate-x-1/2 -bottom-[7px] w-0 h-0 -z-10"
+            style={{
+              borderLeft: '7px solid transparent',
+              borderRight: '7px solid transparent',
+              borderTop: '7px solid #373734',
+            }}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
+  return (
+    <>
+      <div
+        ref={triggerRef}
+        className={`inline-flex items-center justify-center ${className}`}
+        onMouseEnter={() => setIsVisible(true)}
+        onMouseLeave={() => setIsVisible(false)}
+      >
+        {children}
+      </div>
+      {createPortal(tooltip, document.body)}
+    </>
   );
 };

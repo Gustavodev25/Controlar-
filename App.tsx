@@ -1,24 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import {
-  ChevronDown,
-  TrendingUp,
-  Plus,
-  Calendar,
-  Filter,
-  Tag,
-  X,
-  Menu,
-  Target,
-  Building,
-  CreditCard,
-  Bell,
-  RotateCcw,
-  LayoutDashboard,
-  Users as UsersIcon,
-  MathMaxMin
-} from './components/Icons';
-import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel } from './components/Dropdown';
-import { Flame, Vault, Lock } from 'lucide-react';
+import { X } from './components/Icons';
+import { MessageCircle } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount } from './types';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -26,7 +8,6 @@ import { CreditCardTable } from './components/CreditCardTable';
 import { AIModal } from './components/AIModal';
 import { AuthModal } from './components/AuthModal';
 import { LandingPage } from './components/LandingPage';
-import { UserMenu } from './components/UserMenu';
 import { SettingsModal } from './components/SettingsModal';
 import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
@@ -40,14 +21,14 @@ import { FamilyDashboard } from './components/FamilyDashboard';
 import { FamilyOverview } from './components/FamilyOverview';
 import { ToastContainer, useToasts } from './components/Toast';
 import { GlobalSyncToast } from './components/GlobalSyncToast';
+import { FeedbackBanner } from './components/FeedbackBanner';
 import { saveSyncProgress, clearSyncProgress } from './utils/syncProgress';
 import { TwoFactorPrompt } from './components/TwoFactorPrompt';
 import { auth } from './services/firebase';
 import { onAuthStateChanged } from "firebase/auth";
 import * as dbService from './services/database';
 import { verifyTOTP } from './services/twoFactor';
-import { CustomSelect, CustomMonthPicker } from './components/UIComponents';
-import { NotificationCenter, SystemNotification } from './components/NotificationCenter';
+import { SystemNotification } from './components/NotificationCenter';
 import { Analytics } from '@vercel/analytics/react';
 import { AIChatAssistant } from './components/AIChatAssistant';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
@@ -58,9 +39,10 @@ import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
-import AdminEmailMessage from './components/AdminEmailMessage';
 import { AdminCoupons } from './components/AdminCoupons';
-
+import { AdminFeedbacks } from './components/AdminFeedbacks';
+import AdminEmailMessage from './components/AdminEmailMessage';
+import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
 import * as subscriptionService from './services/subscriptionService';
 import * as familyService from './services/familyService';
@@ -70,7 +52,7 @@ import { translatePluggyCategory } from './services/openFinanceService';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 
-type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
+// Removed FilterMode type definition as it is imported from components/Header
 
 interface PendingTwoFactor {
   uid: string;
@@ -249,7 +231,7 @@ const App: React.FC = () => {
           console.log(`[Auto Fix] Completed. Updated ${count} transactions.`);
           localStorage.setItem('fixed_categories_v2', 'true');
           if (count > 0) {
-             toast.success(`Categorias atualizadas automaticamente (${count} registros).`);
+            toast.success(`Categorias atualizadas automaticamente (${count} registros).`);
           }
         }).catch(err => console.error('[Auto Fix] Error:', err));
       }
@@ -597,6 +579,17 @@ const App: React.FC = () => {
     }
   }, [userId]);
 
+  // Update lastSyncMap when connectedAccounts changes
+  useEffect(() => {
+    const newMap: Record<string, string> = {};
+    connectedAccounts.forEach(acc => {
+      if (acc.lastUpdated) {
+        newMap[acc.id] = acc.lastUpdated;
+      }
+    });
+    setLastSyncMap(newMap);
+  }, [connectedAccounts]);
+
   useEffect(() => {
     if (!userId) {
       setNotifications([]);
@@ -702,25 +695,25 @@ const App: React.FC = () => {
           const res = await fetch(`/api/asaas/subscription/${currentUser.subscription!.asaasSubscriptionId}`);
           const data = await res.json();
           if (data.success && data.subscription) {
-             if (data.subscription.status === 'ACTIVE') {
-                 // UPDATE DB to ACTIVE
-                 const updatedUser = {
-                     ...currentUser,
-                     subscription: {
-                         ...currentUser.subscription!,
-                         status: 'active' as const
-                     }
-                 };
-                 await dbService.updateUserProfile(userId, updatedUser);
-                 // No need to set state here, the listener will pick it up
-                 toast.success("Sua assinatura foi confirmada! Aproveite os recursos Pro.");
-             }
+            if (data.subscription.status === 'ACTIVE') {
+              // UPDATE DB to ACTIVE
+              const updatedUser = {
+                ...currentUser,
+                subscription: {
+                  ...currentUser.subscription!,
+                  status: 'active' as const
+                }
+              };
+              await dbService.updateUserProfile(userId, updatedUser);
+              // No need to set state here, the listener will pick it up
+              toast.success("Sua assinatura foi confirmada! Aproveite os recursos Pro.");
+            }
           }
         } catch (e) {
-            console.error("Error checking subscription status", e);
+          console.error("Error checking subscription status", e);
         }
       };
-      
+
       checkStatus();
     }
   }, [userId, currentUser?.subscription?.status, currentUser?.subscription?.asaasSubscriptionId]);
@@ -1234,10 +1227,10 @@ const App: React.FC = () => {
     const uniqueCCTxs = mappedCCTxs.filter(t => !existingIds.has(t.id));
 
     const combined = [...memberFilteredTransactions, ...uniqueCCTxs];
-    
+
     // Sort by date desc
     combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
+
     return combined;
   }, [memberFilteredTransactions, separateCreditCardTxs]);
 
@@ -1301,9 +1294,9 @@ const App: React.FC = () => {
     if (viewFilter === 'all') return reviewedDashboardTransactions;
     return reviewedDashboardTransactions.filter(t => {
       if (viewFilter === 'credit_card') {
-        const isCredit = !!(t.cardId || 
-          (t.accountType || '').toUpperCase().includes('CREDIT') || 
-          t.invoiceMonthKey || 
+        const isCredit = !!(t.cardId ||
+          (t.accountType || '').toUpperCase().includes('CREDIT') ||
+          t.invoiceMonthKey ||
           t.pluggyBillId ||
           (t as any).tags?.includes('Cartão de Crédito'));
 
@@ -1314,28 +1307,28 @@ const App: React.FC = () => {
       }
       if (viewFilter === 'savings') {
         const cat = (t.category || '').toLowerCase();
-        return !!(t.isInvestment || 
-          cat === 'investimentos' || 
-          cat === 'poupança' || 
+        return !!(t.isInvestment ||
+          cat === 'investimentos' ||
+          cat === 'poupança' ||
           cat === 'poupanca' ||
           (t.accountType || '').toUpperCase().includes('SAVINGS'));
       }
       if (viewFilter === 'checking') {
-        const isCredit = !!(t.cardId || 
-          (t.accountType || '').toUpperCase().includes('CREDIT') || 
-          t.invoiceMonthKey || 
+        const isCredit = !!(t.cardId ||
+          (t.accountType || '').toUpperCase().includes('CREDIT') ||
+          t.invoiceMonthKey ||
           t.pluggyBillId ||
           (t as any).tags?.includes('Cartão de Crédito'));
         if (isCredit) return false;
 
         const cat = (t.category || '').toLowerCase();
-        const isSavings = !!(t.isInvestment || 
-          cat === 'investimentos' || 
-          cat === 'poupança' || 
+        const isSavings = !!(t.isInvestment ||
+          cat === 'investimentos' ||
+          cat === 'poupança' ||
           cat === 'poupanca' ||
           (t.accountType || '').toUpperCase().includes('SAVINGS'));
         if (isSavings) return false;
-        
+
         return true;
       }
       return true;
@@ -1346,9 +1339,9 @@ const App: React.FC = () => {
     if (viewFilter === 'all') return dashboardFilteredTransactions;
     return dashboardFilteredTransactions.filter(t => {
       if (viewFilter === 'credit_card') {
-        const isCredit = !!(t.cardId || 
-          (t.accountType || '').toUpperCase().includes('CREDIT') || 
-          t.invoiceMonthKey || 
+        const isCredit = !!(t.cardId ||
+          (t.accountType || '').toUpperCase().includes('CREDIT') ||
+          t.invoiceMonthKey ||
           t.pluggyBillId ||
           (t as any).tags?.includes('Cartão de Crédito'));
 
@@ -1359,28 +1352,28 @@ const App: React.FC = () => {
       }
       if (viewFilter === 'savings') {
         const cat = (t.category || '').toLowerCase();
-        return !!(t.isInvestment || 
-          cat === 'investimentos' || 
-          cat === 'poupança' || 
+        return !!(t.isInvestment ||
+          cat === 'investimentos' ||
+          cat === 'poupança' ||
           cat === 'poupanca' ||
           (t.accountType || '').toUpperCase().includes('SAVINGS'));
       }
       if (viewFilter === 'checking') {
-        const isCredit = !!(t.cardId || 
-          (t.accountType || '').toUpperCase().includes('CREDIT') || 
-          t.invoiceMonthKey || 
+        const isCredit = !!(t.cardId ||
+          (t.accountType || '').toUpperCase().includes('CREDIT') ||
+          t.invoiceMonthKey ||
           t.pluggyBillId ||
           (t as any).tags?.includes('Cartão de Crédito'));
         if (isCredit) return false;
 
         const cat = (t.category || '').toLowerCase();
-        const isSavings = !!(t.isInvestment || 
-          cat === 'investimentos' || 
-          cat === 'poupança' || 
+        const isSavings = !!(t.isInvestment ||
+          cat === 'investimentos' ||
+          cat === 'poupança' ||
           cat === 'poupanca' ||
           (t.accountType || '').toUpperCase().includes('SAVINGS'));
         if (isSavings) return false;
-        
+
         return true;
       }
       return true;
@@ -2100,7 +2093,7 @@ const App: React.FC = () => {
 
     setIsSyncingCards(true);
     clearSyncProgress();
-    
+
     // Initial Progress
     saveSyncProgress({
       step: 'Iniciando sincronizacao...',
@@ -2120,12 +2113,12 @@ const App: React.FC = () => {
         total: itemIds.length,
         startedAt: Date.now()
       });
-      
+
       await dbService.deleteAllCreditCardTransactions(userId);
 
       for (let i = 0; i < itemIds.length; i++) {
         const itemId = itemIds[i];
-        
+
         saveSyncProgress({
           step: `Sincronizando conexao ${i + 1} de ${itemIds.length}...`,
           current: i,
@@ -2284,15 +2277,15 @@ const App: React.FC = () => {
               // Priority 1: Use Bill Due Date if available
               invoiceMonthKey = bill.dueDate.slice(0, 7);
             } else if (closingDay) {
-               // Priority 2: Calculate based on Closing Day
-               invoiceMonthKey = getInvoiceMonthKey(anchorDate, closingDay);
-               
-               // Adjust for due date falling in the next month relative to closing (e.g. closes 25th, due 5th next month)
-               // The getInvoiceMonthKey function handles the "next month" logic for the invoice cycle itself.
-               // We just need to ensure the due date logic is consistent if we derived it.
+              // Priority 2: Calculate based on Closing Day
+              invoiceMonthKey = getInvoiceMonthKey(anchorDate, closingDay);
+
+              // Adjust for due date falling in the next month relative to closing (e.g. closes 25th, due 5th next month)
+              // The getInvoiceMonthKey function handles the "next month" logic for the invoice cycle itself.
+              // We just need to ensure the due date logic is consistent if we derived it.
             } else {
-               // Fallback: Use transaction date's month
-               invoiceMonthKey = anchorDate.slice(0, 7);
+              // Fallback: Use transaction date's month
+              invoiceMonthKey = anchorDate.slice(0, 7);
             }
 
             const invoiceDueDate = bill?.dueDate || (invoiceMonthKey && dueDay
@@ -2337,7 +2330,8 @@ const App: React.FC = () => {
 
             // Save ALL transactions from Pluggy (no period filter)
             // The API already limits data with monthsBack/monthsForward
-            await dbService.upsertCreditCardTransaction(userId, txData);
+            // Uses 'addCreditCardTransactionIfNotExists' to avoid overwriting existing data (e.g. user edits)
+            await dbService.addCreditCardTransactionIfNotExists(userId, txData);
             totalCards++;
           }
         }
@@ -2353,13 +2347,13 @@ const App: React.FC = () => {
         isComplete: true,
         startedAt: Date.now()
       });
-      
+
       // Delay cleaning progress to let user see "Completed" state
       setTimeout(() => clearSyncProgress(), 5000);
 
     } catch (error) {
       console.error('Sync error:', error);
-      
+
       // Error State
       saveSyncProgress({
         step: 'Falha na sincronizacao',
@@ -2369,7 +2363,7 @@ const App: React.FC = () => {
         isComplete: true, // Stop spinner
         startedAt: Date.now()
       });
-      
+
       toast.error("Erro ao sincronizar transações.");
     } finally {
       setIsSyncingCards(false);
@@ -2530,17 +2524,21 @@ const App: React.FC = () => {
   const handlePayReminder = async (reminder: Reminder) => {
     if (!userId) return;
 
-    const newTransaction: Omit<Transaction, 'id'> = {
-      description: reminder.description,
-      amount: reminder.amount,
-      date: toLocalISODate(),
-      category: reminder.category,
-      type: reminder.type || 'expense',
-      status: 'completed',
-      memberId: reminder.memberId
-    };
+    // Só lança transação no modo Manual
+    // No modo Auto, as transações vêm automaticamente do banco
+    if (!isProMode) {
+      const newTransaction: Omit<Transaction, 'id'> = {
+        description: reminder.description,
+        amount: reminder.amount,
+        date: toLocalISODate(),
+        category: reminder.category,
+        type: reminder.type || 'expense',
+        status: 'completed',
+        memberId: reminder.memberId
+      };
 
-    await dbService.addTransaction(userId, newTransaction);
+      await dbService.addTransaction(userId, newTransaction);
+    }
 
     if (reminder.isRecurring) {
       const baseDate = (reminder.dueDate || toLocalISODate()) + "T00:00:00";
@@ -2647,35 +2645,6 @@ const App: React.FC = () => {
     toast.success("Assinatura removida!");
   };
 
-  const getHeaderInfo = () => {
-    const memberName = activeMemberId === 'FAMILY_OVERVIEW'
-      ? 'Família'
-      : members.find(m => m.id === activeMemberId)?.name || 'Membro';
-
-    if (activeMemberId === 'FAMILY_OVERVIEW') {
-      return { title: 'Visão Familiar', desc: 'Resumo financeiro de todos os membros.' };
-    }
-
-    switch (activeTab) {
-      case 'dashboard': return { title: `Dashboard de ${memberName}`, desc: `Fluxo de caixa e estatísticas.` };
-      case 'table': return { title: 'Movimentações', desc: 'Histórico completo de movimentações.' };
-      case 'reminders': return { title: 'Lembretes', desc: 'Organize seus lembretes.' };
-      case 'investments': return { title: 'Caixinhas', desc: 'Gerencie suas caixinhas e metas financeiras.' };
-      case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
-      case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
-      case 'budgets': return { title: 'Metas', desc: 'Planejamento e controle de gastos.' };
-      case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
-      case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
-      case 'admin_overview': return { title: 'Painel Administrativo', desc: 'Visão geral do sistema.' };
-      case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar usuários interessados.' };
-      case 'admin_email': return { title: 'Campanhas de Email', desc: 'Criar e enviar mensagens.' };
-      case 'admin_coupons': return { title: 'Cupons de Desconto', desc: 'Gerenciar códigos promocionais.' };
-      default: return { title: 'Controlar+', desc: '' };
-    }
-  };
-
-  const headerInfo = getHeaderInfo();
-
   const isLimitReached = useMemo(() => {
     const plan = currentUser?.subscription?.plan || 'starter';
     if (plan !== 'starter') return false;
@@ -2776,283 +2745,55 @@ const App: React.FC = () => {
       {/* Main Content */}
 
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-        <header className="h-16 lg:h-20 bg-[#30302E] sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setSidebarOpen(!isSidebarOpen)}
-            className="lg:hidden p-2 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0"
-          >
-            <Menu size={20} />
-          </button>
+        <Header
+          isSidebarOpen={isSidebarOpen}
+          setSidebarOpen={setSidebarOpen}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
+          activeMemberId={activeMemberId}
+          members={members}
+          currentUser={currentUser}
+          isLimitReached={isLimitReached}
+          filterMode={filterMode}
+          setFilterMode={setFilterMode}
+          dashboardDate={dashboardDate}
+          setDashboardDate={setDashboardDate}
+          dashboardYear={dashboardYear}
+          setDashboardYear={setDashboardYear}
+          dashboardCategory={dashboardCategory}
+          projectionSettings={projectionSettings}
+          setProjectionSettings={setProjectionSettings}
+          isProMode={isProMode}
+          showProjectionMenu={showProjectionMenu}
+          setShowProjectionMenu={setShowProjectionMenu}
+          onResetFilters={handleResetFilters}
+          reminders={reminders}
+          budgets={budgets}
+          transactions={transactions}
+          notifications={notifications}
+          onArchiveNotification={handleArchiveNotification}
+          onDeleteNotification={handleDeleteNotification}
+          onMarkReadNotification={handleMarkReadNotification}
+          isAdminMode={isAdminMode}
+          setIsAdminMode={setIsAdminMode}
+          setIsSettingsOpen={setIsSettingsOpen}
+          onLogout={() => auth.signOut()}
+          onFamilyView={() => setActiveMemberId('FAMILY_OVERVIEW')}
+          onBackToProfile={() => {
+            const admin = members.find(m => m.role === 'admin') || members[0];
+            if (admin) setActiveMemberId(admin.id);
+          }}
+          isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
+          showFamilyOption={effectivePlan === 'family'}
+        />
 
-          <div className="flex items-center gap-2 lg:gap-3 min-w-0 flex-1 overflow-hidden">
-            <div className="flex flex-col min-w-0 flex-1 overflow-hidden justify-center">
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm lg:text-2xl font-bold text-[#faf9f5] tracking-tight truncate leading-tight">
-                  {headerInfo.title}
-                </h1>
-                {isLimitReached && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-red-500/10 border border-red-500/20 rounded-lg text-red-500 animate-fade-in">
-                    <Lock size={14} />
-                    <span className="text-[10px] font-bold uppercase tracking-wider whitespace-nowrap">Limite Atingido</span>
-                  </div>
-                )}
-              </div>
-              <p className="text-[11px] lg:text-xs text-gray-400 font-medium truncate leading-tight mt-0.5">
-                {headerInfo.desc}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4">
-            {/* Dashboard Advanced Filters */}
-            {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-              <div className="hidden lg:flex items-center gap-2 flex-wrap">
-                {/* Filter Mode Selector */}
-                <div className="w-28 lg:w-36 hidden sm:block">
-                  <CustomSelect
-                    value={filterMode}
-                    onChange={(v) => setFilterMode(v as any)}
-                    options={[
-                      { value: 'month', label: 'Mensal' },
-                      { value: 'year', label: 'Anual' },
-                      { value: 'last3', label: 'Últimos 3' },
-                      { value: 'last6', label: 'Últimos 6' },
-                      { value: 'all', label: 'Tudo' }
-                    ]}
-                    icon={<Filter size={16} />}
-                    className="text-sm"
-                  />
-                </div>
-
-                {/* Dynamic Date Picker based on mode */}
-                {filterMode === 'month' && (
-                  <div className="w-40 lg:w-64">
-                    <CustomMonthPicker
-                      value={dashboardDate}
-                      onChange={setDashboardDate}
-                    />
-                  </div>
-                )}
-
-                {/* Forecast Dropdown */}
-                {filterMode === 'month' && (
-                  <Dropdown>
-                    <DropdownTrigger className={`
-                        h-11 px-4 flex items-center gap-2 rounded-xl transition-all duration-200 font-medium text-sm whitespace-nowrap border cursor-pointer
-                        ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
-                        ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
-                        : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
-                      }
-                      `}>
-                      <Calendar size={16} className={(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary) ? "animate-pulse" : ""} />
-                      Previsão
-                      <ChevronDown size={14} className="transition-transform duration-200 group-data-[state=open]:rotate-180" />
-                    </DropdownTrigger>
-
-                    <DropdownContent width="w-56" align="right" portal>
-                      <DropdownLabel>Incluir na Previsão</DropdownLabel>
-
-                      {/* Toggle Lembretes */}
-                      <div
-                        onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
-                        className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Bell size={14} className="text-gray-400 group-hover:text-white" />
-                          <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
-                        </div>
-                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.reminders ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                        </div>
-                      </div>
-
-                      {/* Toggle Assinaturas */}
-                      <div
-                        onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
-                        className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
-                      >
-                        <div className="flex items-center gap-2">
-                          <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
-                          <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
-                        </div>
-                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
-                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.subscriptions ? 'translate-x-4' : 'translate-x-0.5'}`} />
-                        </div>
-                      </div>
-
-                      {/* Toggle Salário */}
-                      <div
-                        onClick={() => !isProMode && setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
-                        className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg transition-colors group ${isProMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'}`}
-                        title={isProMode ? "Gerenciado automaticamente no Modo Auto" : ""}
-                      >
-                        <div className="flex items-center gap-2">
-                          <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                          <div className="flex flex-col">
-                            <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
-                            {isProMode && <span className="text-[9px] text-[#d97757]">Automático</span>}
-                          </div>
-                        </div>
-                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${isProMode ? 'bg-gray-800' : (projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700')}`}>
-                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.salary || isProMode ? 'translate-x-4' : 'translate-x-0.5'} ${isProMode ? 'opacity-50' : ''}`} />
-                        </div>
-                      </div>
-
-                      {/* Toggle Vale */}
-                      <div
-                        onClick={() => !isProMode && setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
-                        className={`flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg transition-colors group ${isProMode ? 'opacity-50 cursor-not-allowed' : 'hover:bg-white/10 cursor-pointer'}`}
-                        title={isProMode ? "Gerenciado automaticamente no Modo Auto" : ""}
-                      >
-                        <div className="flex items-center gap-2">
-                          <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
-                          <div className="flex flex-col">
-                            <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
-                            {isProMode && <span className="text-[9px] text-[#d97757]">Automático</span>}
-                          </div>
-                        </div>
-                        <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${isProMode ? 'bg-gray-800' : (projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700')}`}>
-                          <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.vale || isProMode ? 'translate-x-4' : 'translate-x-0.5'} ${isProMode ? 'opacity-50' : ''}`} />
-                        </div>
-                      </div>
-                    </DropdownContent>
-                  </Dropdown>
-                )}
-
-                {filterMode === 'year' && (
-                  <div className="w-24 lg:w-28">
-                    <CustomSelect
-                      value={dashboardYear}
-                      onChange={(v) => setDashboardYear(Number(v))}
-                      options={Array.from({ length: 5 }, (_, i) => {
-                        const y = new Date().getFullYear() - i;
-                        return { value: y, label: String(y) };
-                      })}
-                      icon={<Calendar size={16} />}
-                      className="text-sm"
-                    />
-                  </div>
-                )}
-
-                {/* Clear Filters Button */}
-                {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
-                  <button
-                    onClick={handleResetFilters}
-                    className="h-11 w-11 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0"
-                    title="Limpar Filtros"
-                  >
-                    <RotateCcw size={16} />
-                  </button>
-                )}
-              </div>
-            )}
-
-            <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
-
-            {/* Notification Center added here */}
-            <NotificationCenter
-              reminders={reminders}
-              budgets={budgets}
-              transactions={transactions}
-              externalNotifications={notifications}
-              onArchiveNotification={handleArchiveNotification}
-              onDeleteNotification={handleDeleteNotification}
-              onMarkReadNotification={handleMarkReadNotification}
-            />
-
-            <UserMenu
-              user={currentUser}
-              onLogout={() => auth.signOut()}
-              onOpenSettings={() => setIsSettingsOpen(true)}
-              isAdminMode={isAdminMode}
-              onToggleAdminMode={() => {
-                const nextMode = !isAdminMode;
-                setIsAdminMode(nextMode);
-                if (nextMode) {
-                  setActiveTab('admin_overview');
-                } else {
-                  setActiveTab('dashboard');
-                }
-              }}
-            />
-          </div>
-        </header>
-
-        {/* Mobile Dashboard Filters */}
-        {activeTab === 'dashboard' && activeMemberId !== 'FAMILY_OVERVIEW' && (
-          <div className="lg:hidden bg-gray-950/50 backdrop-blur-sm border-b border-gray-800 px-3 py-3 flex items-center gap-3 overflow-x-auto no-scrollbar snap-x">
-            {/* Filter Mode */}
-            <div className="shrink-0 w-32 snap-start">
-              <CustomSelect
-                value={filterMode}
-                onChange={(v) => setFilterMode(v as any)}
-                options={[
-                  { value: 'month', label: 'Mensal' },
-                  { value: 'year', label: 'Anual' },
-                  { value: 'last3', label: '3 Meses' },
-                  { value: 'last6', label: '6 Meses' },
-                  { value: 'all', label: 'Tudo' }
-                ]}
-                icon={<Filter size={14} />}
-                className="text-xs h-10"
-              />
-            </div>
-
-            {/* Dynamic Date Picker */}
-            {filterMode === 'month' && (
-              <div className="shrink-0 w-40 snap-start">
-                <CustomMonthPicker
-                  value={dashboardDate}
-                  onChange={setDashboardDate}
-                />
-              </div>
-            )}
-
-            {filterMode === 'year' && (
-              <div className="shrink-0 w-24 snap-start">
-                <CustomSelect
-                  value={dashboardYear}
-                  onChange={(v) => setDashboardYear(Number(v))}
-                  options={Array.from({ length: 5 }, (_, i) => {
-                    const y = new Date().getFullYear() - i;
-                    return { value: y, label: String(y) };
-                  })}
-                  icon={<Calendar size={14} />}
-                  className="text-xs h-10"
-                />
-              </div>
-            )}
-
-            {/* Forecast Toggle */}
-            {filterMode === 'month' && (
-              <div className="relative shrink-0 snap-start">
-                <button
-                  onClick={() => setShowProjectionMenu(!showProjectionMenu)}
-                  className={`
-                      h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border
-                      ${(projectionSettings.reminders || projectionSettings.subscriptions)
-                      ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
-                    }
-                    `}
-                >
-                  <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions) ? "animate-pulse" : ""} />
-                  Previsão
-                </button>
-              </div>
-            )}
-
-            {/* Clear Filters */}
-            {(filterMode !== 'month' || dashboardCategory !== '' || dashboardDate !== `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`) && (
-              <button
-                onClick={handleResetFilters}
-                className="h-10 w-10 flex items-center justify-center rounded-xl bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white transition-colors border border-gray-700 shrink-0 snap-start"
-              >
-                <RotateCcw size={14} />
-              </button>
-            )}
-          </div>
+        {/* Feedback Banner - Only on Dashboard */}
+        {activeTab === 'dashboard' && (
+          <FeedbackBanner
+            userEmail={currentUser?.email}
+            userName={currentUser?.name}
+            userId={userId || undefined}
+          />
         )}
 
         <div className="p-3 lg:p-6 max-w-7xl mx-auto">
@@ -3076,6 +2817,8 @@ const App: React.FC = () => {
             <AdminEmailMessage currentUser={currentUser} />
           ) : activeTab === 'admin_coupons' ? (
             <AdminCoupons />
+          ) : activeTab === 'admin_feedbacks' ? (
+            <AdminFeedbacks />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
@@ -3160,33 +2903,33 @@ const App: React.FC = () => {
                         onViewFilterChange={setViewFilter}
                       />
                     )}
-                                          <StatsCards
-                                            stats={stats}
-                                            isLoading={isLoadingData}
-                                            accountBalances={accountBalances}
-                                            creditCardTransactions={creditCardTransactions}
-                                            dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                                            toggles={{
-                                              includeChecking: includeCheckingInStats,
-                                              setIncludeChecking: setIncludeCheckingInStats,
-                                              includeCredit: includeCreditCardInStats,
-                                              setIncludeCredit: setIncludeCreditCardInStats,
-                                              creditCardUseTotalLimit: creditCardUseTotalLimit,
-                                              setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                                              creditCardUseFullLimit: creditCardUseFullLimit,
-                                              setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                                              includeOpenFinance: includeOpenFinanceInStats,
-                                              setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                                              enabledCreditCardIds: enabledCreditCardIds,
-                                              setEnabledCreditCardIds: setEnabledCreditCardIds,
-                                              cardInvoiceTypes: cardInvoiceTypes,
-                                              setCardInvoiceTypes: setCardInvoiceTypes
-                                            }}
-                                            isProMode={isProMode}
-                                            onActivateProMode={() => setIsProMode(true)}
-                                            userPlan={effectivePlan}
-                                            onUpgradeClick={() => setActiveTab('subscription')}
-                                          />                    <div className="animate-fade-in space-y-6">
+                    <StatsCards
+                      stats={stats}
+                      isLoading={isLoadingData}
+                      accountBalances={accountBalances}
+                      creditCardTransactions={creditCardTransactions}
+                      dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                      toggles={{
+                        includeChecking: includeCheckingInStats,
+                        setIncludeChecking: setIncludeCheckingInStats,
+                        includeCredit: includeCreditCardInStats,
+                        setIncludeCredit: setIncludeCreditCardInStats,
+                        creditCardUseTotalLimit: creditCardUseTotalLimit,
+                        setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                        creditCardUseFullLimit: creditCardUseFullLimit,
+                        setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                        includeOpenFinance: includeOpenFinanceInStats,
+                        setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                        enabledCreditCardIds: enabledCreditCardIds,
+                        setEnabledCreditCardIds: setEnabledCreditCardIds,
+                        cardInvoiceTypes: cardInvoiceTypes,
+                        setCardInvoiceTypes: setCardInvoiceTypes
+                      }}
+                      isProMode={isProMode}
+                      onActivateProMode={() => setIsProMode(true)}
+                      userPlan={effectivePlan}
+                      onUpgradeClick={() => setActiveTab('subscription')}
+                    />                    <div className="animate-fade-in space-y-6">
                       <DashboardCharts
                         transactions={filteredDashboardTransactions}
                         reminders={filteredReminders}
@@ -3364,8 +3107,8 @@ const App: React.FC = () => {
         onDeleteGoal={handleDeleteGoal}
         onAddTransaction={handleAddTransaction}
         onUpgrade={() => setActiveTab('subscription')}
-                          initialTab={settingsInitialTab}
-                        />
+        initialTab={settingsInitialTab}
+      />
       <WhatsAppConnect
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}

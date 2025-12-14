@@ -109,7 +109,9 @@ import {
   Underline,
   Strikethrough,
   List,
-  Code
+  Code,
+  Bug,
+  ThumbsUp
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -240,7 +242,9 @@ export {
   Underline,
   Strikethrough,
   List,
-  Code
+  Code,
+  Bug,
+  ThumbsUp
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (

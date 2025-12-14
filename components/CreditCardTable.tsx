@@ -43,6 +43,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
 
+  // Date Range Filters
+  const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
+  const [startDate, setStartDate] = React.useState('');
+  const [endDate, setEndDate] = React.useState('');
+
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -116,6 +121,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     }
   };
 
+  // Extract unique years from transactions for the dropdown
+  const yearOptions = useMemo(() => {
+    const years = new Set<number>(transactions.map(t => {
+      if (!t.date) return new Date().getFullYear();
+      return parseInt(t.date.split('-')[0]);
+    }));
+    years.add(new Date().getFullYear());
+    const sortedYears = Array.from(years).sort((a, b) => b - a);
+    return [{ value: 0, label: 'Todos' }, ...sortedYears.map(y => ({ value: y, label: y.toString() }))];
+  }, [transactions]);
+
   const isCreditCardPayment = (tx: Transaction) => {
     const d = (tx.description || '').toLowerCase();
     const c = (tx.category || '').toLowerCase();
@@ -134,12 +150,20 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const filteredTransactions = useMemo(() => {
     return transactions
       .filter(t => {
+        if (!t.date) return false;
+
+        const transactionYear = parseInt(t.date.split('-')[0]);
+        const matchesYear = selectedYear === 0 || transactionYear === selectedYear;
+
         const matchesSearch =
           !searchTerm ||
           (t.description || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
           (t.category || "").toLowerCase().includes(searchTerm.toLowerCase());
 
-        return matchesSearch;
+        const matchesStartDate = startDate ? t.date >= startDate : true;
+        const matchesEndDate = endDate ? t.date <= endDate : true;
+
+        return matchesYear && matchesSearch && matchesStartDate && matchesEndDate;
       })
       .sort((a, b) => {
         const aValue: any = (a as any)[sortField];
@@ -271,6 +295,48 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
           </div>
         </div>
+
+        {/* Date Filters Row */}
+        <div className="flex flex-wrap gap-2 items-center pt-2">
+          {/* Year Selector */}
+          <div className="w-28 sm:w-32">
+            <CustomSelect
+              value={selectedYear}
+              onChange={(val) => setSelectedYear(Number(val))}
+              options={yearOptions}
+              placeholder="Ano"
+              className="h-11 bg-gray-900 border-gray-800 rounded-xl text-sm"
+            />
+          </div>
+
+          {/* Start Date */}
+          <div className="w-32 sm:w-36">
+            <CustomDatePicker
+              value={startDate}
+              onChange={setStartDate}
+              placeholder="Início"
+            />
+          </div>
+
+          {/* End Date */}
+          <div className="w-32 sm:w-36">
+            <CustomDatePicker
+              value={endDate}
+              onChange={setEndDate}
+              placeholder="Fim"
+            />
+          </div>
+
+          {/* Reset Button */}
+          {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear())) && (
+            <button
+              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); }}
+              className="h-11 px-4 flex items-center gap-2 rounded-xl bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800 transition-all text-xs font-bold uppercase tracking-wider"
+            >
+              <X size={14} /> Limpar
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Grid */}
@@ -290,7 +356,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
                 Valor {sortField === 'amount' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-[#373734] w-24 text-center">Fatura</th>
+
               <th className="px-6 py-4 border-b border-[#373734] w-32 text-center">Status</th>
               <th className="px-6 py-4 border-b border-[#373734] w-28 text-center">Ações</th>
             </tr>
@@ -340,11 +406,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     {t.type === 'income' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}
                   </span>
                 </td>
-                <td className="px-6 py-4 text-center">
-                  <span className="px-2 py-1 rounded bg-gray-800 text-gray-400 text-[10px] font-mono border border-gray-700">
-                    {(t as any).invoiceMonthKey || (t as any).invoiceDueDate?.slice(0, 7) || t.date?.slice(0, 7) || '?'} 
-                  </span>
-                </td>
+
                 <td className="px-6 py-4 text-center">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${t.status === 'completed'
                     ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
@@ -638,13 +700,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             fixed inset-0 z-[100] flex items-center justify-center p-4
             transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
             ${isAddAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
-        `}> 
+        `}>
           <div className={`
                 bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800
                 flex flex-col max-h-[90vh] relative
                 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
                 ${isAddAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-          `}> 
+          `}>
             {/* Background Glow */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757] rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20" />
 

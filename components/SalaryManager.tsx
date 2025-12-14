@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building } from './Icons';
+import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building, Filter, CreditCard, Pig } from './Icons';
 import { useToasts } from './Toast';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -25,6 +25,8 @@ interface SalaryManagerProps {
   onUpgradeClick?: () => void;
   includeOpenFinance?: boolean;
   onToggleOpenFinance?: (value: boolean) => void;
+  viewFilter?: 'all' | 'credit_card' | 'savings' | 'checking';
+  onViewFilterChange?: (filter: 'all' | 'credit_card' | 'savings' | 'checking') => void;
 }
 
 export const SalaryManager: React.FC<SalaryManagerProps> = ({
@@ -44,7 +46,9 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   userPlan = 'starter',
   onUpgradeClick,
   includeOpenFinance = true,
-  onToggleOpenFinance
+  onToggleOpenFinance,
+  viewFilter = 'all',
+  onViewFilterChange
 }) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
@@ -417,6 +421,60 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                     </div>
                   </div>
                 </DropdownItem>
+
+                {/* Separator */}
+                <div className="h-px bg-gray-700/50 my-2 mx-2"></div>
+
+                <div className="flex items-center gap-2 mb-2 px-2">
+                  <div className="p-1.5 rounded bg-purple-900/30 text-purple-400">
+                    <Filter size={12} />
+                  </div>
+                  <p className="text-xs text-gray-400 font-medium">Filtro de Visualização</p>
+                </div>
+
+                <DropdownItem
+                  onClick={() => onViewFilterChange?.('all')}
+                  className={viewFilter === 'all' ? 'bg-[#d97757]/10 !text-[#d97757]' : ''}
+                  icon={Filter}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>Mostrar Tudo</span>
+                    {viewFilter === 'all' && <Check size={14} />}
+                  </div>
+                </DropdownItem>
+
+                <DropdownItem
+                  onClick={() => onViewFilterChange?.('checking')}
+                  className={viewFilter === 'checking' ? 'bg-[#d97757]/10 !text-[#d97757]' : ''}
+                  icon={Wallet}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>Conta Corrente</span>
+                    {viewFilter === 'checking' && <Check size={14} />}
+                  </div>
+                </DropdownItem>
+                
+                <DropdownItem
+                  onClick={() => onViewFilterChange?.('credit_card')}
+                  className={viewFilter === 'credit_card' ? 'bg-[#d97757]/10 !text-[#d97757]' : ''}
+                  icon={CreditCard}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>Cartão de Crédito</span>
+                    {viewFilter === 'credit_card' && <Check size={14} />}
+                  </div>
+                </DropdownItem>
+
+                <DropdownItem
+                  onClick={() => onViewFilterChange?.('savings')}
+                  className={viewFilter === 'savings' ? 'bg-[#d97757]/10 !text-[#d97757]' : ''}
+                  icon={Pig}
+                >
+                  <div className="flex items-center justify-between w-full">
+                    <span>Poupança e Caixinhas</span>
+                    {viewFilter === 'savings' && <Check size={14} />}
+                  </div>
+                </DropdownItem>
               </DropdownContent>
             </Dropdown>
           )}
@@ -430,21 +488,16 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                 // Usuários Starter (gratuito) estão sempre bloqueados em modo Manual
                 // Não podem ativar Auto - redireciona para upgrade
                 if (userPlan === 'starter') {
-                  if (!isProMode) {
-                    // Tentando ativar Auto - mostrar upgrade
-                    onUpgradeClick?.();
-                  }
-                  // Mesmo que isProMode seja true por algum bug, ignoramos o clique para Starter
+                  onUpgradeClick?.();
                   return;
                 }
                 // Pro/Family podem alternar livremente - o sistema mantém a constância da escolha
                 onToggleProMode?.(!isProMode);
               }}
-              disabled={userPlan === 'starter'}
               className={`relative w-12 h-6 rounded-full transition-colors ${isProMode
                 ? 'bg-[#d97757]'
                 : 'bg-gray-700'
-                } ${userPlan === 'starter' ? 'cursor-not-allowed opacity-70' : 'cursor-pointer'}`}
+                } ${userPlan === 'starter' ? 'cursor-pointer opacity-100' : 'cursor-pointer'}`}
             >
               <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${isProMode ? 'translate-x-7' : 'translate-x-1'}`} />
             </button>
