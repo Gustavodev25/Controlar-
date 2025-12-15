@@ -73,7 +73,7 @@ const getPluggyApiKey = async () => {
 };
 
 // Generic Pluggy request helper
-const pluggyRequest = async (method, endpoint, apiKey, data = null, params = null) => {
+const pluggyRequest = async (method, endpoint, apiKey, data = null, params = null, isRetry = false) => {
   const config = {
     method,
     url: `${PLUGGY_API_URL}${endpoint}`,
@@ -86,19 +86,30 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
 
   if (data) config.data = data;
 
-  console.log(`>>> Pluggy Request: ${method} ${endpoint} (apiKey: ${apiKey ? apiKey.substring(0, 10) + '...' : 'NONE'})`);
+  console.log(`>>> Pluggy Request${isRetry ? ' (RETRY)' : ''}: ${method} ${endpoint} (apiKey prefix: ${apiKey ? apiKey.substring(0, 5) : 'NONE'})`);
 
   try {
     const response = await axios(config);
     return response.data;
   } catch (error) {
-    console.error('>>> Pluggy Request Error:', error.response?.data || error.message);
-    // If 401, clear cached token to force re-auth
-    if (error.response?.status === 401) {
-      console.log('>>> Pluggy: Clearing cached token due to 401');
+    // If 401 and not already retrying, try to refresh token and retry
+    if (error.response?.status === 401 && !isRetry) {
+      console.warn('>>> Pluggy 401 Unauthorized. Refreshing token and retrying...');
+      
+      // Clear cache explicitly
       cachedApiKey = null;
       cachedApiKeyExpiry = 0;
+
+      try {
+        const newApiKey = await getPluggyApiKey();
+        return await pluggyRequest(method, endpoint, newApiKey, data, params, true);
+      } catch (retryError) {
+        console.error('>>> Pluggy Retry Failed:', retryError.message);
+        throw retryError; // Throw the retry error (likely auth failure)
+      }
     }
+
+    console.error('>>> Pluggy Request Error:', error.response?.data || error.message);
     throw error;
   }
 };
