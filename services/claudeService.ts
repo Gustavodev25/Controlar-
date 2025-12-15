@@ -247,7 +247,7 @@ REGRAS IMPORTANTES:
 14. Se a entrada for ambígua, tente inferir o contexto mais provável (ex: "luz 100" -> Provável conta de luz/Lembrete).
 15. FLEXIBILIDADE: Entenda frases informais como "Preciso receber 200 do João" (Transação de Receita ou Lembrete).
 
-SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois.`;
+SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se não for possível extrair dados, use intent: "chat".`;
 
     // Construir o histórico de mensagens
     const messages: ClaudeMessage[] = [
@@ -260,27 +260,36 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois.`;
             messages,
             system: systemPrompt,
             max_tokens: 2048,
-            temperature: 0.7 // Aumentado para 0.7 para maior "inteligência"/compreensão
+            temperature: 0.5 // Reduzido para equilibrar criatividade e estrutura
         });
 
         const responseText = response?.text || "";
+        console.log(">>> Claude Raw Response:", responseText);
 
         // Tentar parsear o JSON da resposta de forma robusta
         let result: any;
         try {
-            // Tenta encontrar o primeiro objeto JSON válido na string
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            // Tenta encontrar o primeiro objeto JSON válido na string (non-greedy para fechar no primeiro })
+            // A regex abaixo procura o primeiro { e vai até o último } balanceado (simplificado aqui para o maior bloco)
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/); 
             const jsonString = jsonMatch ? jsonMatch[0] : responseText;
             
             result = JSON.parse(jsonString);
         } catch (e) {
-            console.error("Erro ao parsear JSON do Claude:", e);
-            console.log("Resposta bruta:", responseText);
-            // Se falhar, tenta limpar crase tripla
+            console.warn("Erro ao parsear JSON do Claude (Tentativa 1):", e);
+            
+            // Tentativa 2: Limpeza agressiva de markdown
             try {
                  let cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+                 // Se ainda tiver texto antes do primeiro {, corta
+                 const firstBrace = cleanText.indexOf('{');
+                 const lastBrace = cleanText.lastIndexOf('}');
+                 if (firstBrace !== -1 && lastBrace !== -1) {
+                     cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+                 }
                  result = JSON.parse(cleanText);
-            } catch {
+            } catch (e2) {
+                console.error("Falha total no parse do JSON:", e2);
                 return { type: "text", content: responseText || "Não entendi. Pode repetir de outra forma?" };
             }
         }
