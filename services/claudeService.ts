@@ -284,7 +284,148 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois.`;
                 return { type: "text", content: responseText || "Não entendi. Pode repetir de outra forma?" };
             }
         }
-// ...
+
+        // Helper para corrigir data
+        const fixDate = (date: string | undefined): string => {
+            if (!date) return todayISO;
+            if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                const [year, month, day] = date.split('-').map(Number);
+                if (year !== currentYear && year < currentYear) {
+                    console.log(`[Claude] Data corrigida de ${year} para ${currentYear}`);
+                    return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                }
+            }
+            return date;
+        };
+
+        // Helper para sanitizar transação
+        const sanitizeTransaction = (t: AIParsedTransaction): AIParsedTransaction => ({
+            ...t,
+            date: fixDate(t.date),
+            installments: t.installments && t.installments >= 1 ? t.installments : 1,
+            description: t.description || "Transação",
+            category: t.category || "Outros",
+            type: t.type || "expense",
+            amount: t.amount || 0
+        });
+
+        // Processar múltiplas transações
+        if (result.intent === "multiple_transactions" && result.transactions && Array.isArray(result.transactions)) {
+            const transactions = result.transactions.map(sanitizeTransaction);
+            const unifiedSuggestion = result.unifiedSuggestion
+                ? sanitizeTransaction(result.unifiedSuggestion)
+                : undefined;
+
+            return {
+                type: "multiple_transactions",
+                data: transactions,
+                askUnify: true,
+                unifiedSuggestion
+            };
+        }
+
+        // Processar transação única
+        if (result.intent === "transaction" && result.transactionData) {
+            const data = sanitizeTransaction(result.transactionData as AIParsedTransaction);
+            return { type: "transaction", data };
+        }
+
+        // Processar lembrete
+        if (result.intent === "reminder" && result.reminderData) {
+            const reminder: AIParsedReminder = {
+                description: result.reminderData.description || "Lembrete",
+                amount: result.reminderData.amount || 0,
+                category: result.reminderData.category || "Outros",
+                dueDate: fixDate(result.reminderData.dueDate),
+                type: result.reminderData.type || "expense",
+                isRecurring: result.reminderData.isRecurring ?? false,
+                frequency: result.reminderData.frequency
+            };
+            return { type: "reminder", data: reminder };
+        }
+
+        // Processar assinatura
+        if (result.intent === "subscription" && result.subscriptionData) {
+            const subscription: AIParsedSubscription = {
+                name: result.subscriptionData.name || "Assinatura",
+                amount: result.subscriptionData.amount || 0,
+                category: result.subscriptionData.category || "Lazer",
+                billingCycle: result.subscriptionData.billingCycle || "monthly"
+            };
+            return { type: "subscription", data: subscription };
+        }
+
+        return { type: "text", content: result.chatResponse || responseText || "Entendido." };
+    } catch (error) {
+        console.error("Erro ao processar mensagem do assistente (Claude):", error);
+        if (isMissingKeyError(error)) {
+            return { type: "text", content: MISSING_KEY_MESSAGE };
+        }
+        return { type: "text", content: "Estou com dificuldades técnicas no momento. Tente novamente." };
+    }
+};
+
+/**
+ * Tenta extrair uma assinatura de um texto usando o Claude com prompt específico
+ */
+export const parseSubscriptionFromText = async (text: string): Promise<AIParsedSubscription | null> => {
+    const today = new Date();
+    const todayISO = toLocalISODate();
+    
+    const systemPrompt = `Você é um assistente especializado em extrair dados de ASSINATURAS E RECORRÊNCIAS.
+    
+    Hoje é: ${todayISO}
+    
+    O usuário vai fornecer um texto e você deve extrair os dados da assinatura.
+    Mesmo que pareça uma transação única, trate como uma assinatura mensal ou anual.
+    
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "subscription",
+      "subscriptionData": {
+        "name": "Nome do serviço",
+        "amount": 0.00,
+        "category": "Categoria (Lazer, Serviços, etc)",
+        "billingCycle": "monthly" ou "yearly"
+      }
+    }
+    
+    Regras:
+    1. Se não tiver valor, tente inferir ou coloque 0.
+    2. Se não tiver nome, coloque "Assinatura".
+    3. Se não especificar ciclo, assuma "monthly".
+    4. CORRIJA ERROS DE DIGITAÇÃO.
+    
+    Responda APENAS O JSON.`;
+
+    try {
+        const response = await generateWithRetry({
+            messages: [{ role: "user", content: text }],
+            system: systemPrompt,
+            max_tokens: 1024,
+            temperature: 0.2
+        });
+        
+        const responseText = response?.text || "";
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+        const result = JSON.parse(jsonString);
+
+        if (result.subscriptionData) {
+             return {
+                name: result.subscriptionData.name || "Assinatura",
+                amount: result.subscriptionData.amount || 0,
+                category: result.subscriptionData.category || "Lazer",
+                billingCycle: result.subscriptionData.billingCycle || "monthly"
+            };
+        }
+        return null;
+    } catch (error) {
+        console.error("Erro ao fazer parse da assinatura:", error);
+        return null;
+    }
+};
+
 /**
  * Tenta extrair um lembrete de um texto usando o Claude com prompt específico
  */
