@@ -264,30 +264,27 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se
         });
 
         const responseText = response?.text || "";
-        console.log(">>> Claude Raw Response:", responseText);
 
         // Tentar parsear o JSON da resposta de forma robusta
         let result: any;
         try {
             // Tenta encontrar o primeiro objeto JSON válido na string (non-greedy para fechar no primeiro })
             // A regex abaixo procura o primeiro { e vai até o último } balanceado (simplificado aqui para o maior bloco)
-            const jsonMatch = responseText.match(/\{[\s\S]*\}/); 
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
             const jsonString = jsonMatch ? jsonMatch[0] : responseText;
-            
+
             result = JSON.parse(jsonString);
         } catch (e) {
-            console.warn("Erro ao parsear JSON do Claude (Tentativa 1):", e);
-            
             // Tentativa 2: Limpeza agressiva de markdown
             try {
-                 let cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
-                 // Se ainda tiver texto antes do primeiro {, corta
-                 const firstBrace = cleanText.indexOf('{');
-                 const lastBrace = cleanText.lastIndexOf('}');
-                 if (firstBrace !== -1 && lastBrace !== -1) {
-                     cleanText = cleanText.substring(firstBrace, lastBrace + 1);
-                 }
-                 result = JSON.parse(cleanText);
+                let cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+                // Se ainda tiver texto antes do primeiro {, corta
+                const firstBrace = cleanText.indexOf('{');
+                const lastBrace = cleanText.lastIndexOf('}');
+                if (firstBrace !== -1 && lastBrace !== -1) {
+                    cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+                }
+                result = JSON.parse(cleanText);
             } catch (e2) {
                 console.error("Falha total no parse do JSON:", e2);
                 return { type: "text", content: responseText || "Não entendi. Pode repetir de outra forma?" };
@@ -380,7 +377,7 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se
 export const parseSubscriptionFromText = async (text: string): Promise<AIParsedSubscription | null> => {
     const today = new Date();
     const todayISO = toLocalISODate();
-    
+
     const systemPrompt = `Você é um assistente especializado em extrair dados de ASSINATURAS E RECORRÊNCIAS.
     
     Hoje é: ${todayISO}
@@ -414,14 +411,14 @@ export const parseSubscriptionFromText = async (text: string): Promise<AIParsedS
             max_tokens: 1024,
             temperature: 0.2
         });
-        
+
         const responseText = response?.text || "";
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         const jsonString = jsonMatch ? jsonMatch[0] : responseText;
         const result = JSON.parse(jsonString);
 
         if (result.subscriptionData) {
-             return {
+            return {
                 name: result.subscriptionData.name || "Assinatura",
                 amount: result.subscriptionData.amount || 0,
                 category: result.subscriptionData.category || "Lazer",
@@ -489,13 +486,13 @@ export const parseReminderFromText = async (text: string): Promise<AIParsedRemin
         const result = JSON.parse(jsonString);
 
         if (result.reminderData) {
-             // Helper para corrigir data (local)
+            // Helper para corrigir data (local)
             const fixDate = (date: string | undefined): string => {
                 if (!date) return todayISO;
                 if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
                     const [year, month, day] = date.split('-').map(Number);
                     if (year !== currentYear && year < currentYear) {
-                         return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                        return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
                     }
                 }
                 return date;

@@ -384,30 +384,28 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     try {
       const result = await parseMessageIntent(userText);
 
-      if (result && result.data && result.data.length > 0 && result.type === 'reminder') {
-        const rems = result.data as AIParsedReminder[];
-        setGenerationMessage(rems.length === 1 ? "Gerando lembrete..." : `Gerando ${rems.length} lembretes...`);
+      // Verificar se temos um lembrete válido (result.data é um OBJETO, não array)
+      if (result && result.type === 'reminder' && (result as any).data) {
+        const rem = (result as any).data as AIParsedReminder;
+        setGenerationMessage("Gerando lembrete...");
 
         setTimeout(() => {
-          rems.forEach(r => {
-            onAddReminder({
-              description: r.description,
-              amount: r.amount,
-              category: r.category,
-              dueDate: r.dueDate,
-              type: r.type,
-              isRecurring: r.isRecurring,
-              frequency: r.frequency
-            });
+          onAddReminder({
+            description: rem.description,
+            amount: rem.amount,
+            category: rem.category,
+            dueDate: rem.dueDate,
+            type: rem.type,
+            isRecurring: rem.isRecurring,
+            frequency: rem.frequency
           });
           setGenerationStatus('idle');
 
-          const replyContent = rems.length === 1 ? "Pronto! Criei o lembrete." : `Pronto! Criei ${rems.length} lembretes.`;
           setChatMessages(prev => [...prev, {
             id: Date.now().toString() + '_ai',
             role: 'assistant',
-            content: replyContent,
-            summaryData: rems
+            content: "Pronto! Criei o lembrete.",
+            summaryData: [rem]
           }]);
         }, 1500);
       } else {

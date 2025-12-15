@@ -188,6 +188,7 @@ export interface AIParsedTransaction {
   date: string;
   type: TransactionType;
   installments?: number;
+  isSubscription?: boolean;
 }
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
