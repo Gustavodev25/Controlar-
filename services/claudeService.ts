@@ -365,13 +365,58 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois.`;
 };
 
 /**
- * Tenta extrair uma assinatura de um texto usando o Claude
+ * Tenta extrair uma assinatura de um texto usando o Claude com prompt específico
  */
 export const parseSubscriptionFromText = async (text: string): Promise<AIParsedSubscription | null> => {
+    const today = new Date();
+    const todayISO = toLocalISODate();
+    
+    const systemPrompt = `Você é um assistente especializado em extrair dados de ASSINATURAS E RECORRÊNCIAS.
+    
+    Hoje é: ${todayISO}
+    
+    O usuário vai fornecer um texto e você deve extrair os dados da assinatura.
+    Mesmo que pareça uma transação única, trate como uma assinatura mensal ou anual.
+    
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "subscription",
+      "subscriptionData": {
+        "name": "Nome do serviço",
+        "amount": 0.00,
+        "category": "Categoria (Lazer, Serviços, etc)",
+        "billingCycle": "monthly" ou "yearly"
+      }
+    }
+    
+    Regras:
+    1. Se não tiver valor, tente inferir ou coloque 0.
+    2. Se não tiver nome, coloque "Assinatura".
+    3. Se não especificar ciclo, assuma "monthly".
+    4. CORRIJA ERROS DE DIGITAÇÃO.
+    
+    Responda APENAS O JSON.`;
+
     try {
-        const result = await processClaudeAssistantMessage(text);
-        if (result.type === 'subscription') {
-            return result.data;
+        const response = await generateWithRetry({
+            messages: [{ role: "user", content: text }],
+            system: systemPrompt,
+            max_tokens: 1024,
+            temperature: 0.2
+        });
+        
+        const responseText = response?.text || "";
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+        const result = JSON.parse(jsonString);
+
+        if (result.subscriptionData) {
+             return {
+                name: result.subscriptionData.name || "Assinatura",
+                amount: result.subscriptionData.amount || 0,
+                category: result.subscriptionData.category || "Lazer",
+                billingCycle: result.subscriptionData.billingCycle || "monthly"
+            };
         }
         return null;
     } catch (error) {
@@ -381,13 +426,76 @@ export const parseSubscriptionFromText = async (text: string): Promise<AIParsedS
 };
 
 /**
- * Tenta extrair um lembrete de um texto usando o Claude
+ * Tenta extrair um lembrete de um texto usando o Claude com prompt específico
  */
 export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
+    const today = new Date();
+    const todayISO = toLocalISODate();
+    const currentYear = today.getFullYear();
+
+    const systemPrompt = `Você é um assistente especializado em extrair dados de LEMBRETES E CONTAS.
+    
+    Hoje é: ${todayISO}
+    
+    O usuário vai fornecer um texto e você deve extrair os dados para um lembrete.
+    Mesmo que o usuário diga "Gastei" ou "Recebi", interprete como algo a ser lembrado (conta a pagar ou a receber).
+    
+    Retorne APENAS um JSON neste formato:
+    {
+      "intent": "reminder",
+      "reminderData": {
+        "description": "Descrição",
+        "amount": 0.00,
+        "category": "Categoria",
+        "dueDate": "YYYY-MM-DD",
+        "type": "income" ou "expense",
+        "isRecurring": true ou false,
+        "frequency": "monthly" (se for recorrente)
+      }
+    }
+    
+    Regras:
+    1. Se não tiver data, use a data de hoje: ${todayISO}.
+    2. Se o usuário disser "Receber", type é "income". Se "Pagar" ou "Gastei", type é "expense".
+    3. CORRIJA ERROS DE DIGITAÇÃO.
+    
+    Responda APENAS O JSON.`;
+
     try {
-        const result = await processClaudeAssistantMessage(text);
-        if (result.type === 'reminder') {
-            return result.data;
+        const response = await generateWithRetry({
+            messages: [{ role: "user", content: text }],
+            system: systemPrompt,
+            max_tokens: 1024,
+            temperature: 0.2
+        });
+
+        const responseText = response?.text || "";
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+        const result = JSON.parse(jsonString);
+
+        if (result.reminderData) {
+             // Helper para corrigir data (local)
+            const fixDate = (date: string | undefined): string => {
+                if (!date) return todayISO;
+                if (date.match(/^\d{4}-\d{2}-\d{2}$/)) {
+                    const [year, month, day] = date.split('-').map(Number);
+                    if (year !== currentYear && year < currentYear) {
+                         return `${currentYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    }
+                }
+                return date;
+            };
+
+            return {
+                description: result.reminderData.description || "Lembrete",
+                amount: result.reminderData.amount || 0,
+                category: result.reminderData.category || "Outros",
+                dueDate: fixDate(result.reminderData.dueDate),
+                type: result.reminderData.type || "expense",
+                isRecurring: result.reminderData.isRecurring ?? false,
+                frequency: result.reminderData.frequency
+            };
         }
         return null;
     } catch (error) {
