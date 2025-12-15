@@ -139,7 +139,6 @@ export const Header: React.FC<HeaderProps> = ({
       case 'reminders': return { title: 'Lembretes', desc: 'Organize seus lembretes.' };
       case 'investments': return { title: 'Caixinhas', desc: 'Gerencie suas caixinhas e metas financeiras.' };
       case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
-      case 'advisor': return { title: 'Consultor IA', desc: 'Insights focados neste perfil.' };
       case 'budgets': return { title: 'Metas', desc: 'Planejamento e controle de gastos.' };
       case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
       case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
@@ -387,7 +386,7 @@ export const Header: React.FC<HeaderProps> = ({
 
       {/* Tip Banner for Reminders */}
       <AnimatePresence>
-        {activeTab === 'reminders' && !isTipDismissed && (
+        {(activeTab === 'reminders' || activeTab === 'subscriptions') && !isTipDismissed && (
           <motion.div
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}

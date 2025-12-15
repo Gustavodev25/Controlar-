@@ -11,7 +11,8 @@ import {
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
-import { ConfirmationCard, CurrencyInput } from './UIComponents';
+import { CurrencyInput } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { FamilyDashboard } from './FamilyDashboard';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
@@ -181,7 +182,11 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, onClose
                            <input
                               type="text"
                               value={confirmationText}
-                              onChange={(e) => setConfirmationText(e.target.value)}
+                              onChange={(e) => {
+                                 const value = e.target.value;
+                                 const formatted = value.charAt(0).toUpperCase() + value.slice(1).toLowerCase();
+                                 setConfirmationText(formatted);
+                              }}
                               placeholder="Eu desejo deletar minha conta"
                               className="w-full bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-white focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all placeholder:text-gray-600 text-sm"
                               onPaste={(e) => e.preventDefault()}
@@ -1193,7 +1198,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             await deleteUserAccount(auth.currentUser.uid);
             // 2. Delete Auth User
             await deleteUser(auth.currentUser);
-            
+
             toast.success("Conta excluída com sucesso.");
             onClose();
             // App should handle auth state change automatically
@@ -1211,6 +1216,32 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    };
 
    const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
+
+   // Generate consistent pastel colors based on user name
+   const getAvatarColors = (name: string) => {
+      const colorPalettes = [
+         { bg: 'bg-gradient-to-br from-amber-300 to-orange-400', text: 'text-amber-900' },
+         { bg: 'bg-gradient-to-br from-sky-300 to-blue-400', text: 'text-blue-900' },
+         { bg: 'bg-gradient-to-br from-emerald-300 to-teal-400', text: 'text-teal-900' },
+         { bg: 'bg-gradient-to-br from-violet-300 to-purple-400', text: 'text-purple-900' },
+         { bg: 'bg-gradient-to-br from-rose-300 to-pink-400', text: 'text-rose-900' },
+         { bg: 'bg-gradient-to-br from-lime-300 to-green-400', text: 'text-green-900' },
+         { bg: 'bg-gradient-to-br from-cyan-300 to-teal-400', text: 'text-teal-900' },
+         { bg: 'bg-gradient-to-br from-fuchsia-300 to-pink-400', text: 'text-pink-900' },
+         { bg: 'bg-gradient-to-br from-yellow-200 to-amber-300', text: 'text-amber-900' },
+         { bg: 'bg-gradient-to-br from-indigo-300 to-blue-400', text: 'text-indigo-900' },
+         { bg: 'bg-gradient-to-br from-teal-200 to-cyan-300', text: 'text-teal-900' },
+         { bg: 'bg-gradient-to-br from-orange-200 to-red-300', text: 'text-red-900' },
+      ];
+      let hash = 0;
+      for (let i = 0; i < name.length; i++) {
+         hash = name.charCodeAt(i) + ((hash << 5) - hash);
+      }
+      return colorPalettes[Math.abs(hash) % colorPalettes.length];
+   };
+
+   const avatarColors = getAvatarColors(formData.name);
+   const hasCustomAvatar = formData.avatarUrl?.includes('url');
 
    const renderSidebarItem = (id: SettingsTab, label: string, icon: React.ReactNode) => (
       <button
@@ -1265,14 +1296,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   {/* Tab Buttons */}
                   <button
                      onClick={() => setActiveTab('account')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <User size={18} className="flex-shrink-0" />
-                     <span>Minha Conta</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('badges')}
                      className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
                         }`}
                   >
@@ -1366,17 +1389,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         {/* Perfil */}
                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-8 pb-8 border-b border-gray-800">
-                           <div className="relative group shrink-0">
-                              <div className={`w-32 h-32 rounded-full ${formData.avatarUrl?.includes('url') ? formData.avatarUrl : 'bg-[#363735] border border-[#3A3B39]'} flex items-center justify-center text-4xl font-bold text-white shadow-2xl overflow-hidden`}>
-                                 {!formData.avatarUrl?.includes('url') && getInitials(formData.name)}
+                           <div className="shrink-0">
+                              <div className={`w-32 h-32 rounded-full ${avatarColors.bg} flex items-center justify-center text-4xl font-bold ${avatarColors.text} shadow-2xl overflow-hidden`}>
+                                 {getInitials(formData.name)}
                               </div>
-                              <button
-                                 onClick={() => fileInputRef.current?.click()}
-                                 className="absolute bottom-1 right-1 p-2.5 bg-gray-800 border border-gray-700 rounded-full text-white hover:bg-[#d97757] transition-colors shadow-lg group-hover:scale-110"
-                              >
-                                 <Upload size={18} />
-                              </button>
-                              <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileUpload} />
                            </div>
                            <div className="flex-1 space-y-4 w-full">
                               <div className="grid md:grid-cols-2 gap-6">
@@ -2185,18 +2201,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          />
 
          {/* Auto Renew Confirmation */}
-         <ConfirmationCard
+         <ConfirmationBar
             isOpen={showAutoRenewConfirmation}
-            onClose={() => setShowAutoRenewConfirmation(false)}
+            onCancel={() => setShowAutoRenewConfirmation(false)}
             onConfirm={() => {
                setAutoRenew(false);
                toast.success("Cobrança automática pausada.");
+               setShowAutoRenewConfirmation(false);
             }}
-            title="Desabilitar Cobrança Recorrente?"
-            description="Você está prestes a desativar a renovação automática. Isso pode resultar na perda de benefícios do seu plano atual."
-            isDestructive={true}
+            label="Desabilitar Cobrança Recorrente?"
             confirmText="Sim, desativar"
             cancelText="Manter ativa"
+            isDestructive={true}
          />
       </div>,
       document.body

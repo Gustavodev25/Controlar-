@@ -20,7 +20,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
-  | 'budgets' | 'connections' | 'investments' | 'fire' | 'advisor'
+  | 'budgets' | 'connections' | 'investments' | 'fire'
   | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks';
 
 // --- NAVITEM: Item Individual ---
@@ -440,7 +440,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
-                  <NavItem active={activeTab === 'advisor'} onClick={() => handleNavClick('advisor')} icon={<BrainCircuit size={20} />} label="Consultor IA" isOpen={isOpen} />
                 </>
               )}
             </div>

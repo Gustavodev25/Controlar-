@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Reminder } from '../types';
 import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2, Send, User, Clock, ChevronLeft, ChevronRight } from './Icons';
-import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
+import { CustomSelect, CustomDatePicker, CustomAutocomplete, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { parseReminderFromText, AIParsedReminder, parseMessageIntent } from '../services/geminiService';
 import { EmptyState } from './EmptyState';
 import coinzinhaImg from '../assets/coinzinha.png';
@@ -1120,16 +1121,20 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         document.body
       )}
 
-      {/* Delete Confirmation (Mantendo seu card original) */}
-      <ConfirmationCard
+      {/* Delete Confirmation */}
+      <ConfirmationBar
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && onDeleteReminder(deleteId)}
-        title="Excluir Lembrete?"
-        description="Esta ação removerá o lembrete da sua agenda permanentemente."
-        isDestructive={true}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) {
+            onDeleteReminder(deleteId);
+            setDeleteId(null);
+          }
+        }}
+        label="Excluir Lembrete?"
         confirmText="Sim, excluir"
         cancelText="Cancelar"
+        isDestructive={true}
       />
     </div>
   );

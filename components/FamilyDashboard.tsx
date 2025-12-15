@@ -5,7 +5,6 @@ import { Transaction, Member, FamilyGoal, FamilyGroup, User } from '../types';
 import { Trophy, Target, TrendingUp, TrendingDown, Plus, Coins, Check, X, Trash2, Edit2, Copy, Link as LinkIcon, UserPlus, LogOut, ChevronRight, Mail } from './Icons';
 import { Users as UsersIcon, MapPin, MessageCircle } from 'lucide-react';
 import { StatsCards } from './StatsCards';
-import { ConfirmationCard } from './UIComponents';
 import { toLocalISODate } from '../utils/dateUtils';
 import * as familyService from '../services/familyService';
 import * as dbService from '../services/database';
@@ -445,11 +444,11 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                 </div>
 
                                 <div className="flex justify-center">
-                                     {familyGroup.members.length >= familyService.PLAN_LIMITS[familyGroup.plan] ? (
-                                         <div className="px-6 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-bold text-center w-full md:w-auto">
-                                             Limite de membros atingido
-                                         </div>
-                                     ) : (
+                                    {familyGroup.members.length >= familyService.PLAN_LIMITS[familyGroup.plan] ? (
+                                        <div className="px-6 py-3 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm font-bold text-center w-full md:w-auto">
+                                            Limite de membros atingido
+                                        </div>
+                                    ) : (
                                         <button
                                             onClick={handleGenerateInvite}
                                             disabled={isGeneratingInvite}
@@ -458,7 +457,7 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
                                             <LinkIcon size={18} />
                                             Gerar Link de Convite
                                         </button>
-                                     )}
+                                    )}
                                 </div>
                             </div>
                         )}

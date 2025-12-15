@@ -121,24 +121,46 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     const normalizeAccount = useCallback((account: any, bills: ProviderBill[]): ConnectedAccount => {
         const creditData = account.creditData || {};
 
+        // Helper to extract account number from various sources
+        const getAccountNumber = () => {
+            // Priority 1: explicit number field
+            if (account.number) return account.number;
+            // Priority 2: bankData fields
+            if (account.bankData?.number) return account.bankData.number;
+            if (account.bankData?.transferNumber) return account.bankData.transferNumber;
+            // Priority 3: Extract from name if it looks like an account number (e.g., "123/4567-8" or "12345678")
+            if (account.name && (/^\d{3}\/\d{4}\//.test(account.name) || /^\d+[-\/]/.test(account.name) || /^\d{6,}$/.test(account.name))) {
+                return account.name;
+            }
+            return null;
+        };
+
         // Helper to determine the best display name for the account (avoid raw account numbers)
         const getAccountDisplayName = () => {
             // Priority: marketingName > name (if not a number format) > brand > subtype > generic
             if (account.marketingName) return account.marketingName;
-            if (account.name && !/^\d{3}\/\d{4}\//.test(account.name) && !/^\d+[-\/]/.test(account.name)) {
+            if (account.name && !/^\d{3}\/\d{4}\//.test(account.name) && !/^\d+[-\/]/.test(account.name) && !/^\d{6,}$/.test(account.name)) {
                 return account.name;
             }
             if (creditData.brand) return creditData.brand;
             if (account.subtype) return account.subtype;
             if (account.type === 'CREDIT_CARD' || account.type === 'CREDIT') return 'Cartão de Crédito';
             if (account.type === 'BANK' || account.type === 'CHECKING') return 'Conta Corrente';
+            if (account.type === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT' || account.subtype === 'SAVINGS') return 'Poupança';
             return 'Conta';
         };
 
         // Helper to determine the best display name for the institution
         const getInstitutionName = () => {
+            // Priority 1: connector name (most reliable)
             if (account.connector?.name) return account.connector.name;
-            // Don't use transferNumber or raw numbers as institution name
+            // Priority 2: institution name from parent item
+            if (account.item?.connector?.name) return account.item.connector.name;
+            // Priority 3: bankData organization name
+            if (account.bankData?.organizationName) return account.bankData.organizationName;
+            // Priority 4: Use marketing name if it looks like a bank name
+            if (account.marketingName && !/^\d/.test(account.marketingName)) return account.marketingName;
+            // Fallback
             return 'Banco';
         };
 
@@ -159,7 +181,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             balanceCloseDate: creditData.balanceCloseDate ?? null,
             balanceDueDate: creditData.balanceDueDate ?? null,
             minimumPayment: creditData.minimumPayment ?? null,
-            bills
+            bills,
+            accountNumber: getAccountNumber()
         };
     }, []);
 
@@ -616,276 +639,276 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     if (!isVisible) return null;
 
     return <>
-    {createPortal(
-        <div className={`
+        {createPortal(
+            <div className={`
       fixed inset-0 z-[9999] flex items-center justify-center p-4
       transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
       ${showPluggyWidget ? 'hidden' : ''}
       ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
     `}>
-            <div className={`
+                <div className={`
         bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 
         flex flex-col max-h-[90vh] relative 
         transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
         ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
       `}>
 
-                {/* Background Glow */}
-                <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
+                    {/* Background Glow */}
+                    <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
 
-                {/* Header */}
-                <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
-                            <Building size={20} className="text-[#d97757]" />
-                        </div>
-                        <div>
-                            <h3 className="text-base font-semibold text-white">
-                                {view === 'manage' ? 'Gerenciar Conexões' : 'Conectar Banco'}
-                            </h3>
-                            <p className="text-xs text-gray-500">Open Finance - Pluggy</p>
-                        </div>
-                    </div>
-                    <button
-                        onClick={onClose}
-                        className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
-                    >
-                        <X size={18} />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="flex-1 overflow-hidden relative z-10 p-5 overflow-y-auto custom-scrollbar">
-
-                    {/* View: MANAGE Existing Connections */}
-                    {view === 'manage' && (
-                        <div className="space-y-4 animate-fade-in">
-                            <p className="text-sm text-gray-400 text-center mb-2">
-                                Identificamos conexões ativas na sua conta Pluggy. Você pode removê-las para conectar novamente.
-                            </p>
-
-                            {isLoading ? (
-                                <p className="text-center text-gray-500 py-8">Carregando conexões...</p>
-                            ) : existingItems.length === 0 ? (
-                                <p className="text-center text-gray-500 py-8">Nenhuma conexão encontrada.</p>
-                            ) : (
-                                <div className="space-y-3">
-                                    {existingItems.map((item) => (
-                                        <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
-                                            <div className="flex items-center gap-3">
-                                                {item.connector && (
-                                                    <div className="w-10 h-10 rounded-full bg-white p-1 overflow-hidden">
-                                                        <img src={item.connector.imageUrl} alt={item.connector.name} className="w-full h-full object-contain" />
-                                                    </div>
-                                                )}
-                                                <div>
-                                                    <h4 className="text-sm font-bold text-white">{item.connector?.name || 'Banco Desconhecido'}</h4>
-                                                    <p className="text-[10px] text-gray-500">Status: {item.status}</p>
-                                                </div>
-                                            </div>
-                                            <button
-                                                onClick={() => handleDeleteRemoteItem(item.id)}
-                                                disabled={isDeletingItem === item.id}
-                                                className="text-xs bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-1.5 rounded-lg border border-red-500/20 transition-colors"
-                                            >
-                                                {isDeletingItem === item.id ? 'Removendo...' : 'Desconectar'}
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            )}
-
-                            <div className="pt-4 flex justify-center">
-                                <button
-                                    onClick={() => {
-                                        setView('connect');
-                                        fetchConnectToken();
-                                    }}
-                                    className="text-sm text-gray-400 hover:text-white underline"
-                                >
-                                    Voltar para conexão
-                                </button>
+                    {/* Header */}
+                    <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+                        <div className="flex items-center gap-3">
+                            <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
+                                <Building size={20} className="text-[#d97757]" />
+                            </div>
+                            <div>
+                                <h3 className="text-base font-semibold text-white">
+                                    {view === 'manage' ? 'Gerenciar Conexões' : 'Conectar Banco'}
+                                </h3>
+                                <p className="text-xs text-gray-500">Open Finance - Pluggy</p>
                             </div>
                         </div>
-                    )}
+                        <button
+                            onClick={onClose}
+                            className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
+                        >
+                            <X size={18} />
+                        </button>
+                    </div>
 
-                    {/* View: CONNECT (Default) */}
-                    {view === 'connect' && (
-                        <>
-                            {/* Loading State */}
-                            {isLoading && (
-                                <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
-                                    <div className="p-4 bg-[#d97757]/10 rounded-full">
-                                        <Loader2 className="animate-spin text-[#d97757]" size={32} />
-                                    </div>
-                                    <p className="text-gray-400 text-sm">Preparando conexão segura...</p>
-                                </div>
-                            )}
+                    {/* Content */}
+                    <div className="flex-1 overflow-hidden relative z-10 p-5 overflow-y-auto custom-scrollbar">
 
-                            {/* Error State */}
-                            {error && !isLoading && (
-                                <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
-                                    <div className="p-4 bg-red-500/10 rounded-full border border-red-500/20">
-                                        <AlertCircle className="text-red-500" size={32} />
-                                    </div>
-                                    <div className="text-center">
-                                        <p className="text-white font-medium mb-1">Erro na conexão</p>
-                                        <p className="text-gray-400 text-sm max-w-xs">{error}</p>
-                                    </div>
+                        {/* View: MANAGE Existing Connections */}
+                        {view === 'manage' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <p className="text-sm text-gray-400 text-center mb-2">
+                                    Identificamos conexões ativas na sua conta Pluggy. Você pode removê-las para conectar novamente.
+                                </p>
 
-                                    <div className="flex flex-col gap-2 mt-4 w-full max-w-[200px]">
-                                        {error.includes('já está conectado') ? (
-                                            <>
+                                {isLoading ? (
+                                    <p className="text-center text-gray-500 py-8">Carregando conexões...</p>
+                                ) : existingItems.length === 0 ? (
+                                    <p className="text-center text-gray-500 py-8">Nenhuma conexão encontrada.</p>
+                                ) : (
+                                    <div className="space-y-3">
+                                        {existingItems.map((item) => (
+                                            <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
+                                                <div className="flex items-center gap-3">
+                                                    {item.connector && (
+                                                        <div className="w-10 h-10 rounded-full bg-white p-1 overflow-hidden">
+                                                            <img src={item.connector.imageUrl} alt={item.connector.name} className="w-full h-full object-contain" />
+                                                        </div>
+                                                    )}
+                                                    <div>
+                                                        <h4 className="text-sm font-bold text-white">{item.connector?.name || 'Banco Desconhecido'}</h4>
+                                                        <p className="text-[10px] text-gray-500">Status: {item.status}</p>
+                                                    </div>
+                                                </div>
                                                 <button
-                                                    onClick={fetchExistingItems}
-                                                    className="w-full px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
+                                                    onClick={() => handleDeleteRemoteItem(item.id)}
+                                                    disabled={isDeletingItem === item.id}
+                                                    className="text-xs bg-red-500/10 text-red-500 hover:bg-red-500/20 px-3 py-1.5 rounded-lg border border-red-500/20 transition-colors"
                                                 >
-                                                    Gerenciar Conexões
+                                                    {isDeletingItem === item.id ? 'Removendo...' : 'Desconectar'}
                                                 </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div className="pt-4 flex justify-center">
+                                    <button
+                                        onClick={() => {
+                                            setView('connect');
+                                            fetchConnectToken();
+                                        }}
+                                        className="text-sm text-gray-400 hover:text-white underline"
+                                    >
+                                        Voltar para conexão
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* View: CONNECT (Default) */}
+                        {view === 'connect' && (
+                            <>
+                                {/* Loading State */}
+                                {isLoading && (
+                                    <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
+                                        <div className="p-4 bg-[#d97757]/10 rounded-full">
+                                            <Loader2 className="animate-spin text-[#d97757]" size={32} />
+                                        </div>
+                                        <p className="text-gray-400 text-sm">Preparando conexão segura...</p>
+                                    </div>
+                                )}
+
+                                {/* Error State */}
+                                {error && !isLoading && (
+                                    <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
+                                        <div className="p-4 bg-red-500/10 rounded-full border border-red-500/20">
+                                            <AlertCircle className="text-red-500" size={32} />
+                                        </div>
+                                        <div className="text-center">
+                                            <p className="text-white font-medium mb-1">Erro na conexão</p>
+                                            <p className="text-gray-400 text-sm max-w-xs">{error}</p>
+                                        </div>
+
+                                        <div className="flex flex-col gap-2 mt-4 w-full max-w-[200px]">
+                                            {error.includes('já está conectado') ? (
+                                                <>
+                                                    <button
+                                                        onClick={fetchExistingItems}
+                                                        className="w-full px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
+                                                    >
+                                                        Gerenciar Conexões
+                                                    </button>
+                                                    <button
+                                                        onClick={onClose}
+                                                        className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
+                                                    >
+                                                        Fechar
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                <button
+                                                    onClick={fetchConnectToken}
+                                                    className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
+                                                >
+                                                    Tentar novamente
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Sync Status */}
+                                {syncStatus !== 'idle' && (
+                                    <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
+                                        {syncStatus === 'syncing' && (
+                                            <>
+                                                <div className="p-4 bg-[#d97757]/10 rounded-full">
+                                                    <Loader2 className="animate-spin text-[#d97757]" size={32} />
+                                                </div>
+                                                <p className="text-gray-400 text-sm">{syncMessage}</p>
+                                            </>
+                                        )}
+                                        {syncStatus === 'success' && (
+                                            <>
+                                                <div className="p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20">
+                                                    <CheckCircle className="text-emerald-500" size={32} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-white font-medium mb-1">Conexao concluida!</p>
+                                                    <p className="text-gray-400 text-sm">{syncMessage}</p>
+                                                </div>
+                                            </>
+                                        )}
+                                        {syncStatus === 'error' && (
+                                            <>
+                                                <div className="p-4 bg-red-500/10 rounded-full border border-red-500/20">
+                                                    <AlertCircle className="text-red-500" size={32} />
+                                                </div>
+                                                <div className="text-center">
+                                                    <p className="text-white font-medium mb-1">Erro na sincronização</p>
+                                                    <p className="text-gray-400 text-sm">{syncMessage}</p>
+                                                </div>
                                                 <button
                                                     onClick={onClose}
-                                                    className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
+                                                    className="mt-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
                                                 >
                                                     Fechar
                                                 </button>
                                             </>
-                                        ) : (
-                                            <button
-                                                onClick={fetchConnectToken}
-                                                className="w-full px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
-                                            >
-                                                Tentar novamente
-                                            </button>
                                         )}
                                     </div>
-                                </div>
-                            )}
+                                )}
 
-                            {/* Sync Status */}
-                            {syncStatus !== 'idle' && (
-                                <div className="flex flex-col items-center justify-center py-12 gap-4 animate-fade-in">
-                                    {syncStatus === 'syncing' && (
-                                        <>
-                                            <div className="p-4 bg-[#d97757]/10 rounded-full">
-                                                <Loader2 className="animate-spin text-[#d97757]" size={32} />
+                                {/* Pluggy Widget Trigger */}
+                                {connectToken && !isLoading && !error && syncStatus === 'idle' && (
+                                    <div className="flex flex-col gap-6 animate-fade-in">
+                                        {/* Segurança */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <ShieldCheck size={18} className="text-emerald-500" />
+                                                <h4 className="text-sm font-bold text-white">Segurança dos seus dados</h4>
                                             </div>
-                                            <p className="text-gray-400 text-sm">{syncMessage}</p>
-                                        </>
-                                    )}
-                                    {syncStatus === 'success' && (
-                                        <>
-                                            <div className="p-4 bg-emerald-500/10 rounded-full border border-emerald-500/20">
-                                                <CheckCircle className="text-emerald-500" size={32} />
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-white font-medium mb-1">Conexao concluida!</p>
-                                                <p className="text-gray-400 text-sm">{syncMessage}</p>
-                                            </div>
-                                        </>
-                                    )}
-                                    {syncStatus === 'error' && (
-                                        <>
-                                            <div className="p-4 bg-red-500/10 rounded-full border border-red-500/20">
-                                                <AlertCircle className="text-red-500" size={32} />
-                                            </div>
-                                            <div className="text-center">
-                                                <p className="text-white font-medium mb-1">Erro na sincronização</p>
-                                                <p className="text-gray-400 text-sm">{syncMessage}</p>
-                                            </div>
-                                            <button
-                                                onClick={onClose}
-                                                className="mt-2 px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl transition-colors text-sm font-medium border border-gray-700"
-                                            >
-                                                Fechar
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            )}
-
-                            {/* Pluggy Widget Trigger */}
-                            {connectToken && !isLoading && !error && syncStatus === 'idle' && (
-                                <div className="flex flex-col gap-6 animate-fade-in">
-                                    {/* Segurança */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <ShieldCheck size={18} className="text-emerald-500" />
-                                            <h4 className="text-sm font-bold text-white">Segurança dos seus dados</h4>
+                                            <ul className="text-xs text-gray-400 space-y-2 ml-6">
+                                                <li>Seus dados são criptografados e protegidos</li>
+                                                <li>Não armazenamos senhas bancárias</li>
+                                                <li>Conexão regulamentada pelo Banco Central</li>
+                                                <li>Você pode revogar o acesso a qualquer momento</li>
+                                            </ul>
                                         </div>
-                                        <ul className="text-xs text-gray-400 space-y-2 ml-6">
-                                            <li>Seus dados são criptografados e protegidos</li>
-                                            <li>Não armazenamos senhas bancárias</li>
-                                            <li>Conexão regulamentada pelo Banco Central</li>
-                                            <li>Você pode revogar o acesso a qualquer momento</li>
-                                        </ul>
-                                    </div>
 
-                                    <div className="border-t border-gray-800/50" />
+                                        <div className="border-t border-gray-800/50" />
 
-                                    {/* Sobre a Pluggy */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <Zap size={18} className="text-[#d97757]" />
-                                            <h4 className="text-sm font-bold text-white">Sobre a Pluggy</h4>
+                                        {/* Sobre a Pluggy */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <Zap size={18} className="text-[#d97757]" />
+                                                <h4 className="text-sm font-bold text-white">Sobre a Pluggy</h4>
+                                            </div>
+                                            <p className="text-xs text-gray-400 ml-6 leading-relaxed">
+                                                Plataforma certificada pelo Open Finance Brasil. Seus dados são acessados apenas para leitura, sem possibilidade de movimentações.
+                                            </p>
                                         </div>
-                                        <p className="text-xs text-gray-400 ml-6 leading-relaxed">
-                                            Plataforma certificada pelo Open Finance Brasil. Seus dados são acessados apenas para leitura, sem possibilidade de movimentações.
-                                        </p>
-                                    </div>
 
-                                    <div className="border-t border-gray-800/50" />
+                                        <div className="border-t border-gray-800/50" />
 
-                                    {/* Instruções */}
-                                    <div className="space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <Info size={18} className="text-blue-400" />
-                                            <h4 className="text-sm font-bold text-white">Como funciona</h4>
+                                        {/* Instruções */}
+                                        <div className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <Info size={18} className="text-blue-400" />
+                                                <h4 className="text-sm font-bold text-white">Como funciona</h4>
+                                            </div>
+                                            <ol className="text-xs text-gray-400 space-y-2 ml-6">
+                                                <li><span className="text-gray-500 font-medium">1.</span> Clique em "Conectar Banco" abaixo</li>
+                                                <li><span className="text-gray-500 font-medium">2.</span> Selecione seu banco na lista</li>
+                                                <li><span className="text-gray-500 font-medium">3.</span> Faça login com suas credenciais</li>
+                                                <li><span className="text-gray-500 font-medium">4.</span> Autorize o compartilhamento</li>
+                                            </ol>
                                         </div>
-                                        <ol className="text-xs text-gray-400 space-y-2 ml-6">
-                                            <li><span className="text-gray-500 font-medium">1.</span> Clique em "Conectar Banco" abaixo</li>
-                                            <li><span className="text-gray-500 font-medium">2.</span> Selecione seu banco na lista</li>
-                                            <li><span className="text-gray-500 font-medium">3.</span> Faça login com suas credenciais</li>
-                                            <li><span className="text-gray-500 font-medium">4.</span> Autorize o compartilhamento</li>
-                                        </ol>
-                                    </div>
 
-                                    {/* Botão */}
-                                    <button
-                                        onClick={() => setShowPluggyWidget(true)}
-                                        className="w-full mt-2 px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
-                                    >
-                                        Conectar Banco
-                                    </button>
-                                </div>
-                            )}
-                        </>
+                                        {/* Botão */}
+                                        <button
+                                            onClick={() => setShowPluggyWidget(true)}
+                                            className="w-full mt-2 px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
+                                        >
+                                            Conectar Banco
+                                        </button>
+                                    </div>
+                                )}
+                            </>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    {view === 'connect' && !isLoading && !error && syncStatus === 'idle' && !showPluggyWidget && (
+                        <div className="px-5 py-4 border-t border-gray-800/50 relative z-10">
+                            <p className="text-[11px] text-gray-500 text-center">
+                                Sua conexão é segura e criptografada. Seus dados são protegidos pelo Open Finance Brasil.
+                            </p>
+                        </div>
                     )}
                 </div>
-
-                {/* Footer */}
-                {view === 'connect' && !isLoading && !error && syncStatus === 'idle' && !showPluggyWidget && (
-                    <div className="px-5 py-4 border-t border-gray-800/50 relative z-10">
-                        <p className="text-[11px] text-gray-500 text-center">
-                            Sua conexão é segura e criptografada. Seus dados são protegidos pelo Open Finance Brasil.
-                        </p>
-                    </div>
-                )}
-            </div>
-        </div>,
-        document.body
-    )}
-    {/* Pluggy Widget - rendered in separate portal outside modal with full screen backdrop */}
-    {showPluggyWidget && connectToken && createPortal(
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
-            <PluggyConnect
-                connectToken={connectToken}
-                includeSandbox={false}
-                onSuccess={handleSuccess}
-                onError={handleError}
-                onClose={() => setShowPluggyWidget(false)}
-            />
-        </div>,
-        document.body
-    )}
+            </div>,
+            document.body
+        )}
+        {/* Pluggy Widget - rendered in separate portal outside modal with full screen backdrop */}
+        {showPluggyWidget && connectToken && createPortal(
+            <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+                <PluggyConnect
+                    connectToken={connectToken}
+                    includeSandbox={false}
+                    onSuccess={handleSuccess}
+                    onError={handleError}
+                    onClose={() => setShowPluggyWidget(false)}
+                />
+            </div>,
+            document.body
+        )}
     </>;
 };

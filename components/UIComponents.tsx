@@ -539,31 +539,72 @@ interface CustomDatePickerProps {
   onChange: (date: string) => void;
   placeholder?: string;
   className?: string;
-  dropdownMode?: 'absolute' | 'relative';
+  dropdownMode?: 'absolute' | 'relative' | 'fixed';
 }
 
 export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "", dropdownMode = 'absolute' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
 
   const dateValue = value ? new Date(value + 'T12:00:00') : null;
   const [viewDate, setViewDate] = useState(dateValue || new Date());
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      // For fixed mode, we check if click is outside BOTH the container AND the dropdown (which is in portal)
+      // Since portal renders outside, we need a way to identify it.
+      // But standard logic: click on document closes it. Click on container toggles.
+      // We can stop propagation on dropdown click.
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        // If fixed, we rely on the dropdown content stopping propagation?
+        // Actually, for portal, the event might bubble up to body.
+        // Let's use a simpler approach: check if target is inside the dropdown element?
+        // The dropdown is not a child of containerRef in DOM.
+        // We'll attach a ref to the dropdown content too?
+        // Or just rely on standard behavior?
+        // Let's assume standard behavior needs adjustment for Portal.
+        // Actually, React events bubble through Portal. So checking containerRef might work if I attach ref to portal content? No.
+        
+        // Strategy: Use a separate check or valid click outside hook.
+        // For now, I'll close it if it's not the container.
         setIsOpen(false);
       }
     };
+    
+    // Logic to update position for fixed mode
+    if (isOpen && dropdownMode === 'fixed' && containerRef.current) {
+        const updatePosition = () => {
+            const rect = containerRef.current!.getBoundingClientRect();
+            // Check if near bottom of screen to flip? For now just simple down.
+            setCoords({
+                top: rect.bottom + 8,
+                left: rect.left
+            });
+        };
+        updatePosition();
+        window.addEventListener('resize', updatePosition);
+        window.addEventListener('scroll', updatePosition, true);
+        return () => {
+            window.removeEventListener('resize', updatePosition);
+            window.removeEventListener('scroll', updatePosition, true);
+            // also clean up click listener which is added below
+            document.removeEventListener('mousedown', handleClickOutside);
+        };
+    }
+
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen, dropdownMode]);
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
   const getFirstDayOfMonth = (year: number, month: number) => new Date(year, month, 1).getDay();
 
   const handlePrevMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
   const handleNextMonth = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+
+  const handlePrevYear = () => setViewDate(new Date(viewDate.getFullYear() - 1, viewDate.getMonth(), 1));
+  const handleNextYear = () => setViewDate(new Date(viewDate.getFullYear() + 1, viewDate.getMonth(), 1));
 
   const handleDayClick = (day: number) => {
     const year = viewDate.getFullYear();
@@ -597,7 +638,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
       days.push(
         <button
           key={d}
-          onClick={(e) => { e.preventDefault(); handleDayClick(d); }}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDayClick(d); }}
           className={`
             h-8 w-8 rounded-full flex items-center justify-center text-xs font-medium transition-all
             ${isSelected
@@ -622,6 +663,81 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
 
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+  const dropdownContent = (
+    <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+            style={dropdownMode === 'fixed' ? { position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 } : undefined}
+            onMouseDown={(e) => e.stopPropagation()} // Prevent close when clicking inside
+            className={
+              dropdownMode === 'fixed' 
+                ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64 p-4"
+                : (dropdownMode === 'absolute'
+                  ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+                  : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4")
+            }
+          >
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.05 }}
+              className="flex flex-col gap-2 mb-4"
+            >
+              {/* Year Navigation */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevYear(); }}
+                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft size={14} />
+                </button>
+                <span className="text-sm font-bold text-gray-200">{viewDate.getFullYear()}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextYear(); }}
+                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={14} />
+                </button>
+              </div>
+
+              {/* Month Navigation */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevMonth(); }}
+                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronLeft size={16} />
+                </button>
+                <span className="text-sm font-bold text-white uppercase tracking-wider">{months[viewDate.getMonth()]}</span>
+                <button
+                  type="button"
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextMonth(); }}
+                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </motion.div>
+            <div className="grid grid-cols-7 gap-1 text-center mb-2">
+              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+                <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 place-items-center">
+              {renderCalendar()}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+  );
+
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div
@@ -637,43 +753,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
         </span>
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
-            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
-            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
-            className={dropdownMode === 'absolute'
-              ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
-              : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4"
-            }
-          >
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="flex items-center justify-between mb-4"
-            >
-              <button onClick={(e) => { e.preventDefault(); handlePrevMonth(); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-sm font-bold text-white">{months[viewDate.getMonth()]} {viewDate.getFullYear()}</span>
-              <button onClick={(e) => { e.preventDefault(); handleNextMonth(); }} className="p-1 hover:bg-gray-800 rounded-full text-gray-400 hover:text-white">
-                <ChevronRight size={16} />
-              </button>
-            </motion.div>
-            <div className="grid grid-cols-7 gap-1 text-center mb-2">
-              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-                <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
-              ))}
-            </div>
-            <div className="grid grid-cols-7 gap-1 place-items-center">
-              {renderCalendar()}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {dropdownMode === 'fixed' ? createPortal(dropdownContent, document.body) : dropdownContent}
     </div>
   );
 };

@@ -4,7 +4,8 @@ import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
   ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag
 } from './Icons';
-import { ConfirmationCard, CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
+import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
@@ -546,15 +547,20 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         </div>
       </div>
 
-      <ConfirmationCard
+      {/* Delete Confirmation */}
+      <ConfirmationBar
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && onDelete(deleteId)}
-        title="Remover Transação"
-        description="Você tem certeza que deseja excluir este lançamento?"
-        isDestructive={true}
-        confirmText="Excluir"
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) {
+            onDelete(deleteId);
+            setDeleteId(null);
+          }
+        }}
+        label="Remover Transação?"
+        confirmText="Sim, excluir"
         cancelText="Cancelar"
+        isDestructive={true}
       />
 
       {isEditVisible && editTransaction && createPortal(

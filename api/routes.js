@@ -5,6 +5,7 @@ import twilio from 'twilio';
 import { GoogleGenAI } from '@google/genai';
 import axios from 'axios';
 import geminiHandler from './gemini.js';
+import claudeHandler from './claude.js';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import pluggyRouter from './pluggy.js';
@@ -12,11 +13,273 @@ import pluggyRouter from './pluggy.js';
 // Explicitly load .env from root
 dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
 
+// Firebase Admin - Only initialize if service account is provided
+// For password reset, we'll use a different approach that doesn't require Admin SDK
+let firebaseAdmin = null;
+let firebaseAuth = null;
+
+try {
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    const admin = await import('firebase-admin');
+    const { getAuth } = await import('firebase-admin/auth');
+
+    if (!admin.default.apps.length) {
+      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+      admin.default.initializeApp({
+        credential: admin.default.credential.cert(serviceAccount),
+        projectId: process.env.VITE_FIREBASE_PROJECT_ID || "financeiro-609e1"
+      });
+      firebaseAdmin = admin.default;
+      firebaseAuth = getAuth();
+      console.log('>>> Firebase Admin Initialized with Service Account');
+    }
+  } else {
+    console.log('>>> Firebase Admin: No service account provided, password reset will work without user verification');
+  }
+} catch (error) {
+  console.error('>>> Firebase Admin Init Error:', error.message);
+  console.log('>>> Continuing without Firebase Admin - password reset will still work');
+}
+
 const router = express.Router();
 
 router.use(cors());
 router.use(express.urlencoded({ extended: false, limit: '50mb' }));
 router.use(express.json({ limit: '50mb' }));
+
+// ===============================
+// AUTH & OTP SYSTEM
+// ===============================
+const otpStore = new Map(); // Store OTPs in memory: email -> { code, expires }
+
+// Clean up expired OTPs every 10 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [email, data] of otpStore.entries()) {
+    if (data.expires < now) {
+      otpStore.delete(email);
+    }
+  }
+}, 10 * 60 * 1000);
+
+router.post('/auth/send-recovery-code', async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ error: 'Email é obrigatório.' });
+  }
+
+  // Validate email format
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    return res.status(400).json({ error: 'Formato de email inválido.' });
+  }
+
+  try {
+    // Generate 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expires = Date.now() + 15 * 60 * 1000; // 15 minutes
+
+    otpStore.set(email.toLowerCase(), { code, expires });
+
+    // Send Email - Dark theme matching the app design
+    const htmlTemplate = `
+      <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recuperação de Senha</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: transparent; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: transparent; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <table width="500" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #30302E; border: 1px solid #373734; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">
+          
+          <!-- Header -->
+          <tr>
+            <td align="left" style="padding: 24px 32px; background-color: #333432; border-bottom: 1px solid #373734;">
+              <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em;">
+                Controlar<span style="color: #d97757;">+</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Content -->
+          <tr>
+            <td style="padding: 40px 32px;">
+              <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; text-align: left;">
+                Recuperação de Senha
+              </h1>
+              
+              <p style="color: #d1d5db; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">
+                Olá,
+              </p>
+              
+              <p style="color: #d1d5db; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">
+                Recebemos uma solicitação para redefinir a senha da sua conta no <strong style="color: #ffffff;">Controlar+</strong>.
+              </p>
+              
+              <p style="color: #9ca3af; font-size: 14px; text-align: center; margin: 0 0 16px 0;">
+                Use o código abaixo para validar sua identidade:
+              </p>
+              
+              <!-- Code Box -->
+              <div style="text-align: center; margin: 32px 0;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #363735 0%, #30302E 100%); padding: 20px 40px; border-radius: 12px; border: 1px solid #4a4a48;">
+                  <!-- Placeholder value used for preview: 852910 -->
+                  <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #d97757; font-family: 'Courier New', monospace;">${code}</span>
+                </div>
+              </div>
+              
+              <p style="color: #9ca3af; font-size: 14px; text-align: center; margin: 24px 0 0 0;">
+                Este código expira em <strong style="color: #ffffff;">15 minutos</strong>.
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px 32px; background-color: #333432; border-top: 1px solid #373734;">
+              <p style="color: #6b7280; font-size: 12px; text-align: center; margin: 0 0 8px 0;">
+                Se você não solicitou esta redefinição de senha, pode ignorar este email com segurança.
+              </p>
+              <p style="color: #4b5563; font-size: 11px; text-align: center; margin: 0;">
+                <!-- Placeholder value used for preview: 2025 -->
+                © 2025 Controlar+. Todos os direitos reservados.
+              </p>
+            </td>
+          </tr>
+          
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+    `;
+
+    await smtpTransporter.sendMail({
+      from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
+      to: email,
+      subject: 'Código de Recuperação de Senha - Controlar+',
+      html: htmlTemplate,
+      text: `Seu código de recuperação é: ${code}`
+    });
+
+    console.log(`>>> OTP sent to ${email}: ${code}`);
+    res.json({ success: true, message: 'Código enviado com sucesso.' });
+
+  } catch (error) {
+    console.error('Send OTP Error:', error);
+    res.status(500).json({ error: 'Erro ao enviar código.', details: error.message });
+  }
+});
+
+router.post('/auth/verify-recovery-code', async (req, res) => {
+  const { email, code } = req.body;
+
+  if (!email || !code) {
+    return res.status(400).json({ error: 'Email e código são obrigatórios.' });
+  }
+
+  const normalizedEmail = email.toLowerCase();
+  const record = otpStore.get(normalizedEmail);
+
+  if (!record) {
+    return res.status(400).json({ error: 'Código inválido ou expirado.' });
+  }
+
+  if (record.code !== code) {
+    return res.status(400).json({ error: 'Código incorreto.' });
+  }
+
+  if (record.expires < Date.now()) {
+    otpStore.delete(normalizedEmail);
+    return res.status(400).json({ error: 'Código expirado.' });
+  }
+
+  // Mark as verified so reset-password knows it's valid
+  record.verified = true;
+  otpStore.set(normalizedEmail, record);
+
+  res.json({ success: true, message: 'Código válido.' });
+});
+
+router.post('/auth/reset-password', async (req, res) => {
+  const { email, code, newPassword } = req.body;
+
+  if (!email || !code || !newPassword) {
+    return res.status(400).json({ error: 'Dados incompletos.' });
+  }
+
+  if (newPassword.length < 6) {
+    return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });
+  }
+
+  const normalizedEmail = email.toLowerCase();
+
+  // Verify OTP again
+  const record = otpStore.get(normalizedEmail);
+  if (!record || record.code !== code || record.expires < Date.now()) {
+    return res.status(400).json({ error: 'Sessão inválida ou expirada. Solicite um novo código.' });
+  }
+
+  try {
+    // If Firebase Admin is available, use it
+    if (firebaseAuth) {
+      const user = await firebaseAuth.getUserByEmail(email);
+      await firebaseAuth.updateUser(user.uid, {
+        password: newPassword
+      });
+
+      // Clear OTP
+      otpStore.delete(normalizedEmail);
+
+      console.log(`>>> Password reset successful for ${email} via Firebase Admin`);
+      return res.json({ success: true, message: 'Senha alterada com sucesso!' });
+    }
+
+    // Alternative: Use Firebase REST API
+    const firebaseApiKey = process.env.VITE_FIREBASE_API_KEY || 'AIzaSyBGhm5J90b4fVlhmyP7bhVPliQZmQUSmmo';
+
+    // Step 1: Send password reset email via Firebase REST API to get an oobCode
+    const sendResetResponse = await axios.post(
+      `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${firebaseApiKey}`,
+      {
+        requestType: 'PASSWORD_RESET',
+        email: email
+      }
+    );
+
+    if (sendResetResponse.data.email) {
+      // Firebase sent a reset email - we'll store the new password and 
+      // instruct the user to click the link, OR we redirect them to use the link
+
+      // Clear our OTP since Firebase is handling it
+      otpStore.delete(normalizedEmail);
+
+      console.log(`>>> Password reset email sent to ${email} via Firebase REST API`);
+      return res.json({
+        success: true,
+        message: 'Enviamos um email do Firebase com link para redefinir sua senha. Clique no link recebido.',
+        requiresFirebaseLink: true
+      });
+    }
+
+  } catch (error) {
+    console.error('Reset Password Error:', error.response?.data || error.message);
+
+    // If Firebase API fails, try to provide a helpful message
+    const firebaseError = error.response?.data?.error;
+    if (firebaseError?.message === 'EMAIL_NOT_FOUND') {
+      return res.status(400).json({ error: 'Email não encontrado. Verifique se digitou corretamente.' });
+    }
+
+    res.status(500).json({ error: 'Erro ao redefinir senha.', details: error.message });
+  }
+});
 
 // ===============================
 // TWILIO + GEMINI (WhatsApp bot)
@@ -121,6 +384,9 @@ router.post('/whatsapp', async (req, res) => {
 // Gemini proxy endpoint
 router.post('/gemini', geminiHandler);
 
+// Claude proxy endpoint
+router.post('/claude', claudeHandler);
+
 // ========================================
 // EMAIL SENDING (NODEMAILER)
 // ========================================
@@ -128,23 +394,37 @@ router.post('/gemini', geminiHandler);
 // Remove spaces from password if present (common when copying from Google)
 const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
 
+// Auto-detect Zoho for controlarmais domain
+const smtpUser = process.env.SMTP_USER || '';
+const isZohoEmail = smtpUser.includes('@controlarmais.com.br') || smtpUser.includes('zoho');
+const defaultHost = isZohoEmail ? 'smtp.zoho.com' : 'smtp.gmail.com';
+
 const smtpConfig = {
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
+  host: process.env.SMTP_HOST || defaultHost,
   port: parseInt(process.env.SMTP_PORT || '465', 10),
   secure: process.env.SMTP_SECURE === 'true',
   auth: {
-    user: process.env.SMTP_USER,
+    user: smtpUser,
     pass: smtpPass
   },
   logger: false,
-  debug: false
+  debug: false,
+  // Zoho specific settings
+  tls: {
+    rejectUnauthorized: true
+  }
 };
+
+console.log(`>>> SMTP Config: host=${smtpConfig.host}, port=${smtpConfig.port}, secure=${smtpConfig.secure}, user=${smtpUser ? smtpUser.substring(0, 5) + '...' : 'NOT SET'}`);
 
 const smtpTransporter = nodemailer.createTransport(smtpConfig);
 
-smtpTransporter.verify(function (error) {
+smtpTransporter.verify(function (error, success) {
   if (error) {
-    console.error('>>> SMTP Connection Error:', error);
+    console.error('>>> SMTP Connection Error:', error.message);
+    console.error('>>> SMTP Error Code:', error.code);
+  } else {
+    console.log('>>> SMTP Server is ready to send emails');
   }
 });
 
@@ -170,65 +450,71 @@ router.post('/admin/send-email', async (req, res) => {
   const bAlign = bodyAlign || 'left';
 
   const htmlTemplate = `
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <title>${subject}</title>
-      <style>
-        body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
-        table,td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
-        img { -ms-interpolation-mode: bicubic; }
-      </style>
-    </head>
-    <body style="margin: 0; padding: 0; background-color: #111827; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">
-      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #111827; padding: 40px 0;">
-        <tr>
-          <td align="center">
-            <table width="600" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #262624; border: 1px solid #374151; border-radius: 8px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 8px;">
-              <tr>
-                <td align="${hAlign === 'justify' ? 'center' : hAlign}" style="padding: 24px; background-color: #363735; border-bottom: 1px solid #374151; text-align: ${hAlign === 'justify' ? 'center' : hAlign};">
-                  <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em; line-height: 1; display: inline-block;">
-                    Controlar<span style="color: #d97757;">+</span>
-                  </div>
-                </td>
-              </tr>
+ <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${subject}</title>
+  <style>
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table,td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #1a1a1a; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #1a1a1a; padding: 40px 0;">
+    <tr>
+      <td align="center">
+        <!-- Largura alterada para 500 e cores ajustadas para o tema do exemplo 2 -->
+        <table width="500" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #30302E; border: 1px solid #373734; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 16px;">
+          
+          <!-- Header (Estilo visual do exemplo 2, mas com alinhamento variável do exemplo 1) -->
+          <tr>
+            <td align="${hAlign === 'justify' ? 'left' : hAlign}" style="padding: 24px 32px; background-color: #333432; border-bottom: 1px solid #373734; text-align: ${hAlign === 'justify' ? 'left' : hAlign};">
+              <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em; line-height: 1; display: inline-block;">
+                Controlar<span style="color: #d97757;">+</span>
+              </div>
+            </td>
+          </tr>
 
-              <tr>
-                <td style="padding: 32px; background-color: #262624;">
-                  <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">
-                    ${title || 'Novidades do Controlar+'}
-                  </h1>
+          <!-- Content (Padding e cores do exemplo 2) -->
+          <tr>
+            <td style="padding: 40px 32px; background-color: #30302E;">
+              <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">
+                ${title || 'Título da Mensagem'}
+              </h1>
 
-                  <div style="color: #d1d5db; font-size: 16px; line-height: 1.625; white-space: pre-wrap; text-align: ${bAlign};">
-                    ${(body || '').replace(/\n/g, '<br/>')}
-                  </div>
+              <div style="color: #d1d5db; font-size: 16px; line-height: 1.6; white-space: pre-wrap; text-align: ${bAlign};">
+                ${(body || '').replace(/\n/g, '<br/>')}
+              </div>
 
-                  <div style="margin-top: 32px; text-align: center;">
-                    <a href="${buttonLink}" target="_blank" style="display: inline-block; background-color: #d97757; color: #ffffff; font-weight: bold; padding: 12px 32px; border-radius: 9999px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(217, 119, 87, 0.2);">
-                      ${buttonText || 'Ver Agora'}
-                    </a>
-                  </div>
-                </td>
-              </tr>
+              <!-- Botão (Mantido a lógica, mas ajustado visualmente se necessário) -->
+              <div style="margin-top: 32px; text-align: center;">
+                <a href="${buttonLink}" target="_blank" style="display: inline-block; background-color: #d97757; color: #ffffff; font-weight: bold; padding: 12px 32px; border-radius: 9999px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(217, 119, 87, 0.2);">
+                  ${buttonText || 'Ver Agora'}
+                </a>
+              </div>
+            </td>
+          </tr>
 
-              <tr>
-                <td align="center" style="padding: 24px; background-color: #363735; border-top: 1px solid #374151; color: #6b7280; font-size: 12px;">
-                  <p style="margin: 0;">© ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>
-                  <p style="margin: 8px 0 0 0;">
-                    <a href="#" style="color: #9ca3af; text-decoration: underline;">Descadastrar</a> • 
-                    <a href="#" style="color: #9ca3af; text-decoration: underline; margin-left: 8px;">Política de Privacidade</a>
-                  </p>
-                </td>
-              </tr>
-            </table>
+          <!-- Footer (Estilo visual do exemplo 2) -->
+          <tr>
+            <td align="center" style="padding: 24px 32px; background-color: #333432; border-top: 1px solid #373734; color: #6b7280; font-size: 12px;">
+              <p style="margin: 0;">© ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>
+              <p style="margin: 8px 0 0 0;">
+                <a href="#" style="color: #9ca3af; text-decoration: underline;">Descadastrar</a> • 
+                <a href="#" style="color: #9ca3af; text-decoration: underline; margin-left: 8px;">Política de Privacidade</a>
+              </p>
+            </td>
+          </tr>
+        </table>
 
-          </td>
-        </tr>
-      </table>
-    </body>
-    </html>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
   `;
 
   try {

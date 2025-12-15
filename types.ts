@@ -31,6 +31,17 @@ export interface User {
   familyGroupId?: string;
   familyRole?: 'owner' | 'member';
   isAdmin?: boolean;
+  cpf?: string;
+  birthDate?: string;
+  address?: {
+    cep: string;
+    street: string;
+    number: string;
+    complement?: string;
+    neighborhood: string;
+    city: string;
+    state: string;
+  };
 }
 
 export interface FamilyGroup {
@@ -72,6 +83,7 @@ export interface Subscription {
   lastPaymentDate?: string;
   category: string;
   provider?: string;
+  paidMonths?: string[]; // Meses em que foi marcada como paga (YYYY-MM), não soma no custo mensal
 }
 
 export interface WaitlistEntry {
@@ -101,6 +113,7 @@ export interface Transaction {
   needsApproval?: boolean;
   ignored?: boolean;
   isSubscription?: boolean;
+  paidSubscriptionId?: string;
 
   providerId?: string; // legacy field, importSource preferred
   providerItemId?: string;
@@ -244,6 +257,7 @@ export interface ConnectedAccount {
   bills?: ProviderBill[];
   connectionMode?: 'AUTO' | 'MANUAL';
   initialBalance?: number;
+  accountNumber?: string; // Número da conta bancária
 }
 
 export interface AppNotification {

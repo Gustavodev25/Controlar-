@@ -13,7 +13,6 @@ import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
 import { SalaryManager } from './components/SalaryManager';
 import { FinanceCalendar } from './components/FinanceCalendar';
-import { AIAdvisor } from './components/AIAdvisor';
 import { Investments, Investment } from './components/Investments';
 import { Budgets } from './components/Budgets';
 import { Sidebar, TabType } from './components/Sidebar';
@@ -1934,17 +1933,23 @@ const App: React.FC = () => {
 
       // Subscriptions
       if (projectionSettings.subscriptions) {
-        const activeSubscriptions = subscriptions.filter(s =>
-          s.status === 'active' &&
-          s.billingCycle === 'monthly' &&
-          (!dashboardCategory || s.category === dashboardCategory)
-        );
+        const activeSubscriptions = subscriptions.filter(s => {
+          if (s.status !== 'active') return false;
+          if (s.billingCycle !== 'monthly') return false;
+          if (dashboardCategory && s.category !== dashboardCategory) return false;
+
+          // Se a assinatura foi marcada como paga no mês do dashboard, não inclui nas projeções
+          if ((s.paidMonths || []).includes(dashboardDate)) return false;
+
+          return true;
+        });
 
         activeSubscriptions.forEach(s => {
           const alreadyPaid = filteredDashboardTransactions.some(t =>
-            t.type === 'expense' &&
-            t.amount === s.amount &&
-            t.description.toLowerCase().includes(s.name.toLowerCase())
+            (t.type === 'expense' &&
+              t.amount === s.amount &&
+              t.description.toLowerCase().includes(s.name.toLowerCase())) ||
+            (t.paidSubscriptionId === s.id)
           );
 
           if (!alreadyPaid) {
@@ -2004,7 +2009,7 @@ const App: React.FC = () => {
       monthlySavings: finalMonthlySavings,
       creditCardSpending: finalCCExpense
     };
-  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds, creditCardTransactions, cardInvoiceTypes]);
+  }, [reviewedDashboardTransactions, projectionSettings, filterMode, dashboardDate, filteredReminders, includeCheckingInStats, includeCreditCardInStats, creditCardUseTotalLimit, creditCardUseFullLimit, accountBalances, dashboardCategory, accountMap, getCurrentInvoiceAmount, includeOpenFinanceInStats, enabledCreditCardIds, creditCardTransactions, cardInvoiceTypes, subscriptions]);
 
   // Handlers
   const handleResetFilters = () => {
@@ -2211,14 +2216,17 @@ const App: React.FC = () => {
             return 'Conta';
           };
 
-          // Determine the institution name (always use connector.name)
+          // Determine the institution name (try multiple sources)
           const getInstitutionName = () => {
+            // Priority 1: connector name (most reliable)
             if (account.connector?.name) return account.connector.name;
-            // If no connector, try to extract from other fields
-            if (account.bankData?.transferNumber) {
-              // Don't use transferNumber as institution
-              return 'Banco';
-            }
+            // Priority 2: institution name from parent item
+            if (account.item?.connector?.name) return account.item.connector.name;
+            // Priority 3: bankData organization name
+            if (account.bankData?.organizationName) return account.bankData.organizationName;
+            // Priority 4: Use marketing name if it looks like a bank name
+            if (account.marketingName && !/^\d/.test(account.marketingName)) return account.marketingName;
+            // Fallback
             return 'Banco';
           };
 
@@ -2249,7 +2257,8 @@ const App: React.FC = () => {
             closingDay: closingDay || undefined,
             dueDay: dueDay || undefined,
             minimumPayment: account.creditData?.minimumPayment ?? null,
-            bills
+            bills,
+            accountNumber: account.number || account.bankData?.number || account.bankData?.transferNumber || null
           });
 
           // Process credit card transactions
@@ -2639,6 +2648,45 @@ const App: React.FC = () => {
     toast.success("Assinatura atualizada!");
   };
 
+  const handlePaySubscription = async (sub: Subscription) => {
+    if (!userId) return;
+
+    const now = new Date();
+    const filterYear = parseInt(dashboardDate.split('-')[0]);
+    const filterMonth = parseInt(dashboardDate.split('-')[1]) - 1;
+    const paymentDate = new Date(filterYear, filterMonth, Math.min(now.getDate(), 28));
+    const dateStr = toLocalISODate(paymentDate);
+
+    const newTx: Omit<Transaction, 'id'> = {
+      description: sub.name,
+      amount: sub.amount,
+      date: dateStr,
+      category: sub.category,
+      type: 'expense',
+      status: 'completed',
+      paidSubscriptionId: sub.id,
+      accountId: '',
+      accountType: 'CHECKING_ACCOUNT'
+    };
+
+    try {
+      await dbService.addTransaction(userId, newTx);
+
+      const paidMonths = sub.paidMonths || [];
+      if (!paidMonths.includes(dashboardDate)) {
+        await subscriptionService.updateSubscription(userId, {
+          ...sub,
+          paidMonths: [...paidMonths, dashboardDate]
+        });
+      }
+
+      toast.success("Pagamento registrado!");
+    } catch (error) {
+      console.error("Error paying subscription:", error);
+      toast.error("Erro ao registrar pagamento.");
+    }
+  };
+
   const handleDeleteSubscription = async (id: string) => {
     if (!userId) return;
     await subscriptionService.deleteSubscription(userId, id);
@@ -2994,6 +3042,8 @@ const App: React.FC = () => {
                     onAddSubscription={handleAddSubscription}
                     onUpdateSubscription={handleUpdateSubscription}
                     onDeleteSubscription={handleDeleteSubscription}
+                    currentDate={filterMode === 'month' ? dashboardDate : undefined}
+                    onPaySubscription={handlePaySubscription}
                   />
                 )}
 
@@ -3027,11 +3077,6 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                {activeTab === 'advisor' && (
-                  <div className="h-[calc(100vh-140px)]">
-                    <AIAdvisor transactions={memberFilteredTransactions} />
-                  </div>
-                )}
 
                 {activeTab === 'connections' && (
                   <div className="flex-1 space-y-6 animate-fade-in">
@@ -3066,11 +3111,15 @@ const App: React.FC = () => {
 
       <AIChatAssistant
         onAddTransaction={handleAddTransaction}
+        onAddReminder={handleAddReminder}
+        onAddSubscription={handleAddSubscription}
         transactions={transactions}
         budgets={budgets}
         investments={investments}
         userPlan={effectivePlan}
         userName={currentUser?.name}
+        userId={userId || undefined}
+        isProMode={isProMode}
       />
 
       <AIModal

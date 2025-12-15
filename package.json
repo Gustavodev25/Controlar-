@@ -10,6 +10,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
     "@ark-ui/react": "^5.28.0",
     "@google/genai": "^1.30.0",
     "@number-flow/react": "^0.5.10",
@@ -22,6 +23,7 @@
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
     "firebase": "^12.6.0",
+    "firebase-admin": "^13.6.0",
     "framer-motion": "^12.23.25",
     "lottie-react": "^2.4.1",
     "lucide-react": "^0.554.0",

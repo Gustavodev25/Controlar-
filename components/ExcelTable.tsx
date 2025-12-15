@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction } from '../types';
 import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown } from './Icons';
-import { CustomSelect, CustomDatePicker, ConfirmationCard, CustomAutocomplete } from './UIComponents';
+import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
@@ -70,8 +71,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   // Extract unique years from transactions for the dropdown
   const yearOptions = useMemo(() => {
     const years = new Set<number>(transactions.map(t => {
-        if (!t.date) return new Date().getFullYear();
-        return parseInt(t.date.split('-')[0]);
+      if (!t.date) return new Date().getFullYear();
+      return parseInt(t.date.split('-')[0]);
     }));
     years.add(new Date().getFullYear());
     const sortedYears = Array.from(years).sort((a, b) => b - a);
@@ -168,27 +169,27 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   return (
     <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
-      
+
       {/* Toolbar */}
       <div className="p-4 lg:p-6 border-b border-[#373734] flex flex-col gap-4 bg-[#30302E]/95 backdrop-blur-xl relative z-20">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-refresh-dot">
-                  <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
-                  <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
-                  <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
-                  <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
-                </svg>
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d97757" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="icon icon-tabler icons-tabler-outline icon-tabler-refresh-dot">
+                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                <path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4" />
+                <path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4" />
+                <path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0" />
+              </svg>
             </div>
             <div>
-                <h3 className="font-bold text-white text-lg">Histórico de Movimentações</h3>
-                <p className="text-xs text-gray-400">{filteredTransactions.length} registros encontrados</p>
+              <h3 className="font-bold text-white text-lg">Histórico de Movimentações</h3>
+              <p className="text-xs text-gray-400">{filteredTransactions.length} registros encontrados</p>
             </div>
           </div>
 
           <div className="flex items-center gap-3">
-             {isManualMode && onAdd && (
+            {isManualMode && onAdd && (
               <button
                 onClick={() => {
                   setNewTransaction({
@@ -206,20 +207,20 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <Plus size={18} strokeWidth={3} />
                 <span>Novo Lançamento</span>
               </button>
-             )}
+            )}
 
             <div className="relative w-full sm:w-64 group">
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
-            <input
-              type="text"
-              placeholder="Buscar movimentações..."
-              className="w-full pl-11 pr-4 py-3 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-sm text-white transition-all placeholder-gray-600"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+              <input
+                type="text"
+                placeholder="Buscar movimentações..."
+                className="w-full pl-11 pr-4 py-3 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-sm text-white transition-all placeholder-gray-600"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
           </div>
         </div>
-      </div>
 
         <div className="flex flex-wrap gap-2 items-center pt-2">
           {/* Year Selector */}
@@ -309,7 +310,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 <td className="px-6 py-4 text-gray-400">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-gray-900 rounded-lg text-gray-500 border border-gray-800">
-                        {getCategoryIcon(translateCategory(t.category || "Outros"), 14)}
+                      {getCategoryIcon(translateCategory(t.category || "Outros"), 14)}
                     </div>
                     <span className="text-xs">{translateCategory(t.category || "Outros")}</span>
                   </div>
@@ -320,11 +321,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   </span>
                 </td>
                 <td className="px-6 py-4 text-center">
-                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${
-                      t.status === 'completed' 
-                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+                  <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${t.status === 'completed'
+                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                       : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                  }`}>
+                    }`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                     {t.status === 'completed' ? 'Pago' : 'Pendente'}
                   </span>
@@ -380,11 +380,11 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                       {translateCategory(t.category || "Outros")}
                     </span>
                     <span className="font-mono flex items-center gap-1.5">
-                        <Calendar size={12} /> {formatDate(t.date)}
+                      <Calendar size={12} /> {formatDate(t.date)}
                     </span>
                   </div>
                 </div>
-                
+
                 {/* Actions */}
                 <div className="flex items-center gap-1 ml-2">
                   <button
@@ -404,19 +404,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
               <div className="flex justify-between items-center pl-3 pt-3 border-t border-gray-800/50">
                 <div className="flex items-center gap-2">
-                    <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
-                        {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
-                    </div>
-                    <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
+                  <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
+                    {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                  </div>
+                  <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
                     {formatCurrency(Math.abs(t.amount))}
-                    </span>
+                  </span>
                 </div>
-                
-                <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full font-bold border ${
-                    t.status === 'completed' 
-                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20' 
+
+                <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full font-bold border ${t.status === 'completed'
+                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
-                }`}>
+                  }`}>
                   {t.status === 'completed' ? 'Pago' : 'Pendente'}
                 </span>
               </div>
@@ -438,27 +437,30 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
         <div>Total de Registros: <span className="text-white">{filteredTransactions.length}</span></div>
         <div className="flex items-center gap-2">
-            <span>Saldo Filtrado:</span>
-            <span className={`font-mono font-bold text-sm ${
-                filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) >= 0 
-                ? 'text-emerald-400' 
-                : 'text-red-400'
+          <span>Saldo Filtrado:</span>
+          <span className={`font-mono font-bold text-sm ${filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) >= 0
+              ? 'text-emerald-400'
+              : 'text-red-400'
             }`}>
-                {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
-            </span>
+            {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
+          </span>
         </div>
       </div>
 
-      {/* Delete Confirmation Card */}
-      <ConfirmationCard
+      {/* Delete Confirmation */}
+      <ConfirmationBar
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && onDelete(deleteId)}
-        title="Remover Transação"
-        description="Você tem certeza que deseja excluir este lançamento?"
-        isDestructive={true}
-        confirmText="Excluir"
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) {
+            onDelete(deleteId);
+            setDeleteId(null);
+          }
+        }}
+        label="Remover Transação?"
+        confirmText="Sim, excluir"
         cancelText="Cancelar"
+        isDestructive={true}
       />
 
       {/* Edit Transaction Modal */}
@@ -478,7 +480,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <div className="p-6 border-b border-gray-800 bg-gray-950/80 backdrop-blur-sm rounded-t-3xl relative z-10 flex justify-between items-center">
               <h3 className="font-bold text-white text-xl flex items-center gap-3">
                 <div className="p-2 bg-[#d97757]/10 rounded-xl text-[#d97757]">
-                    <Edit2 size={20} />
+                  <Edit2 size={20} />
                 </div>
                 Editar Lançamento
               </h3>
@@ -505,33 +507,33 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               {/* Amount */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Valor</label>
-                    <div className="relative group">
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Valor</label>
+                  <div className="relative group">
                     <span className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 font-bold group-focus-within:text-[#d97757] transition-colors">R$</span>
                     <input
-                        type="text"
-                        inputMode="decimal"
-                        value={editTransaction.amount.toString().replace('.', ',')}
-                        onChange={(e) => {
+                      type="text"
+                      inputMode="decimal"
+                      value={editTransaction.amount.toString().replace('.', ',')}
+                      onChange={(e) => {
                         const val = e.target.value.replace(',', '.');
                         const parsed = parseFloat(val);
                         setEditTransaction({ ...editTransaction, amount: isNaN(parsed) ? 0 : parsed });
-                        }}
-                        className="w-full p-4 pl-12 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white text-lg font-bold font-mono transition-all"
-                        placeholder="0,00"
+                      }}
+                      className="w-full p-4 pl-12 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white text-lg font-bold font-mono transition-all"
+                      placeholder="0,00"
                     />
-                    </div>
+                  </div>
                 </div>
 
                 {/* Date */}
                 <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data</label>
-                    <input
+                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Data</label>
+                  <input
                     type="date"
                     value={editTransaction.date}
                     onChange={(e) => setEditTransaction({ ...editTransaction, date: e.target.value })}
                     className="w-full p-4 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white font-medium transition-all"
-                    />
+                  />
                 </div>
               </div>
 
@@ -539,18 +541,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               <div className="space-y-2">
                 <label className="text-xs font-bold text-gray-500 uppercase tracking-wider ml-1">Categoria</label>
                 <div className="relative">
-                    <select
+                  <select
                     value={editTransaction.category}
                     onChange={(e) => setEditTransaction({ ...editTransaction, category: e.target.value })}
                     className="w-full p-4 bg-gray-900/50 border border-gray-800 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-white font-medium transition-all appearance-none cursor-pointer"
-                    >
+                  >
                     {CATEGORIES.map(cat => (
-                        <option key={cat} value={cat}>{cat}</option>
+                      <option key={cat} value={cat}>{cat}</option>
                     ))}
-                    </select>
-                    <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
-                        <ArrowDownCircle size={16} />
-                    </div>
+                  </select>
+                  <div className="absolute right-4 top-1/2 transform -translate-y-1/2 pointer-events-none text-gray-500">
+                    <ArrowDownCircle size={16} />
+                  </div>
                 </div>
               </div>
 
@@ -650,7 +652,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
             {/* Content */}
             <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 relative z-10">
-              
+
               {/* Tipo Segmentado */}
               <div className="flex p-1 bg-gray-900/50 rounded-xl">
                 <button
@@ -727,7 +729,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               {/* Status Toggle */}
               <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
                 <div className="flex items-center gap-2.5">
-                  {newTransaction.status === 'completed' 
+                  {newTransaction.status === 'completed'
                     ? <Check size={16} className="text-emerald-500" />
                     : <AlertCircle size={16} className="text-amber-500" />
                   }
@@ -740,35 +742,35 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </div>
 
                 <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
-                   <button
-                      type="button"
-                      onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
-                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'pending' ? 'bg-amber-500/20 text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
-                   >
-                      Pendente
-                   </button>
-                   <button
-                      type="button"
-                      onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
-                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'completed' ? 'bg-emerald-500/20 text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
-                   >
-                      Pago
-                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'pending' ? 'bg-amber-500/20 text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Pendente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
+                    className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-all ${newTransaction.status === 'completed' ? 'bg-emerald-500/20 text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Pago
+                  </button>
                 </div>
               </div>
 
               <button
                 type="button"
                 onClick={async () => {
-                   if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
-                      toast.error("Preencha a descrição, valor e data.");
-                      return;
-                   }
-                   if (onAdd) {
-                      await onAdd(newTransaction as any);
-                      toast.success("Lançamento adicionado!");
-                      setIsAddModalOpen(false);
-                   }
+                  if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
+                    toast.error("Preencha a descrição, valor e data.");
+                    return;
+                  }
+                  if (onAdd) {
+                    await onAdd(newTransaction as any);
+                    toast.success("Lançamento adicionado!");
+                    setIsAddModalOpen(false);
+                  }
                 }}
                 className={`w-full py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${newTransaction.type === 'income'
                   ? 'bg-emerald-500 hover:bg-emerald-400 text-white'

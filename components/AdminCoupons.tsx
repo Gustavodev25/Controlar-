@@ -4,7 +4,8 @@ import { Plus, Search, Trash2, Edit2, Ticket, Percent, DollarSign, X, Filter, Cl
 import { Coupon } from '../types';
 import * as dbService from '../services/database';
 import { useToasts } from './Toast';
-import { CustomSelect, ConfirmationCard, CustomDatePicker } from './UIComponents';
+import { CustomSelect, CustomDatePicker } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 
 export const AdminCoupons: React.FC = () => {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
@@ -726,25 +727,23 @@ export const AdminCoupons: React.FC = () => {
         document.body
       )}
 
-      {/* Delete Confirmation Card */}
-      <ConfirmationCard
+      {/* Delete Confirmation */}
+      <ConfirmationBar
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
+        onCancel={() => setDeleteId(null)}
         onConfirm={handleConfirmDelete}
-        title="Excluir Cupom?"
-        description="Esta ação removerá o cupom permanentemente do sistema."
+        label="Excluir Cupom?"
         confirmText="Sim, excluir"
         cancelText="Cancelar"
-        isDestructive
+        isDestructive={true}
       />
 
-      {/* Inactivate Confirmation Card */}
-      <ConfirmationCard
+      {/* Inactivate Confirmation */}
+      <ConfirmationBar
         isOpen={!!toggleCoupon}
-        onClose={() => setToggleCoupon(null)}
+        onCancel={() => setToggleCoupon(null)}
         onConfirm={handleConfirmToggle}
-        title="Inativar Cupom?"
-        description={`O cupom "${toggleCoupon?.code}" não poderá ser usado no checkout enquanto estiver inativo.`}
+        label="Inativar Cupom?"
         confirmText="Sim, inativar"
         cancelText="Cancelar"
       />

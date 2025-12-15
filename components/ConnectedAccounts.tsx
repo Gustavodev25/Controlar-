@@ -1,13 +1,14 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Lock, Plus } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Lock, Plus, Pig } from "./Icons";
 import NumberFlow from '@number-flow/react';
 
 import { EmptyState } from "./EmptyState";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
-import { ConfirmationCard, TooltipIcon } from "./UIComponents";
+import { TooltipIcon } from "./UIComponents";
+import { ConfirmationBar } from './ConfirmationBar';
 import { BankConnectModal } from "./BankConnectModal";
 
 interface ConnectedAccountsProps {
@@ -28,6 +29,39 @@ const formatCurrency = (value?: number, currency: string = "BRL") => {
   } catch {
     return `R$ ${value.toFixed(2)}`;
   }
+};
+
+// Tradução dos tipos de conta do Pluggy
+const translateAccountType = (type?: string, subtype?: string): string => {
+  const typeMap: Record<string, string> = {
+    'BANK': 'Banco',
+    'CREDIT': 'Crédito',
+    'SAVINGS': 'Poupança',
+    'INVESTMENT': 'Investimento',
+  };
+
+  const subtypeMap: Record<string, string> = {
+    'SAVINGS_ACCOUNT': 'Conta Poupança',
+    'CHECKING_ACCOUNT': 'Conta Corrente',
+    'CREDIT_CARD': 'Cartão de Crédito',
+    'SAVINGS': 'Poupança',
+    'CHECKING': 'Conta Corrente',
+  };
+
+  // Se tiver subtype, prioriza a tradução dele
+  if (subtype && subtypeMap[subtype]) {
+    return subtypeMap[subtype];
+  }
+
+  // Se tiver type, traduz
+  const translatedType = type ? (typeMap[type] || type) : '';
+  const translatedSubtype = subtype ? (subtypeMap[subtype] || subtype) : '';
+
+  if (translatedType && translatedSubtype) {
+    return `${translatedType} - ${translatedSubtype}`;
+  }
+
+  return translatedType || translatedSubtype || 'Conta';
 };
 
 export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
@@ -52,16 +86,20 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (onRefresh) onRefresh();
   };
 
-  // Helper to calculate time remaining
+  // Helper to calculate time remaining until midnight (00h)
   const getTimeRemaining = (lastSyncedStr: string) => {
     if (!lastSyncedStr) return null;
-    const lastSync = new Date(lastSyncedStr).getTime();
+    const lastSync = new Date(lastSyncedStr);
 
-    if (isNaN(lastSync)) return null;
+    if (isNaN(lastSync.getTime())) return null;
 
-    const nextSync = lastSync + 24 * 60 * 60 * 1000; // +24h
-    const now = Date.now();
-    const diff = nextSync - now;
+    // Próxima sincronização é à meia-noite do dia seguinte
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setDate(nextMidnight.getDate() + 1);
+    nextMidnight.setHours(0, 0, 0, 0);
+
+    const diff = nextMidnight.getTime() - now.getTime();
 
     if (diff <= 0) return null;
 
@@ -89,16 +127,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return () => clearInterval(interval);
   }, [lastSynced]);
 
-  // Agrupa contas por instituicao e itemId
+  // Agrupa contas por itemId (mesma conexão bancária) para garantir que contas do mesmo banco fiquem juntas
   const groupedAccounts = useMemo(() => {
-    const groups: Record<string, { accounts: ConnectedAccount[], itemId: string }> = {};
+    const groups: Record<string, { accounts: ConnectedAccount[], itemId: string, institution: string }> = {};
     accounts.forEach((acc) => {
-      const key = acc.institution || "Outros";
+      // Usa itemId como chave principal para agrupar contas da mesma conexão
+      const key = acc.itemId || acc.institution || "Outros";
       if (!groups[key]) {
-        groups[key] = { accounts: [], itemId: acc.itemId };
+        groups[key] = {
+          accounts: [],
+          itemId: acc.itemId,
+          institution: acc.institution || "Banco"
+        };
       }
       groups[key].accounts.push(acc);
-      if (!groups[key].itemId && acc.itemId) groups[key].itemId = acc.itemId;
+      // Atualiza o nome da instituição se encontrar um melhor
+      if (acc.institution && acc.institution !== "Banco" && groups[key].institution === "Banco") {
+        groups[key].institution = acc.institution;
+      }
     });
     return groups;
   }, [accounts]);
@@ -116,6 +162,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     const type = (acc.type || "").toLowerCase();
     const subtype = (acc.subtype || "").toLowerCase();
     return type.includes("credit") || subtype.includes("credit") || subtype.includes("card");
+  };
+
+  const isSavingsAccount = (acc: ConnectedAccount) => {
+    const type = (acc.type || "").toUpperCase();
+    const subtype = (acc.subtype || "").toUpperCase();
+    return type === 'SAVINGS' || subtype === 'SAVINGS' || subtype === 'SAVINGS_ACCOUNT';
+  };
+
+  // Helper para obter ícone e cor baseado no tipo de conta
+  const getAccountIcon = (acc: ConnectedAccount) => {
+    if (isCardFromInstitution(acc)) {
+      return { icon: <CreditCard size={18} />, bgClass: 'bg-amber-500/10 text-amber-500' };
+    }
+    if (isSavingsAccount(acc)) {
+      return { icon: <Pig size={18} />, bgClass: 'bg-emerald-500/10 text-emerald-400' };
+    }
+    // Conta corrente ou outro tipo
+    return { icon: <Wallet size={18} />, bgClass: 'bg-[#d97757]/10 text-[#d97757]' };
   };
 
 
@@ -237,22 +301,22 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {Object.entries(groupedAccounts).map(([institution, data]) => {
-            const { accounts: institutionAccounts } = data;
+          {Object.entries(groupedAccounts).map(([groupKey, data]) => {
+            const { accounts: institutionAccounts, institution: institutionName } = data;
 
             // Logic for sync header
             const representativeAccount = institutionAccounts.find(acc => lastSynced[acc.id] && acc.connectionMode !== 'MANUAL');
             const representativeId = representativeAccount?.id;
             const timer = representativeId ? timers[representativeId] : null;
 
-            const currentPage = accountPages[institution] || 1;
+            const currentPage = accountPages[groupKey] || 1;
             const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
             const startIndex = (currentPage - 1) * accountsPerPage;
             const endIndex = startIndex + accountsPerPage;
             const paginatedInstitutionAccounts = institutionAccounts.slice(startIndex, endIndex);
 
             return (
-              <div key={institution} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden transition-all hover:border-gray-700" style={{ backgroundColor: '#30302E' }}>
+              <div key={groupKey} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden transition-all hover:border-gray-700" style={{ backgroundColor: '#30302E' }}>
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757] pointer-events-none transition-opacity group-hover:opacity-10"></div>
 
                 <div className="backdrop-blur-sm p-5 rounded-t-2xl border-b border-gray-800 flex items-center justify-between gap-3 relative z-10" style={{ backgroundColor: '#333432' }}>
@@ -263,7 +327,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     <div className="flex-1 min-w-0">
                       <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
                       <h4 className="text-base font-bold text-white leading-tight truncate">
-                        {institution}
+                        {institutionName}
                       </h4>
                     </div>
                   </div>
@@ -292,7 +356,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   <div className="flex items-center gap-2">
                     <TooltipIcon content="Desconectar Instituição">
                       <button
-                        onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName: institution })}
+                        onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName })}
                         disabled={isDeleting !== null}
                         className="text-red-400 hover:text-red-300 p-2 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
                       >
@@ -330,16 +394,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             <div className="p-4">
                               <div className="flex justify-between items-center gap-3 mb-3">
                                 <div className="flex gap-3 items-center flex-1 min-w-0">
-                                  <div className={`p-1.5 rounded-lg flex-shrink-0 ${isCredit ? "bg-amber-500/10 text-amber-500" : "bg-[#d97757]/10 text-[#d97757]"}`}>
-                                    {isCredit ? <CreditCard size={18} /> : <Wallet size={18} />}
-                                  </div>
+                                  {(() => {
+                                    const { icon, bgClass } = getAccountIcon(acc);
+                                    return (
+                                      <div className={`p-1.5 rounded-lg flex-shrink-0 ${bgClass}`}>
+                                        {icon}
+                                      </div>
+                                    );
+                                  })()}
                                   <div className="flex-1 min-w-0">
                                     <div className="flex items-center gap-2">
                                       <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
                                       {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
                                     </div>
                                     <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
-                                      {acc.type} {acc.subtype ? `- ${acc.subtype}` : ""}
+                                      {acc.accountNumber ? `Conta: ${acc.accountNumber}` : translateAccountType(acc.type, acc.subtype)}
                                     </p>
                                   </div>
                                 </div>
@@ -361,7 +430,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                 {totalPages > 1 && (
                   <div className="flex items-center justify-center gap-3 py-3 rounded-b-2xl border-t border-gray-800/50" style={{ backgroundColor: '#333432' }}>
                     <button
-                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.max(1, currentPage - 1) }))}
+                      onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.max(1, currentPage - 1) }))}
                       disabled={currentPage === 1}
                       className={`p-2 rounded-lg transition-all border ${currentPage === 1
                         ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
@@ -376,7 +445,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </span>
 
                     <button
-                      onClick={() => setAccountPages(prev => ({ ...prev, [institution]: Math.min(totalPages, currentPage + 1) }))}
+                      onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.min(totalPages, currentPage + 1) }))}
                       disabled={currentPage === totalPages}
                       className={`p-2 rounded-lg transition-all border ${currentPage === totalPages
                         ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
@@ -393,16 +462,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation Card */}
-      <ConfirmationCard
+      {/* Delete Confirmation */}
+      <ConfirmationBar
         isOpen={!!deleteData}
-        onClose={() => setDeleteData(null)}
-        onConfirm={handleDeleteInstitution}
-        title="Desconectar Conta?"
-        description="Esta ação removerá a conexão e as contas vinculadas. Seus lançamentos passados serão mantidos."
+        onCancel={() => setDeleteData(null)}
+        onConfirm={() => {
+          handleDeleteInstitution();
+        }}
+        label="Desconectar Conta?"
         confirmText="Sim, excluir"
         cancelText="Cancelar"
-        isDestructive
+        isDestructive={true}
       />
 
       {/* Bank Connect Modal */}

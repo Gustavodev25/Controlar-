@@ -15,14 +15,17 @@ import {
   TrendingUp,
   getCategoryIcon,
   Send,
-  User
+  User,
+  Settings
 } from './Icons';
 import { EmptyState } from './EmptyState';
-import { CustomAutocomplete, ConfirmationCard, CustomSelect, TextShimmer } from './UIComponents';
+import { CustomAutocomplete, CustomSelect, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { parseSubscriptionFromText } from '../services/geminiService';
 import coinzinhaImg from '../assets/coinzinha.png';
 import NumberFlow from '@number-flow/react';
 import { FileText } from 'lucide-react';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 
 interface SubscriptionsProps {
   subscriptions: Subscription[];
@@ -30,6 +33,7 @@ interface SubscriptionsProps {
   onAddSubscription: (sub: Omit<Subscription, 'id'>) => void;
   onUpdateSubscription: (sub: Subscription) => void;
   onDeleteSubscription: (id: string) => void;
+  currentDate?: string;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -37,98 +41,160 @@ const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 
 const SubscriptionCard: React.FC<{
   sub: Subscription,
   onDelete: (id: string) => void,
-  onEdit: (sub: Subscription) => void
-}> = ({ sub, onDelete, onEdit }) => {
+  onEdit: (sub: Subscription) => void,
+  onTogglePaid: (sub: Subscription) => void,
+  isPaidThisMonth: boolean,
+  filterMonth: string,
+  selectionMode?: boolean,
+  selected?: boolean,
+  onToggleSelect?: (id: string) => void
+}> = ({ sub, onDelete, onEdit, onTogglePaid, isPaidThisMonth, filterMonth, selectionMode = false, selected = false, onToggleSelect }) => {
 
   // Cores based on Status/Cycle
   let statusConfig = {
-    barColor: "bg-emerald-500",
-    iconBg: "bg-emerald-500/10 text-emerald-500",
+    accentColor: "bg-emerald-500",
+    badgeBg: "bg-emerald-500/10",
+    badgeText: "text-emerald-400",
     statusText: sub.billingCycle === 'monthly' ? "Mensal" : "Anual",
-    textColor: "text-emerald-400",
-    glowColor: "bg-emerald-500"
+    amountColor: "text-white"
   };
 
   if (sub.status === 'canceled') {
     statusConfig = {
-      barColor: "bg-red-500",
-      iconBg: "bg-red-500/10 text-red-500",
+      accentColor: "bg-red-500",
+      badgeBg: "bg-red-500/10",
+      badgeText: "text-red-400",
       statusText: "Cancelada",
-      textColor: "text-red-400",
-      glowColor: "bg-red-500"
+      amountColor: "text-gray-500"
+    };
+  }
+
+  // Se está pago no mês, sobrescreve o status visual
+  if (isPaidThisMonth) {
+    statusConfig = {
+      accentColor: "bg-gray-500",
+      badgeBg: "bg-gray-500/10",
+      badgeText: "text-gray-500",
+      statusText: "Pago",
+      amountColor: "text-gray-500 line-through"
     };
   }
 
   return (
-    <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 hover:border-gray-700 transition-all group relative overflow-hidden shadow-lg shadow-black/20">
+    <div
+      className={`
+        group relative bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
+        hover:border-[#4a4a47] hover:bg-[#343432]
+        ${isPaidThisMonth ? 'opacity-60' : ''}
+        ${selected ? 'ring-2 ring-[#d97757] border-[#d97757]' : ''}
+        ${selectionMode ? 'cursor-pointer' : ''}
+      `}
+      onClick={selectionMode ? () => onToggleSelect && onToggleSelect(sub.id) : undefined}
+    >
+      {/* Conteúdo Principal */}
+      <div className="flex items-center gap-4 px-5 py-4">
 
-      {/* Luz de fundo decorativa suave */}
-      <div className={`absolute -top-10 -right-10 w-32 h-32 rounded-full blur-3xl opacity-5 group-hover:opacity-10 transition-opacity pointer-events-none ${statusConfig.glowColor}`}></div>
+        {/* Checkbox de seleção */}
+        {selectionMode && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(sub.id); }}
+            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${selected
+              ? 'bg-[#d97757] border-[#d97757] text-white'
+              : 'border-gray-600 hover:border-[#d97757]'
+              }`}
+          >
+            {selected && <Check size={14} strokeWidth={3} />}
+          </button>
+        )}
 
-      <div className="flex flex-col sm:flex-row items-center gap-4 relative z-10">
-        {/* Ícone */}
-        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 border border-white/5 shadow-inner ${statusConfig.iconBg}`}>
-          {getCategoryIcon(sub.category, 20)}
+        {/* Indicador de status (bolinha colorida) */}
+        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusConfig.accentColor}`} />
+
+        {/* Info Principal */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <h4 className={`font-semibold text-[15px] truncate ${isPaidThisMonth ? 'text-gray-500' : 'text-white'}`}>{sub.name}</h4>
+            <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
+              <RefreshCw size={9} />
+              <span className="uppercase tracking-wider">Auto</span>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-[12px] text-gray-500">
+            <span className="flex items-center gap-1">
+              {getCategoryIcon(sub.category, 11)}
+              <span className="hidden sm:inline">{sub.category}</span>
+            </span>
+            <span className="text-gray-600">•</span>
+            <span className="font-mono">{sub.billingCycle === 'monthly' ? 'Todo mês' : 'Todo ano'}</span>
+          </div>
         </div>
 
-        {/* Conteúdo */}
-        <div className="flex-1 w-full min-w-0 text-center sm:text-left">
-          <div className="flex items-center justify-center sm:justify-start gap-2 mb-1">
-            <h4 className="font-bold text-gray-100 text-base truncate">{sub.name}</h4>
-            <span className="text-[9px] px-1.5 py-0.5 bg-gray-900 text-gray-500 rounded border border-gray-800 uppercase tracking-wider font-bold flex items-center gap-1">
-              <RefreshCw size={8} /> Auto
-            </span>
-          </div>
-
-          <div className="flex items-center justify-center sm:justify-start gap-3 text-xs text-gray-500">
-            <span className="flex items-center gap-1.5 bg-gray-900/50 px-2 py-1 rounded-md border border-gray-800/50">
-              <Tag size={12} /> {sub.category}
-            </span>
-            <span className="flex items-center gap-1.5 font-mono text-gray-400">
-              <Calendar size={12} /> {sub.billingCycle === 'monthly' ? 'Todo mês' : 'Todo ano'}
-            </span>
-          </div>
+        {/* Valor e Status */}
+        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+          <span className={`font-mono font-bold text-lg tracking-tight ${statusConfig.amountColor}`}>
+            <NumberFlow value={sub.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+          </span>
+          <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
+            {statusConfig.statusText}
+          </span>
         </div>
 
-        {/* Valores e Ações */}
-        <div className="flex items-center justify-between w-full sm:w-auto gap-6 border-t border-gray-800/50 pt-3 sm:pt-0 sm:border-t-0">
-          <div className="text-right flex-1 sm:flex-auto">
-            <p className="font-mono font-bold text-lg text-gray-200">
-              <NumberFlow value={sub.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
-            </p>
-            <p className={`text-[10px] font-bold uppercase tracking-wide ${statusConfig.textColor}`}>
-              {statusConfig.statusText}
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onEdit(sub)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-[#d97757]/10 text-gray-500 hover:text-[#d97757] border border-gray-800 hover:border-[#d97757]/30 transition-all"
-              title="Editar"
-            >
-              <Edit2 size={16} strokeWidth={2.5} />
-            </button>
-            <button
-              onClick={() => onDelete(sub.id)}
-              className="w-9 h-9 flex items-center justify-center rounded-xl bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
-              title="Excluir"
-            >
-              <Trash2 size={16} strokeWidth={2.5} />
-            </button>
-          </div>
+        {/* Ações - aparecem no hover */}
+        <div className={`flex items-center gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'opacity-0 group-hover:opacity-100 -mr-2 group-hover:mr-0 w-0 group-hover:w-auto overflow-hidden'}`}>
+          <button
+            onClick={(e) => { e.stopPropagation(); onTogglePaid(sub); }}
+            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
+                ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+              }`}
+            title={isPaidThisMonth ? "Desmarcar como pago" : "Marcar como pago"}
+          >
+            <Check size={16} strokeWidth={2.5} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onEdit(sub); }}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+            title="Editar"
+          >
+            <Edit2 size={15} />
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
+            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            title="Excluir"
+          >
+            <Trash2 size={15} />
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription }) => {
+
+export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
 
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+
+  // Filter Month State
+  const currentMonthStr = useMemo(() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  }, []);
+  const [filterMonth, setFilterMonth] = useState(currentDate || currentMonthStr);
+
+  useEffect(() => {
+    if (currentDate) {
+      setFilterMonth(currentDate);
+    }
+  }, [currentDate]);
+
+
 
   // Mode state
   const [modalMode, setModalMode] = useState<'ai' | 'manual'>('ai');
@@ -155,6 +221,91 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
   });
 
   const categories = ['Lazer', 'Tecnologia', 'Trabalho', 'Educação', 'Saúde', 'Outros', 'Moradia', 'Transporte'];
+
+  // --- SELECTION MODE STATES ---
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [showBulkEditModal, setShowBulkEditModal] = useState(false);
+  const [bulkCycle, setBulkCycle] = useState<'monthly' | 'yearly'>('monthly');
+  const [isApplyingBulk, setIsApplyingBulk] = useState(false);
+
+  // Animation state for bottom bar
+  const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
+  const [shouldRenderBottomBar, setShouldRenderBottomBar] = useState(false);
+
+  const [isCycleModalVisible, setIsCycleModalVisible] = useState(false);
+  const [shouldRenderCycleModal, setShouldRenderCycleModal] = useState(false);
+
+  useEffect(() => {
+    if (selectionMode) {
+      setShouldRenderBottomBar(true);
+      const timer = setTimeout(() => setIsBottomBarVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsBottomBarVisible(false);
+      const timer = setTimeout(() => setShouldRenderBottomBar(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [selectionMode]);
+
+  useEffect(() => {
+    if (showBulkEditModal) {
+      setShouldRenderCycleModal(true);
+      const timer = setTimeout(() => setIsCycleModalVisible(true), 10);
+      return () => clearTimeout(timer);
+    } else {
+      setIsCycleModalVisible(false);
+      const timer = setTimeout(() => setShouldRenderCycleModal(false), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [showBulkEditModal]);
+
+  // Clean up selectedIds if subscriptions are removed
+  useEffect(() => {
+    setSelectedIds((prev) => prev.filter((id) => subscriptions.some((s) => s.id === id)));
+  }, [subscriptions]);
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]);
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === subscriptions.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(subscriptions.map((s) => s.id));
+    }
+  };
+
+  const resetBulkSelection = () => {
+    setSelectionMode(false);
+    setSelectedIds([]);
+    setShowBulkEditModal(false);
+    setBulkCycle('monthly');
+    setIsApplyingBulk(false);
+  };
+
+  const selectedSubscriptions = useMemo(() => {
+    return subscriptions.filter((s) => selectedIds.includes(s.id));
+  }, [subscriptions, selectedIds]);
+
+  const handleBulkApplyCycles = async () => {
+    if (selectedSubscriptions.length === 0) return;
+    setIsApplyingBulk(true);
+    try {
+      const updates = selectedSubscriptions.map((sub) => {
+        if (sub.billingCycle === bulkCycle) return null;
+        return Promise.resolve(onUpdateSubscription({ ...sub, billingCycle: bulkCycle }));
+      }).filter((p): p is Promise<void> => !!p);
+      await Promise.all(updates);
+    } finally {
+      setIsApplyingBulk(false);
+      resetBulkSelection();
+    }
+  };
+
+  const allSelected = subscriptions.length > 0 && selectedIds.length === subscriptions.length;
+  // --- END SELECTION MODE STATES ---
 
   // Modal Animation Logic
   useEffect(() => {
@@ -301,53 +452,91 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     }, 300);
   };
 
+  // Função para alternar o estado de pago no mês SELECIONADO (filterMonth)
+  const handleTogglePaid = (sub: Subscription) => {
+    const paidMonths = sub.paidMonths || [];
+    const isPaid = paidMonths.includes(filterMonth);
+
+    const updatedPaidMonths = isPaid
+      ? paidMonths.filter(m => m !== filterMonth) // Remove o mês selecionado
+      : [...paidMonths, filterMonth]; // Adiciona o mês selecionado
+
+    onUpdateSubscription({
+      ...sub,
+      paidMonths: updatedPaidMonths
+    });
+  };
+
+  // Verifica se uma assinatura está paga no mês SELECIONADO
+  const isSubscriptionPaidThisMonth = (sub: Subscription): boolean => {
+    return (sub.paidMonths || []).includes(filterMonth);
+  };
+
+  // Totais baseados no estado atual (considerando o mês filtrado para status "Pago")
   const totalMonthly = useMemo(() => {
     return subscriptions
-      .filter(s => s.status === 'active')
+      .filter(s => s.status === 'active' && !isSubscriptionPaidThisMonth(s))
       .reduce((acc, curr) => {
         const monthlyAmount = curr.billingCycle === 'monthly' ? curr.amount : curr.amount / 12;
         return acc + monthlyAmount;
       }, 0);
-  }, [subscriptions]);
+  }, [subscriptions, filterMonth]);
 
   return (
     <div className="w-full space-y-8 animate-fade-in pb-10">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+
+      {/* Header Padronizado */}
+      <div className="flex items-center justify-between pb-4">
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white tracking-tight">Assinaturas</h2>
-            <p className="text-gray-400 text-sm mt-1">Gerencie seus servicos recorrentes</p>
-          </div>
-
-          {/* Balloon Hint */}
-          <div className="hidden md:block animate-fade-in ml-2">
-            <div className="relative bg-blue-500/10 border border-blue-500/20 rounded-lg py-2 px-3">
-              {/* Arrow */}
-              <div className="absolute top-1/2 -left-[5px] -translate-y-1/2 w-2.5 h-2.5 bg-gray-950 border-l border-b border-blue-500/20 rotate-45"></div>
-
-              <p className="text-[11px] text-blue-200 leading-snug relative z-10">
-                <span className="font-bold text-blue-400">Dica:</span> Veja o impacto no saldo clicando em <strong>"Previsão"</strong>.
-              </p>
-            </div>
+            <p className="text-gray-400 text-sm mt-1">Gerencie seus serviços recorrentes</p>
           </div>
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
-        >
-          <Plus size={20} strokeWidth={2.5} />
-          <span className="hidden sm:inline font-bold text-sm">Novo</span>
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Opções Placeholder */}
+          <Dropdown className="flex items-center">
+            <DropdownTrigger className="flex items-center">
+              <button
+                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+                title="Opções"
+              >
+                <Settings size={20} />
+              </button>
+            </DropdownTrigger>
+            <DropdownContent align="right">
+              <DropdownItem icon={RefreshCw} onClick={() => setSelectionMode(true)}>
+                Gerenciar Ciclos
+              </DropdownItem>
+            </DropdownContent>
+          </Dropdown>
+
+          {/* Month Picker */}
+          <div className="w-48">
+            <CustomMonthPicker
+              value={filterMonth}
+              onChange={setFilterMonth}
+              placeholder="Selecionar mês"
+            />
+          </div>
+
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
+          >
+            <Plus size={20} strokeWidth={2.5} />
+            <span className="hidden sm:inline font-bold text-sm">Novo</span>
+          </button>
+        </div>
       </div>
 
-      {/* Stats Cards - Identico ao Reminders */}
+      {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
+        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-emerald-500">
+              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-emerald-500">
                 <CreditCard size={20} />
               </div>
               <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Custo Mensal</span>
@@ -361,14 +550,14 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">Total comprometido mensalmente</p>
+            <p className="text-xs text-gray-500 mt-1">A pagar em {filterMonth.split('-').reverse().join('/')}</p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-gray-800 bg-gray-900/70 p-5 flex flex-col justify-between">
+        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
           <div className="flex justify-between items-start mb-3">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-gray-900 border border-gray-800 rounded-xl text-blue-500">
+              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-blue-500">
                 <TrendingUp size={20} />
               </div>
               <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Estimativa Anual</span>
@@ -382,10 +571,35 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">Projeção de custo anual</p>
+            <p className="text-xs text-gray-500 mt-1">Projeção baseada no mês atual</p>
           </div>
         </div>
       </div>
+
+      {/* LEGENDA DE STATUS */}
+      {subscriptions.length > 0 && (
+        <div className="flex justify-between items-center pb-4">
+          <h3 className="text-lg font-bold text-white flex items-center gap-3">
+            <div className="w-8 h-8 rounded-lg bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
+              <Calendar size={18} strokeWidth={2.5} />
+            </div>
+            Suas Assinaturas
+          </h3>
+
+          {/* Legenda de cores Minimalista */}
+          <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-white/5 border border-white/5 group/legend backdrop-blur-sm">
+            <Tooltip content="Ativa">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(16,185,129,0.6)] opacity-70 hover:opacity-100" />
+            </Tooltip>
+            <Tooltip content="Cancelada">
+              <div className="w-2.5 h-2.5 rounded-full bg-red-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)] opacity-70 hover:opacity-100" />
+            </Tooltip>
+            <Tooltip content="Paga">
+              <div className="w-2.5 h-2.5 rounded-full bg-gray-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(107,114,128,0.6)] opacity-70 hover:opacity-100" />
+            </Tooltip>
+          </div>
+        </div>
+      )}
 
       {/* Lista de assinaturas */}
       {subscriptions.length === 0 ? (
@@ -398,9 +612,127 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
               sub={sub}
               onDelete={setDeleteId}
               onEdit={handleEdit}
+              onTogglePaid={handleTogglePaid}
+              isPaidThisMonth={isSubscriptionPaidThisMonth(sub)}
+              filterMonth={filterMonth}
+              selectionMode={selectionMode}
+              selected={selectedIds.includes(sub.id)}
+              onToggleSelect={handleToggleSelect}
             />
           ))}
         </div>
+      )}
+
+      {/* NEW MINIMALIST FLOATING BOTTOM BAR (ACTIONS) */}
+      {shouldRenderBottomBar && createPortal(
+        <div
+          className={`
+                fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] 
+                transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
+                ${isBottomBarVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-24 opacity-0 scale-90'}
+            `}
+        >
+          <div className={`bg-[#30302E] border border-[#373734] shadow-2xl flex items-center px-4 py-2.5 gap-4 relative overflow-hidden transition-all duration-300 ${showBulkEditModal ? 'rounded-b-2xl rounded-t-none border-t-0 w-[420px] justify-center' : 'rounded-2xl'}`}>
+            {/* Decorative Glow */}
+            <div className="absolute top-0 right-0 w-24 h-24 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none"></div>
+
+            <div className="flex items-center gap-3 relative z-10">
+              <div className="bg-[#d97757] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-lg shadow-[#d97757]/30">
+                {selectedSubscriptions.length}
+              </div>
+              <span className="text-sm font-bold text-white">Selecionados</span>
+            </div>
+
+            <div className="flex items-center gap-2 relative z-10">
+              <button
+                onClick={handleSelectAll}
+                className="px-3 py-2 hover:bg-[#373734] rounded-xl text-gray-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider"
+                title="Selecionar Todos"
+              >
+                {allSelected ? 'Limpar' : 'Todos'}
+              </button>
+
+              <button
+                onClick={() => setShowBulkEditModal(true)}
+                disabled={selectedSubscriptions.length === 0}
+                className="px-4 py-2 bg-white text-black hover:bg-gray-200 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+              >
+                <RefreshCw size={14} strokeWidth={2.5} />
+                Alterar Ciclo
+              </button>
+
+              <button
+                onClick={resetBulkSelection}
+                className="p-2 hover:bg-[#373734] rounded-xl text-gray-500 hover:text-red-400 transition-colors"
+                title="Cancelar"
+              >
+                <X size={18} />
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+
+      {/* NEW MINIMALIST BULK EDIT MODAL - CONNECTED TO BOTTOM BAR */}
+      {shouldRenderCycleModal && createPortal(
+        <div
+          className={`
+                fixed bottom-6 left-1/2 -translate-x-1/2 z-[99] w-[420px]
+                transition-all duration-400 ease-[cubic-bezier(0.34,1.56,0.64,1)]
+                ${isCycleModalVisible
+              ? '-translate-y-[52px] opacity-100'
+              : 'translate-y-0 opacity-0 pointer-events-none'
+            }
+            `}
+        >
+          <div className="bg-[#30302E] border border-[#373734] border-b-0 rounded-t-2xl shadow-2xl relative overflow-hidden">
+            {/* Decorative Glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-10 pointer-events-none"></div>
+
+            {/* Header */}
+            <div className="px-5 pt-4 pb-2 flex justify-between items-center relative z-10">
+              <div>
+                <h3 className="text-base font-bold text-white tracking-tight">Novo Ciclo</h3>
+                <p className="text-[11px] font-medium text-gray-400">Para {selectedSubscriptions.length} itens selecionados</p>
+              </div>
+              <button
+                onClick={() => setShowBulkEditModal(false)}
+                className="w-7 h-7 flex items-center justify-center rounded-full bg-[#373734]/50 text-gray-400 hover:bg-[#373734] hover:text-white transition-colors"
+                title="Fechar"
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <div className="p-5 pt-0 space-y-4 relative z-10">
+              {/* Content - Cycle Selector */}
+              <div className="pt-2">
+                <CustomSelect
+                  value={bulkCycle}
+                  onChange={(val) => setBulkCycle(val as any)}
+                  options={[
+                    { value: 'monthly', label: 'Mensal' },
+                    { value: 'yearly', label: 'Anual' }
+                  ]}
+                  icon={<RefreshCw size={16} />}
+                  className="w-full text-sm"
+                />
+              </div>
+
+              {/* Actions */}
+              <button
+                onClick={handleBulkApplyCycles}
+                disabled={isApplyingBulk}
+                className="w-full h-10 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 text-sm"
+              >
+                <Check size={18} strokeWidth={3} />
+                Aplicar Mudanças
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Modal Reformulada (Visual Reminders) */}
@@ -413,58 +745,58 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         >
           <div
             className={`
-                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-visible border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+                bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col max-h-[85vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
                 ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
             `}
           >
             {/* Background Glow */}
-            <div className={`absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 ${modalMode === 'ai' ? 'bg-[#d97757]' : 'bg-gray-600'}`} />
+            <div className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-15 ${modalMode === 'ai' ? 'bg-[#d97757]' : 'bg-gray-600'}`} />
 
-            {/* Header Modal - Tabs Redesenhadas (igual Reminders) */}
-            <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+            {/* Header Modal - Tabs Compactas */}
+            <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
               {!editingId ? (
-                <div className="relative flex bg-gray-900/60 p-1 rounded-xl">
+                <div className="relative flex bg-[#272725]/60 p-0.5 rounded-lg">
                   {/* Indicador animado que desliza */}
                   <div
-                    className="absolute top-1 bottom-1 bg-[#d97757] rounded-lg transition-all duration-300 ease-out shadow-lg shadow-[#d97757]/25"
+                    className="absolute top-0.5 bottom-0.5 bg-[#d97757] rounded-md transition-all duration-300 ease-out shadow-md shadow-[#d97757]/20"
                     style={{
                       width: 'calc(50% - 2px)',
-                      left: modalMode === 'ai' ? '4px' : 'calc(50% + 2px)',
+                      left: modalMode === 'ai' ? '2px' : 'calc(50% + 2px)',
                     }}
                   />
 
                   <button
                     onClick={() => setModalMode('ai')}
-                    className={`relative z-10 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center gap-2 min-w-[110px] justify-center ${modalMode === 'ai'
+                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
                       }`}
                   >
                     <img
                       src={coinzinhaImg}
-                      className={`w-4 h-4 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-2 ring-white/30' : 'opacity-60'}`}
+                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
                       alt="Coinzinha"
                     />
                     Coinzinha
                   </button>
                   <button
                     onClick={() => setModalMode('manual')}
-                    className={`relative z-10 px-4 py-2 rounded-lg text-xs font-semibold transition-all duration-300 flex items-center gap-2 min-w-[110px] justify-center ${modalMode === 'manual'
+                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'manual'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
                       }`}
                   >
-                    <Plus size={14} className={`transition-transform duration-300 ${modalMode === 'manual' ? 'rotate-0' : 'rotate-90'}`} />
+                    <Plus size={12} className={`transition-transform duration-300 ${modalMode === 'manual' ? 'rotate-0' : 'rotate-90'}`} />
                     Manual
                   </button>
                 </div>
               ) : (
-                <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                  <Edit2 size={16} className="text-[#d97757]" />
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Edit2 size={14} className="text-[#d97757]" />
                   Editar Assinatura
                 </h3>
               )}
-              <button onClick={handleClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"><X size={18} /></button>
+              <button onClick={handleClose} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all"><X size={16} /></button>
             </div>
 
             {/* Content Modal */}
@@ -478,7 +810,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                       <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
                         <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
                           {/* Avatar */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-gray-800 border-gray-700'}`}>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-[#373734] border-[#4a4a47]'}`}>
                             {msg.role === 'user' ? (
                               <User size={14} className="text-white" />
                             ) : (
@@ -490,15 +822,15 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                           <div>
                             <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
                               ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
-                              : 'bg-gray-800/50 text-gray-200 rounded-bl-none border border-gray-700/50'
+                              : 'bg-[#373734]/50 text-gray-200 rounded-bl-none border border-[#4a4a47]/50'
                               }`}>
                               {msg.content}
                             </div>
 
                             {/* Subscription Summary Card */}
                             {msg.summaryData && (
-                              <div className="mt-3 w-full max-w-[280px] bg-[#1a1a1a] border border-gray-800 rounded-2xl overflow-hidden shadow-xl">
-                                <div className="bg-gray-900/80 px-4 py-2.5 border-b border-gray-800 flex items-center justify-between">
+                              <div className="mt-3 w-full max-w-[280px] bg-[#272725] border border-[#373734] rounded-2xl overflow-hidden shadow-xl">
+                                <div className="bg-[#30302E]/80 px-4 py-2.5 border-b border-[#373734] flex items-center justify-between">
                                   <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
                                     <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
                                     Assinatura Criada
@@ -511,7 +843,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                                         {msg.summaryData.name}
                                       </p>
                                       <div className="flex flex-wrap items-center gap-2 mt-1">
-                                        <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded flex items-center gap-1 border border-gray-700/50">
+                                        <span className="text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded flex items-center gap-1 border border-[#373734]/50">
                                           <Tag size={10} /> {msg.summaryData.category}
                                         </span>
                                         <span className="text-[10px] text-gray-500 flex items-center gap-1">
@@ -537,10 +869,10 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                     {generationStatus !== 'idle' && (
                       <div className="flex w-full justify-start animate-fade-in-up">
                         <div className="flex items-end gap-2 max-w-[85%]">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-gray-800 border-gray-700">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-[#373734] border-[#4a4a47]">
                             <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
                           </div>
-                          <div className="bg-gray-800/50 text-gray-200 rounded-2xl rounded-bl-none border border-gray-700/50 p-3 shadow-sm flex items-center">
+                          <div className="bg-[#373734]/50 text-gray-200 rounded-2xl rounded-bl-none border border-[#4a4a47]/50 p-3 shadow-sm flex items-center">
                             <TextShimmer className='font-medium text-sm' duration={1.5}>
                               {generationMessage}
                             </TextShimmer>
@@ -553,7 +885,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                   </div>
 
                   {/* Input Area */}
-                  <div className="p-4 bg-gray-950/50 border-t border-gray-800/50 shrink-0">
+                  <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
                     <div className="relative flex items-center gap-2">
                       <input
                         type="text"
@@ -565,9 +897,9 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                             handleSendMessage();
                           }
                         }}
-                        placeholder="Digite sua transação... (ex: Uber 20)"
+                        placeholder="Digite sua assinatura... (ex: Netflix 55)"
                         disabled={generationStatus !== 'idle'}
-                        className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600"
+                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600"
                       />
                       <button
                         onClick={handleSendMessage}
@@ -596,7 +928,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                         value={formData.name}
                         onChange={e => setFormData({ ...formData, name: e.target.value })}
                         placeholder="Ex: Netflix"
-                        className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                        className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
                         autoFocus
                       />
                     </div>
@@ -614,7 +946,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                           step="0.01"
                           value={formData.amount}
                           onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                          className="w-full bg-gray-900/50 border border-gray-800 rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                          className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
                           placeholder="0.00"
                         />
                       </div>
@@ -665,15 +997,19 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
       )}
 
       {/* Delete Confirmation */}
-      <ConfirmationCard
+      <ConfirmationBar
         isOpen={!!deleteId}
-        onClose={() => setDeleteId(null)}
-        onConfirm={() => deleteId && onDeleteSubscription(deleteId)}
-        title="Excluir Assinatura"
-        description="Tem certeza? Você deixará de acompanhar este gasto recorrente."
-        isDestructive={true}
+        onCancel={() => setDeleteId(null)}
+        onConfirm={() => {
+          if (deleteId) {
+            onDeleteSubscription(deleteId);
+            setDeleteId(null);
+          }
+        }}
+        label="Excluir Assinatura?"
         confirmText="Sim, excluir"
         cancelText="Cancelar"
+        isDestructive={true}
       />
     </div>
   );

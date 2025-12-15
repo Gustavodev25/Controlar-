@@ -1766,3 +1766,74 @@ export const listenToFeedbacks = (callback: (feedbacks: Feedback[]) => void) => 
     callback(feedbacks);
   });
 };
+
+// --- AI Chat History Services ---
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'ai';
+  content?: string;
+  type: 'text' | 'transaction_confirm';
+  transactionData?: any;
+  isConfirmed?: boolean;
+  timestamp: number;
+}
+
+export interface ChatSession {
+  id: string;
+  date: string;
+  preview: string;
+  messages: ChatMessage[];
+}
+
+export const saveChatHistory = async (userId: string, sessions: ChatSession[]) => {
+  if (!db) return;
+  try {
+    const chatRef = doc(db, "users", userId, "chatHistory", "sessions");
+    await setDoc(chatRef, { sessions, updatedAt: new Date().toISOString() });
+  } catch (error) {
+    console.error("Error saving chat history:", error);
+  }
+};
+
+export const getChatHistory = async (userId: string): Promise<ChatSession[]> => {
+  if (!db) return [];
+  try {
+    const chatRef = doc(db, "users", userId, "chatHistory", "sessions");
+    const snap = await getDoc(chatRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return (data.sessions || []) as ChatSession[];
+    }
+    return [];
+  } catch (error) {
+    console.error("Error getting chat history:", error);
+    return [];
+  }
+};
+
+export const listenToChatHistory = (userId: string, callback: (sessions: ChatSession[]) => void) => {
+  if (!db) return () => { };
+  const chatRef = doc(db, "users", userId, "chatHistory", "sessions");
+
+  return onSnapshot(chatRef, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+      callback((data.sessions || []) as ChatSession[]);
+    } else {
+      callback([]);
+    }
+  }, (error) => {
+    console.error("Error listening to chat history:", error);
+    callback([]);
+  });
+};
+
+export const clearChatHistory = async (userId: string) => {
+  if (!db) return;
+  try {
+    const chatRef = doc(db, "users", userId, "chatHistory", "sessions");
+    await deleteDoc(chatRef);
+  } catch (error) {
+    console.error("Error clearing chat history:", error);
+  }
+};

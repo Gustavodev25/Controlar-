@@ -4,7 +4,8 @@ import { Plus, Trash2, Edit2, AlertTriangle, Target, X, Check, Tag, DollarSign, 
 import { Budget, Transaction, Member } from '../types';
 import * as dbService from '../services/database';
 import { useToasts } from './Toast';
-import { ConfirmationCard, CustomAutocomplete } from './UIComponents';
+import { CustomAutocomplete } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { EmptyState } from './EmptyState';
 import NumberFlow from '@number-flow/react';
 import { getCurrentLocalMonth } from '../utils/dateUtils';
@@ -59,7 +60,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
             toast.error("Plano Starter limitado a 2 metas. Faça upgrade para criar mais.");
             return;
         }
-        
+
         if (budget) {
             setEditingBudget(budget);
             setCategory(budget.category);
@@ -177,8 +178,8 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                     disabled={isLimitReached}
                     className={`
                         px-4 py-2 rounded-xl flex items-center gap-2 transition-colors shadow-lg
-                        ${isLimitReached 
-                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed shadow-none' 
+                        ${isLimitReached
+                            ? 'bg-gray-800 text-gray-500 cursor-not-allowed shadow-none'
                             : 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-[#d97757]/20'
                         }
                     `}
@@ -188,9 +189,9 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 </button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
                 {filteredBudgets.map(budget => (
-                    <div key={budget.id} className="bg-gray-900/70 border border-gray-800 rounded-2xl p-5 hover:border-gray-700 transition-all group relative overflow-hidden">
+                    <div key={budget.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-5 hover:border-[#4a4a47] transition-all group relative overflow-hidden">
                         {/* Background Progress Bar (Subtle) */}
                         <div
                             className={`absolute bottom-0 left-0 h-1 transition-all duration-500 ${getProgressBarColor(budget.percentage)}`}
@@ -199,7 +200,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
                         <div className="flex justify-between items-start mb-4">
                             <div className="flex items-center gap-3">
-                                <div className="p-2.5 bg-gray-800 rounded-xl text-gray-300">
+                                <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-gray-300">
                                     <MathMaxMin size={20} />
                                 </div>
                                 <div>
@@ -212,13 +213,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                 <button
                                     onClick={() => handleOpenModal(budget)}
-                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                                    className="p-1.5 text-gray-400 hover:text-white hover:bg-[#373734] rounded-lg transition-colors"
                                 >
                                     <Edit2 size={14} />
                                 </button>
                                 <button
                                     onClick={() => setDeleteId(budget.id)}
-                                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-gray-800 rounded-lg transition-colors"
+                                    className="p-1.5 text-gray-400 hover:text-red-400 hover:bg-[#373734] rounded-lg transition-colors"
                                 >
                                     <Trash2 size={14} />
                                 </button>
@@ -231,7 +232,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                                 <span className="text-gray-400">Limite: <span className="text-white font-medium"><NumberFlow value={budget.limitAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" /></span></span>
                             </div>
 
-                            <div className="h-2.5 bg-gray-800 rounded-full overflow-hidden">
+                            <div className="h-2 bg-[#272725] rounded-full overflow-hidden border border-[#373734]">
                                 <div
                                     className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(budget.percentage)}`}
                                     style={{ width: `${budget.percentage}%` }}
@@ -273,44 +274,37 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
             {isVisible && createPortal(
                 <div
                     className={`
-                fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
-                ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
+                fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
+                ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
             `}
                 >
                     <div
                         className={`
-                bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-visible border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
+                bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-lg overflow-visible border border-[#373734] flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
                 ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
             `}
                     >
-                        {/* Background Effects */}
-                        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-                            <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-                            <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-                        </div>
+                        {/* Background Glow */}
+                        <div className="absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-15 bg-[#d97757]" />
 
                         {/* Header */}
-                        <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-                            <div className="flex items-center gap-3">
-                                <div className="p-2 bg-[#d97757]/20 rounded-xl text-[#d97757]">
-                                    <MathMaxMin size={20} />
-                                </div>
-                                <h3 className="text-lg font-bold text-white">
-                                    {editingBudget ? 'Editar Meta' : 'Nova Meta'}
-                                </h3>
-                            </div>
-                            <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
-                                <X size={20} />
+                        <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
+                            <h2 className="text-sm font-semibold text-white flex items-center gap-2">
+                                <MathMaxMin className="text-[#d97757]" size={16} />
+                                {editingBudget ? 'Editar Meta' : 'Nova Meta'}
+                            </h2>
+                            <button onClick={handleCloseModal} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all">
+                                <X size={16} />
                             </button>
                         </div>
 
                         {/* Content */}
-                        <div className="p-6 overflow-y-visible custom-scrollbar relative z-10">
-                            <form onSubmit={handleSave} className="space-y-5 animate-fade-in">
+                        <div className="px-6 py-4 overflow-y-visible custom-scrollbar relative z-10">
+                            <form onSubmit={handleSave} className="space-y-4 animate-fade-in">
 
                                 {/* Category */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Categoria</label>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Categoria</label>
                                     <div className="relative z-20 group">
                                         <CustomAutocomplete
                                             value={category}
@@ -323,25 +317,25 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                                 </div>
 
                                 {/* Limit Amount */}
-                                <div>
-                                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Limite Mensal (R$)</label>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Limite Mensal (R$)</label>
                                     <div className="relative group">
-                                        <DollarSign className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600 text-sm">R$</span>
                                         <input
                                             required
                                             type="number"
                                             step="0.01"
                                             value={limitAmount}
                                             onChange={(e) => setLimitAmount(e.target.value)}
-                                            className="input-primary pl-10 focus:border-[#d97757]"
-                                            placeholder="0.00"
+                                            className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-4 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600 font-mono"
+                                            placeholder="0,00"
                                             autoFocus
                                         />
                                     </div>
                                 </div>
 
                                 {/* Alert Threshold */}
-                                <div className="bg-gray-900/50 p-4 rounded-2xl border border-gray-800/50 space-y-3">
+                                <div className="bg-[#272725]/50 p-4 rounded-xl border border-[#373734]/50 space-y-3">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-gray-300 font-medium text-sm">
                                             <AlertTriangle size={16} className="text-yellow-500" />
@@ -357,7 +351,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                                         step="5"
                                         value={alertThreshold}
                                         onChange={(e) => setAlertThreshold(e.target.value)}
-                                        className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#d97757]"
+                                        className="w-full h-2 bg-[#373734] rounded-lg appearance-none cursor-pointer accent-[#d97757]"
                                     />
                                     <p className="text-[10px] text-gray-500">
                                         Você será avisado visualmente quando atingir esta porcentagem do limite.
@@ -380,14 +374,14 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                 document.body
             )}
 
-            <ConfirmationCard
+            <ConfirmationBar
                 isOpen={!!deleteId}
-                onClose={() => setDeleteId(null)}
+                onCancel={() => setDeleteId(null)}
                 onConfirm={handleDelete}
-                title="Excluir Meta"
-                description="Tem certeza? O histórico de gastos não será afetado, apenas o monitoramento."
+                label="Excluir Meta?"
+                confirmText="Sim, excluir"
+                cancelText="Cancelar"
                 isDestructive={true}
-                confirmText="Excluir"
             />
         </div>
     );

@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Users, Plus, Check, Crown, X } from './Icons';
-import { ConfirmationCard } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import { Member } from '../types';
 
 interface MemberSelectorProps {
@@ -222,20 +222,20 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
         )}
       </div>
 
-      <ConfirmationCard
+      <ConfirmationBar
         isOpen={!!deleteTarget}
-        onClose={() => setDeleteTarget(null)}
+        onCancel={() => setDeleteTarget(null)}
         onConfirm={() => {
           if (deleteTarget) {
             onDeleteMember(deleteTarget.id);
             setIsOpen(false);
+            setDeleteTarget(null);
           }
         }}
-        title="Remover conta da familia?"
-        description={deleteTarget ? `Voce esta prestes a apagar ${deleteTarget.name}. Esta acao pode ser desfeita.` : ''}
+        label="Remover conta da familia?"
         confirmText="Sim, remover"
         cancelText="Cancelar"
-        isDestructive
+        isDestructive={true}
       />
     </>
   );

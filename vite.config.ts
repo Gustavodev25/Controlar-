@@ -11,7 +11,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables for the API from the correct path
-dotenv.config({ path: path.resolve(__dirname, '.env') });
+dotenv.config({ path: path.resolve(__dirname, '.env'), override: true });
 
 console.log('[Vite] PLUGGY_CLIENT_ID loaded:', process.env.PLUGGY_CLIENT_ID ? 'Yes' : 'No');
 

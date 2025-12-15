@@ -16,7 +16,7 @@ import {
 import * as dbService from '../services/database';
 import { Feedback } from '../services/database';
 import { EmptyState } from './EmptyState';
-import { ConfirmationCard } from './UIComponents';
+import { ConfirmationBar } from './ConfirmationBar';
 import NumberFlow from '@number-flow/react';
 
 type StatusFilter = 'all' | 'pending' | 'reviewed' | 'resolved' | 'dismissed';
@@ -389,16 +389,15 @@ export const AdminFeedbacks: React.FC = () => {
                 document.body
             )}
 
-            {/* Delete Confirmation Card */}
-            <ConfirmationCard
+            {/* Delete Confirmation */}
+            <ConfirmationBar
                 isOpen={!!deleteId}
-                onClose={() => setDeleteId(null)}
+                onCancel={() => setDeleteId(null)}
                 onConfirm={handleDelete}
-                title="Excluir Feedback?"
-                description="Esta ação removerá o feedback permanentemente do sistema."
+                label="Excluir Feedback?"
                 confirmText="Sim, excluir"
                 cancelText="Cancelar"
-                isDestructive
+                isDestructive={true}
             />
         </div>
     );
