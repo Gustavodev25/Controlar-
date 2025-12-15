@@ -5,7 +5,7 @@ import { Reminder } from '../types';
 import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2, Send, User, Clock, ChevronLeft, ChevronRight } from './Icons';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
-import { parseReminderFromText, AIParsedReminder, parseMessageIntent } from '../services/geminiService';
+import { parseReminderFromText, AIParsedReminder, parseMessageIntent } from '../services/claudeService';
 import { EmptyState } from './EmptyState';
 import coinzinhaImg from '../assets/coinzinha.png';
 import { CoinzinhaGreeting } from './CoinzinhaGreeting';

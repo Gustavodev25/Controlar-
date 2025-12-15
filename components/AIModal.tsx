@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { X, Sparkles, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Check, ArrowRight, Clock, Send, User, RefreshCw } from './Icons';
-import { parseMessageIntent, AIParsedReminder } from '../services/geminiService';
+import { parseMessageIntent, AIParsedReminder } from '../services/claudeService';
 import { AIParsedTransaction, Transaction, Reminder } from '../types';
 import { CustomAutocomplete, CustomDatePicker, TextShimmer, CustomSelect } from './UIComponents';
 import coinzinhaImg from '../assets/coinzinha.png';

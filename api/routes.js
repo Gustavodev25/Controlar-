@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import twilio from 'twilio';
-import { GoogleGenAI } from '@google/genai';
+import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import geminiHandler from './gemini.js';
 import claudeHandler from './claude.js';
@@ -282,11 +282,11 @@ router.post('/auth/reset-password', async (req, res) => {
 });
 
 // ===============================
-// TWILIO + GEMINI (WhatsApp bot)
+// TWILIO + CLAUDE (WhatsApp bot)
 // ===============================
 const accountSid = process.env.TWILIO_ACCOUNT_SID;
 const authToken = process.env.TWILIO_AUTH_TOKEN;
-const apiKey = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY;
+const anthropicKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;
 const fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';
 
 // Initialize Twilio client if credentials are present
@@ -299,11 +299,12 @@ try {
   console.error('Twilio init error:', e);
 }
 
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
-const MODEL_NAME = 'gemini-1.5-flash';
+const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;
+// Use Sonnet 3.5 (latest stable) for smart responses
+const CLAUDE_MODEL = 'claude-3-5-sonnet-20240620';
 
 async function generateResponse(text) {
-  if (!ai) return 'Erro: API do Gemini nao configurada.';
+  if (!claude) return 'Erro: API do Claude nao configurada.';
 
   const todayStr = new Date().toLocaleDateString('pt-BR', {
     weekday: 'long',
@@ -312,28 +313,39 @@ async function generateResponse(text) {
     day: 'numeric'
   });
 
-  const prompt = `
-Hoje e: ${todayStr}.
-Voce e o "Coinzinha", um assistente financeiro pessoal divertido, amigavel e inteligente.
+  const systemPrompt = `
+Hoje é: ${todayStr}.
+Você é o "Coinzinha", um assistente financeiro pessoal divertido, amigável e inteligente.
 
-O usuario enviou via WhatsApp: "${text}"
+O usuário enviou via WhatsApp: "${text}"
 
 Objetivo:
-1. Se for uma transacao (ex: "gastei 10 padaria"), responda confirmando com o valor e categoria de forma amigavel (nao precisa salvar).
-2. Se for conversa, responda de forma curta e amigavel.
+1. Se for uma transação (ex: "gastei 10 padaria"), responda confirmando com o valor e categoria de forma amigável (não precisa salvar, apenas confirmar o entendimento).
+2. Se for conversa, responda de forma curta e amigável.
 3. Use emojis.
-
-Responda em portugues, texto curto.
+4. Responda SEMPRE em português brasileiro.
+5. Seja conciso (max 2-3 frases).
 `;
 
   try {
-    const result = await ai.models.generateContent({
-      model: MODEL_NAME,
-      contents: prompt
+    const response = await claude.messages.create({
+      model: CLAUDE_MODEL,
+      max_tokens: 300,
+      system: systemPrompt,
+      messages: [
+        { role: 'user', content: text }
+      ]
     });
-    return result.response.text() || result.text;
+    
+    // Extract text from response content
+    const reply = response.content
+      .filter(block => block.type === 'text')
+      .map(block => block.text)
+      .join('');
+      
+    return reply;
   } catch (e) {
-    console.error('Gemini Error:', e);
+    console.error('Claude Error:', e);
     return 'Opa, tive um problema aqui. Pode repetir?';
   }
 }
@@ -366,7 +378,7 @@ router.post('/whatsapp', async (req, res) => {
 
   try {
     const replyText = await generateResponse(Body);
-    console.log(`Gemini Reply: ${replyText}`);
+    console.log(`Claude Reply: ${replyText}`);
 
     await client.messages.create({
       from: fromNumber,

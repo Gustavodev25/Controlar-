@@ -21,7 +21,7 @@ import {
 import { EmptyState } from './EmptyState';
 import { CustomAutocomplete, CustomSelect, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
-import { parseSubscriptionFromText } from '../services/geminiService';
+import { parseSubscriptionFromText } from '../services/claudeService';
 import coinzinhaImg from '../assets/coinzinha.png';
 import NumberFlow from '@number-flow/react';
 import { FileText } from 'lucide-react';

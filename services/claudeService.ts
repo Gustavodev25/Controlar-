@@ -361,3 +361,42 @@ SEMPRE responda em formato JSON válido.`;
         return { type: "text", content: "Estou com dificuldades técnicas no momento. Tente novamente." };
     }
 };
+
+/**
+ * Tenta extrair uma assinatura de um texto usando o Claude
+ */
+export const parseSubscriptionFromText = async (text: string): Promise<AIParsedSubscription | null> => {
+    try {
+        const result = await processClaudeAssistantMessage(text);
+        if (result.type === 'subscription') {
+            return result.data;
+        }
+        return null;
+    } catch (error) {
+        console.error("Erro ao fazer parse da assinatura:", error);
+        return null;
+    }
+};
+
+/**
+ * Tenta extrair um lembrete de um texto usando o Claude
+ */
+export const parseReminderFromText = async (text: string): Promise<AIParsedReminder | null> => {
+    try {
+        const result = await processClaudeAssistantMessage(text);
+        if (result.type === 'reminder') {
+            return result.data;
+        }
+        return null;
+    } catch (error) {
+        console.error("Erro ao fazer parse do lembrete:", error);
+        return null;
+    }
+};
+
+/**
+ * Identifica a intenção da mensagem e retorna os dados estruturados
+ */
+export const parseMessageIntent = async (text: string) => {
+    return await processClaudeAssistantMessage(text);
+};
