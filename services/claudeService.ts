@@ -243,8 +243,10 @@ REGRAS IMPORTANTES:
 10. A data da transação DEVE usar o ano ${currentYear} (ano atual) se não for especificado.
 11. Na descrição das transações, seja detalhado mas conciso.
 12. Serviços de streaming (Netflix, Spotify, Disney+, etc.) são ASSINATURAS, não transações.
+13. CORRIJA ERROS DE DIGITAÇÃO: Se o usuário escrever "ubeer", entenda como "Uber". "ifood", "iFood". "Restaurante", etc.
+14. Se a entrada for ambígua, tente inferir o contexto mais provável (ex: "luz 100" -> Provável conta de luz/Lembrete).
 
-SEMPRE responda em formato JSON válido.`;
+SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois.`;
 
     // Construir o histórico de mensagens
     const messages: ClaudeMessage[] = [
@@ -257,29 +259,29 @@ SEMPRE responda em formato JSON válido.`;
             messages,
             system: systemPrompt,
             max_tokens: 2048,
-            temperature: 0.7
+            temperature: 0.5 // Reduzido para ser mais determinístico
         });
 
         const responseText = response?.text || "";
 
-        // Tentar parsear o JSON da resposta
+        // Tentar parsear o JSON da resposta de forma robusta
         let result: any;
         try {
-            // Limpar o texto de possíveis marcadores de código
-            let cleanText = responseText.trim();
-            if (cleanText.startsWith("```json")) {
-                cleanText = cleanText.slice(7);
+            // Tenta encontrar o primeiro objeto JSON válido na string
+            const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+            const jsonString = jsonMatch ? jsonMatch[0] : responseText;
+            
+            result = JSON.parse(jsonString);
+        } catch (e) {
+            console.error("Erro ao parsear JSON do Claude:", e);
+            console.log("Resposta bruta:", responseText);
+            // Se falhar, tenta limpar crase tripla
+            try {
+                 let cleanText = responseText.replace(/```json/g, "").replace(/```/g, "").trim();
+                 result = JSON.parse(cleanText);
+            } catch {
+                return { type: "text", content: responseText || "Não entendi. Pode repetir de outra forma?" };
             }
-            if (cleanText.startsWith("```")) {
-                cleanText = cleanText.slice(3);
-            }
-            if (cleanText.endsWith("```")) {
-                cleanText = cleanText.slice(0, -3);
-            }
-            result = JSON.parse(cleanText.trim());
-        } catch {
-            // Se não conseguir parsear, retorna como texto
-            return { type: "text", content: responseText };
         }
 
         // Helper para corrigir data
