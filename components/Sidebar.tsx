@@ -21,7 +21,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_users';
 
 // --- NAVITEM: Item Individual ---
 interface NavItemProps {
@@ -290,11 +290,12 @@ interface SidebarProps {
   overdueRemindersCount?: number;
   onOpenAIModal: () => void;
   onOpenFeedback: () => void;
+  isProMode?: boolean;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, activeTab, setActiveTab, isAdminMode, activeMemberId, members,
-  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback
+  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback, isProMode = false
 }) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -402,10 +403,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     label="Feedbacks"
                     isOpen={isOpen}
                   />
-                </>
-              ) : activeMemberId === 'FAMILY_OVERVIEW' ? (
-                <NavItem active={true} onClick={() => { }} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
-              ) : (
+                  <NavItem
+                    active={activeTab === 'admin_users'}
+                    onClick={() => handleNavClick('admin_users')}
+                    icon={<UsersIcon size={20} />}
+                    label="Usuários"
+                    isOpen={isOpen}
+                  />
+                </>) : activeMemberId === 'FAMILY_OVERVIEW' ? (
+                  <NavItem active={true} onClick={() => { }} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
+                ) : (
                 <>
                   <NavItem active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
 
@@ -455,29 +462,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <div className="space-y-2 pt-4 border-t border-gray-800/50 flex flex-col items-center w-full">
                 {isOpen && <p className="w-full text-xs font-bold text-gray-500 uppercase tracking-widest px-2 mb-2">Coinzinha</p>}
 
-                <button
-                  onClick={onOpenAIModal}
-                  className={`
-                      relative flex items-center outline-none group transition-all duration-300
+                {/* Botão desabilitado no modo Auto */}
+                {isProMode ? (
+                  <div
+                    className={`
+                      relative flex items-center outline-none group transition-all duration-300 cursor-not-allowed opacity-50
                       ${isOpen ? 'w-full gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
-                      ${isOpen ? 'border border-[#d97757]/30 bg-[#d97757]/5 hover:bg-[#d97757]/10' : 'hover:bg-gray-800'}
+                      ${isOpen ? 'border border-gray-600/30 bg-gray-600/5' : ''}
                     `}
-                >
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <img src={coinzinhaImg} alt="Coinzinha" className={`w-5 h-5 object-contain transition-transform duration-300 ${!isOpen ? 'group-hover:scale-110' : ''}`} />
-                  </div>
+                    title="No modo Auto, transações são importadas automaticamente"
+                  >
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <img src={coinzinhaImg} alt="Coinzinha" className="w-5 h-5 object-contain grayscale opacity-50" />
+                    </div>
 
-                  <AnimatePresence>
-                    {isOpen && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                        className="font-bold text-sm text-[#d97757] ml-0"
-                      >
-                        Lançar com Coinzinha
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </button>
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.span
+                          initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                          className="font-medium text-sm text-gray-500 ml-0"
+                        >
+                          Modo Auto ativo
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                ) : (
+                  <button
+                    onClick={onOpenAIModal}
+                    className={`
+                        relative flex items-center outline-none group transition-all duration-300
+                        ${isOpen ? 'w-full gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
+                        ${isOpen ? 'border border-[#d97757]/30 bg-[#d97757]/5 hover:bg-[#d97757]/10' : 'hover:bg-gray-800'}
+                      `}
+                  >
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <img src={coinzinhaImg} alt="Coinzinha" className={`w-5 h-5 object-contain transition-transform duration-300 ${!isOpen ? 'group-hover:scale-110' : ''}`} />
+                    </div>
+
+                    <AnimatePresence>
+                      {isOpen && (
+                        <motion.span
+                          initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                          className="font-bold text-sm text-[#d97757] ml-0"
+                        >
+                          Lançar com Coinzinha
+                        </motion.span>
+                      )}
+                    </AnimatePresence>
+                  </button>
+                )}
               </div>
             )}
 

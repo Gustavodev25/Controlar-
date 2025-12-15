@@ -41,6 +41,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
 import { AdminFeedbacks } from './components/AdminFeedbacks';
+import { AdminUsers } from './components/AdminUsers';
 import AdminEmailMessage from './components/AdminEmailMessage';
 import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
@@ -2790,6 +2791,7 @@ const App: React.FC = () => {
         overdueRemindersCount={overdueRemindersCount}
         onOpenAIModal={() => handleOpenAIModal('transaction')}
         onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+        isProMode={isProMode}
       />
 
       {/* Main Content */}
@@ -2869,6 +2871,8 @@ const App: React.FC = () => {
             <AdminCoupons />
           ) : activeTab === 'admin_feedbacks' ? (
             <AdminFeedbacks />
+          ) : activeTab === 'admin_users' ? (
+            <AdminUsers />
           ) : (
             /* Normal Dashboard Content */
             activeMemberId === 'FAMILY_OVERVIEW' ? (
@@ -3034,6 +3038,7 @@ const App: React.FC = () => {
                     onDeleteReminder={handleDeleteReminder}
                     onPayReminder={handlePayReminder}
                     onUpdateReminder={handleUpdateReminder}
+                    isProMode={isProMode}
                   />
                 )}
 
@@ -3045,7 +3050,7 @@ const App: React.FC = () => {
                     onUpdateSubscription={handleUpdateSubscription}
                     onDeleteSubscription={handleDeleteSubscription}
                     currentDate={filterMode === 'month' ? dashboardDate : undefined}
-                    onPaySubscription={handlePaySubscription}
+                    isProMode={isProMode}
                   />
                 )}
 

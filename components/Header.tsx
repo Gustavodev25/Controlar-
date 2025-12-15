@@ -147,6 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'admin_email': return { title: 'Campanhas de Email', desc: 'Criar e enviar mensagens.' };
       case 'admin_coupons': return { title: 'Cupons de Desconto', desc: 'Gerenciar códigos promocionais.' };
       case 'admin_feedbacks': return { title: 'Feedbacks', desc: 'Gerenciar feedbacks e bugs reportados pelos usuários.' };
+      case 'admin_users': return { title: 'Usuários', desc: 'Gerenciar usuários cadastrados no sistema.' };
       case 'credit_cards': return { title: 'Faturas', desc: 'Gerencie suas despesas em cartões de crédito.' };
       default: return { title: 'Controlar+', desc: '' };
     }

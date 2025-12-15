@@ -21,6 +21,7 @@ interface RemindersProps {
   onPayReminder: (reminder: Reminder) => void;
   onUpdateReminder: (reminder: Reminder) => void;
   onOpenAIModal?: (context?: 'transaction' | 'reminder') => void;
+  isProMode?: boolean;
 }
 
 type ModalMode = 'ai' | 'manual';
@@ -196,13 +197,14 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 };
 
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Modal Animation & State
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [modalMode, setModalMode] = useState<ModalMode>('ai');
+  // Se estiver no modo Pro, forçar modo manual
+  const [modalMode, setModalMode] = useState<ModalMode>(isProMode ? 'manual' : 'ai');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   // AI State - Chat System (igual AIModal)
@@ -288,13 +290,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isModalOpen) {
       setIsVisible(true);
+      // Forçar modo manual quando no modo Auto
+      if (isProMode) {
+        setModalMode('manual');
+      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
         });
       });
-      // Inicializar mensagem de boas-vindas do chat
-      if (chatMessages.length === 0) {
+      // Inicializar mensagem de boas-vindas do chat (apenas se não for modo Pro)
+      if (chatMessages.length === 0 && !isProMode) {
         setChatMessages([{
           id: 'init',
           role: 'assistant',
@@ -308,7 +314,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       }, 300);
     }
     return () => clearTimeout(timeoutId);
-  }, [isModalOpen]);
+  }, [isModalOpen, isProMode]);
 
   // Scroll automático para novas mensagens
   useEffect(() => {
@@ -720,15 +726,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   />
 
                   <button
-                    onClick={() => setModalMode('ai')}
+                    onClick={() => !isProMode && setModalMode('ai')}
+                    disabled={isProMode}
                     className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
-                      }`}
+                      } ${isProMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isProMode ? 'Desabilitado no modo Auto' : undefined}
                   >
                     <img
                       src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
+                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'} ${isProMode ? 'grayscale' : ''}`}
                       alt="Coinzinha"
                     />
                     Coinzinha
@@ -757,8 +765,8 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
             {/* Content Modal */}
             <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual AIModal) --- */}
-              {modalMode === 'ai' && (
+              {/* --- AI MODE (Chat Style igual AIModal) - Bloqueado no modo Auto --- */}
+              {modalMode === 'ai' && !isProMode && (
                 <>
                   {/* Área de mensagens */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">

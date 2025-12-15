@@ -34,6 +34,7 @@ interface SubscriptionsProps {
   onUpdateSubscription: (sub: Subscription) => void;
   onDeleteSubscription: (id: string) => void;
   currentDate?: string;
+  isProMode?: boolean;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -145,8 +146,8 @@ const SubscriptionCard: React.FC<{
           <button
             onClick={(e) => { e.stopPropagation(); onTogglePaid(sub); }}
             className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
-                ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-                : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+              ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+              : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
               }`}
             title={isPaidThisMonth ? "Desmarcar como pago" : "Marcar como pago"}
           >
@@ -173,7 +174,7 @@ const SubscriptionCard: React.FC<{
 };
 
 
-export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate }) => {
+export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate, isProMode = false }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -196,8 +197,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
 
 
-  // Mode state
-  const [modalMode, setModalMode] = useState<'ai' | 'manual'>('ai');
+  // Mode state - Se estiver no modo Pro, forçar modo manual
+  const [modalMode, setModalMode] = useState<'ai' | 'manual'>(isProMode ? 'manual' : 'ai');
 
   // AI State - Chat System (igual Reminders)
   interface ChatMessage {
@@ -312,13 +313,17 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isModalOpen) {
       setIsVisible(true);
+      // Forçar modo manual quando no modo Auto
+      if (isProMode) {
+        setModalMode('manual');
+      }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
         });
       });
-      // Inicializar mensagem de boas-vindas do chat
-      if (chatMessages.length === 0) {
+      // Inicializar mensagem de boas-vindas do chat (apenas se não for modo Pro)
+      if (chatMessages.length === 0 && !isProMode) {
         setChatMessages([{
           id: 'init',
           role: 'assistant',
@@ -332,7 +337,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
       }, 300);
     }
     return () => clearTimeout(timeoutId);
-  }, [isModalOpen]);
+  }, [isModalOpen, isProMode]);
 
   // Scroll automático para novas mensagens
   useEffect(() => {
@@ -766,15 +771,17 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                   />
 
                   <button
-                    onClick={() => setModalMode('ai')}
+                    onClick={() => !isProMode && setModalMode('ai')}
+                    disabled={isProMode}
                     className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
-                      }`}
+                      } ${isProMode ? 'opacity-50 cursor-not-allowed' : ''}`}
+                    title={isProMode ? 'Desabilitado no modo Auto' : undefined}
                   >
                     <img
                       src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
+                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'} ${isProMode ? 'grayscale' : ''}`}
                       alt="Coinzinha"
                     />
                     Coinzinha
@@ -801,8 +808,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
             {/* Content Modal */}
             <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual Reminders) --- */}
-              {modalMode === 'ai' && !editingId && (
+              {/* --- AI MODE (Chat Style igual Reminders) - Bloqueado no modo Auto --- */}
+              {modalMode === 'ai' && !editingId && !isProMode && (
                 <>
                   {/* Área de mensagens */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
