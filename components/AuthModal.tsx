@@ -518,7 +518,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       </div>
 
       {/* RIGHT SIDE - Form */}
-      <div className="w-full lg:w-[45%] flex items-center justify-center p-8 lg:p-16 bg-gray-950 relative">
+      <div className="w-full lg:w-[45%] flex items-center justify-center p-4 sm:p-8 lg:p-16 bg-gray-950 relative overflow-y-auto max-h-screen">
         <div className="w-full max-w-sm">
 
           {/* Mobile Logo */}
@@ -788,7 +788,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <label className="text-xs font-semibold text-gray-300 ml-1">CPF</label>
                               <input
@@ -834,8 +834,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 exit={{ opacity: 0, height: 0 }}
                                 className="space-y-4 overflow-hidden"
                               >
-                                <div className="grid grid-cols-3 gap-4 pt-1">
-                                  <div className="col-span-2 space-y-1.5">
+                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+                                  <div className="sm:col-span-2 space-y-1.5">
                                     <label className="text-xs font-semibold text-gray-300 ml-1">Rua</label>
                                     <div className="relative">
                                       {isCepLoading && <div className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 border-2 border-gray-600 border-t-[#d97757] rounded-full animate-spin"></div>}
@@ -860,7 +860,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                   </div>
                                 </div>
 
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                   <div className="space-y-1.5">
                                     <label className="text-xs font-semibold text-gray-300 ml-1">Cidade</label>
                                     <div className="relative">

@@ -11,7 +11,7 @@ import {
   Wallet,
   MessageSquare
 } from './Icons';
-import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown } from 'lucide-react';
+import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Member } from '../types';
 import { Logo } from './Logo';
@@ -289,11 +289,12 @@ interface SidebarProps {
   isAdmin?: boolean;
   overdueRemindersCount?: number;
   onOpenAIModal: () => void;
+  onOpenFeedback: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, activeTab, setActiveTab, isAdminMode, activeMemberId, members,
-  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal
+  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback
 }) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -440,6 +441,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
+
+                  {/* Em Breve Section */}
+                  {isOpen && <p className="w-full text-xs font-bold text-gray-600 uppercase tracking-widest px-2 mt-4 mb-2">Em Breve</p>}
+                  <NavItem active={false} onClick={() => { }} icon={<TrendingUp size={20} />} label="Investimentos" isOpen={isOpen} disabled />
+                  <NavItem active={false} onClick={() => { }} icon={<BarChart3 size={20} />} label="Indicadores" isOpen={isOpen} disabled />
+                  <NavItem active={false} onClick={() => { }} icon={<ShoppingBag size={20} />} label="Produtos" isOpen={isOpen} disabled />
                 </>
               )}
             </div>
@@ -467,6 +474,51 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         className="font-bold text-sm text-[#d97757] ml-0"
                       >
                         Lançar com Coinzinha
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </button>
+              </div>
+            )}
+
+            {/* Footer - Beta Badge + Feedback Button (hidden in admin mode) */}
+            {!isAdminMode && (
+              <div className={`mt-auto pt-4 border-t border-gray-800/50 ${isOpen ? 'px-3' : 'px-2'} space-y-2`}>
+                {/* Beta Version Badge */}
+                <div className={`flex items-center ${isOpen ? 'gap-2 px-2' : 'justify-center'}`}>
+                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                        className="text-[10px] font-bold text-amber-500/80 uppercase tracking-wider"
+                      >
+                        Versão beta da Controlar+ v0.1.0
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </div>
+
+                {/* Feedback Button */}
+                <button
+                  onClick={onOpenFeedback}
+                  className={`
+                    relative flex items-center outline-none group transition-all duration-300 w-full
+                    ${isOpen ? 'gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
+                    text-gray-500 hover:bg-gray-800/50 hover:text-gray-300
+                  `}
+                >
+                  <div className="relative flex items-center justify-center shrink-0">
+                    <MessageSquare size={18} className="transition-transform duration-300 group-hover:scale-110" />
+                  </div>
+
+                  <AnimatePresence>
+                    {isOpen && (
+                      <motion.span
+                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                        className="font-medium text-sm text-gray-400 group-hover:text-gray-300"
+                      >
+                        Enviar Feedback
                       </motion.span>
                     )}
                   </AnimatePresence>

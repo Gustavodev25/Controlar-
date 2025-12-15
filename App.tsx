@@ -21,6 +21,7 @@ import { FamilyOverview } from './components/FamilyOverview';
 import { ToastContainer, useToasts } from './components/Toast';
 import { GlobalSyncToast } from './components/GlobalSyncToast';
 import { FeedbackBanner } from './components/FeedbackBanner';
+import { FeedbackModal } from './components/FeedbackModal';
 import { saveSyncProgress, clearSyncProgress } from './utils/syncProgress';
 import { TwoFactorPrompt } from './components/TwoFactorPrompt';
 import { auth } from './services/firebase';
@@ -535,6 +536,7 @@ const App: React.FC = () => {
   };
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data' | 'finance'>('profile');
 
   useEffect(() => {
@@ -2787,7 +2789,7 @@ const App: React.FC = () => {
         isAdmin={currentUser?.isAdmin}
         overdueRemindersCount={overdueRemindersCount}
         onOpenAIModal={() => handleOpenAIModal('transaction')}
-        isProMode={isProMode}
+        onOpenFeedback={() => setIsFeedbackModalOpen(true)}
       />
 
       {/* Main Content */}
@@ -3161,6 +3163,14 @@ const App: React.FC = () => {
       <WhatsAppConnect
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
+      />
+
+      <FeedbackModal
+        isOpen={isFeedbackModalOpen}
+        onClose={() => setIsFeedbackModalOpen(false)}
+        userEmail={currentUser?.email}
+        userName={currentUser?.name}
+        userId={userId || undefined}
       />
 
       {showGlobalModeModal && (

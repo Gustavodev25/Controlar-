@@ -565,32 +565,54 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
         // Or just rely on standard behavior?
         // Let's assume standard behavior needs adjustment for Portal.
         // Actually, React events bubble through Portal. So checking containerRef might work if I attach ref to portal content? No.
-        
+
         // Strategy: Use a separate check or valid click outside hook.
         // For now, I'll close it if it's not the container.
         setIsOpen(false);
       }
     };
-    
+
     // Logic to update position for fixed mode
     if (isOpen && dropdownMode === 'fixed' && containerRef.current) {
-        const updatePosition = () => {
-            const rect = containerRef.current!.getBoundingClientRect();
-            // Check if near bottom of screen to flip? For now just simple down.
-            setCoords({
-                top: rect.bottom + 8,
-                left: rect.left
-            });
-        };
-        updatePosition();
-        window.addEventListener('resize', updatePosition);
-        window.addEventListener('scroll', updatePosition, true);
-        return () => {
-            window.removeEventListener('resize', updatePosition);
-            window.removeEventListener('scroll', updatePosition, true);
-            // also clean up click listener which is added below
-            document.removeEventListener('mousedown', handleClickOutside);
-        };
+      const updatePosition = () => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const dropdownWidth = 256; // w-64 = 16rem = 256px
+        const dropdownHeight = 320; // approximate height of calendar
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+        const padding = 8;
+
+        // Calculate left position, ensure it doesn't go off-screen
+        let left = rect.left;
+        if (left + dropdownWidth > viewportWidth - padding) {
+          left = viewportWidth - dropdownWidth - padding;
+        }
+        if (left < padding) {
+          left = padding;
+        }
+
+        // Calculate top position, flip up if not enough space below
+        let top = rect.bottom + 8;
+        if (top + dropdownHeight > viewportHeight - padding) {
+          // Try placing above the input
+          top = rect.top - dropdownHeight - 8;
+          if (top < padding) {
+            // If not enough space above either, center it
+            top = Math.max(padding, (viewportHeight - dropdownHeight) / 2);
+          }
+        }
+
+        setCoords({ top, left });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+        // also clean up click listener which is added below
+        document.removeEventListener('mousedown', handleClickOutside);
+      };
     }
 
     document.addEventListener('mousedown', handleClickOutside);
@@ -663,79 +685,95 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
 
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
+  // Detect if mobile for centered modal approach
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 640);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
   const dropdownContent = (
     <AnimatePresence>
-        {isOpen && (
+      {isOpen && (
+        <motion.div
+          initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+          transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+          style={dropdownMode === 'fixed'
+            ? (isMobile
+              ? { position: 'fixed', top: coords.top, left: 8, right: 8, zIndex: 9999 }
+              : { position: 'fixed', top: coords.top, left: Math.max(8, Math.min(coords.left, window.innerWidth - 270)), zIndex: 9999 }
+            )
+            : undefined
+          }
+          onMouseDown={(e) => e.stopPropagation()} // Prevent close when clicking inside
+          className={
+            dropdownMode === 'fixed'
+              ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 p-4 max-w-[280px] mx-auto"
+              : (dropdownMode === 'absolute'
+                ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+                : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4")
+          }
+        >
           <motion.div
-            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
-            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
-            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
-            style={dropdownMode === 'fixed' ? { position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999 } : undefined}
-            onMouseDown={(e) => e.stopPropagation()} // Prevent close when clicking inside
-            className={
-              dropdownMode === 'fixed' 
-                ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64 p-4"
-                : (dropdownMode === 'absolute'
-                  ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
-                  : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4")
-            }
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="flex flex-col gap-2 mb-4"
           >
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="flex flex-col gap-2 mb-4"
-            >
-              {/* Year Navigation */}
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevYear(); }}
-                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronLeft size={14} />
-                </button>
-                <span className="text-sm font-bold text-gray-200">{viewDate.getFullYear()}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextYear(); }}
-                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronRight size={14} />
-                </button>
-              </div>
-
-              {/* Month Navigation */}
-              <div className="flex items-center justify-between">
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevMonth(); }}
-                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <span className="text-sm font-bold text-white uppercase tracking-wider">{months[viewDate.getMonth()]}</span>
-                <button
-                  type="button"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextMonth(); }}
-                  className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </motion.div>
-            <div className="grid grid-cols-7 gap-1 text-center mb-2">
-              {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
-                <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
-              ))}
+            {/* Year Navigation */}
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevYear(); }}
+                className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-sm font-bold text-gray-200">{viewDate.getFullYear()}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextYear(); }}
+                className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronRight size={14} />
+              </button>
             </div>
-            <div className="grid grid-cols-7 gap-1 place-items-center">
-              {renderCalendar()}
+
+            {/* Month Navigation */}
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handlePrevMonth(); }}
+                className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-sm font-bold text-white uppercase tracking-wider">{months[viewDate.getMonth()]}</span>
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleNextMonth(); }}
+                className="p-1 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+          <div className="grid grid-cols-7 gap-1 text-center mb-2">
+            {['D', 'S', 'T', 'Q', 'Q', 'S', 'S'].map((d, i) => (
+              <span key={i} className="text-[10px] text-gray-500 font-bold">{d}</span>
+            ))}
+          </div>
+          <div className="grid grid-cols-7 gap-1 place-items-center">
+            {renderCalendar()}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 
   return (
