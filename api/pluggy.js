@@ -13,9 +13,11 @@ const router = express.Router();
 router.use(express.json({ limit: '10mb' }));
 router.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
-const PLUGGY_CLIENT_ID = (process.env.PLUGGY_CLIENT_ID || '').trim();
-const PLUGGY_CLIENT_SECRET = (process.env.PLUGGY_CLIENT_SECRET || '').trim();
-const PLUGGY_API_KEY_STATIC = (process.env.PLUGGY_API_KEY || '').trim();
+const clean = (str) => (str || '').replace(/[\r\n\s]/g, '');
+
+const PLUGGY_CLIENT_ID = clean(process.env.PLUGGY_CLIENT_ID);
+const PLUGGY_CLIENT_SECRET = clean(process.env.PLUGGY_CLIENT_SECRET);
+const PLUGGY_API_KEY_STATIC = clean(process.env.PLUGGY_API_KEY);
 
 // Use api.pluggy.ai as default; sandbox.pluggy.ai is deprecated/returns 405
 const PLUGGY_API_URL = process.env.PLUGGY_API_URL || 'https://api.pluggy.ai';
@@ -48,23 +50,39 @@ const getPluggyApiKey = async () => {
     throw new Error('Pluggy credentials not configured (PLUGGY_CLIENT_ID/PLUGGY_CLIENT_SECRET).');
   }
 
-  try {
-    console.log(`>>> Pluggy: Requesting new API key with ID: ${PLUGGY_CLIENT_ID.substring(0, 5)}...`);
-    const response = await axios.post(`${PLUGGY_API_URL}/auth`, {
-      clientId: PLUGGY_CLIENT_ID,
-      clientSecret: PLUGGY_CLIENT_SECRET
-    });
+  // Debug credential matching (First 3 ... Last 3)
+  const debugId = `${PLUGGY_CLIENT_ID.substring(0, 3)}...${PLUGGY_CLIENT_ID.substring(PLUGGY_CLIENT_ID.length - 3)}`;
+  const debugSecret = `${PLUGGY_CLIENT_SECRET.substring(0, 3)}...${PLUGGY_CLIENT_SECRET.substring(PLUGGY_CLIENT_SECRET.length - 3)}`;
+  
+  console.log(`>>> Pluggy Auth Attempt:`);
+  console.log(`    URL: ${PLUGGY_API_URL}/auth`);
+  console.log(`    Client ID: ${debugId} (Length: ${PLUGGY_CLIENT_ID.length})`);
+  console.log(`    Client Secret: ${debugSecret} (Length: ${PLUGGY_CLIENT_SECRET.length})`);
 
-    console.log('>>> Pluggy Auth Response keys:', Object.keys(response.data));
+  try {
+    const response = await axios.post(
+      `${PLUGGY_API_URL}/auth`,
+      {
+        clientId: PLUGGY_CLIENT_ID,
+        clientSecret: PLUGGY_CLIENT_SECRET
+      },
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'User-Agent': 'ControlarPlus/1.0'
+        }
+      }
+    );
+
+    console.log('>>> Pluggy Auth Success. Response keys:', Object.keys(response.data));
 
     // Pluggy returns apiKey in the response
     cachedApiKey = response.data.apiKey;
     cachedApiKeyExpiry = Date.now() + TOKEN_TTL_MS;
-    console.log('>>> Pluggy: API key obtained and cached, length:', cachedApiKey?.length);
-
+    
     return cachedApiKey;
   } catch (error) {
-    console.error('>>> Pluggy Auth Error:', error.response?.data || error.message);
+    console.error('>>> Pluggy Auth CRITICAL FAILURE:', error.response?.data || error.message);
     // Clear cache on auth error
     cachedApiKey = null;
     cachedApiKeyExpiry = 0;
