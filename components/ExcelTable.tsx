@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
-import { Transaction } from '../types';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown } from './Icons';
+import { Transaction, ConnectedAccount } from '../types';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark } from './Icons';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
@@ -14,9 +15,10 @@ interface ExcelTableProps {
   onUpdate: (transaction: Transaction) => void;
   isManualMode?: boolean;
   onAdd?: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
+  accounts?: ConnectedAccount[];
 }
 
-export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd }) => {
+export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd, accounts = [] }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
@@ -25,6 +27,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
+
+  // Account Filter
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
   // Confirmation Card State
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -101,7 +106,13 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       const matchesStartDate = startDate ? t.date >= startDate : true;
       const matchesEndDate = endDate ? t.date <= endDate : true;
 
-      return matchesYear && matchesSearch && matchesStartDate && matchesEndDate;
+      // Account Filter
+      let matchesAccount = true;
+      if (selectedAccountId !== 'all') {
+        matchesAccount = t.accountId === selectedAccountId;
+      }
+
+      return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesAccount;
     })
     .sort((a, b) => {
       const aValue = a[sortField];
@@ -167,6 +178,13 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     return translatePluggyCategory(category);
   };
 
+  // Get selected account name for display
+  const getSelectedAccountLabel = () => {
+    if (selectedAccountId === 'all') return 'Todas as Contas';
+    const acc = accounts.find(a => a.id === selectedAccountId);
+    return acc ? (acc.name || acc.institution || 'Conta') : 'Conta Selecionada';
+  };
+
   return (
     <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
 
@@ -223,6 +241,38 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         </div>
 
         <div className="flex flex-wrap gap-2 items-center pt-2">
+          {/* Account Filter Dropdown */}
+          <div className="relative z-50">
+            <Dropdown>
+              <DropdownTrigger className="h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium min-w-[180px] justify-between">
+                <div className="flex items-center gap-2">
+                    <Filter size={16} className="text-[#d97757]" />
+                    <span className="truncate max-w-[140px]">{getSelectedAccountLabel()}</span>
+                </div>
+                <ArrowDownCircle size={14} className="text-gray-500" />
+              </DropdownTrigger>
+              <DropdownContent className="w-56" align="left">
+                <DropdownItem 
+                    onClick={() => setSelectedAccountId('all')}
+                    icon={Filter}
+                    className={selectedAccountId === 'all' ? 'bg-white/5 text-white' : ''}
+                >
+                    Todas as Contas
+                </DropdownItem>
+                {accounts.map(acc => (
+                    <DropdownItem 
+                        key={acc.id}
+                        onClick={() => setSelectedAccountId(acc.id)}
+                        icon={Landmark}
+                        className={selectedAccountId === acc.id ? 'bg-white/5 text-white' : ''}
+                    >
+                        {acc.name || acc.institution || 'Conta Sem Nome'}
+                    </DropdownItem>
+                ))}
+              </DropdownContent>
+            </Dropdown>
+          </div>
+
           {/* Year Selector */}
           <div className="w-28 sm:w-32">
             <CustomSelect
@@ -253,9 +303,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           </div>
 
           {/* Reset Button */}
-          {(startDate || endDate || selectedYear !== 0 && selectedYear !== new Date().getFullYear()) && (
+          {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedAccountId !== 'all') && (
             <button
-              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); }}
+              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedAccountId('all'); }}
               className="h-11 px-4 flex items-center gap-2 rounded-xl bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800 transition-all text-xs font-bold uppercase tracking-wider"
             >
               <X size={14} /> Limpar

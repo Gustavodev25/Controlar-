@@ -2,9 +2,10 @@ import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
@@ -48,6 +49,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [selectedYear, setSelectedYear] = React.useState<number>(new Date().getFullYear());
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
+
+  // Bank/Card Filter
+  const [selectedCardId, setSelectedCardId] = useState<string>('all');
 
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
@@ -164,7 +168,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         const matchesStartDate = startDate ? t.date >= startDate : true;
         const matchesEndDate = endDate ? t.date <= endDate : true;
 
-        return matchesYear && matchesSearch && matchesStartDate && matchesEndDate;
+        // Bank/Card Filter
+        let matchesCard = true;
+        if (selectedCardId !== 'all') {
+            // Check both cardId and accountId as they might be used interchangeably
+            matchesCard = t.cardId === selectedCardId || t.accountId === selectedCardId;
+        }
+
+        return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesCard;
       })
       .sort((a, b) => {
         const aValue: any = (a as any)[sortField];
@@ -173,7 +184,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [transactions, searchTerm, sortField, sortDirection]);
+  }, [transactions, searchTerm, sortField, sortDirection, selectedYear, startDate, endDate, selectedCardId]);
 
   const totalAmount = useMemo(() => {
     return filteredTransactions.reduce((acc, tx) => {
@@ -227,6 +238,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   };
 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
+
+  // Get selected card name for display
+  const getSelectedCardLabel = () => {
+    if (selectedCardId === 'all') return 'Todos os Cartões';
+    const card = creditCardAccounts.find(c => c.id === selectedCardId);
+    return card ? (card.name || card.institution || 'Cartão') : 'Cartão Selecionado';
+  };
 
   return (
     <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
@@ -297,8 +315,40 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           </div>
         </div>
 
-        {/* Date Filters Row */}
+        {/* Filters Row */}
         <div className="flex flex-wrap gap-2 items-center pt-2">
+           {/* Card Filter Dropdown */}
+           <div className="relative z-50">
+            <Dropdown>
+              <DropdownTrigger className="h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium min-w-[180px] justify-between">
+                <div className="flex items-center gap-2">
+                    <Filter size={16} className="text-[#d97757]" />
+                    <span className="truncate max-w-[140px]">{getSelectedCardLabel()}</span>
+                </div>
+                <ArrowDownCircle size={14} className="text-gray-500" />
+              </DropdownTrigger>
+              <DropdownContent className="w-56" align="left">
+                <DropdownItem 
+                    onClick={() => setSelectedCardId('all')}
+                    icon={Filter}
+                    className={selectedCardId === 'all' ? 'bg-white/5 text-white' : ''}
+                >
+                    Todos os Cartões
+                </DropdownItem>
+                {creditCardAccounts.map(card => (
+                    <DropdownItem 
+                        key={card.id}
+                        onClick={() => setSelectedCardId(card.id)}
+                        icon={CreditCard}
+                        className={selectedCardId === card.id ? 'bg-white/5 text-white' : ''}
+                    >
+                        {card.name || card.institution || 'Cartão Sem Nome'}
+                    </DropdownItem>
+                ))}
+              </DropdownContent>
+            </Dropdown>
+          </div>
+
           {/* Year Selector */}
           <div className="w-28 sm:w-32">
             <CustomSelect
@@ -329,9 +379,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           </div>
 
           {/* Reset Button */}
-          {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear())) && (
+          {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedCardId !== 'all') && (
             <button
-              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); }}
+              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedCardId('all'); }}
               className="h-11 px-4 flex items-center gap-2 rounded-xl bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800 transition-all text-xs font-bold uppercase tracking-wider"
             >
               <X size={14} /> Limpar

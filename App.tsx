@@ -3011,6 +3011,7 @@ const App: React.FC = () => {
                       onUpdate={handleUpdateTransaction}
                       isManualMode={!isProMode}
                       onAdd={handleAddTransaction}
+                      accounts={accountBalances.checkingAccounts}
                     />
                   </div>
                 )}
