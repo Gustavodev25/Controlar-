@@ -4,7 +4,6 @@ import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import express from 'express';
 import dotenv from 'dotenv';
-import apiRoutes from './api/routes.js';
 
 // Get the directory of the current file
 const __filename = fileURLToPath(import.meta.url);
@@ -18,14 +17,15 @@ console.log('[Vite] PLUGGY_CLIENT_ID loaded:', process.env.PLUGGY_CLIENT_ID ? 'Y
 const expressPlugin = () => {
   return {
     name: 'express-plugin',
-    configureServer(server) {
+    async configureServer(server) {
       const app = express();
 
       // Middleware needed for API parsing
       app.use(express.json({ limit: '50mb' }));
       app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-      // Mount API routes
+      // Mount API routes dynamically to avoid build-time execution
+      const apiRoutes = (await import('./api/routes.js')).default;
       app.use('/api', apiRoutes);
 
       // Attach Express app to Vite's middleware stack
