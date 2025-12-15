@@ -23,6 +23,8 @@ const PLUGGY_API_URL = process.env.PLUGGY_API_URL || 'https://api.pluggy.ai';
 console.log('>>> Pluggy Config:', {
   URL: PLUGGY_API_URL,
   HasClientId: !!PLUGGY_CLIENT_ID,
+  ClientIdPrefix: PLUGGY_CLIENT_ID ? PLUGGY_CLIENT_ID.substring(0, 4) + '...' : 'NONE',
+  SecretLength: PLUGGY_CLIENT_SECRET ? PLUGGY_CLIENT_SECRET.length : 0,
   EnvVar: process.env.PLUGGY_API_URL
 });
 
@@ -42,11 +44,12 @@ const getPluggyApiKey = async () => {
   }
 
   if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
+    console.error('>>> Pluggy Missing Credentials: ID or Secret is empty.');
     throw new Error('Pluggy credentials not configured (PLUGGY_CLIENT_ID/PLUGGY_CLIENT_SECRET).');
   }
 
   try {
-    console.log('>>> Pluggy: Requesting new API key...');
+    console.log(`>>> Pluggy: Requesting new API key with ID: ${PLUGGY_CLIENT_ID.substring(0, 5)}...`);
     const response = await axios.post(`${PLUGGY_API_URL}/auth`, {
       clientId: PLUGGY_CLIENT_ID,
       clientSecret: PLUGGY_CLIENT_SECRET
