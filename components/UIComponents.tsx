@@ -550,39 +550,44 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
   const dateValue = value ? new Date(value + 'T12:00:00') : null;
   const [viewDate, setViewDate] = useState(dateValue || new Date());
 
+  const formatDateDisplay = (isoDate: string) => {
+    if (!isoDate) return '';
+    const [y, m, d] = isoDate.split('-');
+    return `${d}/${m}/${y}`;
+  };
+
+  const [inputValue, setInputValue] = useState('');
+
+  // Sync input value when external value changes
+  useEffect(() => {
+    setInputValue(value ? formatDateDisplay(value) : '');
+    if (value) {
+       setViewDate(new Date(value + 'T12:00:00'));
+    }
+  }, [value]);
+
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      // For fixed mode, we check if click is outside BOTH the container AND the dropdown (which is in portal)
-      // Since portal renders outside, we need a way to identify it.
-      // But standard logic: click on document closes it. Click on container toggles.
-      // We can stop propagation on dropdown click.
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        // If fixed, we rely on the dropdown content stopping propagation?
-        // Actually, for portal, the event might bubble up to body.
-        // Let's use a simpler approach: check if target is inside the dropdown element?
-        // The dropdown is not a child of containerRef in DOM.
-        // We'll attach a ref to the dropdown content too?
-        // Or just rely on standard behavior?
-        // Let's assume standard behavior needs adjustment for Portal.
-        // Actually, React events bubble through Portal. So checking containerRef might work if I attach ref to portal content? No.
-
-        // Strategy: Use a separate check or valid click outside hook.
-        // For now, I'll close it if it's not the container.
         setIsOpen(false);
+        // On blur/close, revert input to valid value if invalid?
+        // For now, let's keep what user typed or revert if empty/invalid?
+        // Ideally, if invalid, maybe clear or revert.
+        // Let's revert to props value if current input is invalid length?
+        // But the user might be mid-typing.
+        // Simple behavior: just close.
       }
     };
 
-    // Logic to update position for fixed mode
     if (isOpen && dropdownMode === 'fixed' && containerRef.current) {
       const updatePosition = () => {
         const rect = containerRef.current!.getBoundingClientRect();
-        const dropdownWidth = 256; // w-64 = 16rem = 256px
-        const dropdownHeight = 320; // approximate height of calendar
+        const dropdownWidth = 256;
+        const dropdownHeight = 320;
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
         const padding = 8;
 
-        // Calculate left position, ensure it doesn't go off-screen
         let left = rect.left;
         if (left + dropdownWidth > viewportWidth - padding) {
           left = viewportWidth - dropdownWidth - padding;
@@ -591,13 +596,10 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
           left = padding;
         }
 
-        // Calculate top position, flip up if not enough space below
         let top = rect.bottom + 8;
         if (top + dropdownHeight > viewportHeight - padding) {
-          // Try placing above the input
           top = rect.top - dropdownHeight - 8;
           if (top < padding) {
-            // If not enough space above either, center it
             top = Math.max(padding, (viewportHeight - dropdownHeight) / 2);
           }
         }
@@ -610,7 +612,6 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
       return () => {
         window.removeEventListener('resize', updatePosition);
         window.removeEventListener('scroll', updatePosition, true);
-        // also clean up click listener which is added below
         document.removeEventListener('mousedown', handleClickOutside);
       };
     }
@@ -632,8 +633,51 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     const year = viewDate.getFullYear();
     const month = String(viewDate.getMonth() + 1).padStart(2, '0');
     const dayStr = String(day).padStart(2, '0');
-    onChange(`${year}-${month}-${dayStr}`);
+    const isoDate = `${year}-${month}-${dayStr}`;
+    
+    onChange(isoDate);
+    setInputValue(`${dayStr}/${month}/${year}`);
     setIsOpen(false);
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    let val = e.target.value;
+    
+    // Auto-masking for DD/MM/YYYY
+    // Only allow digits and slashes (though we will strip non-digits to re-format)
+    const numeric = val.replace(/\D/g, '');
+    
+    if (numeric.length > 8) return; // Max 8 digits
+
+    if (numeric.length <= 2) {
+       val = numeric;
+    } else if (numeric.length <= 4) {
+       val = `${numeric.slice(0, 2)}/${numeric.slice(2)}`;
+    } else {
+       val = `${numeric.slice(0, 2)}/${numeric.slice(2, 4)}/${numeric.slice(4, 8)}`;
+    }
+    
+    setInputValue(val);
+
+    if (val.length === 10) {
+        const [dStr, mStr, yStr] = val.split('/');
+        const d = parseInt(dStr, 10);
+        const m = parseInt(mStr, 10);
+        const y = parseInt(yStr, 10);
+        
+        if (d > 0 && d <= 31 && m > 0 && m <= 12 && y > 1900 && y < 2100) {
+             const isoDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+             
+             // Verify validity (e.g. prevents 31/02)
+             const checkDate = new Date(isoDate + 'T12:00:00');
+             if (checkDate.getDate() === d && checkDate.getMonth() + 1 === m) {
+                 onChange(isoDate);
+                 setViewDate(checkDate);
+             }
+        }
+    } else if (val === '') {
+        onChange('');
+    }
   };
 
   const renderCalendar = () => {
@@ -677,15 +721,8 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     return days;
   };
 
-  const formatDateDisplay = (isoDate: string) => {
-    if (!isoDate) return '';
-    const [y, m, d] = isoDate.split('-');
-    return `${d}/${m}/${y}`;
-  };
-
   const months = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
 
-  // Detect if mobile for centered modal approach
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
@@ -710,7 +747,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
             )
             : undefined
           }
-          onMouseDown={(e) => e.stopPropagation()} // Prevent close when clicking inside
+          onMouseDown={(e) => e.stopPropagation()}
           className={
             dropdownMode === 'fixed'
               ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 p-4 max-w-[280px] mx-auto"
@@ -779,16 +816,41 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div
-        onClick={() => setIsOpen(!isOpen)}
         className={`
-          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-pointer transition-all
+          w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 cursor-text transition-all
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
+        onClick={() => {
+           // If input isn't focused, focus it? 
+           // Clicking container anywhere should focus input or open calendar.
+           // Since input is full width/height (almost), clicking it handles focus.
+           // This handler handles clicking the icon or padding.
+           setIsOpen(true);
+        }}
       >
         <Calendar size={16} className={value ? 'text-[#d97757]' : 'text-gray-500'} />
-        <span className={`truncate ${!value ? 'text-gray-500' : 'text-[#faf9f5]'}`}>
-          {value ? formatDateDisplay(value) : placeholder}
-        </span>
+        <input
+            type="text"
+            value={inputValue}
+            onChange={handleInputChange}
+            onFocus={() => setIsOpen(true)}
+            placeholder={placeholder}
+            maxLength={10}
+            className="bg-transparent border-none outline-none w-full text-[#faf9f5] placeholder-gray-500 text-sm font-medium"
+        />
+        {/* Clear Button if needed? Or just let user delete text */}
+        {value && (
+            <button
+                onClick={(e) => {
+                    e.stopPropagation();
+                    onChange('');
+                    setInputValue('');
+                }}
+                className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700/50"
+            >
+                <X size={12} />
+            </button>
+        )}
       </div>
 
       {dropdownMode === 'fixed' ? createPortal(dropdownContent, document.body) : dropdownContent}

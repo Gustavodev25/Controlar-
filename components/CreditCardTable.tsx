@@ -172,7 +172,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         let matchesCard = true;
         if (selectedCardId !== 'all') {
             // Check both cardId and accountId as they might be used interchangeably
-            matchesCard = t.cardId === selectedCardId || t.accountId === selectedCardId;
+            // Using String() to ensure safe comparison against potential number/string mismatches
+            const targetId = String(selectedCardId);
+            const txCardId = t.cardId ? String(t.cardId) : '';
+            const txAccountId = t.accountId ? String(t.accountId) : '';
+            
+            matchesCard = txCardId === targetId || txAccountId === targetId;
         }
 
         return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesCard;
