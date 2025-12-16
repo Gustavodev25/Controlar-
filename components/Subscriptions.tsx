@@ -959,25 +959,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 </>
               )}
 
-              {/* Pro Mode Blocking Message - ADDED */}
-              {modalMode === 'ai' && isProMode && (
-                <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-gray-400">
-                  <div className="w-16 h-16 rounded-full bg-[#373734] flex items-center justify-center mb-4">
-                    <img src={coinzinhaImg} className="w-10 h-10 rounded-full grayscale opacity-50" alt="Coinzinha" />
-                  </div>
-                  <p className="font-bold text-lg mb-2 text-white">Coinzinha AI desabilitada</p>
-                  <p className="text-sm leading-relaxed max-w-[280px]">
-                    Você está no modo <strong>Auto</strong> - assinaturas são importadas automaticamente.
-                    Para adicionar manualmente, use o modo <strong>Manual</strong>.
-                  </p>
-                  <button
-                    onClick={() => setModalMode('manual')}
-                    className="mt-6 px-5 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#d97757]/20"
-                  >
-                    Ir para Modo Manual
-                  </button>
-                </div>
-              )}
+
 
               {/* MANUAL FORM */}
               {(modalMode === 'manual' || editingId) && (
