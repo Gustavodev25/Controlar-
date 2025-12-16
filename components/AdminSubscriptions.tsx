@@ -196,9 +196,21 @@ export const AdminSubscriptions: React.FC = () => {
         pastDue: users.filter(u => u.subscription?.status === 'past_due').length,
         mrr: users.reduce((acc, u) => {
             if (u.subscription?.status !== 'active') return acc;
-            const planValue = u.subscription?.plan === 'family' ? 49.90 : 
-                            u.subscription?.plan === 'pro' ? 29.90 : 0;
-            return acc + planValue;
+            
+            const isAnnual = u.subscription?.billingCycle === 'annual';
+            const plan = u.subscription?.plan;
+
+            let monthlyValue = 0;
+
+            if (plan === 'family') {
+                // Family: 69.90 monthly / 749.00 annual
+                monthlyValue = isAnnual ? (749.00 / 12) : 69.90;
+            } else if (plan === 'pro') {
+                // Pro: 34.90 monthly / 399.00 annual
+                monthlyValue = isAnnual ? (399.00 / 12) : 34.90;
+            }
+
+            return acc + monthlyValue;
         }, 0)
     }), [users]);
 
