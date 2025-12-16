@@ -15,6 +15,7 @@ interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
   isLoading?: boolean;
   onRefresh?: () => void;
+  onDebugSync?: () => void;
   lastSynced?: Record<string, string>;
   storageKey?: string;
   userId?: string | null;
@@ -69,6 +70,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   accounts,
   isLoading = false,
   onRefresh,
+  onDebugSync,
   lastSynced = {},
   userId,
   isProMode = true,
@@ -93,22 +95,26 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (onRefresh) onRefresh();
   };
 
-  // Helper to calculate time remaining until midnight (00h)
+  // Helper to calculate time remaining until next sync (00:00)
   const getTimeRemaining = (lastSyncedStr: string) => {
     if (!lastSyncedStr) return null;
     const lastSync = new Date(lastSyncedStr);
 
     if (isNaN(lastSync.getTime())) return null;
 
-    // Próxima sincronização é à meia-noite do dia seguinte
+    // Próxima sincronização é às 17:03
     const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setDate(nextMidnight.getDate() + 1);
-    nextMidnight.setHours(0, 0, 0, 0);
+    const nextSync = new Date(now);
+    nextSync.setHours(17, 3, 0, 0); // Define para 17:03
 
-    const diff = nextMidnight.getTime() - now.getTime();
+    // Se já passou das 17:03 hoje, a próxima é amanhã às 17:03
+    if (now > nextSync) {
+        nextSync.setDate(nextSync.getDate() + 1);
+    }
 
-    if (diff <= 0) return null;
+    const diff = nextSync.getTime() - now.getTime();
+
+    if (diff <= 0) return null; // Should basically never happen with logic above
 
     const hours = Math.floor(diff / (1000 * 60 * 60));
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
