@@ -16,11 +16,13 @@ import {
     Calendar,
     DollarSign,
     ExternalLink,
-    Loader2
+    Loader2,
+    Ban
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { User as UserType } from '../types';
 import { EmptyState } from './EmptyState';
+import { ConfirmationBar } from './ConfirmationBar';
 import { 
     Dropdown, 
     DropdownTrigger, 
@@ -44,6 +46,12 @@ interface AsaasPayment {
     paymentDate?: string;
     value: number;
     netValue: number;
+    originalValue?: number;
+    interestValue?: number;
+    discount?: {
+        value: number;
+        type: 'PERCENTAGE' | 'FIXED';
+    };
     billingType: string;
     status: 'PENDING' | 'RECEIVED' | 'CONFIRMED' | 'OVERDUE' | 'REFUNDED' | 'RECEIVED_IN_CASH' | 'REFUND_REQUESTED' | 'CHARGEBACK_REQUESTED' | 'CHARGEBACK_DISPUTE' | 'AWAITING_CHARGEBACK_REVERSAL' | 'DUNNING_REQUESTED' | 'DUNNING_RECEIVED' | 'AWAITING_RISK_ANALYSIS';
     description?: string;
@@ -64,6 +72,8 @@ export const AdminSubscriptions: React.FC = () => {
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [userPayments, setUserPayments] = useState<AsaasPayment[]>([]);
     const [isLoadingPayments, setIsLoadingPayments] = useState(false);
+    const [cancelSubscriptionId, setCancelSubscriptionId] = useState<string | null>(null);
+    const [isCancelling, setIsCancelling] = useState(false);
 
     // Load users
     useEffect(() => {
@@ -114,6 +124,48 @@ export const AdminSubscriptions: React.FC = () => {
 
         loadPayments();
     }, [selectedUser]);
+
+    const handleCancelSubscription = async () => {
+        if (!cancelSubscriptionId) return;
+        setIsCancelling(true);
+
+        try {
+            // Find user to get the full subscription ID if needed, 
+            // but we likely stored the asaasSubscriptionId in the cancelSubscriptionId state
+            // wait, we need the Asaas ID.
+            // Let's assume cancelSubscriptionId IS the Asaas Subscription ID.
+            
+            const response = await fetch(`/api/asaas/subscription/${cancelSubscriptionId}`, {
+                method: 'DELETE'
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                toast.success('Assinatura cancelada no Asaas com sucesso.');
+                // Update local state
+                setUsers(prev => prev.map(u => {
+                    if (u.subscription?.asaasSubscriptionId === cancelSubscriptionId) {
+                        return {
+                            ...u,
+                            subscription: {
+                                ...u.subscription,
+                                status: 'canceled'
+                            }
+                        };
+                    }
+                    return u;
+                }));
+            } else {
+                toast.error('Erro ao cancelar assinatura: ' + (data.error || 'Erro desconhecido'));
+            }
+        } catch (error) {
+            console.error('Cancel error:', error);
+            toast.error('Erro ao processar cancelamento.');
+        } finally {
+            setIsCancelling(false);
+            setCancelSubscriptionId(null);
+        }
+    };
 
     // Filter users
     const filteredUsers = useMemo(() => {
@@ -193,13 +245,13 @@ export const AdminSubscriptions: React.FC = () => {
             case 'CONFIRMED':
             case 'RECEIVED':
             case 'RECEIVED_IN_CASH':
-                return <span className="text-emerald-400 text-xs">Pago</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-xs font-medium border border-emerald-500/20">Pago</span>;
             case 'PENDING':
-                return <span className="text-yellow-400 text-xs">Pendente</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-yellow-500/10 text-yellow-400 text-xs font-medium border border-yellow-500/20">Pendente</span>;
             case 'OVERDUE':
-                return <span className="text-red-400 text-xs">Atrasado</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/10 text-red-400 text-xs font-medium border border-red-500/20">Atrasado</span>;
             case 'REFUNDED':
-                return <span className="text-gray-400 text-xs">Estornado</span>;
+                return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-gray-500/10 text-gray-400 text-xs font-medium border border-gray-500/20">Estornado</span>;
             default:
                 return <span className="text-gray-400 text-xs">{status}</span>;
         }
@@ -361,13 +413,27 @@ export const AdminSubscriptions: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3 text-center">
-                                            <button
-                                                onClick={() => setSelectedUser(user)}
-                                                className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                                                title="Ver Faturas"
-                                            >
-                                                <Eye size={16} />
-                                            </button>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    onClick={() => setSelectedUser(user)}
+                                                    className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                                                    title="Ver Faturas"
+                                                >
+                                                    <Eye size={16} />
+                                                </button>
+                                                
+                                                {/* Cancel Button */}
+                                                {(user.subscription?.status === 'active' || user.subscription?.status === 'pending_payment' || user.subscription?.status === 'past_due') && 
+                                                  user.subscription.asaasSubscriptionId && (
+                                                    <button
+                                                        onClick={() => setCancelSubscriptionId(user.subscription!.asaasSubscriptionId!)}
+                                                        className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                        title="Cancelar Assinatura Asaas"
+                                                    >
+                                                        <Ban size={16} />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))}
@@ -426,7 +492,7 @@ export const AdminSubscriptions: React.FC = () => {
                                         <div>
                                             <p className="text-lg font-bold text-white">{selectedUser.name}</p>
                                             <p className="text-sm text-gray-400 flex items-center gap-2">
-                                                ID Asaas: <span className="font-mono text-xs">{selectedUser.subscription?.asaasCustomerId || 'N/A'}</span>
+                                                ID Asaas: <span className="font-mono text-xs text-gray-500 bg-gray-900 px-1.5 py-0.5 rounded">{selectedUser.subscription?.asaasCustomerId || 'N/A'}</span>
                                             </p>
                                         </div>
                                     </div>
@@ -456,13 +522,31 @@ export const AdminSubscriptions: React.FC = () => {
                                                             <p className="text-sm font-bold text-white">
                                                                 {formatCurrency(payment.value)}
                                                             </p>
+                                                            {/* Show original value if different */}
+                                                            {payment.originalValue && payment.originalValue !== payment.value && (
+                                                                <p className="text-xs text-gray-500 line-through">
+                                                                    {formatCurrency(payment.originalValue)}
+                                                                </p>
+                                                            )}
                                                             <div className="mt-1">
                                                                 {getPaymentStatusBadge(payment.status)}
                                                             </div>
                                                         </div>
                                                     </div>
                                                     
-                                                    <div className="flex items-center justify-between pt-3 border-t border-gray-800 mt-3 text-xs text-gray-400">
+                                                    {/* Discount Info */}
+                                                    {payment.discount && payment.discount.value > 0 && (
+                                                        <div className="bg-green-500/5 border border-green-500/10 rounded-lg px-2 py-1 mb-2 inline-flex items-center gap-1.5">
+                                                            <span className="text-[10px] text-green-500 font-medium">
+                                                                Desconto aplicado: 
+                                                                {payment.discount.type === 'PERCENTAGE' 
+                                                                    ? ` ${payment.discount.value}%` 
+                                                                    : ` R$ ${payment.discount.value.toFixed(2)}`}
+                                                            </span>
+                                                        </div>
+                                                    )}
+
+                                                    <div className="flex items-center justify-between pt-3 border-t border-gray-800 mt-2 text-xs text-gray-400">
                                                         <div className="flex gap-4">
                                                             <div className="flex items-center gap-1.5">
                                                                 <Calendar size={12} />
@@ -498,6 +582,19 @@ export const AdminSubscriptions: React.FC = () => {
                 </AnimatePresence>,
                 document.body
             )}
+            
+            {/* Cancel Confirmation */}
+            <ConfirmationBar
+                isOpen={!!cancelSubscriptionId}
+                onCancel={() => setCancelSubscriptionId(null)}
+                onConfirm={handleCancelSubscription}
+                label="Tem certeza que deseja cancelar a assinatura?"
+                description="Isso interromperá cobranças futuras. Faturas já geradas podem permanecer pendentes."
+                confirmText={isCancelling ? "Cancelando..." : "Sim, Cancelar Assinatura"}
+                cancelText="Voltar"
+                isDestructive={true}
+            />
         </div>
     );
 };
+
