@@ -32,6 +32,7 @@ import {
 } from './Dropdown';
 import NumberFlow from '@number-flow/react';
 import { toast } from 'sonner';
+import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 
 // Extended User interface with id
 interface SystemUser extends UserType {
@@ -383,11 +384,11 @@ export const AdminSubscriptions: React.FC = () => {
                                     <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
                                         <td className="px-4 py-3">
                                             <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
+                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
                                                     {user.avatarUrl ? (
                                                         <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
                                                     ) : (
-                                                        <User size={14} />
+                                                        getInitials(user.name || 'U')
                                                     )}
                                                 </div>
                                                 <div>
@@ -482,11 +483,11 @@ export const AdminSubscriptions: React.FC = () => {
 
                                 <div className="p-6 overflow-y-auto custom-scrollbar relative z-10 flex-1">
                                     <div className="flex items-center gap-4 mb-6">
-                                        <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center text-gray-400">
+                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${selectedUser.avatarUrl ? 'bg-gray-800' : getAvatarColors(selectedUser.name || '').bg} ${selectedUser.avatarUrl ? 'text-white' : getAvatarColors(selectedUser.name || '').text}`}>
                                             {selectedUser.avatarUrl ? (
                                                 <img src={selectedUser.avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
                                             ) : (
-                                                <User size={20} />
+                                                getInitials(selectedUser.name || 'U')
                                             )}
                                         </div>
                                         <div>
