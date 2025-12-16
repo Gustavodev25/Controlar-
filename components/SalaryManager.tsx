@@ -366,7 +366,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
         }
       `}</style>
       {/* Header com título e switch */}
-      <div className="flex flex-col gap-3 mb-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 mb-4">
         {/* Linha 1: Título */}
         <div>
           <h2 className="text-lg font-semibold text-white">Controle de Renda</h2>

@@ -1584,7 +1584,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     return (
         <div className={cn(
             "fixed z-50 flex items-center justify-center transition-all duration-300",
-            isFullScreen ? "inset-0 bg-black/50 backdrop-blur-sm" : "bottom-0 right-6"
+            isFullScreen ? "inset-0 bg-black/50 backdrop-blur-sm" : "bottom-6 right-6"
         )}>
             {/* Speech Bubble - Typewriter effect com surgimento do Coinzinha */}
             <AnimatePresence>
@@ -1675,7 +1675,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                     width: isFullScreen ? "100vw" : (isOpen ? OPEN_WIDTH : 56),
                     height: isFullScreen ? "100vh" : (isOpen ? OPEN_HEIGHT : 56),
                     borderRadius: isFullScreen ? 0 : (isOpen ? 16 : 28),
-                    y: isFullScreen ? 0 : (isOpen ? -24 : (isHovered ? -24 : 32)),
+                    y: isFullScreen ? 0 : (isOpen ? -24 : (isHovered ? -8 : 0)),
                 }}
                 transition={{
                     ...SPRING_CONFIG,
