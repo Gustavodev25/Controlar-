@@ -825,7 +825,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
             dropdownMode === 'fixed'
               ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 p-4 max-w-[280px] mx-auto"
               : (dropdownMode === 'absolute'
-                ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+                ? "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64 right-0"
                 : "bg-[#30302E]/50 border border-[#373734] rounded-2xl w-full mt-2 p-4")
           }
         >
