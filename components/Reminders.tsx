@@ -205,8 +205,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // Modal Animation & State
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  // Se estiver no modo Pro, forçar modo manual
-  const [modalMode, setModalMode] = useState<ModalMode>(isProMode ? 'manual' : 'ai');
+  const [modalMode, setModalMode] = useState<ModalMode>('ai');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   // AI State - Chat System (igual AIModal)
@@ -309,17 +308,14 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       const savedCount = localStorage.getItem('coinzinha_starter_count');
       if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
 
-      // Forçar modo manual quando no modo Auto
-      if (isProMode) {
-        setModalMode('manual');
-      }
+      // Não forçar mais modo manual no modo Auto - AI liberada
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
         });
       });
-      // Inicializar mensagem de boas-vindas do chat (apenas se não for modo Pro)
-      if (chatMessages.length === 0 && !isProMode) {
+      // Inicializar mensagem de boas-vindas do chat
+      if (chatMessages.length === 0) {
         setChatMessages([{
           id: 'init',
           role: 'assistant',
@@ -756,17 +752,15 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   />
 
                   <button
-                    onClick={() => !isProMode && setModalMode('ai')}
-                    disabled={isProMode}
+                    onClick={() => setModalMode('ai')}
                     className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
-                      } ${isProMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    title={isProMode ? 'Desabilitado no modo Auto' : undefined}
+                      }`}
                   >
                     <img
                       src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'} ${isProMode ? 'grayscale' : ''}`}
+                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
                       alt="Coinzinha"
                     />
                     Coinzinha
@@ -795,8 +789,8 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
             {/* Content Modal */}
             <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual AIModal) - Bloqueado no modo Auto --- */}
-              {modalMode === 'ai' && !isProMode && (
+              {/* --- AI MODE (Chat Style igual AIModal) --- */}
+              {modalMode === 'ai' && (
                 <>
                   {/* Área de mensagens */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">

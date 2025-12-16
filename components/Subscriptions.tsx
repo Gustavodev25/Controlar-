@@ -199,8 +199,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
 
 
-  // Mode state - Se estiver no modo Pro, forçar modo manual
-  const [modalMode, setModalMode] = useState<'ai' | 'manual'>(isProMode ? 'manual' : 'ai');
+  // Mode state
+  const [modalMode, setModalMode] = useState<'ai' | 'manual'>('ai');
 
   // AI State - Chat System (igual Reminders)
   interface ChatMessage {
@@ -332,17 +332,14 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
       const savedCount = localStorage.getItem('coinzinha_starter_count');
       if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
 
-      // Forçar modo manual quando no modo Auto
-      if (isProMode) {
-        setModalMode('manual');
-      }
+      // Não forçar mais modo manual no modo Auto - AI liberada
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
         });
       });
-      // Inicializar mensagem de boas-vindas do chat (apenas se não for modo Pro)
-      if (chatMessages.length === 0 && !isProMode) {
+      // Inicializar mensagem de boas-vindas do chat
+      if (chatMessages.length === 0) {
         setChatMessages([{
           id: 'init',
           role: 'assistant',
@@ -800,17 +797,15 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                   />
 
                   <button
-                    onClick={() => !isProMode && setModalMode('ai')}
-                    disabled={isProMode}
+                    onClick={() => setModalMode('ai')}
                     className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
                       ? 'text-white'
                       : 'text-gray-500 hover:text-gray-300'
-                      } ${isProMode ? 'opacity-50 cursor-not-allowed' : ''}`}
-                    title={isProMode ? 'Desabilitado no modo Auto' : undefined}
+                      }`}
                   >
                     <img
                       src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'} ${isProMode ? 'grayscale' : ''}`}
+                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
                       alt="Coinzinha"
                     />
                     Coinzinha
@@ -837,8 +832,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
             {/* Content Modal */}
             <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual Reminders) - Bloqueado no modo Auto --- */}
-              {modalMode === 'ai' && !editingId && !isProMode && (
+              {/* --- AI MODE (Chat Style igual Reminders) --- */}
+              {modalMode === 'ai' && !editingId && (
                 <>
                   {/* Área de mensagens */}
                   <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
