@@ -21,7 +21,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_users';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_users' | 'chat';
 
 // --- NAVITEM: Item Individual ---
 interface NavItemProps {
@@ -144,9 +144,10 @@ interface NavGroupProps {
   isActiveParent: boolean;
   children: React.ReactNode;
   onToggleSidebar: () => void;
+  badge?: number;
 }
 
-const NavGroup: React.FC<NavGroupProps> = ({ label, icon, isOpen, isActiveParent, children, onToggleSidebar }) => {
+const NavGroup: React.FC<NavGroupProps> = ({ label, icon, isOpen, isActiveParent, children, onToggleSidebar, badge }) => {
   const [isExpanded, setIsExpanded] = useState(isActiveParent);
   const [isHovered, setIsHovered] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
@@ -196,6 +197,11 @@ const NavGroup: React.FC<NavGroupProps> = ({ label, icon, isOpen, isActiveParent
           <span className={`transition-colors duration-300 ${isActiveParent ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
             {icon}
           </span>
+          {(badge || 0) > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white z-20 border-2 border-[#30302E]">
+              {badge && badge > 9 ? '9+' : badge}
+            </span>
+          )}
         </div>
 
         <AnimatePresence>
@@ -442,8 +448,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                   </NavGroup>
 
-                  <NavItem active={activeTab === 'reminders'} onClick={() => handleNavClick('reminders')} icon={<div className="scale-90"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg></div>} label="Lembretes" isOpen={isOpen} badge={overdueRemindersCount} />
-                  <NavItem active={activeTab === 'subscriptions'} onClick={() => handleNavClick('subscriptions')} icon={<RotateCcw size={20} />} label="Assinaturas" isOpen={isOpen} />
+                  {/* Grupo Recorrências (Lembretes + Assinaturas) */}
+                  <NavGroup
+                    label="Recorrências"
+                    icon={<div className="scale-90"><svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2" /><line x1="16" x2="16" y1="2" y2="6" /><line x1="8" x2="8" y1="2" y2="6" /><line x1="3" x2="21" y1="10" y2="10" /><path d="M17 14h-6" /><path d="M13 18H7" /><path d="M7 14h.01" /><path d="M17 18h.01" /></svg></div>}
+                    isOpen={isOpen}
+                    isActiveParent={activeTab === 'reminders' || activeTab === 'subscriptions'}
+                    onToggleSidebar={() => setIsOpen(true)}
+                    badge={overdueRemindersCount}
+                  >
+                    <NavItem
+                      active={activeTab === 'reminders'}
+                      onClick={() => handleNavClick('reminders')}
+                      icon={<div className="scale-90"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9" /><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" /></svg></div>}
+                      label="Lembretes"
+                      isOpen={isOpen}
+                      isChild={true}
+                      badge={overdueRemindersCount}
+                    />
+                    <NavItem
+                      active={activeTab === 'subscriptions'}
+                      onClick={() => handleNavClick('subscriptions')}
+                      icon={<div className="scale-90"><RotateCcw size={18} /></div>}
+                      label="Assinaturas"
+                      isOpen={isOpen}
+                      isChild={true}
+                    />
+                  </NavGroup>
                   <NavItem active={activeTab === 'budgets'} onClick={() => handleNavClick('budgets')} icon={<MathMaxMin size={20} />} label="Metas" isOpen={isOpen} />
                   <NavItem active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />

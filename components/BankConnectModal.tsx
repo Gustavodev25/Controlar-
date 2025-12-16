@@ -12,6 +12,7 @@ interface BankConnectModalProps {
     onClose: () => void;
     userId: string | null;
     onSuccess?: (accounts: ConnectedAccount[]) => void;
+    forceSyncItemId?: string | null;
 }
 
 const API_BASE = '/api';
@@ -100,7 +101,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     isOpen,
     onClose,
     userId,
-    onSuccess
+    onSuccess,
+    forceSyncItemId
 }) => {
     // UI States
     const [view, setView] = useState<'connect' | 'manage'>('connect');
@@ -446,7 +448,25 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             });
             // Fetch token when modal opens
             if (userId) {
-                fetchConnectToken();
+                if (forceSyncItemId) {
+                    setShowPluggyWidget(false);
+                    setError(null);
+                    setConnectToken(null);
+
+                    (async () => {
+                        try {
+                            const synced = await runFullSync(forceSyncItemId);
+                            if (onSuccess) onSuccess(synced);
+                            setTimeout(() => onClose(), 1500);
+                        } catch (err: any) {
+                            console.error('Error syncing Pluggy item:', err);
+                            setSyncStatus('error');
+                            setSyncMessage(err?.message || 'Erro ao sincronizar transações.');
+                        }
+                    })();
+                } else {
+                    fetchConnectToken();
+                }
             }
         } else {
             setIsAnimating(false);
@@ -664,7 +684,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-base font-semibold text-white">
-                                    {view === 'manage' ? 'Gerenciar Conexões' : 'Conectar Banco'}
+                                    {forceSyncItemId ? 'Sincronizar Banco' : view === 'manage' ? 'Gerenciar Conexões' : 'Conectar Banco'}
                                 </h3>
                                 <p className="text-xs text-gray-500">Open Finance - Pluggy</p>
                             </div>
@@ -801,7 +821,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                                                     <CheckCircle className="text-emerald-500" size={32} />
                                                 </div>
                                                 <div className="text-center">
-                                                    <p className="text-white font-medium mb-1">Conexao concluida!</p>
+                                                    <p className="text-white font-medium mb-1">Sincronização concluída!</p>
                                                     <p className="text-gray-400 text-sm">{syncMessage}</p>
                                                 </div>
                                             </>

@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo, type JSX } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles,
@@ -16,9 +15,7 @@ import {
     MessageSquare,
     ChevronRight,
     Maximize2,
-    Minimize2,
-    PanelLeftClose,
-    PanelLeft
+    Minimize2
 } from 'lucide-react';
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
@@ -32,63 +29,6 @@ import coinzinhaImg from '../assets/coinzinha.png';
 function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs));
 }
-
-// --- Formatador de Texto da IA (remove emojis e renderiza markdown) ---
-const FormattedAIText = ({ text }: { text: string }) => {
-    // Remove emojis
-    const removeEmojis = (str: string) => {
-        return str.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[\u{1F000}-\u{1F02F}]|[\u{1F0A0}-\u{1F0FF}]|[\u{1F100}-\u{1F64F}]|[\u{1F680}-\u{1F6FF}]|[\u{1F910}-\u{1F96B}]|[\u{1F980}-\u{1F9E0}]|[\u{1FA00}-\u{1FA6F}]|[\u{1FA70}-\u{1FAFF}]|[\u{231A}-\u{231B}]|[\u{23E9}-\u{23F3}]|[\u{23F8}-\u{23FA}]|[\u{25AA}-\u{25AB}]|[\u{25B6}]|[\u{25C0}]|[\u{25FB}-\u{25FE}]|[\u{2614}-\u{2615}]|[\u{2648}-\u{2653}]|[\u{267F}]|[\u{2693}]|[\u{26A1}]|[\u{26AA}-\u{26AB}]|[\u{26BD}-\u{26BE}]|[\u{26C4}-\u{26C5}]|[\u{26CE}]|[\u{26D4}]|[\u{26EA}]|[\u{26F2}-\u{26F3}]|[\u{26F5}]|[\u{26FA}]|[\u{26FD}]|[\u{2702}]|[\u{2705}]|[\u{2708}-\u{270D}]|[\u{270F}]|[\u{2712}]|[\u{2714}]|[\u{2716}]|[\u{271D}]|[\u{2721}]|[\u{2728}]|[\u{2733}-\u{2734}]|[\u{2744}]|[\u{2747}]|[\u{274C}]|[\u{274E}]|[\u{2753}-\u{2755}]|[\u{2757}]|[\u{2763}-\u{2764}]|[\u{2795}-\u{2797}]|[\u{27A1}]|[\u{27B0}]|[\u{27BF}]|[\u{2934}-\u{2935}]|[\u{2B05}-\u{2B07}]|[\u{2B1B}-\u{2B1C}]|[\u{2B50}]|[\u{2B55}]|[\u{3030}]|[\u{303D}]|[\u{3297}]|[\u{3299}]|[\u{1F004}]|[\u{1F0CF}]/gu, '').trim();
-    };
-
-    const cleanText = removeEmojis(text);
-    const lines = cleanText.split('\n');
-
-    return (
-        <div className="space-y-2">
-            {lines.map((line, lineIndex) => {
-                const trimmedLine = line.trim();
-
-                // Linha vazia
-                if (!trimmedLine) return <div key={lineIndex} className="h-2" />;
-
-                // Processar negrito **texto**
-                const formatBold = (str: string) => {
-                    const parts = str.split(/(\*\*[^*]+\*\*)/g);
-                    return parts.map((part, i) => {
-                        if (part.startsWith('**') && part.endsWith('**')) {
-                            return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
-                        }
-                        return <span key={i}>{part}</span>;
-                    });
-                };
-
-                // Lista com hífen
-                if (trimmedLine.startsWith('- ')) {
-                    return (
-                        <div key={lineIndex} className="flex gap-2 pl-2">
-                            <span className="text-gray-500">•</span>
-                            <span>{formatBold(trimmedLine.slice(2))}</span>
-                        </div>
-                    );
-                }
-
-                // Lista numerada
-                const numberedMatch = trimmedLine.match(/^(\d+)\.\s+(.+)$/);
-                if (numberedMatch) {
-                    return (
-                        <div key={lineIndex} className="flex gap-2">
-                            <span className="text-[#d97757] font-medium min-w-[20px]">{numberedMatch[1]}.</span>
-                            <span>{formatBold(numberedMatch[2])}</span>
-                        </div>
-                    );
-                }
-
-                // Texto normal
-                return <p key={lineIndex}>{formatBold(trimmedLine)}</p>;
-            })}
-        </div>
-    );
-};
 
 // --- Button Component (Inline for simplicity) ---
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -343,8 +283,6 @@ interface AIChatAssistantProps {
     userId?: string;
     isProMode?: boolean;
     onUpgrade?: () => void;
-    activeTab?: string;
-    setActiveTab?: (tab: any) => void;
 }
 
 interface Message {
@@ -380,9 +318,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     userName = 'Você',
     userId,
     isProMode = false,
-    onUpgrade,
-    activeTab,
-    setActiveTab
+    onUpgrade
 }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [isFullScreen, setIsFullScreen] = useState(false);
@@ -391,7 +327,6 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     const [isThinking, setIsThinking] = useState(false);
     const [view, setView] = useState<'chat' | 'history'>('chat');
     const [history, setHistory] = useState<ChatSession[]>([]);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
     const historyLoadedRef = useRef(false);
 
     // --- Frases aleatórias do Coinzinha ---
@@ -684,92 +619,6 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
         }
     };
 
-    // Quick action handler - triggers a message with the action text
-    const handleQuickAction = (text: string) => {
-        setInputValue(text);
-        // Slight delay to show the input before sending
-        setTimeout(() => {
-            const fakeEvent = { key: 'Enter' };
-            setInputValue('');
-            // Create user message
-            const userMsg: Message = {
-                id: Date.now().toString(),
-                role: 'user',
-                type: 'text',
-                content: text,
-                timestamp: Date.now()
-            };
-            setMessages(prev => [...prev, userMsg]);
-            // Trigger AI response
-            handleSendMessageWithText(text);
-        }, 100);
-    };
-
-    // Helper to send message with specific text
-    const handleSendMessageWithText = async (text: string) => {
-        if (!text.trim()) return;
-
-        if (userPlan === 'starter') {
-            const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
-            if (currentCount >= 5) {
-                setStarterMessageCount(currentCount);
-                return;
-            }
-            setStarterMessageCount(currentCount + 1);
-        }
-
-        setIsThinking(true);
-
-        const conversationHistory = messages
-            .filter(m => m.type === 'text' && m.content)
-            .map(m => ({
-                role: m.role === 'user' ? 'user' as const : 'assistant' as const,
-                content: m.content || ''
-            }));
-
-        try {
-            const response = await processClaudeAssistantMessage(
-                text,
-                transactions,
-                budgets,
-                investments,
-                conversationHistory
-            );
-            setIsThinking(false);
-
-            let aiMsg: Message;
-
-            if (response.type === 'text') {
-                aiMsg = {
-                    id: (Date.now() + 1).toString(),
-                    role: 'ai',
-                    type: 'text',
-                    content: response.content,
-                    timestamp: Date.now()
-                };
-            } else {
-                aiMsg = {
-                    id: (Date.now() + 1).toString(),
-                    role: 'ai',
-                    type: 'text',
-                    content: 'Mensagem processada.',
-                    timestamp: Date.now()
-                };
-            }
-            setMessages(prev => [...prev, aiMsg]);
-
-        } catch (error) {
-            setIsThinking(false);
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                role: 'ai',
-                type: 'text',
-                content: 'Desculpe, tive um problema ao processar. Tente novamente.',
-                timestamp: Date.now()
-            }]);
-        }
-    };
-
     const handleConfirmTransaction = (msgId: string, data: AIParsedTransaction) => {
         // Bloquear criação de transação no modo Pro (Auto)
         if (isProMode) {
@@ -800,7 +649,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
             id: Date.now().toString(),
             role: 'ai',
             type: 'text',
-            content: `✅ Transação "${data.description}" adicionada com sucesso!`,
+            content: `✅ Transação "${data.description}" adicionada com sucesso!`, 
             timestamp: Date.now()
         }]);
     };
@@ -875,7 +724,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
             id: Date.now().toString(),
             role: 'ai',
             type: 'text',
-            content: `✅ Transação unificada "${unifiedData.description}" (R$ ${unifiedData.amount.toFixed(2)}) adicionada!`,
+            content: `✅ Transação unificada "${unifiedData.description}" (R$ ${unifiedData.amount.toFixed(2)}) adicionada!`, 
             timestamp: Date.now()
         }]);
     };
@@ -901,7 +750,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 id: Date.now().toString(),
                 role: 'ai',
                 type: 'text',
-                content: `📅 Lembrete "${data.description}" adicionado para ${data.dueDate}!`,
+                content: `📅 Lembrete "${data.description}" adicionado para ${data.dueDate}!`, 
                 timestamp: Date.now()
             }]);
         } else {
@@ -909,7 +758,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 id: Date.now().toString(),
                 role: 'ai',
                 type: 'text',
-                content: `⚠️ Não foi possível adicionar o lembrete. Vá em "Lembretes" no menu principal.`,
+                content: `⚠️ Não foi possível adicionar o lembrete. Vá em "Lembretes" no menu principal.`, 
                 timestamp: Date.now()
             }]);
         }
@@ -935,7 +784,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 id: Date.now().toString(),
                 role: 'ai',
                 type: 'text',
-                content: `✨ Assinatura "${data.name}" (R$ ${data.amount.toFixed(2)}/${data.billingCycle === 'monthly' ? 'mês' : 'ano'}) adicionada!`,
+                content: `✨ Assinatura "${data.name}" (R$ ${data.amount.toFixed(2)}/${data.billingCycle === 'monthly' ? 'mês' : 'ano'}) adicionada!`, 
                 timestamp: Date.now()
             }]);
         } else {
@@ -943,7 +792,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 id: Date.now().toString(),
                 role: 'ai',
                 type: 'text',
-                content: `⚠️ Não foi possível adicionar a assinatura. Vá em "Assinaturas" no menu principal.`,
+                content: `⚠️ Não foi possível adicionar a assinatura. Vá em "Assinaturas" no menu principal.`, 
                 timestamp: Date.now()
             }]);
         }
@@ -954,8 +803,8 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
             const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
             const session: ChatSession = {
                 id: Date.now().toString(),
-                date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }),
-                preview: lastUserMsg?.content?.substring(0, 40).trim() || 'Nova Conversa',
+                date: new Date().toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+                preview: lastUserMsg?.content?.substring(0, 30) + '...' || 'Nova Conversa',
                 messages: [...messages]
             };
             setHistory(prev => [session, ...prev]);
@@ -976,11 +825,42 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
         setView('chat');
     };
 
-    const handleClearHistory = async () => {
-        if (userId) {
-            await clearChatHistory(userId);
+    const handleQuickAction = (text: string) => {
+        setInputValue(text);
+        if (text === "Adicionar Despesa") {
+            inputRef.current?.focus();
+        } else {
+            const userMsg: Message = {
+                id: Date.now().toString(),
+                role: 'user',
+                type: 'text',
+                content: text,
+                timestamp: Date.now()
+            };
+            setMessages(prev => [...prev, userMsg]);
+            setIsThinking(true);
+
+            // Construir histórico de conversa para o Claude
+            const conversationHistory = messages
+                .filter(m => m.type === 'text' && m.content)
+                .map(m => ({
+                    role: m.role === 'user' ? 'user' as const : 'assistant' as const,
+                    content: m.content || ''
+                }));
+
+            processClaudeAssistantMessage(text, transactions, budgets, investments, conversationHistory).then(response => {
+                setIsThinking(false);
+                if (response.type === 'text') {
+                    setMessages(prev => [...prev, {
+                        id: Date.now().toString(),
+                        role: 'ai',
+                        type: 'text',
+                        content: response.content,
+                        timestamp: Date.now()
+                    }]);
+                }
+            });
         }
-        setHistory([]);
     };
 
     // --- Animation Config ---
@@ -995,423 +875,6 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
         damping: 45,
         mass: 0.7,
     };
-
-    // --- PAGE MODE (ZEN MODE) ---
-    // When activeTab === 'chat', render full-screen in a portal
-    const isPageMode = activeTab === 'chat';
-    const chatMountPoint = typeof document !== 'undefined' ? document.getElementById('chat-mount-point') : null;
-
-    // Check if this is the empty state (only welcome message)
-    const isEmptyState = isPageMode && (
-        messages.length === 0 ||
-        (messages.length === 1 && (
-            messages[0].id === 'welcome' ||
-            messages[0].content?.includes('Como posso ajudar') ||
-            messages[0].content?.includes('Sou seu assistente financeiro') ||
-            messages[0].content?.includes('Nova conversa iniciada')
-        ))
-    );
-
-    // Empty State Component for Page Mode
-    const PageModeEmptyState = () => (
-        <div className="flex flex-col items-center justify-center h-full px-4">
-            {/* Logo Centralizada */}
-            <div className="w-28 h-28 mb-4 relative">
-                <div className="absolute inset-0 bg-[#d97757]/20 blur-3xl rounded-full" />
-                <img src={coinzinhaImg} alt="Coinzinha" className="w-full h-full object-contain relative z-10 drop-shadow-2xl" />
-            </div>
-
-            {/* Texto Descritivo */}
-            <p className="text-gray-400 text-sm mb-8 text-center max-w-md leading-relaxed">
-                Sou a <span className="text-[#d97757] font-medium">Coinzinha</span>, sua assistente financeira pessoal. Posso ajudar a lançar gastos, analisar suas finanças ou dar dicas de economia.
-            </p>
-
-            {/* Atalhos Rápidos Centralizados */}
-            <div className="grid grid-cols-2 gap-3 w-full max-w-lg">
-                {[
-                    { text: "Adicionar Despesa", icon: <Plus size={16} className="text-[#d97757]" />, label: "Lançar Gasto", desc: "Registre uma nova compra" },
-                    { text: "Analisar Gastos", icon: <TrendingUp size={16} className="text-blue-400" />, label: "Analisar", desc: "Veja seus gastos do mês" },
-                    { text: "Dica do dia", icon: <Lightbulb size={16} className="text-yellow-400" />, label: "Dica", desc: "Sugestão financeira" },
-                    { text: "Como economizar?", icon: <Sparkles size={16} className="text-green-400" />, label: "Economizar", desc: "Plano para poupar" }
-                ].map((action, idx) => (
-                    <button
-                        key={idx}
-                        onClick={() => handleQuickAction(action.text)}
-                        className="flex flex-col items-start gap-2 p-4 bg-[#2a2a2a]/50 hover:bg-[#2a2a2a] border border-[#3a3a3a] hover:border-[#d97757]/30 rounded-xl transition-all group text-left"
-                    >
-                        <div className="flex items-center gap-2">
-                            <div className="p-2 rounded-lg bg-[#333] group-hover:bg-[#3a3a3a] transition-colors">
-                                {action.icon}
-                            </div>
-                            <span className="font-semibold text-sm text-gray-200 group-hover:text-white">{action.label}</span>
-                        </div>
-                        <span className="text-xs text-gray-500 group-hover:text-gray-400">{action.desc}</span>
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
-
-    // Page Mode Render (Zen Mode - Full Screen)
-    if (isPageMode && chatMountPoint) {
-        return createPortal(
-            <div className="flex h-full w-full bg-[#30302E] overflow-hidden">
-                {/* Left Sidebar (Desktop) - History */}
-                <div className={`hidden lg:flex border-r border-[#3a3a3a] flex-col transition-all duration-300 ${isSidebarCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-[280px]'}`}>
-                    <div className="p-4">
-                        <button
-                            onClick={handleNewChat}
-                            className="w-full flex items-center gap-2 p-2.5 rounded-lg text-gray-300 hover:bg-[#3a3a3a]/50 hover:text-white transition-all text-sm"
-                        >
-                            <Plus size={16} />
-                            Nova Conversa
-                        </button>
-                    </div>
-                    <div className="flex-1 overflow-y-auto custom-scrollbar px-3 space-y-1">
-                        {history.length === 0 ? (
-                            <div className="flex flex-col items-center justify-center h-32 text-gray-500 gap-2 mt-10">
-                                <MessageSquare size={24} className="opacity-20" />
-                                <p className="text-xs text-center">Nenhum histórico.</p>
-                            </div>
-                        ) : (
-                            history.map(session => (
-                                <button
-                                    key={session.id}
-                                    onClick={() => handleLoadSession(session)}
-                                    className="w-full text-left p-2.5 rounded-lg hover:bg-[#3a3a3a]/50 transition-all group flex items-start gap-2"
-                                >
-                                    <MessageSquare size={14} className="text-gray-600 group-hover:text-gray-400 mt-0.5 shrink-0" />
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm text-gray-300 line-clamp-1 group-hover:text-white transition-colors font-medium">{session.preview}</p>
-                                        <span className="text-[10px] text-gray-600 group-hover:text-gray-500">{session.date}</span>
-                                    </div>
-                                </button>
-                            ))
-                        )}
-                    </div>
-                    <div className="p-3 border-t border-[#3a3a3a]">
-                        <button
-                            onClick={handleClearHistory}
-                            className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors text-xs"
-                        >
-                            <Trash2 size={14} />
-                            Limpar Histórico
-                        </button>
-                    </div>
-                </div>
-
-                {/* Main Chat Area */}
-                <div className="flex-1 flex flex-col relative min-w-0">
-                    {/* Header - Toggle Sidebar & Close Button */}
-                    <div className="absolute top-0 left-0 right-0 p-4 z-50 flex items-center justify-between pointer-events-none">
-                        {/* Toggle Sidebar Button */}
-                        <div className="pointer-events-auto hidden lg:block">
-                            <button
-                                onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-                                className="p-2 rounded-lg bg-[#2a2a2a]/80 backdrop-blur-sm border border-[#3a3a3a] text-gray-400 hover:text-white hover:bg-[#333] transition-all"
-                                title={isSidebarCollapsed ? "Mostrar sidebar" : "Esconder sidebar"}
-                            >
-                                {isSidebarCollapsed ? <PanelLeft size={18} /> : <PanelLeftClose size={18} />}
-                            </button>
-                        </div>
-                        {/* Close Button */}
-                        <div className="pointer-events-auto">
-                            <button
-                                onClick={() => setActiveTab && setActiveTab('dashboard')}
-                                className="p-2.5 rounded-xl bg-[#2a2a2a]/80 backdrop-blur-sm border border-[#3a3a3a] text-gray-400 hover:text-white hover:bg-[#333] transition-all shadow-lg"
-                                title="Fechar"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Messages Area */}
-                    <div className="flex-1 overflow-y-auto custom-scrollbar relative">
-                        {isEmptyState ? (
-                            <PageModeEmptyState />
-                        ) : (
-                            <div className="max-w-3xl mx-auto flex flex-col gap-6 p-4 lg:p-8 pt-20">
-                                {messages
-                                    .filter(msg => !(msg.id === 'welcome' || msg.content?.includes('Nova conversa iniciada')))
-                                    .map((msg) => {
-                                        // Calcular tempo relativo
-                                        const now = Date.now();
-                                        const diff = now - msg.timestamp;
-                                        const seconds = Math.floor(diff / 1000);
-                                        const minutes = Math.floor(seconds / 60);
-                                        const hours = Math.floor(minutes / 60);
-                                        let timeAgo = '';
-                                        if (hours > 0) {
-                                            timeAgo = `há ${hours}h`;
-                                        } else if (minutes > 0) {
-                                            timeAgo = `há ${minutes} min`;
-                                        } else {
-                                            timeAgo = 'agora';
-                                        }
-
-                                        return (
-                                            <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'} w-full`}>
-                                                {msg.type === 'text' ? (
-                                                    msg.role === 'user' ? (
-                                                        // Usuário - com balão
-                                                        <div className="max-w-[85%] lg:max-w-[75%] p-4 rounded-2xl rounded-br-sm text-sm leading-relaxed bg-[#d97757] text-white shadow-sm">
-                                                            <div className="whitespace-pre-wrap break-words">{msg.content}</div>
-                                                            <p className="text-[10px] mt-2 text-right opacity-60 text-white">{timeAgo}</p>
-                                                        </div>
-                                                    ) : (
-                                                        // IA - sem balão, texto formatado sem emojis
-                                                        <div className="max-w-[85%] lg:max-w-[75%]">
-                                                            <div className="text-sm leading-relaxed text-gray-300">
-                                                                <FormattedAIText text={msg.content || ''} />
-                                                            </div>
-                                                            <p className="text-[10px] mt-2 text-gray-500">{timeAgo}</p>
-                                                        </div>
-                                                    )
-                                                ) : msg.type === 'transaction_confirm' ? (
-                                                    /* Single Transaction Card */
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        transition={{ duration: 0.3, ease: "easeOut" }}
-                                                        className="w-full max-w-[320px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
-                                                    >
-                                                        <div className="p-4 pb-0 flex justify-between items-start">
-                                                            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#333] border border-[#444]">
-                                                                <Tag size={10} className="text-gray-400" />
-                                                                <span className="text-[10px] font-medium text-gray-300 uppercase tracking-wide">{msg.transactionData?.category}</span>
-                                                            </div>
-                                                            <div className={`w-2 h-2 rounded-full ${msg.transactionData?.type === 'income' ? 'bg-green-500' : 'bg-[#d97757]'}`} />
-                                                        </div>
-                                                        <div className="px-5 py-6 text-center">
-                                                            <p className="text-xs text-gray-500 font-medium mb-1">{msg.transactionData?.date}</p>
-                                                            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-3xl font-bold text-white tracking-tight mb-2">
-                                                                R$ {msg.transactionData?.amount.toFixed(2)}
-                                                            </motion.div>
-                                                            <p className="text-sm text-gray-400 font-medium leading-relaxed">{msg.transactionData?.description}</p>
-                                                        </div>
-                                                        <div className="p-3 pt-0">
-                                                            {!msg.isConfirmed ? (
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.02 }}
-                                                                    whileTap={{ scale: 0.98 }}
-                                                                    onClick={() => msg.transactionData && handleConfirmTransaction(msg.id, msg.transactionData)}
-                                                                    className="w-full bg-[#d97757] hover:bg-[#c56a4d] text-white py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-[#d97757]/10 flex items-center justify-center gap-2"
-                                                                >
-                                                                    <Check size={16} />
-                                                                    Confirmar
-                                                                </motion.button>
-                                                            ) : (
-                                                                <div className="w-full bg-[#333] text-gray-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
-                                                                    <Check size={14} className="text-green-500" />
-                                                                    Lançado
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </motion.div>
-                                                ) : msg.type === 'multiple_transactions' ? (
-                                                    /* Multiple Transactions Card */
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        transition={{ duration: 0.3, ease: "easeOut" }}
-                                                        className="w-full max-w-[320px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
-                                                    >
-                                                        <div className="p-4 border-b border-[#333]">
-                                                            <div className="flex items-center gap-2 mb-1">
-                                                                <div className="w-6 h-6 rounded-lg bg-[#333] flex items-center justify-center">
-                                                                    <Sparkles size={12} className="text-[#d97757]" />
-                                                                </div>
-                                                                <span className="text-xs font-bold text-white">Múltiplos Itens ({msg.multipleTransactions?.length})</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="p-2 space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
-                                                            {msg.multipleTransactions?.map((tx, idx) => (
-                                                                <div key={idx} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
-                                                                    <div className="flex flex-col min-w-0 pr-2">
-                                                                        <span className="text-xs font-medium text-gray-200 truncate">{tx.description}</span>
-                                                                        <span className="text-[10px] text-gray-500">{tx.category}</span>
-                                                                    </div>
-                                                                    <span className="text-xs font-bold text-white whitespace-nowrap">R$ {tx.amount.toFixed(2)}</span>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                        {msg.unifiedSuggestion && (
-                                                            <div className="mx-2 mb-2 p-3 rounded-xl bg-[#d97757]/10 border border-[#d97757]/20 flex items-center justify-between">
-                                                                <div>
-                                                                    <p className="text-[10px] text-[#d97757] font-bold uppercase">Sugestão Unificada</p>
-                                                                    <p className="text-xs text-gray-300 font-medium">{msg.unifiedSuggestion.description}</p>
-                                                                </div>
-                                                                <p className="text-sm font-bold text-white">R$ {msg.unifiedSuggestion.amount.toFixed(2)}</p>
-                                                            </div>
-                                                        )}
-                                                        <div className="p-3 pt-1 space-y-2">
-                                                            {!msg.isConfirmed ? (
-                                                                <>
-                                                                    <motion.button
-                                                                        whileHover={{ scale: 1.01 }}
-                                                                        whileTap={{ scale: 0.99 }}
-                                                                        onClick={() => msg.multipleTransactions && handleConfirmSeparate(msg.id, msg.multipleTransactions)}
-                                                                        className="w-full bg-[#333] hover:bg-[#3a3a3a] text-white py-2.5 rounded-xl text-xs font-bold transition-all border border-[#444]"
-                                                                    >
-                                                                        Lançar Separados
-                                                                    </motion.button>
-                                                                    {msg.unifiedSuggestion && (
-                                                                        <motion.button
-                                                                            whileHover={{ scale: 1.01 }}
-                                                                            whileTap={{ scale: 0.99 }}
-                                                                            onClick={() => msg.unifiedSuggestion && handleConfirmUnified(msg.id, msg.unifiedSuggestion)}
-                                                                            className="w-full bg-[#d97757] hover:bg-[#c56a4d] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-[#d97757]/10"
-                                                                        >
-                                                                            Unificar Tudo
-                                                                        </motion.button>
-                                                                    )}
-                                                                </>
-                                                            ) : (
-                                                                <div className="w-full bg-[#333] text-gray-400 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
-                                                                    <Check size={14} className="text-green-500" />
-                                                                    Processado
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </motion.div>
-                                                ) : msg.type === 'reminder_confirm' ? (
-                                                    /* Reminder Card */
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        transition={{ duration: 0.3, ease: "easeOut" }}
-                                                        className="w-full max-w-[320px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
-                                                    >
-                                                        <div className="p-4 pb-0 flex justify-between items-start">
-                                                            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#333] border border-[#444]">
-                                                                <Tag size={10} className="text-blue-400" />
-                                                                <span className="text-[10px] font-medium text-gray-300 uppercase tracking-wide">{msg.reminderData?.category}</span>
-                                                            </div>
-                                                            <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                                        </div>
-                                                        <div className="px-5 py-6 text-center">
-                                                            <div className="flex justify-center items-center gap-1.5 mb-1">
-                                                                <Calendar size={10} className="text-gray-500" />
-                                                                <p className="text-xs text-gray-500 font-medium">{msg.reminderData?.dueDate}</p>
-                                                            </div>
-                                                            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-3xl font-bold text-white tracking-tight mb-2">
-                                                                R$ {(msg.reminderData?.amount ?? 0).toFixed(2)}
-                                                            </motion.div>
-                                                            <p className="text-sm text-gray-400 font-medium leading-relaxed">{msg.reminderData?.description}</p>
-                                                            {msg.reminderData?.isRecurring && (
-                                                                <div className="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] bg-blue-500/10 text-blue-400">
-                                                                    <Clock size={8} />
-                                                                    <span>{msg.reminderData.frequency === 'weekly' ? 'Semanal' : msg.reminderData.frequency === 'yearly' ? 'Anual' : 'Mensal'}</span>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                        <div className="p-3 pt-0">
-                                                            {!msg.isConfirmed ? (
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.02 }}
-                                                                    whileTap={{ scale: 0.98 }}
-                                                                    onClick={() => msg.reminderData && handleConfirmReminder(msg.id, msg.reminderData)}
-                                                                    className="w-full bg-blue-600 hover:bg-blue-500 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-blue-500/10 flex items-center justify-center gap-2"
-                                                                >
-                                                                    <Calendar size={16} />
-                                                                    Criar Lembrete
-                                                                </motion.button>
-                                                            ) : (
-                                                                <div className="w-full bg-[#333] text-gray-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
-                                                                    <Check size={14} className="text-green-500" />
-                                                                    Criado
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </motion.div>
-                                                ) : msg.type === 'subscription_confirm' ? (
-                                                    /* Subscription Card */
-                                                    <motion.div
-                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
-                                                        transition={{ duration: 0.3, ease: "easeOut" }}
-                                                        className="w-full max-w-[320px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
-                                                    >
-                                                        <div className="p-4 pb-0 flex justify-between items-start">
-                                                            <div className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#333] border border-[#444]">
-                                                                <Tag size={10} className="text-purple-400" />
-                                                                <span className="text-[10px] font-medium text-gray-300 uppercase tracking-wide">{msg.subscriptionData?.category}</span>
-                                                            </div>
-                                                            <div className="w-2 h-2 rounded-full bg-purple-500" />
-                                                        </div>
-                                                        <div className="px-5 py-6 text-center">
-                                                            <p className="text-xs text-gray-500 font-medium mb-1 uppercase tracking-wider">
-                                                                {msg.subscriptionData?.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}
-                                                            </p>
-                                                            <motion.div initial={{ scale: 0.9 }} animate={{ scale: 1 }} className="text-3xl font-bold text-white tracking-tight mb-2">
-                                                                R$ {(msg.subscriptionData?.amount ?? 0).toFixed(2)}
-                                                            </motion.div>
-                                                            <p className="text-sm text-gray-400 font-medium leading-relaxed">{msg.subscriptionData?.name}</p>
-                                                        </div>
-                                                        <div className="p-3 pt-0">
-                                                            {!msg.isConfirmed ? (
-                                                                <motion.button
-                                                                    whileHover={{ scale: 1.02 }}
-                                                                    whileTap={{ scale: 0.98 }}
-                                                                    onClick={() => msg.subscriptionData && handleConfirmSubscription(msg.id, msg.subscriptionData)}
-                                                                    className="w-full bg-purple-600 hover:bg-purple-500 text-white py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-purple-500/10 flex items-center justify-center gap-2"
-                                                                >
-                                                                    <Clock size={16} />
-                                                                    Assinar
-                                                                </motion.button>
-                                                            ) : (
-                                                                <div className="w-full bg-[#333] text-gray-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
-                                                                    <Check size={14} className="text-green-500" />
-                                                                    Ativo
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </motion.div>
-                                                ) : null}
-                                            </div>
-                                        );
-                                    })}
-                                {isThinking && (
-                                    <div className="flex justify-start w-full">
-                                        <span className="text-sm text-gray-400 animate-pulse">Pensando...</span>
-                                    </div>
-                                )}
-                                <div ref={messagesEndRef} />
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Input Area */}
-                    <div className="p-4 lg:p-6 bg-[#30302E] shrink-0">
-                        <div className="max-w-3xl mx-auto w-full">
-                            <div className="flex items-center gap-3 bg-[#2a2a2a] border border-[#3a3a3a] focus-within:border-[#d97757]/50 focus-within:ring-1 focus-within:ring-[#d97757]/50 rounded-2xl px-4 py-3 shadow-lg transition-all">
-                                <input
-                                    ref={inputRef}
-                                    type="text"
-                                    value={inputValue}
-                                    onChange={(e) => setInputValue(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && !isLimitReached && handleSendMessage()}
-                                    placeholder={isLimitReached ? "Limite atingido" : "Digite sua mensagem..."}
-                                    disabled={isLimitReached}
-                                    className="flex-1 bg-transparent text-base text-white placeholder-gray-500 focus:outline-none"
-                                />
-                                <button
-                                    onClick={handleSendMessage}
-                                    disabled={!inputValue.trim() || isThinking || isLimitReached}
-                                    className="p-2 bg-[#d97757] hover:bg-[#c56a4d] disabled:opacity-50 rounded-xl text-white transition-all shadow-lg shadow-[#d97757]/20"
-                                >
-                                    <Send size={18} />
-                                </button>
-                            </div>
-                            <p className="text-center text-[10px] text-gray-500 mt-2">O Coinzinha pode cometer erros. Verifique informações importantes.</p>
-                        </div>
-                    </div>
-                </div>
-            </div>,
-            chatMountPoint
-        );
-    }
 
     return (
         <div className={cn(
@@ -1485,7 +948,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                         />
                                     </div>
                                 ) : (
-                                    <span className="leading-relaxed">{currentPhrase}</span>
+                                    <BlurredStagger text={currentPhrase} className="leading-relaxed" />
                                 )}
                             </div>
                             {/* Arrow pointing down-right - aponta para o Coinzinha */}
@@ -1584,17 +1047,17 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                     </button>
                                     <div className="w-px h-4 bg-gray-800 mx-1"></div>
                                     <button
-                                        onClick={() => {
-                                            setIsOpen(false);
-                                            setActiveTab && setActiveTab('chat');
-                                        }}
+                                        onClick={() => setIsFullScreen(!isFullScreen)}
                                         className="p-2 rounded-lg text-gray-400 hover:bg-gray-800 hover:text-white transition-colors"
-                                        title="Abrir em tela cheia"
+                                        title={isFullScreen ? "Restaurar" : "Maximizar"}
                                     >
-                                        <Maximize2 size={18} />
+                                        {isFullScreen ? <Minimize2 size={18} /> : <Maximize2 size={18} />}
                                     </button>
                                     <button
-                                        onClick={() => setIsOpen(false)}
+                                        onClick={() => {
+                                            if (isFullScreen) setIsFullScreen(false);
+                                            setIsOpen(false);
+                                        }}
                                         className="p-2 rounded-lg text-gray-400 hover:bg-red-500/10 hover:text-red-500 transition-colors"
                                         title=" Fechar"
                                     >
@@ -1626,7 +1089,11 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                 `}
                                                         >
                                                             {msg.role === 'ai' ? (
-                                                                <div className="whitespace-pre-wrap break-words">{msg.content}</div>
+                                                                index === messages.length - 1 ? (
+                                                                    <BlurredStagger text={msg.content || ''} className="whitespace-pre-wrap break-words" />
+                                                                ) : (
+                                                                    <FormattedText text={msg.content || ''} />
+                                                                )
                                                             ) : (
                                                                 <div className="whitespace-pre-wrap break-words">{msg.content}</div>
                                                             )}
@@ -1656,7 +1123,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                 <p className="text-xs text-gray-500 font-medium mb-1">
                                                                     {msg.transactionData?.date}
                                                                 </p>
-                                                                <motion.div
+                                                                <motion.div 
                                                                     initial={{ scale: 0.9 }}
                                                                     animate={{ scale: 1 }}
                                                                     className="text-3xl font-bold text-white tracking-tight mb-2"
@@ -1782,7 +1249,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                         {msg.reminderData?.dueDate}
                                                                     </p>
                                                                 </div>
-                                                                <motion.div
+                                                                <motion.div 
                                                                     initial={{ scale: 0.9 }}
                                                                     animate={{ scale: 1 }}
                                                                     className="text-3xl font-bold text-white tracking-tight mb-2"
@@ -1842,7 +1309,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                 <p className="text-xs text-gray-500 font-medium mb-1 uppercase tracking-wider">
                                                                     {msg.subscriptionData?.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}
                                                                 </p>
-                                                                <motion.div
+                                                                <motion.div 
                                                                     initial={{ scale: 0.9 }}
                                                                     animate={{ scale: 1 }}
                                                                     className="text-3xl font-bold text-white tracking-tight mb-2"
@@ -1903,7 +1370,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <div className="w-16 h-1.5 bg-[#3a3a3a] rounded-full overflow-hidden">
-                                                            <motion.div
+                                                            <motion.div 
                                                                 className="h-full bg-[#d97757]"
                                                                 initial={{ width: 0 }}
                                                                 animate={{ width: `${(starterMessageCount / 5) * 100}%` }}
@@ -1917,7 +1384,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
 
                                             {/* Limit Banner - Minimalist */}
                                             {isLimitReached && (
-                                                <motion.div
+                                                <motion.div 
                                                     initial={{ opacity: 0 }}
                                                     animate={{ opacity: 1 }}
                                                     className="mb-3 px-2 flex items-center justify-between"
@@ -1925,7 +1392,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                     <span className="text-xs text-gray-400">
                                                         Limite de 5 mensagens atingido.
                                                     </span>
-                                                    <button
+                                                    <button 
                                                         onClick={() => onUpgrade?.()}
                                                         className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
                                                     >

@@ -14,6 +14,8 @@ interface AIModalProps {
   onConfirm: (data: Omit<Transaction, 'id'>) => void;
   onCreateReminder?: (data: Omit<Reminder, 'id'>) => void;
   initialContext?: 'transaction' | 'reminder';
+  userPlan?: 'starter' | 'pro' | 'family';
+  onUpgrade?: () => void;
 }
 
 type Mode = 'ai' | 'manual';
@@ -97,11 +99,23 @@ const TransactionSummaryCard: React.FC<{ items: (AIParsedTransaction | AIParsedR
   );
 };
 
-export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, onCreateReminder, initialContext = 'transaction' }) => {
+export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, onCreateReminder, initialContext = 'transaction', userPlan = 'starter', onUpgrade }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [mode, setMode] = useState<Mode>('ai');
   const [context, setContext] = useState<'transaction' | 'reminder'>(initialContext);
+
+  // Limit Logic
+  const [starterMessageCount, setStarterMessageCount] = useState(() => {
+    const saved = localStorage.getItem('coinzinha_starter_count');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('coinzinha_starter_count', starterMessageCount.toString());
+  }, [starterMessageCount]);
+
+  const isLimitReached = userPlan === 'starter' && starterMessageCount >= 5;
 
   // AI State
   const [input, setInput] = useState('');
@@ -127,6 +141,11 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isOpen) {
       setIsVisible(true);
+      
+      // Sync limit from storage
+      const savedCount = localStorage.getItem('coinzinha_starter_count');
+      if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
+
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setIsAnimating(true);
@@ -163,6 +182,14 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
   // AI Handlers
   const handleSendMessage = async () => {
     if (!input.trim()) return;
+    if (userPlan === 'starter') {
+        const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
+        if (currentCount >= 5) {
+            setStarterMessageCount(currentCount);
+            return;
+        }
+        setStarterMessageCount(currentCount + 1);
+    }
 
     const userText = input;
     setInput('');
@@ -471,6 +498,25 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* Limit Banner */}
+              {isLimitReached && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  className="mb-2 mx-4 px-2 flex items-center justify-between"
+                >
+                  <span className="text-xs text-gray-400">
+                      Limite de 5 mensagens atingido.
+                  </span>
+                  <button 
+                      onClick={() => onUpgrade?.()}
+                      className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                  >
+                      Fazer Upgrade
+                  </button>
+                </motion.div>
+              )}
+
               {/* Input Area */}
               <div className="p-4 bg-gray-950/50 border-t border-gray-800/50 shrink-0">
                 <div className="relative flex items-center gap-2">
@@ -484,13 +530,13 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
                         handleSendMessage();
                       }
                     }}
-                    placeholder="Digite sua transação... (ex: Uber 20)"
-                    disabled={generationStatus !== 'idle'}
-                    className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600"
+                    placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
+                    disabled={generationStatus !== 'idle' || isLimitReached}
+                    className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
                   />
                   <button
                     onClick={handleSendMessage}
-                    disabled={!input.trim() || generationStatus !== 'idle'}
+                    disabled={!input.trim() || generationStatus !== 'idle' || isLimitReached}
                     className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
                   >
                     <Send size={18} />

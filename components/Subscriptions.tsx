@@ -35,6 +35,8 @@ interface SubscriptionsProps {
   onDeleteSubscription: (id: string) => void;
   currentDate?: string;
   isProMode?: boolean;
+  userPlan?: 'starter' | 'pro' | 'family';
+  onUpgrade?: () => void;
 }
 
 const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
@@ -84,7 +86,7 @@ const SubscriptionCard: React.FC<{
   return (
     <div
       className={`
-        group relative bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
+        group relative bg-[#30302E] rounded-xl sm:rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
         hover:border-[#4a4a47] hover:bg-[#343432]
         ${isPaidThisMonth ? 'opacity-60' : ''}
         ${selected ? 'ring-2 ring-[#d97757] border-[#d97757]' : ''}
@@ -93,79 +95,79 @@ const SubscriptionCard: React.FC<{
       onClick={selectionMode ? () => onToggleSelect && onToggleSelect(sub.id) : undefined}
     >
       {/* Conteúdo Principal */}
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
 
         {/* Checkbox de seleção */}
         {selectionMode && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(sub.id); }}
-            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${selected
+            className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${selected
               ? 'bg-[#d97757] border-[#d97757] text-white'
               : 'border-gray-600 hover:border-[#d97757]'
               }`}
           >
-            {selected && <Check size={14} strokeWidth={3} />}
+            {selected && <Check size={12} className="sm:w-3.5 sm:h-3.5" strokeWidth={3} />}
           </button>
         )}
 
         {/* Indicador de status (bolinha colorida) */}
-        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusConfig.accentColor}`} />
+        <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 ${statusConfig.accentColor}`} />
 
         {/* Info Principal */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <h4 className={`font-semibold text-[15px] truncate ${isPaidThisMonth ? 'text-gray-500' : 'text-white'}`}>{sub.name}</h4>
-            <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
+            <h4 className={`font-semibold text-sm sm:text-[15px] truncate ${isPaidThisMonth ? 'text-gray-500' : 'text-white'}`}>{sub.name}</h4>
+            <span className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
               <RefreshCw size={9} />
               <span className="uppercase tracking-wider">Auto</span>
             </span>
           </div>
 
-          <div className="flex items-center gap-2 text-[12px] text-gray-500">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] text-gray-500">
             <span className="flex items-center gap-1">
-              {getCategoryIcon(sub.category, 11)}
+              {getCategoryIcon(sub.category, 10)}
               <span className="hidden sm:inline">{sub.category}</span>
             </span>
-            <span className="text-gray-600">•</span>
-            <span className="font-mono">{sub.billingCycle === 'monthly' ? 'Todo mês' : 'Todo ano'}</span>
+            <span className="text-gray-600 hidden sm:inline">•</span>
+            <span className="font-mono text-[10px] sm:text-[12px]">{sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}</span>
           </div>
         </div>
 
         {/* Valor e Status */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <span className={`font-mono font-bold text-lg tracking-tight ${statusConfig.amountColor}`}>
+        <div className="flex flex-col items-end gap-0.5 sm:gap-1 flex-shrink-0">
+          <span className={`font-mono font-bold text-base sm:text-lg tracking-tight ${statusConfig.amountColor}`}>
             <NumberFlow value={sub.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
           </span>
-          <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
+          <span className={`flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
             {statusConfig.statusText}
           </span>
         </div>
 
-        {/* Ações - aparecem no hover */}
-        <div className={`flex items-center gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'opacity-0 group-hover:opacity-100 -mr-2 group-hover:mr-0 w-0 group-hover:w-auto overflow-hidden'}`}>
+        {/* Ações - aparecem no hover (desktop) ou sempre visíveis parcialmente (mobile) */}
+        <div className={`flex items-center gap-0.5 sm:gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:-mr-2 sm:group-hover:mr-0 sm:w-0 sm:group-hover:w-auto overflow-hidden'}`}>
           <button
             onClick={(e) => { e.stopPropagation(); onTogglePaid(sub); }}
-            className={`w-8 h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
+            className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
               ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
               : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
               }`}
             title={isPaidThisMonth ? "Desmarcar como pago" : "Marcar como pago"}
           >
-            <Check size={16} strokeWidth={2.5} />
+            <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(sub); }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
             title="Editar"
           >
-            <Edit2 size={15} />
+            <Edit2 size={14} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Excluir"
           >
-            <Trash2 size={15} />
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
@@ -174,7 +176,7 @@ const SubscriptionCard: React.FC<{
 };
 
 
-export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate, isProMode = false }) => {
+export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate, isProMode = false, userPlan = 'starter', onUpgrade }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -212,6 +214,18 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating'>('idle');
   const [generationMessage, setGenerationMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Limit Logic
+  const [starterMessageCount, setStarterMessageCount] = useState(() => {
+    const saved = localStorage.getItem('coinzinha_starter_count');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('coinzinha_starter_count', starterMessageCount.toString());
+  }, [starterMessageCount]);
+
+  const isLimitReached = userPlan === 'starter' && starterMessageCount >= 5;
 
   const [formData, setFormData] = useState({
     name: '',
@@ -313,6 +327,11 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isModalOpen) {
       setIsVisible(true);
+
+      // Sync limit from storage
+      const savedCount = localStorage.getItem('coinzinha_starter_count');
+      if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
+
       // Forçar modo manual quando no modo Auto
       if (isProMode) {
         setModalMode('manual');
@@ -346,6 +365,14 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
   const handleSendMessage = async () => {
     if (!aiInput.trim()) return;
+    if (userPlan === 'starter') {
+      const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
+      if (currentCount >= 5) {
+        setStarterMessageCount(currentCount);
+        return;
+      }
+      setStarterMessageCount(currentCount + 1);
+    }
 
     const userText = aiInput;
     setAiInput('');
@@ -488,26 +515,28 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
   }, [subscriptions, filterMonth]);
 
   return (
-    <div className="w-full space-y-8 animate-fade-in pb-10">
+    <div className="w-full space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in pb-10">
 
-      {/* Header Padronizado */}
-      <div className="flex items-center justify-between pb-4">
-        <div className="flex items-center gap-4">
+      {/* Header Padronizado - Responsivo */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-2 sm:pb-4">
+        {/* Título e subtítulo - Escondido em mobile (já aparece no Header) */}
+        <div className="hidden sm:flex items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Assinaturas</h2>
-            <p className="text-gray-400 text-sm mt-1">Gerencie seus serviços recorrentes</p>
+            <h2 className="text-xl lg:text-2xl font-bold text-white tracking-tight">Assinaturas</h2>
+            <p className="text-gray-400 text-xs sm:text-sm mt-0.5 sm:mt-1">Gerencie seus serviços recorrentes</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        {/* Controles - Em linha para mobile */}
+        <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {/* Opções Placeholder */}
           <Dropdown className="flex items-center">
             <DropdownTrigger className="flex items-center">
               <button
-                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+                className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all flex-shrink-0"
                 title="Opções"
               >
-                <Settings size={20} />
+                <Settings size={18} className="sm:w-5 sm:h-5" />
               </button>
             </DropdownTrigger>
             <DropdownContent align="right">
@@ -517,90 +546,90 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
             </DropdownContent>
           </Dropdown>
 
-          {/* Month Picker */}
-          <div className="w-48">
+          {/* Month Picker - Flex grow em mobile */}
+          <div className="flex-1 sm:flex-none sm:w-40 lg:w-48">
             <CustomMonthPicker
               value={filterMonth}
               onChange={setFilterMonth}
-              placeholder="Selecionar mês"
+              placeholder="Mês"
             />
           </div>
 
           <button
             onClick={() => setIsModalOpen(true)}
-            className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
+            className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50 flex-shrink-0"
           >
-            <Plus size={20} strokeWidth={2.5} />
+            <Plus size={18} className="sm:w-5 sm:h-5" strokeWidth={2.5} />
             <span className="hidden sm:inline font-bold text-sm">Novo</span>
           </button>
         </div>
       </div>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-emerald-500">
-                <CreditCard size={20} />
+      {/* Stats Cards - Responsivos */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
+        <div className="rounded-xl sm:rounded-2xl border border-[#373734] bg-[#30302E] p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-2 sm:p-2.5 bg-[#272725] border border-[#373734] rounded-lg sm:rounded-xl text-emerald-500">
+                <CreditCard size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Custo Mensal</span>
+              <span className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">Custo Mensal</span>
             </div>
           </div>
-          <div className="">
-            <p className="text-3xl font-bold text-white tracking-tight">
+          <div>
+            <p className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
               <NumberFlow
                 value={totalMonthly}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">A pagar em {filterMonth.split('-').reverse().join('/')}</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">A pagar em {filterMonth.split('-').reverse().join('/')}</p>
           </div>
         </div>
 
-        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-blue-500">
-                <TrendingUp size={20} />
+        <div className="rounded-xl sm:rounded-2xl border border-[#373734] bg-[#30302E] p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-2 sm:p-2.5 bg-[#272725] border border-[#373734] rounded-lg sm:rounded-xl text-blue-500">
+                <TrendingUp size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">Estimativa Anual</span>
+              <span className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">Estimativa Anual</span>
             </div>
           </div>
-          <div className="">
-            <p className="text-3xl font-bold text-white tracking-tight">
+          <div>
+            <p className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
               <NumberFlow
                 value={totalMonthly * 12}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">Projeção baseada no mês atual</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">Projeção baseada no mês atual</p>
           </div>
         </div>
       </div>
 
-      {/* LEGENDA DE STATUS */}
+      {/* LEGENDA DE STATUS - Responsiva */}
       {subscriptions.length > 0 && (
-        <div className="flex justify-between items-center pb-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
-              <Calendar size={18} strokeWidth={2.5} />
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pb-2 sm:pb-4">
+          <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 sm:gap-3">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
+              <Calendar size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={2.5} />
             </div>
             Suas Assinaturas
           </h3>
 
           {/* Legenda de cores Minimalista */}
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-white/5 border border-white/5 group/legend backdrop-blur-sm">
+          <div className="flex items-center gap-2 px-2 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-white/5 border border-white/5 group/legend backdrop-blur-sm self-start sm:self-auto">
             <Tooltip content="Ativa">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(16,185,129,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(16,185,129,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="Cancelada">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-red-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="Paga">
-              <div className="w-2.5 h-2.5 rounded-full bg-gray-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(107,114,128,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-gray-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(107,114,128,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
           </div>
         </div>
@@ -891,6 +920,21 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                     <div ref={messagesEndRef} />
                   </div>
 
+                  {/* Limit Banner */}
+                  {isLimitReached && (
+                    <div className="mb-2 mx-4 px-2 flex items-center justify-between">
+                      <span className="text-xs text-gray-400">
+                        Limite de 5 mensagens atingido.
+                      </span>
+                      <button
+                        onClick={() => onUpgrade?.()}
+                        className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                      >
+                        Fazer Upgrade
+                      </button>
+                    </div>
+                  )}
+
                   {/* Input Area */}
                   <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
                     <div className="relative flex items-center gap-2">
@@ -904,13 +948,13 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                             handleSendMessage();
                           }
                         }}
-                        placeholder="Digite sua assinatura... (ex: Netflix 55)"
-                        disabled={generationStatus !== 'idle'}
-                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600"
+                        placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua assinatura... (ex: Netflix 55)"}
+                        disabled={generationStatus !== 'idle' || isLimitReached}
+                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
                       />
                       <button
                         onClick={handleSendMessage}
-                        disabled={!aiInput.trim() || generationStatus !== 'idle'}
+                        disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
                         className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
                       >
                         <Send size={18} />
@@ -918,6 +962,26 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                     </div>
                   </div>
                 </>
+              )}
+
+              {/* Pro Mode Blocking Message - ADDED */}
+              {modalMode === 'ai' && isProMode && (
+                <div className="flex-1 flex flex-col items-center justify-center p-4 text-center text-gray-400">
+                  <div className="w-16 h-16 rounded-full bg-[#373734] flex items-center justify-center mb-4">
+                    <img src={coinzinhaImg} className="w-10 h-10 rounded-full grayscale opacity-50" alt="Coinzinha" />
+                  </div>
+                  <p className="font-bold text-lg mb-2 text-white">Coinzinha AI desabilitada</p>
+                  <p className="text-sm leading-relaxed max-w-[280px]">
+                    Você está no modo <strong>Auto</strong> - assinaturas são importadas automaticamente.
+                    Para adicionar manualmente, use o modo <strong>Manual</strong>.
+                  </p>
+                  <button
+                    onClick={() => setModalMode('manual')}
+                    className="mt-6 px-5 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#d97757]/20"
+                  >
+                    Ir para Modo Manual
+                  </button>
+                </div>
               )}
 
               {/* MANUAL FORM */}

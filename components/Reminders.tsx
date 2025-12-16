@@ -22,6 +22,8 @@ interface RemindersProps {
   onUpdateReminder: (reminder: Reminder) => void;
   onOpenAIModal?: (context?: 'transaction' | 'reminder') => void;
   isProMode?: boolean;
+  userPlan?: 'starter' | 'pro' | 'family';
+  onUpgrade?: () => void;
 }
 
 type ModalMode = 'ai' | 'manual';
@@ -110,7 +112,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
   return (
     <div
       className={`
-        group relative bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
+        group relative bg-[#30302E] rounded-xl sm:rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
         hover:border-[#4a4a47] hover:bg-[#343432]
         ${selected ? 'ring-2 ring-[#d97757] border-[#d97757]' : ''}
         ${selectionMode ? 'cursor-pointer' : ''}
@@ -118,77 +120,77 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
       onClick={selectionMode ? () => onToggleSelect && onToggleSelect(item.id) : undefined}
     >
       {/* Conteúdo Principal */}
-      <div className="flex items-center gap-4 px-5 py-4">
+      <div className="flex items-center gap-2 sm:gap-4 px-3 sm:px-5 py-3 sm:py-4">
         {/* Checkbox de seleção */}
         {selectionMode && (
           <button
             onClick={(e) => { e.stopPropagation(); onToggleSelect && onToggleSelect(item.id); }}
-            className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${selected
+            className={`w-5 h-5 sm:w-6 sm:h-6 rounded-md sm:rounded-lg border-2 flex items-center justify-center transition-all flex-shrink-0 ${selected
               ? 'bg-[#d97757] border-[#d97757] text-white'
               : 'border-gray-600 hover:border-[#d97757]'
               }`}
           >
-            {selected && <Check size={14} strokeWidth={3} />}
+            {selected && <Check size={12} className="sm:w-3.5 sm:h-3.5" strokeWidth={3} />}
           </button>
         )}
 
         {/* Indicador de status (bolinha colorida) */}
-        <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${statusConfig.accentColor}`} />
+        <div className={`w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full flex-shrink-0 ${statusConfig.accentColor}`} />
 
         {/* Info Principal */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-0.5">
-            <h4 className="font-semibold text-white text-[15px] truncate">{item.description}</h4>
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
+            <h4 className="font-semibold text-white text-sm sm:text-[15px] truncate">{item.description}</h4>
             {item.isRecurring && (
-              <span className="flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
+              <span className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
                 <RefreshCw size={9} />
               </span>
             )}
           </div>
 
-          <div className="flex items-center gap-2 text-[12px] text-gray-500">
+          <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] text-gray-500">
             <span className="flex items-center gap-1">
-              {getCategoryIcon(item.category, 11)}
+              {getCategoryIcon(item.category, 10)}
               <span className="hidden sm:inline">{item.category}</span>
             </span>
-            <span className="text-gray-600">•</span>
-            <span className="font-mono">{formatDate(item.dueDate)}</span>
+            <span className="text-gray-600 hidden sm:inline">•</span>
+            <span className="font-mono text-[10px] sm:text-[12px]">{formatDate(item.dueDate)}</span>
           </div>
         </div>
 
         {/* Valor e Status */}
-        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-          <span className={`font-mono font-bold text-lg tracking-tight ${statusConfig.amountColor}`}>
+        <div className="flex flex-col items-end gap-0.5 sm:gap-1 flex-shrink-0">
+          <span className={`font-mono font-bold text-base sm:text-lg tracking-tight ${statusConfig.amountColor}`}>
             <NumberFlow value={item.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
           </span>
-          <span className={`flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
+          <span className={`flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
             {statusConfig.statusIcon}
-            {statusConfig.statusText}
+            <span className="hidden sm:inline">{statusConfig.statusText}</span>
           </span>
         </div>
 
-        {/* Ações - aparecem no hover */}
-        <div className={`flex items-center gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'opacity-0 group-hover:opacity-100 -mr-2 group-hover:mr-0'}`}>
+        {/* Ações - aparecem no hover (desktop) ou parcialmente visíveis (mobile) */}
+        <div className={`flex items-center gap-0.5 sm:gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:-mr-2 sm:group-hover:mr-0'}`}>
           <button
             onClick={(e) => { e.stopPropagation(); onPayReminder(item); }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
+            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
             title={item.type === 'income' ? "Confirmar Recebimento" : "Marcar como Pago"}
           >
-            <Check size={16} strokeWidth={2.5} />
+            <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(item); }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
             title="Editar"
           >
-            <Edit2 size={15} />
+            <Edit2 size={14} />
           </button>
           <button
             onClick={(e) => { e.stopPropagation(); onConfirmDelete(item.id); }}
-            className="w-8 h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
             title="Excluir"
           >
-            <Trash2 size={15} />
+            <Trash2 size={14} />
           </button>
         </div>
       </div>
@@ -197,7 +199,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 };
 
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false, userPlan = 'starter', onUpgrade }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   // Modal Animation & State
@@ -219,6 +221,18 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [generationStatus, setGenerationStatus] = useState<'idle' | 'generating'>('idle');
   const [generationMessage, setGenerationMessage] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Limit Logic
+  const [starterMessageCount, setStarterMessageCount] = useState(() => {
+    const saved = localStorage.getItem('coinzinha_starter_count');
+    return saved ? parseInt(saved, 10) : 0;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('coinzinha_starter_count', starterMessageCount.toString());
+  }, [starterMessageCount]);
+
+  const isLimitReached = userPlan === 'starter' && starterMessageCount >= 5;
 
   const [newReminder, setNewReminder] = useState({
     description: '',
@@ -290,6 +304,11 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isModalOpen) {
       setIsVisible(true);
+
+      // Sync from storage
+      const savedCount = localStorage.getItem('coinzinha_starter_count');
+      if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
+
       // Forçar modo manual quando no modo Auto
       if (isProMode) {
         setModalMode('manual');
@@ -371,6 +390,15 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
   const handleSendMessage = async () => {
     if (!aiInput.trim()) return;
+
+    if (userPlan === 'starter') {
+      const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
+      if (currentCount >= 5) {
+        setStarterMessageCount(currentCount);
+        return;
+      }
+      setStarterMessageCount(currentCount + 1);
+    }
 
     const userText = aiInput;
     setAiInput('');
@@ -538,28 +566,30 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const selectedLabel = selectedReminders.length === 1 ? '1 item' : `${selectedReminders.length} itens`;
 
   return (
-    <div className="w-full space-y-8 animate-fade-in font-sans pb-10 relative">
+    <div className="w-full space-y-4 sm:space-y-6 lg:space-y-8 animate-fade-in font-sans pb-10 relative">
 
       {/* HEADER + TIP BANNER WRAPPER (grudados) */}
       <div className="space-y-0">
-        {/* HEADER PADRONIZADO */}
-        <div className="flex items-center justify-between pb-4">
-          <div className="flex items-center gap-4">
+        {/* HEADER PADRONIZADO - Responsivo */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between pb-2 sm:pb-4">
+          {/* Título e subtítulo - Escondido em mobile (já aparece no Header) */}
+          <div className="hidden sm:flex items-center gap-4">
             <div>
-              <h2 className="text-2xl font-bold text-white tracking-tight">Lembretes</h2>
-              <p className="text-gray-400 text-sm mt-1">Organize seus lembretes</p>
+              <h2 className="text-xl lg:text-2xl font-bold text-white tracking-tight">Lembretes</h2>
+              <p className="text-gray-400 text-xs sm:text-sm mt-0.5 sm:mt-1">Organize seus lembretes</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          {/* Controles - Em linha para mobile */}
+          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {/* Dropdown de Opções */}
             <Dropdown className="flex items-center">
               <DropdownTrigger className="flex items-center">
                 <button
-                  className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all"
+                  className="p-2 rounded-lg text-gray-500 hover:text-white hover:bg-white/5 transition-all flex-shrink-0"
                   title="Opções"
                 >
-                  <Settings size={20} />
+                  <Settings size={18} className="sm:w-5 sm:h-5" />
                 </button>
               </DropdownTrigger>
               <DropdownContent align="right">
@@ -572,20 +602,20 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
               </DropdownContent>
             </Dropdown>
 
-            {/* Month Picker no Header */}
-            <div className="w-48">
+            {/* Month Picker - Flex grow em mobile */}
+            <div className="flex-1 sm:flex-none sm:w-40 lg:w-48">
               <CustomMonthPicker
                 value={filterMonth}
                 onChange={setFilterMonth}
-                placeholder="Selecionar mês"
+                placeholder="Mês"
               />
             </div>
 
             <button
               onClick={() => setIsModalOpen(true)}
-              className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-5 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50"
+              className="bg-[#d97757] hover:bg-[#c56a4d] text-white px-3 sm:px-5 py-2 sm:py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg shadow-[#d97757]/20 hover:shadow-[#d97757]/40 hover:-translate-y-0.5 border border-[#d97757]/50 flex-shrink-0"
             >
-              <Plus size={20} strokeWidth={2.5} />
+              <Plus size={18} className="sm:w-5 sm:h-5" strokeWidth={2.5} />
               <span className="hidden sm:inline font-bold text-sm">Novo</span>
             </button>
           </div>
@@ -594,80 +624,80 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
 
 
-      {/* QUICK STATS CARDS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+      {/* QUICK STATS CARDS - Responsivos */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 lg:gap-5">
 
         {/* Card Despesas */}
-        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-red-500">
-                <TrendingDown size={20} />
+        <div className="rounded-xl sm:rounded-2xl border border-[#373734] bg-[#30302E] p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-2 sm:p-2.5 bg-[#272725] border border-[#373734] rounded-lg sm:rounded-xl text-red-500">
+                <TrendingDown size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Pagar</span>
+              <span className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">A Pagar</span>
             </div>
           </div>
-          <div className="">
-            <p className="text-3xl font-bold text-white tracking-tight">
+          <div>
+            <p className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
               <NumberFlow
                 value={totalExpenses}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">{filteredByMonth.filter(r => (!r.type || r.type === 'expense')).length} despesas no mês</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{filteredByMonth.filter(r => (!r.type || r.type === 'expense')).length} despesas no mês</p>
           </div>
         </div>
 
         {/* Card Receitas */}
-        <div className="rounded-2xl border border-[#373734] bg-[#30302E] p-5 flex flex-col justify-between">
-          <div className="flex justify-between items-start mb-3">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-[#272725] border border-[#373734] rounded-xl text-emerald-500">
-                <TrendingUp size={20} />
+        <div className="rounded-xl sm:rounded-2xl border border-[#373734] bg-[#30302E] p-4 sm:p-5 flex flex-col justify-between">
+          <div className="flex justify-between items-start mb-2 sm:mb-3">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="p-2 sm:p-2.5 bg-[#272725] border border-[#373734] rounded-lg sm:rounded-xl text-emerald-500">
+                <TrendingUp size={18} className="sm:w-5 sm:h-5" />
               </div>
-              <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">A Receber</span>
+              <span className="text-[10px] sm:text-xs text-gray-400 font-bold uppercase tracking-widest">A Receber</span>
             </div>
           </div>
-          <div className="">
-            <p className="text-3xl font-bold text-white tracking-tight">
+          <div>
+            <p className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
               <NumberFlow
                 value={totalIncome}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
             </p>
-            <p className="text-xs text-gray-500 mt-1">{filteredByMonth.filter(r => r.type === 'income').length} receitas no mês</p>
+            <p className="text-[10px] sm:text-xs text-gray-500 mt-0.5 sm:mt-1">{filteredByMonth.filter(r => r.type === 'income').length} receitas no mês</p>
           </div>
         </div>
       </div>
 
-      {/* LEGENDA DE STATUS */}
+      {/* LEGENDA DE STATUS - Responsiva */}
       {reminders.length > 0 && (
-        <div className="flex justify-between items-center pb-4">
-          <h3 className="text-lg font-bold text-white flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
-              <Calendar size={18} strokeWidth={2.5} />
+        <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pb-2 sm:pb-4">
+          <h3 className="text-base sm:text-lg font-bold text-white flex items-center gap-2 sm:gap-3">
+            <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg bg-[#d97757]/10 flex items-center justify-center text-[#d97757]">
+              <Calendar size={16} className="sm:w-[18px] sm:h-[18px]" strokeWidth={2.5} />
             </div>
             Próximos Lembretes
           </h3>
 
           {/* Legenda de cores Minimalista */}
-          <div className="flex items-center gap-2 px-2 py-1.5 rounded-xl bg-white/5 border border-white/5 group/legend backdrop-blur-sm">
+          <div className="flex items-center gap-2 px-2 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-white/5 border border-white/5 group/legend backdrop-blur-sm self-start sm:self-auto">
             <Tooltip content="Atrasado">
-              <div className="w-2.5 h-2.5 rounded-full bg-red-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-red-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(239,68,68,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="Vence Hoje">
-              <div className="w-2.5 h-2.5 rounded-full bg-amber-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(245,158,11,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-amber-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(245,158,11,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="Próximo a vencer">
-              <div className="w-2.5 h-2.5 rounded-full bg-[#d97757] cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(217,119,87,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-[#d97757] cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(217,119,87,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="No Prazo">
-              <div className="w-2.5 h-2.5 rounded-full bg-gray-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(107,114,128,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-gray-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(107,114,128,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
             <Tooltip content="Receita">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(16,185,129,0.6)] opacity-70 hover:opacity-100" />
+              <div className="w-2 h-2 sm:w-2.5 sm:h-2.5 rounded-full bg-emerald-500 cursor-help transition-all duration-300 hover:scale-125 hover:shadow-[0_0_8px_rgba(16,185,129,0.6)] opacity-70 hover:opacity-100" />
             </Tooltip>
           </div>
         </div>
@@ -858,6 +888,21 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     <div ref={messagesEndRef} />
                   </div>
 
+                  {/* Limit Banner */}
+                  {isLimitReached && (
+                    <div className="mb-2 mx-4 px-2 flex items-center justify-between">
+                      <span className="text-xs text-gray-400">
+                        Limite de 5 mensagens atingido.
+                      </span>
+                      <button
+                        onClick={() => onUpgrade?.()}
+                        className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                      >
+                        Fazer Upgrade
+                      </button>
+                    </div>
+                  )}
+
                   {/* Input Area */}
                   <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
                     <div className="relative flex items-center gap-2">
@@ -871,13 +916,13 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                             handleSendMessage();
                           }
                         }}
-                        placeholder="Digite sua transação... (ex: Uber 20)"
-                        disabled={generationStatus !== 'idle'}
-                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600"
+                        placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
+                        disabled={generationStatus !== 'idle' || isLimitReached}
+                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
                       />
                       <button
                         onClick={handleSendMessage}
-                        disabled={!aiInput.trim() || generationStatus !== 'idle'}
+                        disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
                         className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
                       >
                         <Send size={18} />

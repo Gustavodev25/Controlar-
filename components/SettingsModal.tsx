@@ -683,6 +683,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 }) => {
    const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab as SettingsTab);
    const [formData, setFormData] = useState(user);
+   const [hasVale, setHasVale] = useState(() => {
+      const percent = user.salaryAdvancePercent || 0;
+      const value = user.salaryAdvanceValue || 0;
+      return percent > 0 || value > 0;
+   });
    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
    const [isVisible, setIsVisible] = useState(false);
    const [autoRenew, setAutoRenew] = useState(true); // Moved to top level
@@ -1076,6 +1081,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    useEffect(() => {
       setFormData(user);
+      const percent = user.salaryAdvancePercent || 0;
+      const value = user.salaryAdvanceValue || 0;
+      setHasVale(percent > 0 || value > 0);
    }, [user, isOpen]);
 
    useEffect(() => {
@@ -1630,7 +1638,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               </div>
                            </div>
 
+                           <div
+                              className={`bg-gray-900/30 border rounded-2xl p-5 cursor-pointer group transition-colors ${hasVale ? 'border-[#d97757]/30 hover:border-[#d97757]/50' : 'border-gray-800 hover:border-gray-700'}`}
+                              onClick={() => {
+                                 if (hasVale) {
+                                    setHasVale(false);
+                                    setFormData({
+                                       ...formData,
+                                       salaryAdvancePercent: 0,
+                                       salaryAdvanceValue: 0,
+                                       salaryAdvanceDay: 0
+                                    });
+                                    return;
+                                 }
+
+                                 const base = formData.baseSalary || 0;
+                                 const percent = formData.salaryAdvancePercent && formData.salaryAdvancePercent > 0
+                                    ? formData.salaryAdvancePercent
+                                    : 40;
+                                 const value = formData.salaryAdvanceValue && formData.salaryAdvanceValue > 0
+                                    ? formData.salaryAdvanceValue
+                                    : parseFloat((base * (percent / 100)).toFixed(2));
+                                 const day = formData.salaryAdvanceDay && formData.salaryAdvanceDay > 0
+                                    ? formData.salaryAdvanceDay
+                                    : 15;
+
+                                 setHasVale(true);
+                                 setFormData({
+                                    ...formData,
+                                    salaryAdvancePercent: percent,
+                                    salaryAdvanceValue: value,
+                                    salaryAdvanceDay: day
+                                 });
+                              }}
+                           >
+                              <div className="flex items-center gap-3">
+                                 <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${hasVale ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                    <Check size={12} strokeWidth={4} />
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-bold text-white">Recebo Adiantamento (Vale)</p>
+                                    <p className="text-xs text-gray-500">Ative para configurar o simulador do vale.</p>
+                                 </div>
+                              </div>
+                           </div>
+
                            {/* Vale (Adiantamento) Configuration */}
+                           {hasVale && (
                            <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
                               <div className="flex items-center justify-between mb-4">
                                  <h4 className="text-lg font-bold text-white flex items-center gap-2">
@@ -1888,6 +1942,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  </div>
                               </div>
                            </div>
+                           )}
 
                            <button
                               onClick={handleSave}

@@ -14,12 +14,22 @@ import {
     CreditCard,
     CheckCircle,
     AlertCircle,
-    Users as UsersIcon
+    Users as UsersIcon,
+    ChevronDown,
+    Filter
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { User as UserType } from '../types';
 import { EmptyState } from './EmptyState';
 import { ConfirmationBar } from './ConfirmationBar';
+import { 
+    Dropdown, 
+    DropdownTrigger, 
+    DropdownContent, 
+    DropdownItem,
+    DropdownLabel,
+    DropdownSeparator
+} from './Dropdown';
 import NumberFlow from '@number-flow/react';
 import { toast } from 'sonner';
 
@@ -177,6 +187,16 @@ export const AdminUsers: React.FC = () => {
         }
     };
 
+    const getStatusLabel = (status: StatusFilter) => {
+        switch (status) {
+            case 'all': return 'Todos Status';
+            case 'active': return 'Ativo';
+            case 'canceled': return 'Cancelado';
+            case 'past_due': return 'Atrasado';
+            default: return status;
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
@@ -224,9 +244,9 @@ export const AdminUsers: React.FC = () => {
             </div>
 
             {/* Search and Filters */}
-            <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 {/* Search */}
-                <div className="relative flex-1">
+                <div className="relative w-full sm:w-80">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
                     <input
                         type="text"
@@ -238,16 +258,47 @@ export const AdminUsers: React.FC = () => {
                 </div>
 
                 {/* Status Filter */}
-                <select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
-                    className="px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white focus:outline-none focus:border-gray-600 transition-colors cursor-pointer"
-                >
-                    <option value="all">Todos Status</option>
-                    <option value="active">Ativo</option>
-                    <option value="canceled">Cancelado</option>
-                    <option value="past_due">Atrasado</option>
-                </select>
+                <Dropdown>
+                    <DropdownTrigger className="w-full sm:w-auto">
+                        <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
+                            <div className="flex items-center gap-2">
+                                <Filter size={16} className="text-gray-500" />
+                                <span className="text-sm">{getStatusLabel(statusFilter)}</span>
+                            </div>
+                            <ChevronDown size={16} className="text-gray-500" />
+                        </div>
+                    </DropdownTrigger>
+                    <DropdownContent align="right" width="w-48">
+                        <DropdownLabel>Filtrar por Status</DropdownLabel>
+                        <DropdownItem 
+                            onClick={() => setStatusFilter('all')}
+                            className={statusFilter === 'all' ? 'bg-white/5' : ''}
+                        >
+                            Todos
+                        </DropdownItem>
+                        <DropdownItem 
+                            onClick={() => setStatusFilter('active')}
+                            icon={CheckCircle}
+                            className={statusFilter === 'active' ? 'bg-white/5' : ''}
+                        >
+                            Ativo
+                        </DropdownItem>
+                        <DropdownItem 
+                            onClick={() => setStatusFilter('canceled')}
+                            icon={X}
+                            className={statusFilter === 'canceled' ? 'bg-white/5' : ''}
+                        >
+                            Cancelado
+                        </DropdownItem>
+                        <DropdownItem 
+                            onClick={() => setStatusFilter('past_due')}
+                            icon={AlertCircle}
+                            className={statusFilter === 'past_due' ? 'bg-white/5' : ''}
+                        >
+                            Atrasado
+                        </DropdownItem>
+                    </DropdownContent>
+                </Dropdown>
             </div>
 
             {/* Plan Tabs */}

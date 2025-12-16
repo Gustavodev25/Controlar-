@@ -20,6 +20,7 @@ interface ConnectedAccountsProps {
   userId?: string | null;
   memberId?: string;
   isProMode?: boolean;
+  isAdmin?: boolean;
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
@@ -70,19 +71,25 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   onRefresh,
   lastSynced = {},
   userId,
-  isProMode = true
+  isProMode = true,
+  isAdmin = false
 }) => {
   const [limitView, setLimitView] = useState<Set<string>>(new Set());
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
+  const [forceSyncItemId, setForceSyncItemId] = useState<string | null>(null);
   const [timers, setTimers] = useState<Record<string, { h: number; m: number; s: number } | null>>({});
   const accountsPerPage = 3;
   const toast = useToasts();
 
   const handleBankConnected = (newAccounts: ConnectedAccount[]) => {
-    toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+    if (forceSyncItemId) {
+      toast.success("Sincronização concluída.");
+    } else {
+      toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+    }
     if (onRefresh) onRefresh();
   };
 
@@ -265,7 +272,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
         <div className="flex items-center gap-3">
           <button
-            onClick={() => setShowBankModal(true)}
+            onClick={() => {
+              setForceSyncItemId(null);
+              setShowBankModal(true);
+            }}
             className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
           >
             <Plus size={18} />
@@ -308,6 +318,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             const representativeAccount = institutionAccounts.find(acc => lastSynced[acc.id] && acc.connectionMode !== 'MANUAL');
             const representativeId = representativeAccount?.id;
             const timer = representativeId ? timers[representativeId] : null;
+            const syncItemId = institutionAccounts.find(acc => acc.connectionMode !== 'MANUAL' && acc.itemId)?.itemId;
 
             const currentPage = accountPages[groupKey] || 1;
             const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
@@ -354,6 +365,20 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   )}
 
                   <div className="flex items-center gap-2">
+                    {isAdmin && syncItemId && (
+                      <TooltipIcon content="Sincronizar agora (admin)">
+                        <button
+                          onClick={() => {
+                            setForceSyncItemId(syncItemId);
+                            setShowBankModal(true);
+                          }}
+                          disabled={isDeleting !== null}
+                          className="text-[#d97757] hover:text-[#e08b70] p-2 hover:bg-[#d97757]/10 rounded-lg transition-all disabled:opacity-50"
+                        >
+                          <RotateCcw size={18} />
+                        </button>
+                      </TooltipIcon>
+                    )}
                     <TooltipIcon content="Desconectar Instituição">
                       <button
                         onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName })}
@@ -478,9 +503,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       {/* Bank Connect Modal */}
       <BankConnectModal
         isOpen={showBankModal}
-        onClose={() => setShowBankModal(false)}
+        onClose={() => {
+          setShowBankModal(false);
+          setForceSyncItemId(null);
+        }}
         userId={userId || null}
         onSuccess={handleBankConnected}
+        forceSyncItemId={forceSyncItemId}
       />
 
     </div>
