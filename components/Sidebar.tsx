@@ -11,7 +11,7 @@ import {
   Wallet,
   MessageSquare
 } from './Icons';
-import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag } from 'lucide-react';
+import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
 import { Member } from '../types';
 import { Logo } from './Logo';
@@ -21,7 +21,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_users' | 'chat';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_users' | 'admin_subscriptions' | 'chat';
 
 // --- NAVITEM: Item Individual ---
 interface NavItemProps {
@@ -392,7 +392,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     active={activeTab === 'admin_email'}
                     onClick={() => handleNavClick('admin_email')}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="16" x="2" y="4" rx="2" /><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7" /></svg>}
-                    label="Email"
+                    label="Mensagens"
                     isOpen={isOpen}
                   />
                   <NavItem
@@ -414,6 +414,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => handleNavClick('admin_users')}
                     icon={<UsersIcon size={20} />}
                     label="Usuários"
+                    isOpen={isOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'admin_subscriptions'}
+                    onClick={() => handleNavClick('admin_subscriptions')}
+                    icon={<CreditCard size={20} />}
+                    label="Assinaturas"
                     isOpen={isOpen}
                   />
                 </>) : activeMemberId === 'FAMILY_OVERVIEW' ? (

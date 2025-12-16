@@ -9,37 +9,11 @@ import claudeHandler from './claude.js';
 import path from 'path';
 import nodemailer from 'nodemailer';
 import pluggyRouter from './pluggy.js';
+import cronSyncRouter from './cron-sync.js';
+import { firebaseAdmin, firebaseAuth } from './firebaseAdmin.js';
 
 // Explicitly load .env from root
 dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
-
-// Firebase Admin - Only initialize if service account is provided
-// For password reset, we'll use a different approach that doesn't require Admin SDK
-let firebaseAdmin = null;
-let firebaseAuth = null;
-
-try {
-  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
-    const admin = await import('firebase-admin');
-    const { getAuth } = await import('firebase-admin/auth');
-
-    if (!admin.default.apps.length) {
-      const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-      admin.default.initializeApp({
-        credential: admin.default.credential.cert(serviceAccount),
-        projectId: process.env.VITE_FIREBASE_PROJECT_ID || "financeiro-609e1"
-      });
-      firebaseAdmin = admin.default;
-      firebaseAuth = getAuth();
-      console.log('>>> Firebase Admin Initialized with Service Account');
-    }
-  } else {
-    console.log('>>> Firebase Admin: No service account provided, password reset will work without user verification');
-  }
-} catch (error) {
-  console.error('>>> Firebase Admin Init Error:', error.message);
-  console.log('>>> Continuing without Firebase Admin - password reset will still work');
-}
 
 const router = express.Router();
 
@@ -887,6 +861,30 @@ router.delete('/asaas/subscription/:subscriptionId', async (req, res) => {
   }
 });
 
+router.get('/asaas/payments', async (req, res) => {
+  try {
+    const { customer, subscription, status, limit, offset } = req.query;
+    
+    // Build query string
+    const params = new URLSearchParams();
+    if (customer) params.append('customer', customer);
+    if (subscription) params.append('subscription', subscription);
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+    
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+    
+    const result = await asaasRequest('GET', `/payments${queryString}`);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Erro ao buscar pagamentos.',
+      details: error.response?.data
+    });
+  }
+});
+
 router.get('/asaas/payment/:paymentId', async (req, res) => {
   const { paymentId } = req.params;
 
@@ -905,5 +903,10 @@ router.get('/asaas/payment/:paymentId', async (req, res) => {
 // PLUGGY OPEN FINANCE INTEGRATION
 // ========================================
 router.use('/pluggy', pluggyRouter);
+
+// ========================================
+// CRON JOB - AUTOMATIC SYNC
+// ========================================
+router.use('/cron/sync', cronSyncRouter);
 
 export default router;
