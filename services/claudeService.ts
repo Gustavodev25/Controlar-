@@ -104,7 +104,8 @@ export type ClaudeAssistantResponse =
     | { type: "transaction"; data: AIParsedTransaction }
     | { type: "multiple_transactions"; data: AIParsedTransaction[]; askUnify: boolean; unifiedSuggestion?: AIParsedTransaction }
     | { type: "reminder"; data: AIParsedReminder }
-    | { type: "subscription"; data: AIParsedSubscription };
+    | { type: "subscription"; data: AIParsedSubscription }
+    | { type: "mixed_items"; transactions?: AIParsedTransaction[]; reminders?: AIParsedReminder[]; subscriptions?: AIParsedSubscription[] };
 
 /**
  * Processa mensagem do assistente usando Claude 3.5 Sonnet
@@ -204,6 +205,42 @@ REGRAS IMPORTANTES:
     "installments": número (1 se à vista),
     "isSubscription": true/false
   }
+}
+
+3. Se o usuário mencionar ITENS MISTOS (combinação de despesas, lembretes e/ou assinaturas), use o intent "mixed_items":
+Exemplo: "gastei 50 no uber, preciso lembrar de pagar a luz dia 20 que é 150 reais, e tenho netflix 55 por mês"
+{
+  "intent": "mixed_items",
+  "transactions": [
+    {
+      "description": "Uber",
+      "amount": 50,
+      "category": "Transporte",
+      "date": "${todayISO}",
+      "type": "expense",
+      "installments": 1,
+      "isSubscription": false
+    }
+  ],
+  "reminders": [
+    {
+      "description": "Conta de Luz",
+      "amount": 150,
+      "category": "Moradia",
+      "dueDate": "${todayISO}",
+      "type": "expense",
+      "isRecurring": true,
+      "frequency": "monthly"
+    }
+  ],
+  "subscriptions": [
+    {
+      "name": "Netflix",
+      "amount": 55,
+      "category": "Lazer",
+      "billingCycle": "monthly"
+    }
+  ]
 }
 
 4. Se o usuário mencionar um LEMBRETE ou CONTA A PAGAR FUTURA (ex: "lembrar de pagar luz dia 20", "vence conta de água dia 15"):
@@ -359,6 +396,38 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se
                 billingCycle: result.subscriptionData.billingCycle || "monthly"
             };
             return { type: "subscription", data: subscription };
+        }
+
+        // Processar itens mistos (transações + lembretes + assinaturas)
+        if (result.intent === "mixed_items") {
+            const transactions = (result.transactions || []).map(sanitizeTransaction);
+
+            const reminders = (result.reminders || []).map((r: any): AIParsedReminder => ({
+                description: r.description || "Lembrete",
+                amount: r.amount || 0,
+                category: r.category || "Outros",
+                dueDate: fixDate(r.dueDate),
+                type: r.type || "expense",
+                isRecurring: r.isRecurring ?? false,
+                frequency: r.frequency
+            }));
+
+            const subscriptions = (result.subscriptions || []).map((s: any): AIParsedSubscription => ({
+                name: s.name || "Assinatura",
+                amount: s.amount || 0,
+                category: s.category || "Lazer",
+                billingCycle: s.billingCycle || "monthly"
+            }));
+
+            // Só retorna mixed_items se houver pelo menos um item
+            if (transactions.length > 0 || reminders.length > 0 || subscriptions.length > 0) {
+                return {
+                    type: "mixed_items",
+                    transactions: transactions.length > 0 ? transactions : undefined,
+                    reminders: reminders.length > 0 ? reminders : undefined,
+                    subscriptions: subscriptions.length > 0 ? subscriptions : undefined
+                };
+            }
         }
 
         return { type: "text", content: result.chatResponse || responseText || "Entendido." };

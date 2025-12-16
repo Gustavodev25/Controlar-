@@ -351,14 +351,18 @@ interface Message {
     id: string;
     role: 'user' | 'ai';
     content?: string;
-    type: 'text' | 'transaction_confirm' | 'multiple_transactions' | 'reminder_confirm' | 'subscription_confirm';
+    type: 'text' | 'transaction_confirm' | 'multiple_transactions' | 'reminder_confirm' | 'subscription_confirm' | 'mixed_items';
     transactionData?: AIParsedTransaction;
     multipleTransactions?: AIParsedTransaction[];
     unifiedSuggestion?: AIParsedTransaction;
     reminderData?: AIParsedReminder;
     subscriptionData?: AIParsedSubscription;
+    // Mixed items support
+    mixedTransactions?: AIParsedTransaction[];
+    mixedReminders?: AIParsedReminder[];
+    mixedSubscriptions?: AIParsedSubscription[];
     isConfirmed?: boolean;
-    confirmedChoice?: 'unified' | 'separate';
+    confirmedChoice?: 'unified' | 'separate' | 'all';
     timestamp: number;
 }
 
@@ -650,6 +654,16 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                     role: 'ai',
                     type: 'subscription_confirm',
                     subscriptionData: response.data,
+                    timestamp: Date.now()
+                };
+            } else if (response.type === 'mixed_items') {
+                aiMsg = {
+                    id: (Date.now() + 1).toString(),
+                    role: 'ai',
+                    type: 'mixed_items',
+                    mixedTransactions: response.transactions,
+                    mixedReminders: response.reminders,
+                    mixedSubscriptions: response.subscriptions,
                     timestamp: Date.now()
                 };
             } else if (response.type === 'text') {
@@ -947,6 +961,90 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 timestamp: Date.now()
             }]);
         }
+    };
+
+    // Handler para confirmar todos os itens mistos de uma vez
+    const handleConfirmMixedItems = (
+        msgId: string,
+        transactions?: AIParsedTransaction[],
+        reminders?: AIParsedReminder[],
+        subscriptions?: AIParsedSubscription[]
+    ) => {
+        // Bloquear transações no modo Pro
+        if (isProMode && transactions && transactions.length > 0) {
+            setMessages(prev => [...prev, {
+                id: Date.now().toString(),
+                role: 'ai',
+                type: 'text',
+                content: `⚠️ Você está no modo **Auto** - transações são importadas automaticamente.\n\nPara adicionar manualmente, troque para o modo **Manual**.`,
+                timestamp: Date.now()
+            }]);
+            return;
+        }
+
+        let addedCount = 0;
+        const addedItems: string[] = [];
+
+        // Adicionar transações
+        if (transactions && transactions.length > 0) {
+            transactions.forEach(tx => {
+                onAddTransaction({
+                    description: tx.description,
+                    amount: tx.amount,
+                    category: tx.category,
+                    date: tx.date,
+                    type: tx.type,
+                    status: 'completed'
+                });
+                addedCount++;
+            });
+            addedItems.push(`${transactions.length} despesa(s)`);
+        }
+
+        // Adicionar lembretes
+        if (reminders && reminders.length > 0 && onAddReminder) {
+            reminders.forEach(rem => {
+                onAddReminder({
+                    description: rem.description,
+                    amount: rem.amount,
+                    category: rem.category,
+                    dueDate: rem.dueDate,
+                    type: rem.type,
+                    isRecurring: rem.isRecurring,
+                    frequency: rem.frequency
+                });
+                addedCount++;
+            });
+            addedItems.push(`${reminders.length} lembrete(s)`);
+        }
+
+        // Adicionar assinaturas
+        if (subscriptions && subscriptions.length > 0 && onAddSubscription) {
+            subscriptions.forEach(sub => {
+                onAddSubscription({
+                    userId: userId || '',
+                    name: sub.name,
+                    amount: sub.amount,
+                    category: sub.category,
+                    billingCycle: sub.billingCycle,
+                    status: 'active'
+                });
+                addedCount++;
+            });
+            addedItems.push(`${subscriptions.length} assinatura(s)`);
+        }
+
+        setMessages(prev => prev.map(m =>
+            m.id === msgId ? { ...m, isConfirmed: true, confirmedChoice: 'all' } : m
+        ));
+
+        setMessages(prev => [...prev, {
+            id: Date.now().toString(),
+            role: 'ai',
+            type: 'text',
+            content: `✅ **${addedCount} itens salvos com sucesso!**\n\n${addedItems.join(', ')}`,
+            timestamp: Date.now()
+        }]);
     };
 
     const handleNewChat = () => {
@@ -1364,6 +1462,76 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                 <div className="w-full bg-[#333] text-gray-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
                                                                     <Check size={14} className="text-green-500" />
                                                                     Ativo
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    </motion.div>
+                                                ) : msg.type === 'mixed_items' ? (
+                                                    /* Mixed Items Card */
+                                                    <motion.div
+                                                        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                        transition={{ duration: 0.3, ease: "easeOut" }}
+                                                        className="w-full max-w-[320px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
+                                                    >
+                                                        <div className="p-4 border-b border-[#333]">
+                                                            <div className="flex items-center gap-2 mb-1">
+                                                                <div className="w-6 h-6 rounded-lg bg-[#333] flex items-center justify-center">
+                                                                    <Sparkles size={12} className="text-[#d97757]" />
+                                                                </div>
+                                                                <span className="text-xs font-bold text-white">
+                                                                    {(msg.mixedTransactions?.length || 0) + (msg.mixedReminders?.length || 0) + (msg.mixedSubscriptions?.length || 0)} Itens Identificados
+                                                                </span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="p-2 space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
+                                                            {msg.mixedTransactions?.map((tx, idx) => (
+                                                                <div key={`tx-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                    <div className="flex flex-col min-w-0 pr-2">
+                                                                        <span className="text-xs font-medium text-gray-200 truncate">{tx.description}</span>
+                                                                        <span className="text-[10px] text-gray-500">{tx.category}</span>
+                                                                    </div>
+                                                                    <span className="text-xs font-bold text-white whitespace-nowrap">R$ {tx.amount.toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                            {msg.mixedReminders?.map((rem, idx) => (
+                                                                <div key={`rem-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                    <div className="flex flex-col min-w-0 pr-2">
+                                                                        <span className="text-xs font-medium text-gray-200 truncate">{rem.description}</span>
+                                                                        <span className="text-[10px] text-gray-500">{rem.category}</span>
+                                                                    </div>
+                                                                    <span className="text-xs font-bold text-white whitespace-nowrap">R$ {rem.amount.toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                            {msg.mixedSubscriptions?.map((sub, idx) => (
+                                                                <div key={`sub-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                    <div className="flex flex-col min-w-0 pr-2">
+                                                                        <span className="text-xs font-medium text-gray-200 truncate">{sub.name}</span>
+                                                                        <span className="text-[10px] text-gray-500">{sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}</span>
+                                                                    </div>
+                                                                    <span className="text-xs font-bold text-white whitespace-nowrap">R$ {sub.amount.toFixed(2)}</span>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                        <div className="p-3 pt-1">
+                                                            {!msg.isConfirmed ? (
+                                                                <motion.button
+                                                                    whileHover={{ scale: 1.01 }}
+                                                                    whileTap={{ scale: 0.99 }}
+                                                                    onClick={() => handleConfirmMixedItems(
+                                                                        msg.id,
+                                                                        msg.mixedTransactions,
+                                                                        msg.mixedReminders,
+                                                                        msg.mixedSubscriptions
+                                                                    )}
+                                                                    className="w-full bg-[#d97757] hover:bg-[#c56a4d] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-[#d97757]/10"
+                                                                >
+                                                                    Salvar Tudo
+                                                                </motion.button>
+                                                            ) : (
+                                                                <div className="w-full bg-[#333] text-gray-400 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
+                                                                    <Check size={14} className="text-green-500" />
+                                                                    Processado
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1870,6 +2038,74 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                     <div className="w-full bg-[#333] text-gray-400 py-3 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
                                                                         <Check size={14} className="text-green-500" />
                                                                         Ativo
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        </motion.div>
+                                                    ) : msg.type === 'mixed_items' ? (
+                                                        /* Mixed Items Card (Popup) */
+                                                        <motion.div
+                                                            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                                                            transition={{ duration: 0.3, ease: "easeOut" }}
+                                                            className="w-full max-w-[300px] bg-[#252525] border border-[#404040] rounded-2xl overflow-hidden shadow-xl"
+                                                        >
+                                                            <div className="p-4 border-b border-[#333]">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <div className="w-6 h-6 rounded-lg bg-[#333] flex items-center justify-center">
+                                                                        <Sparkles size={12} className="text-[#d97757]" />
+                                                                    </div>
+                                                                    <span className="text-xs font-bold text-white">Múltiplos Itens ({(msg.mixedTransactions?.length || 0) + (msg.mixedReminders?.length || 0) + (msg.mixedSubscriptions?.length || 0)})</span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="p-2 space-y-1 max-h-[180px] overflow-y-auto custom-scrollbar">
+                                                                {msg.mixedTransactions?.map((tx, idx) => (
+                                                                    <div key={`tx-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                        <div className="flex flex-col min-w-0 pr-2">
+                                                                            <span className="text-xs font-medium text-gray-200 truncate">{tx.description}</span>
+                                                                            <span className="text-[10px] text-gray-500">{tx.category}</span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-white whitespace-nowrap">R$ {tx.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                                {msg.mixedReminders?.map((rem, idx) => (
+                                                                    <div key={`rem-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                        <div className="flex flex-col min-w-0 pr-2">
+                                                                            <span className="text-xs font-medium text-gray-200 truncate">{rem.description}</span>
+                                                                            <span className="text-[10px] text-gray-500">{rem.category}</span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-white whitespace-nowrap">R$ {rem.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                                {msg.mixedSubscriptions?.map((sub, idx) => (
+                                                                    <div key={`sub-${idx}`} className="flex items-center justify-between p-2.5 rounded-lg bg-[#30302E] border border-[#3a3a3a]/50">
+                                                                        <div className="flex flex-col min-w-0 pr-2">
+                                                                            <span className="text-xs font-medium text-gray-200 truncate">{sub.name}</span>
+                                                                            <span className="text-[10px] text-gray-500">{sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}</span>
+                                                                        </div>
+                                                                        <span className="text-xs font-bold text-white whitespace-nowrap">R$ {sub.amount.toFixed(2)}</span>
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                            <div className="p-3 pt-1">
+                                                                {!msg.isConfirmed ? (
+                                                                    <motion.button
+                                                                        whileHover={{ scale: 1.01 }}
+                                                                        whileTap={{ scale: 0.99 }}
+                                                                        onClick={() => handleConfirmMixedItems(
+                                                                            msg.id,
+                                                                            msg.mixedTransactions,
+                                                                            msg.mixedReminders,
+                                                                            msg.mixedSubscriptions
+                                                                        )}
+                                                                        className="w-full bg-[#d97757] hover:bg-[#c56a4d] text-white py-2.5 rounded-xl text-xs font-bold transition-all shadow-lg shadow-[#d97757]/10"
+                                                                    >
+                                                                        Salvar Tudo
+                                                                    </motion.button>
+                                                                ) : (
+                                                                    <div className="w-full bg-[#333] text-gray-400 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center gap-2 border border-[#444]">
+                                                                        <Check size={14} className="text-green-500" />
+                                                                        Processado
                                                                     </div>
                                                                 )}
                                                             </div>

@@ -366,13 +366,14 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
         }
       `}</style>
       {/* Header com título e switch */}
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex flex-col gap-3 mb-4">
+        {/* Linha 1: Título */}
         <div>
           <h2 className="text-lg font-semibold text-white">Controle de Renda</h2>
           <p className="text-xs text-gray-500">Gerencie seus ganhos mensais</p>
         </div>
 
-        {/* Switch Modo Manual / Modo Pro */}
+        {/* Linha 2: Controles */}
         <div className="flex items-center gap-2">
           {/* Config Dropdown Trigger */}
           {onToggleOpenFinance && isProMode && (
@@ -453,7 +454,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                     {viewFilter === 'checking' && <Check size={14} />}
                   </div>
                 </DropdownItem>
-                
+
                 <DropdownItem
                   onClick={() => onViewFilterChange?.('credit_card')}
                   className={viewFilter === 'credit_card' ? 'bg-[#d97757]/10 !text-[#d97757]' : ''}

@@ -437,6 +437,7 @@ export const Header: React.FC<HeaderProps> = ({
               ]}
               icon={<Filter size={14} />}
               className="text-xs h-10"
+              portal
             />
           </div>
 
@@ -446,6 +447,7 @@ export const Header: React.FC<HeaderProps> = ({
               <CustomMonthPicker
                 value={dashboardDate}
                 onChange={setDashboardDate}
+                portal
               />
             </div>
           )}
@@ -461,27 +463,85 @@ export const Header: React.FC<HeaderProps> = ({
                 })}
                 icon={<Calendar size={14} />}
                 className="text-xs h-10"
+                portal
               />
             </div>
           )}
 
           {/* Forecast Toggle */}
           {filterMode === 'month' && (
-            <div className="relative shrink-0 snap-start">
-              <button
-                onClick={() => setShowProjectionMenu(!showProjectionMenu)}
-                className={`
-                    h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border
-                    ${(projectionSettings.reminders || projectionSettings.subscriptions)
-                    ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
-                    : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'
-                  }
-                  `}
-              >
-                <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions) ? "animate-pulse" : ""} />
+            <Dropdown>
+              <DropdownTrigger className={`
+                  h-10 px-3 flex items-center gap-2 rounded-xl transition-all duration-200 font-bold text-xs whitespace-nowrap border cursor-pointer
+                  ${(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary)
+                  ? 'bg-[#d97757]/10 text-[#d97757] border-[#d97757]'
+                  : 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white border-gray-700'}
+                `}>
+                <Calendar size={14} className={(projectionSettings.reminders || projectionSettings.subscriptions || projectionSettings.salary) ? "animate-pulse" : ""} />
                 Previsão
-              </button>
-            </div>
+                <ChevronDown size={12} className="transition-transform duration-200 group-data-[state=open]:rotate-180" />
+              </DropdownTrigger>
+
+              <DropdownContent width="w-56" align="right" portal>
+                <DropdownLabel>Incluir na Previsão</DropdownLabel>
+
+                {/* Toggle Lembretes */}
+                <div
+                  onClick={() => setProjectionSettings(prev => ({ ...prev, reminders: !prev.reminders }))}
+                  className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-2">
+                    <Bell size={14} className="text-gray-400 group-hover:text-white" />
+                    <span className="text-sm text-gray-300 group-hover:text-white font-medium">Lembretes</span>
+                  </div>
+                  <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.reminders ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.reminders ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </div>
+
+                {/* Toggle Assinaturas */}
+                <div
+                  onClick={() => setProjectionSettings(prev => ({ ...prev, subscriptions: !prev.subscriptions }))}
+                  className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-2">
+                    <RotateCcw size={14} className="text-gray-400 group-hover:text-white" />
+                    <span className="text-sm text-gray-300 group-hover:text-white font-medium">Assinaturas</span>
+                  </div>
+                  <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.subscriptions ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.subscriptions ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </div>
+
+                {/* Toggle Salário */}
+                <div
+                  onClick={() => setProjectionSettings(prev => ({ ...prev, salary: !prev.salary }))}
+                  className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                    <span className="text-sm text-gray-300 group-hover:text-white font-medium">Salário</span>
+                  </div>
+                  <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.salary ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.salary ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </div>
+
+                {/* Toggle Vale */}
+                <div
+                  onClick={() => setProjectionSettings(prev => ({ ...prev, vale: !prev.vale }))}
+                  className="flex items-center justify-between px-3 py-2.5 mx-1 rounded-lg hover:bg-white/10 cursor-pointer transition-colors group"
+                >
+                  <div className="flex items-center gap-2">
+                    <TrendingUp size={14} className="text-gray-400 group-hover:text-white" />
+                    <span className="text-sm text-gray-300 group-hover:text-white font-medium">Vale</span>
+                  </div>
+                  <div className={`relative inline-flex h-4 w-8 items-center rounded-full transition-colors duration-200 ${projectionSettings.vale ? 'bg-[#d97757]' : 'bg-gray-700'}`}>
+                    <span className={`inline-block h-3 w-3 transform rounded-full bg-white transition-transform duration-200 ${projectionSettings.vale ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                  </div>
+                </div>
+              </DropdownContent>
+            </Dropdown>
           )}
 
           {/* Clear Filters */}

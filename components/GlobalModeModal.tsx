@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, AlertCircle, Check, Settings, Trash2, History, RefreshCw, Wallet } from './Icons';
-import NumberFlow from '@number-flow/react';
+import { X, AlertCircle, Check, Settings, Trash2, History, RefreshCw, Wallet, ShieldCheck, Info, Zap } from './Icons';
 
 interface GlobalModeModalProps {
   isOpen: boolean;
@@ -75,124 +74,123 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
   };
 
   return createPortal(
-    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
-      <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+    <div className={`fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}`}>
+      <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
 
-        {/* Background Effects */}
-        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-        </div>
+        {/* Background Glow */}
+        <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
 
         {/* Header */}
         <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-          <h3 className="text-xl font-bold text-white flex items-center gap-2">
-            <Settings size={24} className="text-[#d97757]" />
-            Modo Global
-          </h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
-            <X size={20} />
-          </button>
-        </div>
-
-        <div className="p-6 relative z-10">
-          {/* Current Status Context */}
-          <div className="mb-6 bg-gray-900/50 p-4 rounded-xl border border-gray-800/50 flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center ${targetMode === 'MANUAL' ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
-              {targetMode === 'MANUAL' ? <Wallet size={20} /> : <RefreshCw size={20} />}
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
+              <Settings size={20} className="text-[#d97757]" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 uppercase font-bold">Ação Solicitada</p>
-              <p className={`font-medium ${targetMode === 'MANUAL' ? 'text-amber-500' : 'text-emerald-500'}`}>
-                {targetMode === 'MANUAL' ? 'Entrar em Modo Manual' : 'Ativar Modo Automático'}
+              <h3 className="text-base font-semibold text-white">Modo Global</h3>
+              <p className="text-xs text-gray-500">
+                {targetMode === 'MANUAL' ? 'Mudar para Manual' : 'Ativar Automático'}
               </p>
             </div>
           </div>
+          <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all">
+            <X size={18} />
+          </button>
+        </div>
 
-          {/* FLOW: TO MANUAL */}
+        <div className="flex-1 overflow-hidden relative z-10 p-5 overflow-y-auto custom-scrollbar">
+
+          {/* FLOW: TO MANUAL - Step 1: Info */}
           {targetMode === 'MANUAL' && step === 'select' && (
-            <div className="space-y-4">
-              <div className="bg-amber-500/10 border border-amber-500/20 p-4 rounded-xl">
-                <h4 className="text-amber-500 font-bold text-sm flex items-center gap-2 mb-2">
-                  <AlertCircle size={16} />
-                  Configuração de Transição
-                </h4>
-                <p className="text-xs text-gray-400 leading-relaxed">
-                  Você está desativando o piloto automático. Como deseja tratar suas contas conectadas?
+            <div className="flex flex-col gap-6 animate-fade-in">
+              {/* O que acontece */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={18} className="text-amber-500" />
+                  <h4 className="text-sm font-bold text-white">O que acontece</h4>
+                </div>
+                <ul className="text-xs text-gray-400 space-y-2 ml-6">
+                  <li>A sincronização automática será desativada</li>
+                  <li>Novas transações não serão importadas</li>
+                  <li>Você precisará lançar manualmente</li>
+                </ul>
+              </div>
+
+              <div className="border-t border-gray-800/50" />
+
+              {/* Seus dados */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-emerald-500" />
+                  <h4 className="text-sm font-bold text-white">Seus dados</h4>
+                </div>
+                <p className="text-xs text-gray-400 ml-6 leading-relaxed">
+                  Você pode escolher manter todo o histórico importado ou começar do zero.
                 </p>
               </div>
+
               <button
                 onClick={() => setStep('manual_config')}
-                className="w-full py-3 bg-gray-800 hover:bg-gray-700 text-white rounded-xl font-bold transition-all border border-gray-700"
+                className="w-full mt-2 px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
               >
-                Configurar Contas
+                Continuar
               </button>
             </div>
           )}
 
-          {/* FLOW: TO MANUAL (CONFIG) */}
+          {/* FLOW: TO MANUAL - Step 2: Config */}
           {targetMode === 'MANUAL' && step === 'manual_config' && (
-            <div className="space-y-5 animate-fade-in">
-              <p className="text-sm text-white font-medium mb-2">Opções de Dados</p>
+            <div className="flex flex-col gap-5 animate-fade-in">
+              <p className="text-sm text-gray-400">Como deseja tratar suas transações importadas?</p>
 
               {/* Option A: Keep History */}
-              <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${manualOption === 'keep' ? 'bg-gray-800 border-[#d97757] shadow-lg shadow-[#d97757]/10' : 'bg-gray-900 border-gray-800 hover:bg-gray-800/50'}`}>
-                <div className="mt-0.5">
-                  <input
-                    type="radio"
-                    name="manualOption"
-                    checked={manualOption === 'keep'}
-                    onChange={() => setManualOption('keep')}
-                    className="sr-only"
-                  />
-                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${manualOption === 'keep' ? 'border-[#d97757] bg-[#d97757]' : 'border-gray-600'}`}>
-                    {manualOption === 'keep' && <Check size={12} className="text-white" />}
-                  </div>
+              <button
+                onClick={() => setManualOption('keep')}
+                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${manualOption === 'keep' ? 'bg-[#d97757]/5 border-[#d97757]/50' : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${manualOption === 'keep' ? 'bg-[#d97757]/20' : 'bg-gray-800'}`}>
+                  <History size={22} className={manualOption === 'keep' ? 'text-[#d97757]' : 'text-gray-500'} />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <History size={16} className="text-blue-400" />
-                    <span className="font-bold text-sm text-white">Manter Histórico</span>
-                  </div>
-                  <p className="text-xs text-gray-400 leading-relaxed">
-                    Todas as transações importadas permanecem. Sincronização é desconectada. Apenas transações manuais a partir de agora.
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-white text-sm mb-0.5">Manter Histórico</h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Transações importadas permanecem. Apenas desconecta a sincronização.
                   </p>
                 </div>
-              </label>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${manualOption === 'keep' ? 'border-[#d97757] bg-[#d97757]' : 'border-gray-600'}`}>
+                  {manualOption === 'keep' && <Check size={12} className="text-white" />}
+                </div>
+              </button>
 
               {/* Option B: Reset */}
-              <label className={`flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all ${manualOption === 'reset' ? 'bg-gray-800 border-red-500 shadow-lg shadow-red-500/10' : 'bg-gray-900 border-gray-800 hover:bg-gray-800/50'}`}>
-                <div className="mt-0.5">
-                  <input
-                    type="radio"
-                    name="manualOption"
-                    checked={manualOption === 'reset'}
-                    onChange={() => setManualOption('reset')}
-                    className="sr-only"
-                  />
-                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center ${manualOption === 'reset' ? 'border-red-500 bg-red-500' : 'border-gray-600'}`}>
-                    {manualOption === 'reset' && <Check size={12} className="text-white" />}
-                  </div>
+              <button
+                onClick={() => setManualOption('reset')}
+                className={`flex items-center gap-4 p-4 rounded-2xl border transition-all text-left ${manualOption === 'reset' ? 'bg-red-500/5 border-red-500/50' : 'bg-gray-900/50 border-gray-800 hover:border-gray-700'}`}
+              >
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shrink-0 ${manualOption === 'reset' ? 'bg-red-500/20' : 'bg-gray-800'}`}>
+                  <Trash2 size={22} className={manualOption === 'reset' ? 'text-red-500' : 'text-gray-500'} />
                 </div>
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <Trash2 size={16} className="text-red-400" />
-                    <span className="font-bold text-sm text-white">Começar do Zero</span>
-                  </div>
-                  <p className="text-xs text-gray-400 leading-relaxed">
-                    Todas as transações importadas são apagadas. Receitas e despesas do Open Finance zeram. Conta opera 100% manualmente.
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-white text-sm mb-0.5">Começar do Zero</h4>
+                  <p className="text-xs text-gray-500 leading-relaxed">
+                    Remove todas as transações importadas. Conta opera 100% manualmente.
                   </p>
                 </div>
-              </label>
+                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${manualOption === 'reset' ? 'border-red-500 bg-red-500' : 'border-gray-600'}`}>
+                  {manualOption === 'reset' && <Check size={12} className="text-white" />}
+                </div>
+              </button>
 
-              <div className="flex gap-3 mt-4">
-                <button onClick={() => setStep('select')} className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl font-bold text-xs hover:bg-gray-700">Voltar</button>
+              <div className="flex gap-3 mt-2">
+                <button onClick={() => setStep('select')} className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl font-bold text-sm hover:bg-gray-700 border border-gray-700">
+                  Voltar
+                </button>
                 <button
                   onClick={handleConfirmManualAction}
                   disabled={isProcessing}
-                  className="flex-1 py-3 bg-[#d97757] text-white rounded-xl font-bold text-xs hover:bg-[#c56a4d] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  className="flex-1 py-3 bg-[#d97757] text-white rounded-xl font-bold text-sm hover:bg-[#c56a4d] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#d97757]/20"
                 >
-                  {isProcessing ? 'Processando...' : 'Confirmar Mudança'}
+                  {isProcessing ? 'Processando...' : 'Confirmar'}
                 </button>
               </div>
             </div>
@@ -200,32 +198,63 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
 
           {/* FLOW: TO AUTO */}
           {targetMode === 'AUTO' && step === 'select' && (
-            <div className="space-y-4">
-              <div className="bg-emerald-900/20 border border-emerald-500/30 p-4 rounded-xl">
-                <h4 className="text-emerald-500 font-bold text-sm flex items-center gap-2 mb-2">
-                  <RefreshCw size={16} />
-                  Reativar Automático
-                </h4>
-                <p className="text-xs text-gray-400 leading-relaxed mb-2">
-                  A sincronização Open Finance será reativada para todas as contas conectadas.
-                </p>
-                <div className="bg-red-500/10 border border-red-500/20 p-2 rounded-lg flex gap-2 items-start">
-                  <AlertCircle size={14} className="text-red-400 shrink-0 mt-0.5" />
-                  <p className="text-[10px] text-red-300">
-                    <strong>Atenção:</strong> Lançamentos manuais serão removidos para evitar duplicidade. O saldo será ajustado para o valor real do banco.
-                  </p>
+            <div className="flex flex-col gap-6 animate-fade-in">
+              {/* O que acontece */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={18} className="text-emerald-500" />
+                  <h4 className="text-sm font-bold text-white">O que acontece</h4>
                 </div>
+                <ul className="text-xs text-gray-400 space-y-2 ml-6">
+                  <li>A sincronização Open Finance será reativada</li>
+                  <li>Transações serão importadas automaticamente</li>
+                  <li>O saldo será ajustado para o valor real do banco</li>
+                </ul>
               </div>
+
+              <div className="border-t border-gray-800/50" />
+
+              {/* Atenção */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={18} className="text-red-400" />
+                  <h4 className="text-sm font-bold text-white">Atenção</h4>
+                </div>
+                <p className="text-xs text-gray-400 ml-6 leading-relaxed">
+                  Lançamentos manuais serão removidos para evitar duplicidade.
+                </p>
+              </div>
+
+              <div className="border-t border-gray-800/50" />
+
+              {/* Segurança */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck size={18} className="text-blue-400" />
+                  <h4 className="text-sm font-bold text-white">Segurança</h4>
+                </div>
+                <p className="text-xs text-gray-400 ml-6 leading-relaxed">
+                  Conexão regulamentada pelo Banco Central. Seus dados permanecem protegidos.
+                </p>
+              </div>
+
               <button
                 onClick={handleConfirmAutoAction}
                 disabled={isProcessing}
-                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
+                className="w-full mt-2 px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-emerald-900/20"
               >
                 {isProcessing ? 'Sincronizando...' : 'Confirmar e Reativar'}
               </button>
             </div>
           )}
 
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 py-4 border-t border-gray-800/50 relative z-10">
+          <p className="text-[11px] text-gray-500 text-center">
+            Você pode alterar o modo a qualquer momento nas configurações.
+          </p>
         </div>
       </div>
     </div>,

@@ -256,13 +256,15 @@ interface CustomSelectProps {
   placeholder?: string;
   className?: string;
   icon?: React.ReactNode;
+  portal?: boolean;
 }
 
 import { AnimatePresence } from 'framer-motion';
 
-export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder, className = "", icon }) => {
+export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, options, placeholder, className = "", icon, portal = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   const normalizedOptions: Option[] = options.map(opt =>
     typeof opt === 'string' ? { value: opt, label: opt } : opt
@@ -273,12 +275,85 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        // Check if clicking inside the portal dropdown
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-select-portal]')) return;
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && portal && containerRef.current) {
+      const updatePosition = () => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        setCoords({
+          top: rect.bottom + 8,
+          left: rect.left,
+          width: rect.width
+        });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+      };
+    }
+  }, [isOpen, portal]);
+
+  const dropdownContent = (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          data-select-portal
+          initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+          transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+          style={portal ? { position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 } : undefined}
+          className={portal
+            ? "bg-[#30302E] border border-[#373734] rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 max-h-60 overflow-y-auto custom-scrollbar"
+            : "absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 max-h-60 overflow-y-auto custom-scrollbar"
+          }
+        >
+          <div className="p-1">
+            {normalizedOptions.map((opt, index) => (
+              <motion.div
+                key={String(opt.value)}
+                initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
+                animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0)" }}
+                transition={{
+                  duration: 0.3,
+                  delay: index * 0.03,
+                  ease: "easeInOut",
+                  type: "spring",
+                  stiffness: 200,
+                  damping: 20
+                }}
+                onClick={() => {
+                  onChange(String(opt.value));
+                  setIsOpen(false);
+                }}
+                className={`
+                  px-3 py-2.5 text-sm cursor-pointer rounded-lg transition-colors flex items-center justify-between
+                  ${String(value) === String(opt.value)
+                    ? 'bg-[#d97757]/20 text-[#d97757]'
+                    : 'text-gray-300 hover:bg-white/10'}
+                `}
+              >
+                <span className="font-medium">{opt.label}</span>
+                {String(value) === String(opt.value) && <Check size={14} />}
+              </motion.div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -298,48 +373,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
         <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
-            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
-            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
-            className="absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 max-h-60 overflow-y-auto custom-scrollbar"
-          >
-            <div className="p-1">
-              {normalizedOptions.map((opt, index) => (
-                <motion.div
-                  key={String(opt.value)}
-                  initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
-                  animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0)" }}
-                  transition={{
-                    duration: 0.3,
-                    delay: index * 0.03,
-                    ease: "easeInOut",
-                    type: "spring",
-                    stiffness: 200,
-                    damping: 20
-                  }}
-                  onClick={() => {
-                    onChange(String(opt.value));
-                    setIsOpen(false);
-                  }}
-                  className={`
-                    px-3 py-2.5 text-sm cursor-pointer rounded-lg transition-colors flex items-center justify-between
-                    ${String(value) === String(opt.value)
-                      ? 'bg-[#d97757]/20 text-[#d97757]'
-                      : 'text-gray-300 hover:bg-white/10'}
-                  `}
-                >
-                  <span className="font-medium">{opt.label}</span>
-                  {String(value) === String(opt.value) && <Check size={14} />}
-                </motion.div>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {portal ? createPortal(dropdownContent, document.body) : dropdownContent}
     </div>
   );
 };
@@ -350,11 +384,13 @@ interface CustomMonthPickerProps {
   onChange: (value: string) => void;
   placeholder?: string;
   className?: string;
+  portal?: boolean;
 }
 
-export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onChange, placeholder = "Mês de referência", className = "" }) => {
+export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onChange, placeholder = "Mês de referência", className = "", portal = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0 });
 
   // State to track the year currently being viewed in the popup
   const [viewYear, setViewYear] = useState<number>(() => {
@@ -364,12 +400,40 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-monthpicker-portal]')) return;
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    if (isOpen && portal && containerRef.current) {
+      const updatePosition = () => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        const dropdownWidth = 256;
+        const viewportWidth = window.innerWidth;
+        let left = rect.left;
+        if (left + dropdownWidth > viewportWidth - 8) {
+          left = viewportWidth - dropdownWidth - 8;
+        }
+        if (left < 8) left = 8;
+        setCoords({
+          top: rect.bottom + 8,
+          left
+        });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+      };
+    }
+  }, [isOpen, portal]);
 
   const handleMonthSelect = (monthIndex: number) => {
     const monthStr = String(monthIndex + 1).padStart(2, '0');
@@ -412,6 +476,106 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
   const currentMonthIndex = new Date().getMonth();
   const currentYear = new Date().getFullYear();
 
+  const dropdownContent = (
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          data-monthpicker-portal
+          initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+          transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+          style={portal ? { position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999, width: 256 } : undefined}
+          className={portal
+            ? "bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 p-4"
+            : "absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
+          }
+        >
+          {/* Year Navigation Header */}
+          <motion.div
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.05 }}
+            className="flex items-center justify-between mb-2 px-1"
+          >
+            <span className="text-lg font-bold text-white tracking-wide">{viewYear}</span>
+            <div className="flex gap-1">
+              <button
+                onClick={(e) => { e.preventDefault(); setViewYear(prev => prev - 1); }}
+                className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={(e) => { e.preventDefault(); setViewYear(prev => prev + 1); }}
+                className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          </motion.div>
+
+          {/* Separator Line */}
+          <div className="h-px w-full bg-gray-700/50 mb-4"></div>
+
+          {/* Month Grid */}
+          <div className="grid grid-cols-4 gap-2 mb-4">
+            {months.map((m, i) => {
+              const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
+              const isCurrent = currentYear === viewYear && currentMonthIndex === i;
+
+              return (
+                <motion.button
+                  key={m}
+                  initial={{ opacity: 0, scale: 0.8, filter: "blur(5px)" }}
+                  animate={{ opacity: 1, scale: 1, filter: "blur(0)" }}
+                  transition={{
+                    delay: 0.05 + i * 0.02,
+                    type: "spring",
+                    stiffness: 200,
+                    damping: 20
+                  }}
+                  onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
+                  className={`
+                      h-9 rounded-lg text-sm font-medium transition-all border
+                      ${isSelected
+                      ? 'bg-[#d97757]/20 text-[#d97757] border-[#d97757] shadow-lg shadow-[#d97757]/20'
+                      : isCurrent
+                        ? 'bg-gray-800 text-[#d97757] border-[#d97757]/50'
+                        : 'text-gray-300 hover:bg-gray-700 hover:text-white border-transparent'}
+                    `}
+                >
+                  {m}
+                </motion.button>
+              );
+            })}
+          </div>
+
+          {/* Footer Actions */}
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ delay: 0.3 }}
+            className="flex justify-between items-center text-xs font-medium pt-2 border-t border-gray-700/50"
+          >
+            <button
+              onClick={handleClear}
+              className="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
+            >
+              Limpar
+            </button>
+            <button
+              onClick={handleCurrentMonth}
+              className="text-[#d97757] hover:text-[#e68e70] transition-colors px-2 py-1 rounded hover:bg-[#d97757]/10"
+            >
+              Este mês
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
     <div className={`relative ${className}`} ref={containerRef}>
       <div
@@ -437,98 +601,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
         )}
       </div>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-            animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
-            exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
-            transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
-            className="absolute z-50 mt-2 p-4 bg-[#30302E] border border-[#373734] rounded-2xl shadow-[0_0_20px_rgba(0,0,0,0.2)] ring-1 ring-white/5 w-64"
-          >
-            {/* Year Navigation Header */}
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.05 }}
-              className="flex items-center justify-between mb-2 px-1"
-            >
-              <span className="text-lg font-bold text-white tracking-wide">{viewYear}</span>
-              <div className="flex gap-1">
-                <button
-                  onClick={(e) => { e.preventDefault(); setViewYear(prev => prev - 1); }}
-                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronLeft size={16} />
-                </button>
-                <button
-                  onClick={(e) => { e.preventDefault(); setViewYear(prev => prev + 1); }}
-                  className="p-1.5 hover:bg-gray-800 rounded-lg text-gray-400 hover:text-white transition-colors"
-                >
-                  <ChevronRight size={16} />
-                </button>
-              </div>
-            </motion.div>
-
-            {/* Separator Line */}
-            <div className="h-px w-full bg-gray-700/50 mb-4"></div>
-
-            {/* Month Grid */}
-            <div className="grid grid-cols-4 gap-2 mb-4">
-              {months.map((m, i) => {
-                const isSelected = selectedYear === viewYear && selectedMonthIndex === i;
-                const isCurrent = currentYear === viewYear && currentMonthIndex === i;
-
-                return (
-                  <motion.button
-                    key={m}
-                    initial={{ opacity: 0, scale: 0.8, filter: "blur(5px)" }}
-                    animate={{ opacity: 1, scale: 1, filter: "blur(0)" }}
-                    transition={{
-                      delay: 0.05 + i * 0.02,
-                      type: "spring",
-                      stiffness: 200,
-                      damping: 20
-                    }}
-                    onClick={(e) => { e.preventDefault(); handleMonthSelect(i); }}
-                    className={`
-                        h-9 rounded-lg text-sm font-medium transition-all border
-                        ${isSelected
-                        ? 'bg-[#d97757]/20 text-[#d97757] border-[#d97757] shadow-lg shadow-[#d97757]/20'
-                        : isCurrent
-                          ? 'bg-gray-800 text-[#d97757] border-[#d97757]/50'
-                          : 'text-gray-300 hover:bg-gray-700 hover:text-white border-transparent'}
-                      `}
-                  >
-                    {m}
-                  </motion.button>
-                );
-              })}
-            </div>
-
-            {/* Footer Actions */}
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.3 }}
-              className="flex justify-between items-center text-xs font-medium pt-2 border-t border-gray-700/50"
-            >
-              <button
-                onClick={handleClear}
-                className="text-gray-500 hover:text-white transition-colors px-2 py-1 rounded hover:bg-gray-800"
-              >
-                Limpar
-              </button>
-              <button
-                onClick={handleCurrentMonth}
-                className="text-[#d97757] hover:text-[#e68e70] transition-colors px-2 py-1 rounded hover:bg-[#d97757]/10"
-              >
-                Este mês
-              </button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {portal ? createPortal(dropdownContent, document.body) : dropdownContent}
     </div>
   );
 };
@@ -562,7 +635,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
   useEffect(() => {
     setInputValue(value ? formatDateDisplay(value) : '');
     if (value) {
-       setViewDate(new Date(value + 'T12:00:00'));
+      setViewDate(new Date(value + 'T12:00:00'));
     }
   }, [value]);
 
@@ -634,7 +707,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     const month = String(viewDate.getMonth() + 1).padStart(2, '0');
     const dayStr = String(day).padStart(2, '0');
     const isoDate = `${year}-${month}-${dayStr}`;
-    
+
     onChange(isoDate);
     setInputValue(`${dayStr}/${month}/${year}`);
     setIsOpen(false);
@@ -642,41 +715,41 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let val = e.target.value;
-    
+
     // Auto-masking for DD/MM/YYYY
     // Only allow digits and slashes (though we will strip non-digits to re-format)
     const numeric = val.replace(/\D/g, '');
-    
+
     if (numeric.length > 8) return; // Max 8 digits
 
     if (numeric.length <= 2) {
-       val = numeric;
+      val = numeric;
     } else if (numeric.length <= 4) {
-       val = `${numeric.slice(0, 2)}/${numeric.slice(2)}`;
+      val = `${numeric.slice(0, 2)}/${numeric.slice(2)}`;
     } else {
-       val = `${numeric.slice(0, 2)}/${numeric.slice(2, 4)}/${numeric.slice(4, 8)}`;
+      val = `${numeric.slice(0, 2)}/${numeric.slice(2, 4)}/${numeric.slice(4, 8)}`;
     }
-    
+
     setInputValue(val);
 
     if (val.length === 10) {
-        const [dStr, mStr, yStr] = val.split('/');
-        const d = parseInt(dStr, 10);
-        const m = parseInt(mStr, 10);
-        const y = parseInt(yStr, 10);
-        
-        if (d > 0 && d <= 31 && m > 0 && m <= 12 && y > 1900 && y < 2100) {
-             const isoDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-             
-             // Verify validity (e.g. prevents 31/02)
-             const checkDate = new Date(isoDate + 'T12:00:00');
-             if (checkDate.getDate() === d && checkDate.getMonth() + 1 === m) {
-                 onChange(isoDate);
-                 setViewDate(checkDate);
-             }
+      const [dStr, mStr, yStr] = val.split('/');
+      const d = parseInt(dStr, 10);
+      const m = parseInt(mStr, 10);
+      const y = parseInt(yStr, 10);
+
+      if (d > 0 && d <= 31 && m > 0 && m <= 12 && y > 1900 && y < 2100) {
+        const isoDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+        // Verify validity (e.g. prevents 31/02)
+        const checkDate = new Date(isoDate + 'T12:00:00');
+        if (checkDate.getDate() === d && checkDate.getMonth() + 1 === m) {
+          onChange(isoDate);
+          setViewDate(checkDate);
         }
+      }
     } else if (val === '') {
-        onChange('');
+      onChange('');
     }
   };
 
@@ -821,35 +894,35 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
           ${isOpen ? 'border-[#d97757] bg-[rgba(58,59,57,0.8)]' : 'border-[#4a4b49] hover:border-gray-500'}
         `}
         onClick={() => {
-           // If input isn't focused, focus it? 
-           // Clicking container anywhere should focus input or open calendar.
-           // Since input is full width/height (almost), clicking it handles focus.
-           // This handler handles clicking the icon or padding.
-           setIsOpen(true);
+          // If input isn't focused, focus it? 
+          // Clicking container anywhere should focus input or open calendar.
+          // Since input is full width/height (almost), clicking it handles focus.
+          // This handler handles clicking the icon or padding.
+          setIsOpen(true);
         }}
       >
         <Calendar size={16} className={value ? 'text-[#d97757]' : 'text-gray-500'} />
         <input
-            type="text"
-            value={inputValue}
-            onChange={handleInputChange}
-            onFocus={() => setIsOpen(true)}
-            placeholder={placeholder}
-            maxLength={10}
-            className="bg-transparent border-none outline-none w-full text-[#faf9f5] placeholder-gray-500 text-sm font-medium"
+          type="text"
+          value={inputValue}
+          onChange={handleInputChange}
+          onFocus={() => setIsOpen(true)}
+          placeholder={placeholder}
+          maxLength={10}
+          className="bg-transparent border-none outline-none w-full text-[#faf9f5] placeholder-gray-500 text-sm font-medium"
         />
         {/* Clear Button if needed? Or just let user delete text */}
         {value && (
-            <button
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onChange('');
-                    setInputValue('');
-                }}
-                className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700/50"
-            >
-                <X size={12} />
-            </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onChange('');
+              setInputValue('');
+            }}
+            className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700/50"
+          >
+            <X size={12} />
+          </button>
         )}
       </div>
 
