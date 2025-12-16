@@ -190,6 +190,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     planId: planToBuy,
                     billingCycle: cycleToBuy,
                     value: finalValue,
+                    baseValue: originalPrice,
                     installmentCount: installments || 1,
                     creditCard: {
                         holderName: cardData.holderName,
