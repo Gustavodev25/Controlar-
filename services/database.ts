@@ -16,7 +16,7 @@ import {
   writeBatch
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup } from "../types";
 import { AppNotification } from "../types";
 
 
@@ -484,6 +484,27 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
     return false;
   }
 };
+
+// Add transaction only if it doesn't exist (for incremental sync)
+export const addTransactionIfNotExists = async (userId: string, transaction: Omit<Transaction, 'id'>) => {
+  if (!db) return "";
+  try {
+    const exists = await transactionExists(userId, transaction);
+    if (exists) {
+      // Transaction already exists, skip
+      return "";
+    }
+    // Add new transaction
+    const cleanTransaction = removeUndefinedTx(transaction);
+    const txRef = collection(db, "users", userId, "transactions");
+    const docRef = await addDoc(txRef, cleanTransaction);
+    return docRef.id;
+  } catch (error) {
+    console.error("Error adding transaction if not exists:", error);
+    return "";
+  }
+};
+
 export const updateTransaction = async (userId: string, transaction: Transaction) => {
   if (!db) return;
   const txRef = doc(db, "users", userId, "transactions", transaction.id);
@@ -773,10 +794,10 @@ export const addCreditCardTransactionIfNotExists = async (userId: string, transa
     const existingId = await findCreditCardTransactionId(userId, transaction.providerId || "", transaction);
 
     if (existingId) {
-      // console.log(`[DB] Transaction already exists (skipped): ${transaction.description}`);
-      return existingId; // Return existing ID but DO NOT update
+      // Transaction already exists, return empty string to indicate no new data added
+      return "";
     } else {
-      // ADD
+      // ADD new transaction - return the new ID
       return await addCreditCardTransaction(userId, transaction);
     }
   } catch (error) {
@@ -1488,6 +1509,16 @@ export const getCouponByCode = async (code: string): Promise<Coupon | null> => {
   return { id: snap.docs[0].id, ...snap.docs[0].data() } as Coupon;
 };
 
+export const getCouponById = async (couponId: string): Promise<Coupon | null> => {
+  if (!db) return null;
+  const couponRef = doc(db, "coupons", couponId);
+  const snap = await getDoc(couponRef);
+  if (snap.exists()) {
+    return { id: snap.id, ...snap.data() } as Coupon;
+  }
+  return null;
+};
+
 export const validateCoupon = async (code: string): Promise<{ isValid: boolean; coupon?: Coupon; error?: string }> => {
   const coupon = await getCouponByCode(code);
 
@@ -1835,5 +1866,99 @@ export const clearChatHistory = async (userId: string) => {
     await deleteDoc(chatRef);
   } catch (error) {
     console.error("Error clearing chat history:", error);
+  }
+};
+
+// --- PromoPopup Services ---
+export const addPromoPopup = async (userId: string, popup: Omit<PromoPopup, 'id'>) => {
+  if (!db) return "";
+  const popupRef = collection(db, "users", userId, "promoPopups");
+  const docRef = await addDoc(popupRef, popup);
+  return docRef.id;
+};
+
+export const dismissPromoPopup = async (userId: string, popupId: string) => {
+  if (!db) return;
+  const popupRef = doc(db, "users", userId, "promoPopups", popupId);
+  await updateDoc(popupRef, { dismissed: true });
+};
+
+export const deletePromoPopup = async (userId: string, popupId: string) => {
+  if (!db) return;
+  const popupRef = doc(db, "users", userId, "promoPopups", popupId);
+  await deleteDoc(popupRef);
+};
+
+export const listenToPromoPopups = (userId: string, callback: (popups: PromoPopup[]) => void) => {
+  if (!db) return () => { };
+  const popupRef = collection(db, "users", userId, "promoPopups");
+
+  return onSnapshot(popupRef, (snapshot) => {
+    const popups: PromoPopup[] = [];
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      // Only include non-dismissed and non-expired popups
+      if (!data.dismissed) {
+        if (data.expiresAt) {
+          const expiry = new Date(data.expiresAt);
+          if (expiry > new Date()) {
+            popups.push({ id: docSnap.id, ...data } as PromoPopup);
+          }
+        } else {
+          popups.push({ id: docSnap.id, ...data } as PromoPopup);
+        }
+      }
+    });
+    // Sort by createdAt desc to show newest first
+    popups.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+    callback(popups);
+  });
+};
+
+// --- Sync Status Services ---
+export interface SyncStatus {
+  state: 'idle' | 'pending' | 'in_progress' | 'success' | 'error';
+  message: string;
+  details?: string;
+  lastUpdated: string;
+}
+
+export const listenToSyncStatus = (userId: string, callback: (status: SyncStatus | null) => void) => {
+  if (!db) return () => { };
+  // Listen to the singleton document "pluggy" in "sync_status" collection
+  const statusRef = doc(db, "users", userId, "sync_status", "pluggy");
+
+  return onSnapshot(statusRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback(docSnap.data() as SyncStatus);
+    } else {
+      callback(null);
+    }
+  });
+};
+// --- System Settings ---
+export const getSystemSettings = async (): Promise<import("../types").SystemSettings> => {
+  if (!db) return {};
+  try {
+    const docRef = doc(db, "system", "settings");
+    const snap = await getDoc(docRef);
+    if (snap.exists()) {
+      return snap.data() as import("../types").SystemSettings;
+    }
+    return {};
+  } catch (error) {
+    console.error("Error fetching system settings:", error);
+    return {};
+  }
+};
+
+export const updateSystemSettings = async (settings: Partial<import("../types").SystemSettings>) => {
+  if (!db) return;
+  try {
+    const docRef = doc(db, "system", "settings");
+    await setDoc(docRef, settings, { merge: true });
+  } catch (error) {
+    console.error("Error updating system settings:", error);
+    throw error;
   }
 };

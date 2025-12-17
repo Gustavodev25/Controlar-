@@ -129,7 +129,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
           <div className="flex items-start justify-between">
             <div>
               <p className="text-sm font-semibold text-white leading-none">{day}</p>
-              {isToday && <p className="text-[10px] uppercase text-[#d97757] font-bold mt-0.5">Hoje</p>}
+              {isToday && <p className="hidden sm:block text-[10px] uppercase text-[#d97757] font-bold mt-0.5">Hoje</p>}
             </div>
             {hasItems && <Calendar size={14} className="text-[#d97757]" />}
           </div>

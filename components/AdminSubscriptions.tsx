@@ -23,10 +23,10 @@ import * as dbService from '../services/database';
 import { User as UserType } from '../types';
 import { EmptyState } from './EmptyState';
 import { ConfirmationBar } from './ConfirmationBar';
-import { 
-    Dropdown, 
-    DropdownTrigger, 
-    DropdownContent, 
+import {
+    Dropdown,
+    DropdownTrigger,
+    DropdownContent,
     DropdownItem,
     DropdownLabel
 } from './Dropdown';
@@ -70,30 +70,39 @@ export const AdminSubscriptions: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [planFilter, setPlanFilter] = useState<'all' | 'starter' | 'pro' | 'family'>('all');
+    const [couponFilter, setCouponFilter] = useState<string>('all');
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [userPayments, setUserPayments] = useState<AsaasPayment[]>([]);
     const [isLoadingPayments, setIsLoadingPayments] = useState(false);
     const [cancelSubscriptionId, setCancelSubscriptionId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [viewMode, setViewMode] = useState<'list' | 'projection'>('list');
+    const [coupons, setCoupons] = useState<any[]>([]);
 
-    // Load users
+    // Load users and coupons
     useEffect(() => {
-        const loadUsers = async () => {
+        const loadData = async () => {
             setIsLoading(true);
             try {
+                // Load users
                 const data = await dbService.getAllUsers();
                 // Filter only users with subscription info or Asaas ID
                 const subUsers = data.filter(u => u.subscription || u.subscription?.asaasCustomerId);
                 subUsers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                 setUsers(subUsers as SystemUser[]);
+
+                // Load coupons
+                const couponsData = await dbService.getCoupons();
+                setCoupons(couponsData);
             } catch (error) {
-                console.error('Error loading users:', error);
-                toast.error('Erro ao carregar usuários.');
+                console.error('Error loading data:', error);
+                toast.error('Erro ao carregar dados.');
             } finally {
                 setIsLoading(false);
             }
         };
-        loadUsers();
+        loadData();
     }, []);
 
     // Load payments when user is selected
@@ -109,7 +118,7 @@ export const AdminSubscriptions: React.FC = () => {
                 // Fetch recent payments for this customer
                 const response = await fetch(`/api/asaas/payments?customer=${selectedUser.subscription?.asaasCustomerId}&limit=20`);
                 const data = await response.json();
-                
+
                 if (data.success && data.data) {
                     setUserPayments(data.data);
                 } else {
@@ -135,7 +144,7 @@ export const AdminSubscriptions: React.FC = () => {
             // but we likely stored the asaasSubscriptionId in the cancelSubscriptionId state
             // wait, we need the Asaas ID.
             // Let's assume cancelSubscriptionId IS the Asaas Subscription ID.
-            
+
             const response = await fetch(`/api/asaas/subscription/${cancelSubscriptionId}`, {
                 method: 'DELETE'
             });
@@ -179,40 +188,89 @@ export const AdminSubscriptions: React.FC = () => {
 
             // Status filter
             const userStatus = user.subscription?.status || 'active';
-            const matchesStatus = statusFilter === 'all' || 
-                                 (statusFilter === 'active' && userStatus === 'active') ||
-                                 (statusFilter === 'canceled' && userStatus === 'canceled') ||
-                                 (statusFilter === 'past_due' && userStatus === 'past_due') ||
-                                 (statusFilter === 'pending' && userStatus === 'pending_payment');
+            const matchesStatus = statusFilter === 'all' ||
+                (statusFilter === 'active' && userStatus === 'active') ||
+                (statusFilter === 'canceled' && userStatus === 'canceled') ||
+                (statusFilter === 'past_due' && userStatus === 'past_due') ||
+                (statusFilter === 'pending' && userStatus === 'pending_payment');
 
-            return matchesSearch && matchesStatus;
+            // Plan filter
+            const userPlan = user.subscription?.plan || 'starter';
+            const matchesPlan = planFilter === 'all' || userPlan === planFilter;
+
+            // Coupon filter
+            const userCoupon = user.subscription?.couponUsed || 'none';
+            const matchesCoupon = couponFilter === 'all' ||
+                (couponFilter === 'none' && !user.subscription?.couponUsed) ||
+                userCoupon === couponFilter;
+
+            return matchesSearch && matchesStatus && matchesPlan && matchesCoupon;
         });
-    }, [users, searchTerm, statusFilter]);
+    }, [users, searchTerm, statusFilter, planFilter, couponFilter]);
 
     // Stats
-    const stats = useMemo(() => ({
-        total: users.length,
-        active: users.filter(u => u.subscription?.status === 'active').length,
-        pastDue: users.filter(u => u.subscription?.status === 'past_due').length,
-        mrr: users.reduce((acc, u) => {
-            if (u.subscription?.status !== 'active') return acc;
-            
-            const isAnnual = u.subscription?.billingCycle === 'annual';
-            const plan = u.subscription?.plan;
+    const stats = useMemo(() => {
+        const calculateUserMRR = (user: SystemUser) => {
+            // Only count active subscriptions for MRR
+            if (user.subscription?.status !== 'active') return 0;
 
-            let monthlyValue = 0;
+            const sub = user.subscription;
+            let startDate = sub.startDate ? new Date(sub.startDate) : null;
 
-            if (plan === 'family') {
-                // Family: 69.90 monthly / 749.00 annual
-                monthlyValue = isAnnual ? (749.00 / 12) : 69.90;
-            } else if (plan === 'pro') {
-                // Pro: 34.90 monthly / 399.00 annual
-                monthlyValue = isAnnual ? (399.00 / 12) : 34.90;
+            // Fallback logic matching calculateProjection
+            if (!startDate) {
+                if (sub.nextBillingDate) {
+                    startDate = new Date(sub.nextBillingDate);
+                    startDate.setMonth(startDate.getMonth() - 1);
+                } else {
+                    startDate = new Date();
+                }
             }
 
-            return acc + monthlyValue;
-        }, 0)
-    }), [users]);
+            // Calculate current month index (1-based) relative to start
+            const today = new Date();
+            // Difference in months
+            let monthIndex = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth()) + 1;
+            if (monthIndex < 1) monthIndex = 1;
+
+            // Base Price
+            let price = 0;
+            const isAnnual = sub.billingCycle === 'annual';
+
+            if (sub.plan === 'family') {
+                price = isAnnual ? (749.00 / 12) : 69.90;
+            } else if (sub.plan === 'pro') {
+                price = isAnnual ? (399.00 / 12) : 34.90;
+            }
+
+            // Apply Coupons
+            const coupon = coupons.find(c => c.id === sub.couponUsed);
+            if (coupon && price > 0) {
+                if (coupon.type === 'progressive') {
+                    // Find the rule for the CURRENT month index
+                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === monthIndex);
+                    // If no rule matches (e.g. we are past the discount period), price remains full
+                    // If rule matches, apply discount
+                    if (rule) {
+                        price = Math.max(0, price * (1 - rule.discount / 100));
+                    }
+                } else if (coupon.type === 'percentage') {
+                    price = Math.max(0, price * (1 - coupon.value / 100));
+                } else if (coupon.type === 'fixed') {
+                    price = Math.max(0, price - coupon.value);
+                }
+            }
+
+            return price;
+        };
+
+        return {
+            total: users.length,
+            active: users.filter(u => u.subscription?.status === 'active').length,
+            pastDue: users.filter(u => u.subscription?.status === 'past_due').length,
+            mrr: users.reduce((acc, u) => acc + calculateUserMRR(u), 0)
+        };
+    }, [users, coupons]);
 
     const getStatusBadge = (status: string | undefined) => {
         switch (status) {
@@ -287,6 +345,116 @@ export const AdminSubscriptions: React.FC = () => {
         }).format(value);
     };
 
+    // Calculate Projection for a User
+    const calculateProjection = (user: SystemUser) => {
+        const sub = user.subscription;
+        if (!sub) return [];
+
+        const planPrice = sub.plan === 'family'
+            ? (sub.billingCycle === 'annual' ? 749.00 / 12 : 69.90)
+            : (sub.plan === 'pro' ? (sub.billingCycle === 'annual' ? 399.00 / 12 : 34.90) : 0);
+
+        let startDate = sub.startDate ? new Date(sub.startDate) : null;
+
+        // Fallback for old subscriptions
+        if (!startDate) {
+            if (sub.nextBillingDate) {
+                startDate = new Date(sub.nextBillingDate);
+                startDate.setMonth(startDate.getMonth() - 1);
+            } else {
+                startDate = new Date();
+            }
+        }
+
+        const coupon = coupons.find(c => c.id === sub.couponUsed);
+
+        const today = new Date();
+        const endOfView = new Date(today.getFullYear(), today.getMonth() + 12, 1);
+
+        const projections = [];
+
+        // Iterate roughly 24 months from start to cover relevant view period
+        for (let monthIndex = 1; monthIndex <= 36; monthIndex++) {
+            const date = new Date(startDate);
+            date.setMonth(date.getMonth() + (monthIndex - 1));
+
+            // View range start
+            const viewStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+            // If date is before current viewing month (and not in it), skip
+            if (date < viewStart && date.getMonth() !== viewStart.getMonth()) {
+                continue;
+            }
+
+            if (date > endOfView) break;
+
+            let finalPrice = planPrice;
+            let discountInfo = null;
+
+            if (coupon && finalPrice > 0) {
+                if (coupon.type === 'progressive') {
+                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === monthIndex);
+                    if (rule) {
+                        finalPrice = Math.max(0, finalPrice * (1 - rule.discount / 100));
+                        discountInfo = `${rule.discount}% (Mês ${monthIndex})`;
+                    }
+                } else if (coupon.type === 'percentage') {
+                    finalPrice = Math.max(0, finalPrice * (1 - coupon.value / 100));
+                    discountInfo = `${coupon.value}%`;
+                } else if (coupon.type === 'fixed') {
+                    finalPrice = Math.max(0, finalPrice - coupon.value);
+                    discountInfo = `- ${formatCurrency(coupon.value)}`;
+                }
+            }
+
+            projections.push({
+                date,
+                monthName: date.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }),
+                value: finalPrice,
+                discountInfo
+            });
+        }
+        return projections;
+    };
+
+    // Get month columns for header
+    const next12Months = useMemo(() => {
+        const months = [];
+        const today = new Date();
+        for (let i = 0; i < 12; i++) {
+            const d = new Date(today.getFullYear(), today.getMonth() + i, 1);
+            months.push(d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' }));
+        }
+        return months;
+    }, []);
+
+    const monthTotals = useMemo(() => {
+        if (viewMode !== 'projection') return [];
+
+        const totals = Array(12).fill(0);
+        const today = new Date();
+
+        filteredUsers.forEach(user => {
+            const userProjections = calculateProjection(user);
+
+            for (let i = 0; i < 12; i++) {
+                const colDate = new Date(today);
+                colDate.setMonth(colDate.getMonth() + i);
+
+                const match = userProjections.find(p =>
+                    p.date.getMonth() === colDate.getMonth() &&
+                    p.date.getFullYear() === colDate.getFullYear()
+                );
+
+                if (match) {
+                    totals[i] += match.value;
+                }
+            }
+        });
+
+        return totals;
+    }, [filteredUsers, viewMode, coupons]);
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
@@ -294,12 +462,42 @@ export const AdminSubscriptions: React.FC = () => {
                 <div>
                     <h1 className="text-2xl font-bold text-white">Assinaturas Asaas</h1>
                     <p className="text-gray-500 mt-1 text-sm">
-                        Gerencie assinaturas e visualize faturas dos usuários
+                        Gerencie assinaturas e visualize projeções com cupons
                     </p>
+                </div>
+
+                {/* View Toggle */}
+                <div className="flex items-center gap-1 bg-[#30302E] p-1 rounded-xl border border-[#373734]">
+                    <button
+                        onClick={() => setViewMode('list')}
+                        className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-colors z-10 ${viewMode === 'list' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        {viewMode === 'list' && (
+                            <motion.div
+                                layoutId="viewMode-pill"
+                                className="absolute inset-0 bg-[#d97757] rounded-lg shadow-sm -z-10"
+                                transition={{ type: "spring", duration: 0.5 }}
+                            />
+                        )}
+                        Lista
+                    </button>
+                    <button
+                        onClick={() => setViewMode('projection')}
+                        className={`relative px-3 py-1.5 rounded-lg text-sm font-medium transition-colors z-10 ${viewMode === 'projection' ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    >
+                        {viewMode === 'projection' && (
+                            <motion.div
+                                layoutId="viewMode-pill"
+                                className="absolute inset-0 bg-[#d97757] rounded-lg shadow-sm -z-10"
+                                transition={{ type: "spring", duration: 0.5 }}
+                            />
+                        )}
+                        Projeção (Cupons)
+                    </button>
                 </div>
             </div>
 
-            {/* Stats Cards */}
+            {/* Stats Cards - Show only in List Mode to save space or adjust for Projection? Keep for now. */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-4">
                     <p className="text-xs text-gray-500 uppercase font-bold tracking-wide">Assinantes</p>
@@ -327,43 +525,94 @@ export const AdminSubscriptions: React.FC = () => {
                 </div>
             </div>
 
-            {/* Filters */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="relative w-full sm:w-80">
-                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+            {/* Filters Toolbar */}
+            <div className="flex flex-col sm:flex-row gap-4">
+                {/* Search */}
+                <div className="relative flex-1 max-w-md">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={20} />
                     <input
                         type="text"
+                        placeholder="Buscar por nome ou email..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
-                        placeholder="Buscar assinante..."
-                        className="w-full pl-10 pr-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-gray-600 transition-colors"
+                        className="w-full bg-[#30302E] border border-[#373734] text-white rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-[#d97757] transition-colors placeholder:text-gray-600"
                     />
                 </div>
 
-                <Dropdown>
-                    <DropdownTrigger className="w-full sm:w-auto">
-                        <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
-                            <div className="flex items-center gap-2">
-                                <Filter size={16} className="text-gray-500" />
-                                <span className="text-sm">
-                                    {statusFilter === 'all' ? 'Todos Status' : 
-                                     statusFilter === 'active' ? 'Ativos' :
-                                     statusFilter === 'pending' ? 'Pendentes' :
-                                     statusFilter === 'past_due' ? 'Atrasados' : 'Cancelados'}
-                                </span>
-                            </div>
-                            <ChevronDown size={16} className="text-gray-500" />
-                        </div>
-                    </DropdownTrigger>
-                    <DropdownContent align="right" width="w-48">
-                        <DropdownLabel>Filtrar por Status</DropdownLabel>
-                        <DropdownItem onClick={() => setStatusFilter('all')}>Todos</DropdownItem>
-                        <DropdownItem onClick={() => setStatusFilter('active')} icon={CheckCircle}>Ativos</DropdownItem>
-                        <DropdownItem onClick={() => setStatusFilter('pending')} icon={Loader2}>Pendentes</DropdownItem>
-                        <DropdownItem onClick={() => setStatusFilter('past_due')} icon={AlertCircle}>Atrasados</DropdownItem>
-                        <DropdownItem onClick={() => setStatusFilter('canceled')} icon={X}>Cancelados</DropdownItem>
-                    </DropdownContent>
-                </Dropdown>
+                {/* Filter Dropdowns */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 ml-auto">
+                    {/* Status Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="h-full">
+                            <button className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap ${statusFilter !== 'all' ? 'bg-[#d97757]/10 border-[#d97757]/30 text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white'}`}>
+                                <Filter size={16} />
+                                <span>Status: {statusFilter === 'all' ? 'Todos' : statusFilter}</span>
+                                <ChevronDown size={14} />
+                            </button>
+                        </DropdownTrigger>
+                        <DropdownContent>
+                            <DropdownLabel>Filtrar por Status</DropdownLabel>
+                            <DropdownItem onClick={() => setStatusFilter('all')}>Todos</DropdownItem>
+                            <DropdownItem onClick={() => setStatusFilter('active')}>Ativos</DropdownItem>
+                            <DropdownItem onClick={() => setStatusFilter('pending')}>Pendentes</DropdownItem>
+                            <DropdownItem onClick={() => setStatusFilter('past_due')}>Atrasados</DropdownItem>
+                            <DropdownItem onClick={() => setStatusFilter('canceled')}>Cancelados</DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+
+                    {/* Plan Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="h-full">
+                            <button className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap ${planFilter !== 'all' ? 'bg-[#d97757]/10 border-[#d97757]/30 text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white'}`}>
+                                <Crown size={16} />
+                                <span>Plano: {planFilter === 'all' ? 'Todos' : planFilter}</span>
+                                <ChevronDown size={14} />
+                            </button>
+                        </DropdownTrigger>
+                        <DropdownContent>
+                            <DropdownLabel>Filtrar por Plano</DropdownLabel>
+                            <DropdownItem onClick={() => setPlanFilter('all')}>Todos</DropdownItem>
+                            <DropdownItem onClick={() => setPlanFilter('pro')}>Pro</DropdownItem>
+                            <DropdownItem onClick={() => setPlanFilter('family')}>Family</DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+
+                    {/* Coupon Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="h-full">
+                            <button className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap ${couponFilter !== 'all' ? 'bg-[#d97757]/10 border-[#d97757]/30 text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white'}`}>
+                                <DollarSign size={16} />
+                                <span>Desconto: {couponFilter === 'all' ? 'Todos' : (couponFilter === 'none' ? 'Sem Cupom' : coupons.find(c => c.id === couponFilter)?.code || 'Unknown')}</span>
+                                <ChevronDown size={14} />
+                            </button>
+                        </DropdownTrigger>
+                        <DropdownContent className="max-h-[300px] overflow-y-auto custom-scrollbar">
+                            <DropdownLabel>Filtrar por Cupom</DropdownLabel>
+                            <DropdownItem onClick={() => setCouponFilter('all')}>Todos</DropdownItem>
+                            <DropdownItem onClick={() => setCouponFilter('none')}>Sem Cupom</DropdownItem>
+                            {coupons.map(coupon => (
+                                <DropdownItem key={coupon.id} onClick={() => setCouponFilter(coupon.id)}>
+                                    {coupon.code}
+                                </DropdownItem>
+                            ))}
+                        </DropdownContent>
+                    </Dropdown>
+
+                    {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all') && (
+                        <button
+                            onClick={() => {
+                                setSearchTerm('');
+                                setStatusFilter('all');
+                                setPlanFilter('all');
+                                setCouponFilter('all');
+                            }}
+                            className="p-2.5 text-gray-500 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
+                            title="Limpar Filtros"
+                        >
+                            <X size={20} />
+                        </button>
+                    )}
+                </div>
             </div>
 
             {/* Users Table */}
@@ -379,81 +628,187 @@ export const AdminSubscriptions: React.FC = () => {
                         minHeight="min-h-[300px]"
                     />
                 ) : (
-                    <div className="overflow-x-auto">
+                    <div className={`overflow-x-auto ${viewMode === 'projection' ? 'custom-scrollbar' : ''}`}>
                         <table className="w-full">
                             <thead className="bg-[#333431] text-xs uppercase tracking-wider text-gray-500">
                                 <tr>
-                                    <th className="px-4 py-3 text-left">Assinante</th>
-                                    <th className="px-4 py-3 text-left">Plano</th>
-                                    <th className="px-4 py-3 text-left">Status</th>
-                                    <th className="px-4 py-3 text-left">Ciclo</th>
-                                    <th className="px-4 py-3 text-left">Próx. Cobrança</th>
-                                    <th className="px-4 py-3 text-center">Ações</th>
+                                    <th className="px-4 py-3 text-left sticky left-0 bg-[#333431] z-10 w-[250px]">Assinante</th>
+
+                                    {viewMode === 'list' ? (
+                                        <>
+                                            <th className="px-4 py-3 text-left">Plano</th>
+                                            <th className="px-4 py-3 text-left">Status</th>
+                                            <th className="px-4 py-3 text-left">Ciclo</th>
+                                            <th className="px-4 py-3 text-left">Próx. Cobrança</th>
+                                            <th className="px-4 py-3 text-center">Ações</th>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <th className="px-4 py-3 text-left w-[120px]">Plano/Cupom</th>
+                                            {/* Projection Columns: Next 12 Months */}
+                                            {(() => {
+                                                // Generate 12 months dynamically based on the FIRST user's next billing date 
+                                                // OR just fixed from Today for easier visualization comparison
+                                                // Let's use Fixed from Today for column headers
+                                                const today = new Date();
+                                                return Array.from({ length: 12 }).map((_, i) => {
+                                                    const d = new Date(today);
+                                                    d.setMonth(d.getMonth() + i);
+                                                    return (
+                                                        <th key={i} className="px-4 py-3 text-center min-w-[100px]">
+                                                            {d.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' })}
+                                                        </th>
+                                                    );
+                                                });
+                                            })()}
+                                        </>
+                                    )}
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#373734]">
-                                {filteredUsers.map((user) => (
-                                    <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
-                                                    {user.avatarUrl ? (
-                                                        <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
-                                                    ) : (
-                                                        getInitials(user.name || 'U')
-                                                    )}
+                                {filteredUsers.map((user) => {
+                                    // Calculate projections if needed
+                                    const projections = viewMode === 'projection' ? calculateProjection(user) : [];
+
+                                    return (
+                                        <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
+                                            {/* Fixed User Column */}
+                                            <td className="px-4 py-3 sticky left-0 bg-[#30302E] z-10 border-r border-[#373734]">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
+                                                        {user.avatarUrl ? (
+                                                            <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                                        ) : (
+                                                            getInitials(user.name || 'U')
+                                                        )}
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-white font-medium text-sm truncate max-w-[150px]">{user.name || 'Sem nome'}</p>
+                                                        <p className="text-gray-500 text-xs truncate max-w-[150px]">{user.email}</p>
+                                                    </div>
                                                 </div>
-                                                <div>
-                                                    <p className="text-white font-medium text-sm">{user.name || 'Sem nome'}</p>
-                                                    <p className="text-gray-500 text-xs">{user.email}</p>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-sm text-gray-300 capitalize">{user.subscription?.plan || 'Starter'}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {getStatusBadge(user.subscription?.status)}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-xs uppercase">
-                                                {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-xs font-mono">
-                                                {formatDate(user.subscription?.nextBillingDate)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button
-                                                    onClick={() => setSelectedUser(user)}
-                                                    className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                                                    title="Ver Faturas"
-                                                >
-                                                    <Eye size={16} />
-                                                </button>
-                                                
-                                                {/* Cancel Button */}
-                                                {(user.subscription?.status === 'active' || user.subscription?.status === 'pending_payment' || user.subscription?.status === 'past_due') && 
-                                                  user.subscription.asaasSubscriptionId && (
-                                                    <button
-                                                        onClick={() => setCancelSubscriptionId(user.subscription!.asaasSubscriptionId!)}
-                                                        className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                        title="Cancelar Assinatura Asaas"
-                                                    >
-                                                        <Ban size={16} />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))}
+                                            </td>
+
+                                            {viewMode === 'list' ? (
+                                                <>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-sm text-gray-300 capitalize">{user.subscription?.plan || 'Starter'}</span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        {getStatusBadge(user.subscription?.status)}
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-gray-400 text-xs uppercase">
+                                                            {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-gray-400 text-xs font-mono">
+                                                            {formatDate(user.subscription?.nextBillingDate)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3 text-center">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            <button
+                                                                onClick={() => setSelectedUser(user)}
+                                                                className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                                                                title="Ver Faturas"
+                                                            >
+                                                                <Eye size={16} />
+                                                            </button>
+
+                                                            {/* Cancel Button */}
+                                                            {(user.subscription?.status === 'active' || user.subscription?.status === 'pending_payment' || user.subscription?.status === 'past_due') &&
+                                                                user.subscription.asaasSubscriptionId && (
+                                                                    <button
+                                                                        onClick={() => setCancelSubscriptionId(user.subscription!.asaasSubscriptionId!)}
+                                                                        className="p-2 text-gray-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                                        title="Cancelar Assinatura Asaas"
+                                                                    >
+                                                                        <Ban size={16} />
+                                                                    </button>
+                                                                )}
+                                                        </div>
+                                                    </td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    {/* Plan / Coupon Info */}
+                                                    <td className="px-4 py-3 border-r border-[#373734]">
+                                                        <div className="flex flex-col">
+                                                            <span className="text-xs text-white capitalize font-bold">{user.subscription?.plan}</span>
+                                                            {user.subscription?.couponUsed ? (
+                                                                <span className="text-[10px] text-green-400 font-mono">
+                                                                    {coupons.find(c => c.id === user.subscription?.couponUsed)?.code || 'CUPOM'}
+                                                                </span>
+                                                            ) : (
+                                                                <span className="text-[10px] text-gray-600">-</span>
+                                                            )}
+                                                        </div>
+                                                    </td>
+
+                                                    {/* Projection Info */}
+                                                    {/* We need to align cells with the headers (Next 12 Months from Today) */}
+                                                    {(() => {
+                                                        const today = new Date();
+                                                        return Array.from({ length: 12 }).map((_, i) => {
+                                                            const colDate = new Date(today);
+                                                            colDate.setMonth(colDate.getMonth() + i);
+
+                                                            // Find projection matching this month/year
+                                                            const match = projections.find(p =>
+                                                                p.date.getMonth() === colDate.getMonth() &&
+                                                                p.date.getFullYear() === colDate.getFullYear()
+                                                            );
+
+                                                            return (
+                                                                <td key={i} className="px-4 py-3 text-center border-r border-[#373734]/30">
+                                                                    {match ? (
+                                                                        <div className="flex flex-col items-center">
+                                                                            <span className={`text-xs font-mono font-medium ${match.value === 0 ? 'text-green-400' : 'text-gray-300'}`}>
+                                                                                {match.value === 0 ? 'GRÁTIS' : formatCurrency(match.value)}
+                                                                            </span>
+                                                                            {match.discountInfo && (
+                                                                                <span className="text-[9px] text-emerald-500/70">
+                                                                                    {match.discountInfo}
+                                                                                </span>
+                                                                            )}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <span className="text-gray-700 text-[10px]">-</span>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
+                            {/* Summary Footer for Projection Mode */}
+                            {viewMode === 'projection' && (
+                                <tfoot className="bg-[#333431] text-xs font-bold text-white z-20">
+                                    <tr>
+                                        <td className="px-4 py-3 sticky left-0 bg-[#333431] border-r border-[#373734] z-20 text-right">
+                                            TOTAL PREVISTO
+                                        </td>
+                                        <td className="px-4 py-3 border-r border-[#373734]" />
+                                        {monthTotals.map((total, i) => (
+                                            <td key={i} className="px-4 py-3 text-center border-r border-[#373734]/30">
+                                                <span className="text-xs text-[#d97757]">
+                                                    {formatCurrency(total)}
+                                                </span>
+                                            </td>
+                                        ))}
+                                    </tr>
+                                </tfoot>
+                            )}
                         </table>
                     </div>
-                )}
+                )
+                }
             </div>
 
             {/* Detail Modal (Payments) */}
@@ -546,14 +901,14 @@ export const AdminSubscriptions: React.FC = () => {
                                                             </div>
                                                         </div>
                                                     </div>
-                                                    
+
                                                     {/* Discount Info */}
                                                     {payment.discount && payment.discount.value > 0 && (
                                                         <div className="bg-green-500/5 border border-green-500/10 rounded-lg px-2 py-1 mb-2 inline-flex items-center gap-1.5">
                                                             <span className="text-[10px] text-green-500 font-medium">
-                                                                Desconto aplicado: 
-                                                                {payment.discount.type === 'PERCENTAGE' 
-                                                                    ? ` ${payment.discount.value}%` 
+                                                                Desconto aplicado:
+                                                                {payment.discount.type === 'PERCENTAGE'
+                                                                    ? ` ${payment.discount.value}%`
                                                                     : ` R$ ${payment.discount.value.toFixed(2)}`}
                                                             </span>
                                                         </div>
@@ -572,11 +927,11 @@ export const AdminSubscriptions: React.FC = () => {
                                                                 </div>
                                                             )}
                                                         </div>
-                                                        
+
                                                         {payment.invoiceUrl && (
-                                                            <a 
-                                                                href={payment.invoiceUrl} 
-                                                                target="_blank" 
+                                                            <a
+                                                                href={payment.invoiceUrl}
+                                                                target="_blank"
                                                                 rel="noreferrer"
                                                                 className="flex items-center gap-1 text-[#d97757] hover:underline"
                                                             >
@@ -595,14 +950,13 @@ export const AdminSubscriptions: React.FC = () => {
                 </AnimatePresence>,
                 document.body
             )}
-            
+
             {/* Cancel Confirmation */}
             <ConfirmationBar
                 isOpen={!!cancelSubscriptionId}
                 onCancel={() => setCancelSubscriptionId(null)}
                 onConfirm={handleCancelSubscription}
                 label="Tem certeza que deseja cancelar a assinatura?"
-                description="Isso interromperá cobranças futuras. Faturas já geradas podem permanecer pendentes."
                 confirmText={isCancelling ? "Cancelando..." : "Sim, Cancelar Assinatura"}
                 cancelText="Voltar"
                 isDestructive={true}

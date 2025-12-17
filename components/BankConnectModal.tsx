@@ -6,6 +6,7 @@ import { ConnectedAccount, ProviderBill, Transaction } from '../types';
 import * as dbService from '../services/database';
 import type { CreditCardTransaction } from '../services/database';
 import { translatePluggyCategory } from '../services/openFinanceService';
+import { saveSyncProgress, clearSyncProgress } from '../utils/syncProgress';
 
 interface BankConnectModalProps {
     isOpen: boolean;
@@ -387,6 +388,15 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
             setSyncStatus('syncing');
             setSyncMessage('Sincronizando contas e transacoes...');
+            clearSyncProgress();
+
+            // Show initial progress
+            saveSyncProgress({
+                step: 'Conectando ao banco...',
+                current: 0,
+                total: 1,
+                startedAt: Date.now()
+            });
 
             const response = await fetch(`${API_BASE}/pluggy/sync`, {
                 method: 'POST',
@@ -396,6 +406,14 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
             const data = await response.json();
             if (!response.ok) {
+                saveSyncProgress({
+                    step: 'Erro na conexao',
+                    error: data.error || 'Erro ao sincronizar',
+                    current: 0,
+                    total: 1,
+                    isComplete: true,
+                    startedAt: Date.now()
+                });
                 throw new Error(data.error || 'Erro ao sincronizar dados do Pluggy.');
             }
 
@@ -404,8 +422,21 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             let cardCount = 0;
             let projectedCount = 0;
 
-            for (const entry of data.accounts || []) {
+            const accounts = data.accounts || [];
+            const totalAccounts = accounts.length;
+
+            for (let i = 0; i < accounts.length; i++) {
+                const entry = accounts[i];
                 if (!entry?.account) continue;
+
+                // Update progress for each account
+                saveSyncProgress({
+                    step: `Salvando conta ${i + 1} de ${totalAccounts}...`,
+                    current: i,
+                    total: totalAccounts,
+                    startedAt: Date.now()
+                });
+
                 const bills = mapBills(entry.bills || []);
                 const account = normalizeAccount(entry.account, bills);
                 await dbService.addConnectedAccount(userId, account);
@@ -414,6 +445,14 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 const type = (account.type || '').toUpperCase();
                 const subtype = (account.subtype || '').toUpperCase();
                 const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+
+                const txCount = (entry.transactions || []).length;
+                saveSyncProgress({
+                    step: `Salvando ${txCount} transacoes...`,
+                    current: i,
+                    total: totalAccounts,
+                    startedAt: Date.now()
+                });
 
                 if (isCredit) {
                     const { saved, projected } = await syncCreditCardTransactions(account, entry.transactions || [], bills);
@@ -429,6 +468,18 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 ? `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao (+${projectedCount} parcelas futuras).`
                 : `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao.`;
             setSyncMessage(summary);
+
+            // Show completion progress
+            saveSyncProgress({
+                step: summary,
+                current: totalAccounts,
+                total: totalAccounts,
+                isComplete: true,
+                startedAt: Date.now()
+            });
+
+            // Clear progress after delay
+            setTimeout(() => clearSyncProgress(), 5000);
 
             return syncedAccounts;
         },
@@ -455,9 +506,25 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
                     (async () => {
                         try {
-                            const synced = await runFullSync(forceSyncItemId);
-                            if (onSuccess) onSuccess(synced);
-                            setTimeout(() => onClose(), 1500);
+                            setSyncStatus('syncing');
+                            setSyncMessage('Solicitando atualização ao banco...');
+
+                            // Use new Trigger Sync flow
+                            const response = await fetch(`${API_BASE}/pluggy/trigger-sync`, {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ itemId: forceSyncItemId, userId })
+                            });
+
+                            if (!response.ok) {
+                                const data = await response.json();
+                                throw new Error(data.error || 'Falha ao solicitar atualização');
+                            }
+
+                            setSyncStatus('success');
+                            setSyncMessage('Atualização solicitada! O processo continuará em segundo plano.');
+
+                            setTimeout(() => onClose(), 2000);
                         } catch (err: any) {
                             console.error('Error syncing Pluggy item:', err);
                             setSyncStatus('error');
@@ -490,27 +557,57 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         setSyncStatus('idle');
         setSyncMessage('');
         try {
-            const response = await fetch(`${API_BASE}/pluggy/items?userId=${userId}`);
+            // First try to fetch from Pluggy Remote API
+            const response = await fetch(`${API_BASE}/pluggy/items?userId=${encodeURIComponent(userId)}`);
             const data = await response.json();
+            
             if (response.ok) {
                 // API returns { success: true, items: [...] }
                 setExistingItems(data.items || data.results || []);
                 setView('manage');
                 setError(null);
             } else {
-                console.error('Failed to fetch items:', data);
+                console.error('Failed to fetch items remotely:', data);
                 if (response.status === 401 || response.status === 403) {
-                    setError('Sessão Pluggy expirada. Clique em conectar novamente.');
-                    setView('connect');
-                    setConnectToken(null);
+                    // Fallback to Local DB items if Remote fails due to auth/permission
+                    console.warn('Pluggy Remote Auth failed. Falling back to Local DB items.');
+                    
+                    try {
+                        const localResp = await fetch(`${API_BASE}/pluggy/db-items/${encodeURIComponent(userId)}`);
+                        const localData = await localResp.json();
+                        if (localResp.ok && localData.items) {
+                             setExistingItems(localData.items);
+                             setView('manage');
+                             // Show a non-blocking toast or message?
+                             // For now, just set error null so UI shows list
+                             setError(null); 
+                        } else {
+                             setError('Não foi possível carregar as conexões (Remoto e Local falharam).');
+                        }
+                    } catch (localErr) {
+                         console.error('Error fetching local items:', localErr);
+                         setError('Erro ao carregar conexões locais.');
+                    }
                 } else {
-                    // Fallback if fetch fails
                     setError('Não foi possível carregar as conexões existentes.');
                 }
             }
         } catch (err) {
             console.error('Error fetching items:', err);
-            setError('Erro ao carregar conexões.');
+            // Try fallback even on network error? Maybe.
+             try {
+                const localResp = await fetch(`${API_BASE}/pluggy/db-items/${encodeURIComponent(userId)}`);
+                const localData = await localResp.json();
+                if (localResp.ok && localData.items) {
+                        setExistingItems(localData.items);
+                        setView('manage');
+                        setError(null); 
+                } else {
+                     setError('Erro ao carregar conexões.');
+                }
+            } catch (localErr) {
+                 setError('Erro ao carregar conexões.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -521,7 +618,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         setIsDeletingItem(itemId);
         try {
             // Correct endpoint: DELETE /api/pluggy/item/:itemId
-            const response = await fetch(`${API_BASE}/pluggy/item/${itemId}?userId=${userId}`, {
+            const response = await fetch(`${API_BASE}/pluggy/item/${itemId}?userId=${encodeURIComponent(userId)}`, {
                 method: 'DELETE',
             });
 
@@ -537,6 +634,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 });
             } else {
                 console.error('Failed to delete item');
+                // Even if remote delete fails (e.g. 401?), we might want to remove from local view?
+                // But let's assume delete works.
             }
         } catch (err) {
             console.error('Error deleting item:', err);
@@ -620,12 +719,32 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             /existing item/i.test(errorCode) ||
             /existing item/i.test(errorDataMessage);
 
+        // Check if we can extract the existing Item ID from the error
+        let existingItemId = error.data?.item?.id;
+
         // Handle expected duplicate-item errors by redirecting user to manage view
         if (duplicateError) {
-            console.log('Pluggy: User attempted to add an existing item.');
+            console.log('Pluggy: User attempted to add an existing item.', existingItemId ? `ID: ${existingItemId}` : 'No ID found');
+            
+            // Force view to manage immediately
+            setView('manage'); 
             setError('Este banco já está conectado. Você pode gerenciar ou remover a conexão existente.');
             setSyncStatus('idle');
             setSyncMessage('');
+
+            // If we have the ID, ensure it is in the list even if fetch fails
+            if (existingItemId) {
+                 // Add a temporary "orphan" item to the list so user can delete it
+                 setExistingItems(prev => {
+                     if (prev.find(i => i.id === existingItemId)) return prev;
+                     return [...prev, {
+                         id: existingItemId,
+                         connector: { name: 'Banco Conectado (Detectado)', imageUrl: null },
+                         status: 'ORPHAN (Aguardando Ação)'
+                     }];
+                 });
+            }
+
             fetchExistingItems();
             return;
         }

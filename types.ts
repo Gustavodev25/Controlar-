@@ -11,6 +11,7 @@ export interface User {
   salaryAdvanceValue?: number;
   valeDeductions?: { id: string; name: string; value: string; type: '%' | 'R$' }[];
   valeExemptFromDiscounts?: boolean;
+  salaryExemptFromDiscounts?: boolean;
   twoFactorEnabled?: boolean;
   twoFactorSecret?: string | null;
   subscription?: {
@@ -21,6 +22,8 @@ export interface User {
     installments?: number;
     asaasCustomerId?: string;
     asaasSubscriptionId?: string;
+    couponUsed?: string;
+    startDate?: string;
   };
   paymentMethodDetails?: {
     last4: string;
@@ -203,6 +206,7 @@ export interface ToastMessage {
 export interface Budget {
   id: string;
   memberId?: string;
+  name?: string;
   category: string;
   limitAmount: number;
   month: string;
@@ -284,4 +288,22 @@ export interface Coupon {
   // Progressive discount: different discount per billing month
   // Example: [{month: 1, discount: 100}, {month: 2, discount: 50}, {month: 3, discount: 0}]
   progressiveDiscounts?: { month: number; discount: number }[];
+}
+
+export interface PromoPopup {
+  id: string;
+  title: string;
+  message: string;
+  imageUrl?: string | null;
+  buttonText?: string | null;
+  buttonLink?: string | null;
+  type: 'info' | 'promo' | 'update';
+  dismissible?: boolean;
+  expiresAt?: string;
+  createdAt: string;
+  dismissed?: boolean;
+}
+
+export interface SystemSettings {
+  metaPixelId?: string;
 }

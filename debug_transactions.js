@@ -32,7 +32,7 @@ async function debugTransactions() {
 
     // 2. List Items
     console.log('2. Listing Items...');
-    const itemsResponse = await axios.get(`${PLUGGY_API_URL}/items?clientUserId=QhSwFzrJ9kSiR2h2GYeLm8xeCky1`, { headers });
+    const itemsResponse = await axios.get(`${PLUGGY_API_URL}/items?clientUserId=kx7nssUhM5eZXk1fm2es4VJfV4p1`, { headers });
     const items = itemsResponse.data.results;
     console.log(`   > Found ${items.length} items.`);
 

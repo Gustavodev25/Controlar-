@@ -6,13 +6,18 @@
   "scripts": {
     "dev": "vite",
     "server": "node server.js",
+    "sync:manual": "node scripts/manual_trigger.js",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",
     "@ark-ui/react": "^5.28.0",
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.1",
     "@google/genai": "^1.30.0",
+    "@mui/material": "^7.3.6",
+    "@mui/x-charts": "^8.22.0",
     "@number-flow/react": "^0.5.10",
     "@stripe/stripe-js": "^8.5.3",
     "@vercel/analytics": "^1.6.1",

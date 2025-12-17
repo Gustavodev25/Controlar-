@@ -111,7 +111,8 @@ import {
   List,
   Code,
   Bug,
-  ThumbsUp
+  ThumbsUp,
+  Ban
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -244,7 +245,8 @@ export {
   List,
   Code,
   Bug,
-  ThumbsUp
+  ThumbsUp,
+  Ban
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (

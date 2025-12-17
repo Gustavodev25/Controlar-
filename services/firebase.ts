@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { initializeFirestore } from "firebase/firestore";
 import { getDatabase } from "firebase/database";
+import { getStorage } from "firebase/storage";
 
 // Configuracao do Firebase usando variáveis de ambiente
 const firebaseConfig = {
@@ -25,6 +26,7 @@ let app;
 let auth;
 let database;
 let realtimeDb;
+let storage;
 
 try {
   app = initializeApp(firebaseConfig);
@@ -35,11 +37,13 @@ try {
     useFetchStreams: false
   });
   realtimeDb = getDatabase(app);
+  storage = getStorage(app);
 } catch (error) {
   console.error("Erro ao inicializar Firebase:", error);
   auth = null as any;
   database = null as any;
   realtimeDb = null as any;
+  storage = null as any;
 }
 
-export { app, auth, database, realtimeDb };
+export { app, auth, database, realtimeDb, storage };

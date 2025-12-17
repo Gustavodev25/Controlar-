@@ -1,19 +1,17 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import twilio from 'twilio';
 import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import geminiHandler from './gemini.js';
 import claudeHandler from './claude.js';
-import path from 'path';
 import nodemailer from 'nodemailer';
 import pluggyRouter from './pluggy.js';
 import cronSyncRouter from './cron-sync.js';
 import { firebaseAdmin, firebaseAuth } from './firebaseAdmin.js';
+import { loadEnv } from './env.js';
 
-// Explicitly load .env from root
-dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
+loadEnv();
 
 const router = express.Router();
 

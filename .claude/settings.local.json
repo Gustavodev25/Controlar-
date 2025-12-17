@@ -21,7 +21,8 @@
       "Bash(node:*)",
       "Bash(git push:*)",
       "Bash(curl:*)",
-      "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\")"
+      "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\")",
+      "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\\api\")"
     ],
     "deny": [],
     "ask": []

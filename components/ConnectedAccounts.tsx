@@ -1,8 +1,9 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, PieChart, Trash2, Lock, Plus, Pig } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, AlertCircle, Loader2 } from "./Icons";
 import NumberFlow from '@number-flow/react';
+import { toast as sonnerToast } from "sonner";
 
 import { EmptyState } from "./EmptyState";
 import * as dbService from "../services/database";
@@ -66,6 +67,12 @@ const translateAccountType = (type?: string, subtype?: string): string => {
   return translatedType || translatedSubtype || 'Conta';
 };
 
+interface ItemSyncStatus {
+  id: string; // itemId
+  status: string; // 'UPDATED', 'UPDATING', 'LOGIN_ERROR', etc.
+  lastUpdatedAt: string | null;
+}
+
 export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   accounts,
   isLoading = false,
@@ -77,14 +84,26 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   isAdmin = false
 }) => {
   const [limitView, setLimitView] = useState<Set<string>>(new Set());
+  const activeToastId = useRef<string | number | null>(null);
   const [accountPages, setAccountPages] = useState<Record<string, number>>({});
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
   const [forceSyncItemId, setForceSyncItemId] = useState<string | null>(null);
-  const [timers, setTimers] = useState<Record<string, { h: number; m: number; s: number } | null>>({});
+
+  // Timer State with structure for Auto (24h) and Manual (15m)
+  const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; isFresh: boolean } | null>>({});
+
+  // Sync Status State
+  const [itemStatuses, setItemStatuses] = useState<Record<string, ItemSyncStatus>>({});
+  const [isSyncingItem, setIsSyncingItem] = useState<Record<string, boolean>>({});
+
   const accountsPerPage = 3;
   const toast = useToasts();
+
+  // Constants
+  const AUTO_SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
+  const MANUAL_SYNC_COOLDOWN = 15 * 60 * 1000; // 15 minutes
 
   const handleBankConnected = (newAccounts: ConnectedAccount[]) => {
     if (forceSyncItemId) {
@@ -95,50 +114,107 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (onRefresh) onRefresh();
   };
 
-  // Helper to calculate time remaining until next sync (00:00)
-  const getTimeRemaining = (lastSyncedStr: string) => {
+  // Fetch sync status periodically
+  const fetchItemStatuses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
+      const data = await response.json();
+      if (data.success && data.items) {
+        const statusMap: Record<string, ItemSyncStatus> = {};
+        data.items.forEach((item: any) => {
+          statusMap[item.id] = {
+            id: item.id,
+            status: item.status,
+            lastUpdatedAt: item.lastUpdatedAt
+          };
+        });
+        setItemStatuses(statusMap);
+
+        // Update active sync toast if exists
+        if (data.syncStatus && activeToastId.current) {
+          const { state, message } = data.syncStatus;
+
+          if (state === 'in_progress' || state === 'pending') {
+            sonnerToast.loading(message || "Sincronizando...", { id: activeToastId.current });
+          } else if (state === 'success') {
+            sonnerToast.success(message || "Sincronização concluída!", { id: activeToastId.current });
+            activeToastId.current = null; // Stop tracking
+            if (onRefresh) onRefresh();
+          } else if (state === 'error') {
+            sonnerToast.error(message || "Erro na sincronização.", { id: activeToastId.current });
+            activeToastId.current = null;
+          }
+        }
+
+        // Also update global refresh if needed
+        if (data.syncStatus?.state === 'success' && onRefresh) {
+          // Optional: Trigger refresh if we detect a completed sync that we weren't tracking locally
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching statuses", error);
+    }
+  }, [userId, onRefresh]);
+
+  useEffect(() => {
+    fetchItemStatuses();
+    const interval = setInterval(fetchItemStatuses, 10000); // Poll every 10s
+    return () => clearInterval(interval);
+  }, [fetchItemStatuses]);
+
+  // Helper to calculate time remaining
+  const calculateTimers = (lastSyncedStr: string) => {
     if (!lastSyncedStr) return null;
     const lastSync = new Date(lastSyncedStr);
 
     if (isNaN(lastSync.getTime())) return null;
 
-    // Próxima sincronização é às 17:03
     const now = new Date();
-    const nextSync = new Date(now);
-    nextSync.setHours(17, 3, 0, 0); // Define para 17:03
+    const elapsed = now.getTime() - lastSync.getTime();
 
-    // Se já passou das 17:03 hoje, a próxima é amanhã às 17:03
-    if (now > nextSync) {
-        nextSync.setDate(nextSync.getDate() + 1);
-    }
+    // Auto Sync Timer (Count down to 24h)
+    const nextAutoSyncMs = Math.max(0, AUTO_SYNC_INTERVAL - elapsed);
 
-    const diff = nextSync.getTime() - now.getTime();
+    // Manual Sync Cooldown (Count down to 15m)
+    const manualCooldownMs = Math.max(0, MANUAL_SYNC_COOLDOWN - elapsed);
 
-    if (diff <= 0) return null; // Should basically never happen with logic above
+    // Format Auto Sync
+    const h = Math.floor(nextAutoSyncMs / (1000 * 60 * 60));
+    const m = Math.floor((nextAutoSyncMs % (1000 * 60 * 60)) / (1000 * 60));
+    const s = Math.floor((nextAutoSyncMs % (1000 * 60)) / 1000);
 
-    const hours = Math.floor(diff / (1000 * 60 * 60));
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-
-    return { h: hours, m: minutes, s: seconds };
+    return {
+      auto: { h, m, s },
+      cooldownMs: manualCooldownMs,
+      isFresh: elapsed < 5 * 60 * 1000 // Considered "fresh" if updated < 5 mins ago
+    };
   };
 
   // Update timers every second
   useEffect(() => {
     const updateTimers = () => {
-      const newTimers: Record<string, { h: number; m: number; s: number } | null> = {};
-      Object.entries(lastSynced).forEach(([id, dateStr]) => {
+      const newTimers: Record<string, { auto: { h: number; m: number; s: number }, cooldownMs: number, isFresh: boolean } | null> = {};
+
+      const mergedLastSynced = { ...lastSynced };
+      Object.values(itemStatuses).forEach(status => {
+        if (status.lastUpdatedAt) {
+          mergedLastSynced[status.id] = status.lastUpdatedAt;
+        }
+      });
+
+      Object.entries(mergedLastSynced).forEach(([id, dateStr]) => {
         if (dateStr) {
-          newTimers[id] = getTimeRemaining(dateStr);
+          newTimers[id] = calculateTimers(dateStr);
         }
       });
       setTimers(newTimers);
     };
 
-    updateTimers(); // Initial run
-    const interval = setInterval(updateTimers, 1000); // Update every second
+    updateTimers();
+    const interval = setInterval(updateTimers, 1000);
     return () => clearInterval(interval);
-  }, [lastSynced]);
+  }, [lastSynced, itemStatuses]);
 
   // Agrupa contas por itemId (mesma conexão bancária) para garantir que contas do mesmo banco fiquem juntas
   const groupedAccounts = useMemo(() => {
@@ -195,9 +271,36 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return { icon: <Wallet size={18} />, bgClass: 'bg-[#d97757]/10 text-[#d97757]' };
   };
 
+  const handleManualSync = async (itemId: string) => {
+    if (!userId || isSyncingItem[itemId]) return;
 
+    // Start tracking with toast
+    activeToastId.current = sonnerToast.loading("Iniciando processo de reconexão...");
 
-  // Open Finance disabled - no connection functionality
+    setIsSyncingItem(prev => ({ ...prev, [itemId]: true }));
+    try {
+      const response = await fetch(`/api/pluggy/trigger-sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itemId, userId })
+      });
+      const data = await response.json();
+      if (data.success) {
+        // Update toast to pending status immediately
+        sonnerToast.loading("Solicitando atualização ao banco...", { id: activeToastId.current });
+        fetchItemStatuses(); // Refresh immediately
+      } else {
+        sonnerToast.error(data.error || "Erro ao iniciar sincronização.", { id: activeToastId.current });
+        activeToastId.current = null;
+      }
+    } catch (error) {
+      console.error("Sync error", error);
+      sonnerToast.error("Erro ao sincronizar.", { id: activeToastId.current });
+      activeToastId.current = null;
+    } finally {
+      setIsSyncingItem(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
 
   const handleDeleteInstitution = async () => {
     if (!userId || !deleteData) return;
@@ -220,10 +323,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       setDeleteData(null);
     }
   };
-
-
-
-
 
   if (isLoading) {
     return (
@@ -318,13 +417,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {Object.entries(groupedAccounts).map(([groupKey, data]) => {
-            const { accounts: institutionAccounts, institution: institutionName } = data;
+            const { accounts: institutionAccounts, institution: institutionName, itemId } = data;
 
             // Logic for sync header
-            const representativeAccount = institutionAccounts.find(acc => lastSynced[acc.id] && acc.connectionMode !== 'MANUAL');
-            const representativeId = representativeAccount?.id;
-            const timer = representativeId ? timers[representativeId] : null;
-            const syncItemId = institutionAccounts.find(acc => acc.connectionMode !== 'MANUAL' && acc.itemId)?.itemId;
+            const timer = itemId ? timers[itemId] : null;
+            const itemStatus = itemId ? itemStatuses[itemId] : null;
+            const isUpdating = itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true;
+            const isLoginError = itemStatus?.status === 'LOGIN_ERROR';
+            const isWait = itemStatus?.status === 'WAITING_USER_INPUT';
+            const isFresh = timer?.isFresh || false;
+
+            const canManuallySync = itemId && (timer?.cooldownMs === 0 || isLoginError);
 
             const currentPage = accountPages[groupKey] || 1;
             const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
@@ -336,69 +439,80 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               <div key={groupKey} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col group relative overflow-hidden transition-all hover:border-gray-700" style={{ backgroundColor: '#30302E' }}>
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757] pointer-events-none transition-opacity group-hover:opacity-10"></div>
 
-                <div className="backdrop-blur-sm p-5 rounded-t-2xl border-b border-gray-800 flex items-center justify-between gap-3 relative z-10" style={{ backgroundColor: '#333432' }}>
-                  <div className="flex items-center gap-3 flex-1 min-w-0">
-                    <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
-                      <Building size={20} />
+                <div className="backdrop-blur-sm p-5 rounded-t-2xl border-b border-gray-800 flex flex-col relative z-10 gap-4" style={{ backgroundColor: '#333432' }}>
+
+                  {/* Top Bar: Icon + Name + Actions */}
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
+                        <Building size={20} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
+                        <h4 className="text-base font-bold text-white leading-tight truncate">
+                          {institutionName}
+                        </h4>
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
-                      <h4 className="text-base font-bold text-white leading-tight truncate">
-                        {institutionName}
-                      </h4>
+
+                    <div className="flex items-center gap-2">
+                      {itemId && (
+                        <TooltipIcon content="Sincronizar agora">
+                          <button
+                            onClick={() => handleManualSync(itemId)}
+                            disabled={isDeleting !== null || isUpdating}
+                            className={`p-2 rounded-lg transition-all disabled:opacity-50 ${isUpdating ? 'animate-spin text-[#d97757]' : 'text-[#d97757] hover:text-[#e08b70] hover:bg-[#d97757]/10'}`}
+                          >
+                            {isUpdating ? <Loader2 size={18} /> : <RotateCcw size={18} />}
+                          </button>
+                        </TooltipIcon>
+                      )}
+                      <TooltipIcon content="Desconectar Instituição">
+                        <button
+                          onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName })}
+                          disabled={isDeleting !== null}
+                          className="text-red-400 hover:text-red-300 p-2 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </TooltipIcon>
                     </div>
                   </div>
 
-                  {representativeId && lastSynced[representativeId] && (
-                    <div className="flex flex-col items-end mr-2">
-                      <div className="text-[9px] text-gray-500 font-medium flex items-center gap-1">
-                        <span>Próxima:</span>
-                        {timer ? (
-                          <span className="text-[#d97757] font-bold flex items-center gap-0.5">
-                            <NumberFlow value={timer.h} format={{ minimumIntegerDigits: 2 }} />h{" "}
-                            <NumberFlow value={timer.m} format={{ minimumIntegerDigits: 2 }} />m{" "}
-                            <NumberFlow value={timer.s} format={{ minimumIntegerDigits: 2 }} />s
-                          </span>
+                  {/* Status Bar */}
+                  {itemId && (
+                    <div className="flex items-center justify-between text-xs bg-gray-900/50 p-2 rounded-lg border border-gray-800/50">
+                      <div className="flex items-center gap-1.5">
+                        {isUpdating ? (
+                          <>
+                            <Loader2 size={12} className="text-[#d97757] animate-spin" />
+                            <span className="text-[#d97757] font-medium">Sincronizando...</span>
+                          </>
+                        ) : isLoginError ? (
+                          <>
+                            <AlertCircle size={12} className="text-red-400" />
+                            <span className="text-red-400 font-medium">Erro de login</span>
+                          </>
+                        ) : isWait ? (
+                          <>
+                            <AlertCircle size={12} className="text-yellow-400" />
+                            <span className="text-yellow-400 font-medium">Aguardando ação</span>
+                          </>
                         ) : (
-                          <span className="text-[#d97757] font-bold">Agora</span>
+                          <>
+                            <CheckCircle size={12} className="text-green-500/70" />
+                            <span className="text-green-500/70 font-medium">Conectado</span>
+                          </>
                         )}
                       </div>
-                      <p className="text-[9px] text-gray-600 font-medium flex items-center gap-1">
-                        <span>Última:</span>
-                        {new Date(lastSynced[representativeId]).toLocaleDateString("pt-BR", { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
-                      </p>
+
+                      <div className="flex items-center gap-1.5 text-gray-500">
+                        {/* Status Right Side Cleared */}
+                      </div>
                     </div>
                   )}
 
-                  <div className="flex items-center gap-2">
-                    {isAdmin && syncItemId && (
-                      <TooltipIcon content="Sincronizar agora (admin)">
-                        <button
-                          onClick={() => {
-                            setForceSyncItemId(syncItemId);
-                            setShowBankModal(true);
-                          }}
-                          disabled={isDeleting !== null}
-                          className="text-[#d97757] hover:text-[#e08b70] p-2 hover:bg-[#d97757]/10 rounded-lg transition-all disabled:opacity-50"
-                        >
-                          <RotateCcw size={18} />
-                        </button>
-                      </TooltipIcon>
-                    )}
-                    <TooltipIcon content="Desconectar Instituição">
-                      <button
-                        onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName })}
-                        disabled={isDeleting !== null}
-                        className="text-red-400 hover:text-red-300 p-2 hover:bg-red-500/10 rounded-lg transition-all disabled:opacity-50"
-                      >
-                        <Trash2 size={18} />
-                      </button>
-                    </TooltipIcon>
-                  </div>
                 </div>
-
-
-
 
                 <div className="p-4 relative z-10 flex-1" style={{ backgroundColor: '#30302E' }}>
                   <AnimatePresence mode="wait">

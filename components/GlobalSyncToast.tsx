@@ -12,7 +12,7 @@ import {
 } from "../utils/syncProgress";
 
 const AUTO_DISMISS_MS = 5000;
-const INTERRUPT_AFTER_MS = 90000;
+const INTERRUPT_AFTER_MS = 180000; // 3 minutes
 const normalizeProgressError = (progress: SyncProgress | null) => {
   if (progress?.error === 'Sync was interrupted') {
     return { ...progress, error: 'Sincronizacao interrompida. Tente novamente.' };
@@ -43,7 +43,7 @@ export const GlobalSyncToast: React.FC = () => {
   const handleProgress = useCallback(
     (incoming: SyncProgress | null) => {
       const normalized = normalizeProgressError(incoming);
-      
+
       // If null/invalid, ensure we are clean locally. 
       // We avoid handleDismiss() here to prevent potential loops if this was triggered by a clear event.
       if (!normalized) {

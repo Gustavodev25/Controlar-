@@ -396,71 +396,15 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     const [view, setView] = useState<'chat' | 'history'>('chat');
     const [history, setHistory] = useState<ChatSession[]>([]);
     const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-    const historyLoadedRef = useRef(false);
+    const [isMobile, setIsMobile] = useState(false);
 
-    // --- Frases aleatórias do Coinzinha ---
-    const coinzinhaPhrases = [
-        "Dica: Registre seus gastos diários!",
-        "Já definiu suas metas do mês?",
-        "Poupar hoje é investir no amanhã!",
-        "Que tal analisar seus gastos?",
-        "Cada real economizado conta!",
-        "Não esqueça dos seus lembretes!",
-        "Cuidado com as compras por impulso!",
-        "Seus investimentos agradecem!",
-        "Pequenos gastos somam no final!",
-        "Continue assim, você está indo bem!",
-        "Disciplina financeira é o segredo!",
-        "Já organizou suas contas hoje?",
-        "Posso te ajudar com algo?",
-        "Me pergunte qualquer coisa!",
-        "Vamos organizar suas finanças!"
-    ];
-
-    const [currentPhrase, setCurrentPhrase] = useState<string | null>(null);
-    const [showBubble, setShowBubble] = useState(false);
-    const [showDots, setShowDots] = useState(false);
-
-    // Efeito para mostrar frases aleatórias periodicamente
     useEffect(() => {
-        if (isOpen) return; // Não mostrar quando o chat está aberto
-
-        const showRandomPhrase = () => {
-            if (isOpen) return; // Não mostrar se o chat estiver aberto
-            const randomPhrase = coinzinhaPhrases[Math.floor(Math.random() * coinzinhaPhrases.length)];
-            setCurrentPhrase(randomPhrase);
-            setShowBubble(true);
-            setShowDots(true);
-
-            // Transição de dots para texto após 800ms
-            setTimeout(() => {
-                setShowDots(false);
-            }, 800);
-
-            // Esconder o balão após 10 segundos
-            setTimeout(() => {
-                setShowBubble(false);
-                setShowDots(false);
-            }, 10000);
-        };
-
-        // Mostrar primeira frase após 10 segundos
-        const initialTimeout = setTimeout(() => {
-            showRandomPhrase();
-        }, 10000);
-
-        // Depois, mostrar a cada 30-60 segundos (aleatório)
-        const interval = setInterval(() => {
-            showRandomPhrase();
-        }, 45000);
-
-        return () => {
-            clearTimeout(initialTimeout);
-            clearInterval(interval);
-            setShowBubble(false);
-            setShowDots(false);
-        };
-    }, [isOpen]);
+        const checkMobile = () => setIsMobile(window.innerWidth < 480);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+    const historyLoadedRef = useRef(false);
 
     const getInitials = (name: string) => name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
 
@@ -1584,86 +1528,8 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     return (
         <div className={cn(
             "fixed z-50 flex items-center justify-center transition-all duration-300",
-            isFullScreen ? "inset-0 bg-black/50 backdrop-blur-sm" : "bottom-6 right-6"
+            isFullScreen ? "inset-0 bg-black/50 backdrop-blur-sm" : (isMobile ? "bottom-4 right-4" : "bottom-6 right-6")
         )}>
-            {/* Speech Bubble - Typewriter effect com surgimento do Coinzinha */}
-            <AnimatePresence>
-                {!isOpen && showBubble && currentPhrase && !isFullScreen && (
-                    <motion.div
-                        initial={{
-                            opacity: 0,
-                            scaleY: 0,
-                            scaleX: 0.5,
-                            y: 60,
-                            filter: "blur(10px)"
-                        }}
-                        animate={{
-                            opacity: 1,
-                            scaleY: 1,
-                            scaleX: 1,
-                            y: isHovered ? -48 : 8,
-                            filter: "blur(0)"
-                        }}
-                        exit={{
-                            opacity: 0,
-                            scaleY: 0,
-                            scaleX: 0.5,
-                            y: 40,
-                            filter: "blur(10px)",
-                            transition: { duration: 0.2, ease: "easeIn" }
-                        }}
-                        transition={{
-                            type: "spring",
-                            stiffness: 400,
-                            damping: 22,
-                            mass: 0.8
-                        }}
-                        className="absolute bottom-[56px] right-[4px] z-[60] origin-bottom"
-                        onClick={(e) => e.stopPropagation()}
-                    >
-                        <motion.div
-                            className="relative bg-[#30302E] backdrop-blur-sm border border-[#373734] ring-1 ring-white/5 rounded-2xl px-4 py-3 shadow-[0_0_20px_rgba(0,0,0,0.2)] max-w-[250px]"
-                            layout
-                            transition={{
-                                layout: {
-                                    type: "spring",
-                                    stiffness: 350,
-                                    damping: 28
-                                }
-                            }}
-                        >
-                            <div className="text-sm text-gray-200 whitespace-normal flex items-center min-h-[20px]">
-                                {showDots ? (
-                                    // Pontinhos animados
-                                    <div className="flex gap-1.5 px-1">
-                                        <motion.span
-                                            animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                                            transition={{ duration: 0.8, repeat: Infinity, delay: 0 }}
-                                            className="w-1.5 h-1.5 rounded-full bg-gray-400"
-                                        />
-                                        <motion.span
-                                            animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                                            transition={{ duration: 0.8, repeat: Infinity, delay: 0.2 }}
-                                            className="w-1.5 h-1.5 rounded-full bg-gray-400"
-                                        />
-                                        <motion.span
-                                            animate={{ opacity: [0.3, 1, 0.3], scale: [0.8, 1.2, 0.8] }}
-                                            transition={{ duration: 0.8, repeat: Infinity, delay: 0.4 }}
-                                            className="w-1.5 h-1.5 rounded-full bg-gray-400"
-                                        />
-                                    </div>
-                                ) : (
-                                    <span className="leading-relaxed">{currentPhrase}</span>
-                                )}
-                            </div>
-                            {/* Arrow pointing down-right - aponta para o Coinzinha */}
-                            <div className="absolute -bottom-2 right-[20px] w-0 h-0 border-l-[8px] border-l-transparent border-r-[8px] border-r-transparent border-t-[10px] border-t-[#373734]" />
-                            <div className="absolute -bottom-[7px] right-[21px] w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-t-[9px] border-t-[#30302E]" />
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
             <motion.div
                 ref={wrapperRef}
                 className={cn(
@@ -1672,10 +1538,10 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 )}
                 initial={false}
                 animate={{
-                    width: isFullScreen ? "100vw" : (isOpen ? OPEN_WIDTH : 56),
-                    height: isFullScreen ? "100vh" : (isOpen ? OPEN_HEIGHT : 56),
+                    width: isFullScreen ? "100vw" : (isOpen ? (isMobile ? "90vw" : OPEN_WIDTH) : 56),
+                    height: isFullScreen ? "100vh" : (isOpen ? (isMobile ? "75vh" : OPEN_HEIGHT) : 56),
                     borderRadius: isFullScreen ? 0 : (isOpen ? 16 : 28),
-                    y: isFullScreen ? 0 : (isOpen ? -24 : (isHovered ? -8 : 0)),
+                    y: isFullScreen ? 0 : (isOpen ? (isMobile ? 0 : -24) : (isHovered ? -8 : 0)),
                 }}
                 transition={{
                     ...SPRING_CONFIG,
@@ -1683,8 +1549,6 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 }}
                 onMouseEnter={() => !isOpen && setIsHovered(true)}
                 onMouseLeave={() => !isOpen && setIsHovered(false)}
-                // Mobile override
-                style={isOpen && typeof window !== 'undefined' && window.innerWidth < 450 ? { width: '90vw' } : {}}
             >
                 <AnimatePresence mode="wait">
                     {!isOpen ? (

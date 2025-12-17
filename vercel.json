@@ -13,6 +13,10 @@
     {
       "path": "/api/cron/sync",
       "schedule": "03 20 * * *"
+    },
+    {
+      "path": "/api/pluggy/webhook-worker",
+      "schedule": "*/1 * * * *"
     }
   ]
 }

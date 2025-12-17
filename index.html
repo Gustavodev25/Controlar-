@@ -261,6 +261,17 @@
       }
       @keyframes blink { 50% { opacity: 0; } }
 
+      /* Hide Sonner Toast progress bar and colored border */
+      [data-sonner-toast] [data-progress] {
+        display: none !important;
+      }
+      [data-sonner-toast]::before {
+        display: none !important;
+      }
+      [data-sonner-toast] {
+        border-left: none !important;
+        border: 1px solid #3a3c3a !important;
+      }
 
     </style>
   <script type="importmap">

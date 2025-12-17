@@ -1636,6 +1636,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <p className="text-xs text-gray-500 ml-1">Dia usual de recebimento do salário.</p>
                                  </div>
                               </div>
+
+                              {/* Salary Tax Exemption Option */}
+                              <div
+                                 className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-800 cursor-pointer group"
+                                 onClick={() => setFormData({ ...formData, salaryExemptFromDiscounts: !formData.salaryExemptFromDiscounts })}
+                              >
+                                 <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.salaryExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                    <Check size={12} strokeWidth={4} />
+                                 </div>
+                                 <div className="flex-1 min-w-0">
+                                    <span className="text-sm font-medium text-gray-300 select-none group-hover:text-white transition-colors">
+                                       Isento de descontos (INSS/IRRF zerados)
+                                    </span>
+                                    <p className="text-xs text-gray-500">Para salários que não sofrem desconto de impostos.</p>
+                                 </div>
+                              </div>
                            </div>
 
                            <div
@@ -1685,263 +1701,263 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                            {/* Vale (Adiantamento) Configuration */}
                            {hasVale && (
-                           <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
-                              <div className="flex items-center justify-between mb-4">
-                                 <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                                    <Wallet size={20} className="text-[#d97757]" /> Adiantamento Salarial (Vale)
-                                 </h4>
-                                 <div className="bg-[#d97757]/10 text-[#d97757] text-xs px-2 py-1 rounded-lg border border-[#d97757]/20 font-medium">
-                                    Simulador Ativo
+                              <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
+                                 <div className="flex items-center justify-between mb-4">
+                                    <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                                       <Wallet size={20} className="text-[#d97757]" /> Adiantamento Salarial (Vale)
+                                    </h4>
+                                    <div className="bg-[#d97757]/10 text-[#d97757] text-xs px-2 py-1 rounded-lg border border-[#d97757]/20 font-medium">
+                                       Simulador Ativo
+                                    </div>
                                  </div>
-                              </div>
 
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                 <div className="space-y-4">
-                                    <div className="grid grid-cols-3 gap-4">
-                                       <div className="space-y-2">
-                                          <label className="text-xs font-medium text-gray-400 ml-1">% do Vale</label>
-                                          <div className="relative">
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                    <div className="space-y-4">
+                                       <div className="grid grid-cols-3 gap-4">
+                                          <div className="space-y-2">
+                                             <label className="text-xs font-medium text-gray-400 ml-1">% do Vale</label>
+                                             <div className="relative">
+                                                <input
+                                                   type="number"
+                                                   value={formData.salaryAdvancePercent || ''}
+                                                   onChange={(e) => {
+                                                      const percent = parseFloat(e.target.value);
+                                                      const base = formData.baseSalary || 0;
+                                                      const newVal = base * (percent / 100);
+                                                      setFormData({
+                                                         ...formData,
+                                                         salaryAdvancePercent: percent,
+                                                         salaryAdvanceValue: parseFloat(newVal.toFixed(2))
+                                                      });
+                                                   }}
+                                                   placeholder="40"
+                                                   className="input-primary pr-8 font-bold"
+                                                />
+                                                <span className="absolute right-3 top-3.5 text-gray-500 font-bold">%</span>
+                                             </div>
+                                          </div>
+                                          <div className="space-y-2">
+                                             <label className="text-xs font-medium text-gray-400 ml-1">Valor Fixo (R$)</label>
+                                             <div className="relative">
+                                                <span className="absolute left-2 top-3.5 text-gray-500 font-bold text-xs">R$</span>
+                                                <CurrencyInput
+                                                   value={formData.salaryAdvanceValue || 0}
+                                                   onValueChange={(val) => {
+                                                      const base = formData.baseSalary || 0;
+                                                      const newPercent = base > 0 ? (val / base) * 100 : 0;
+                                                      setFormData({
+                                                         ...formData,
+                                                         salaryAdvanceValue: val,
+                                                         salaryAdvancePercent: parseFloat(newPercent.toFixed(1))
+                                                      });
+                                                   }}
+                                                   placeholder="0,00"
+                                                   className="input-primary pl-7 font-bold"
+                                                />
+                                             </div>
+                                          </div>
+                                          <div className="space-y-2">
+                                             <label className="text-xs font-medium text-gray-400 ml-1">Dia do Vale</label>
                                              <input
                                                 type="number"
-                                                value={formData.salaryAdvancePercent || ''}
-                                                onChange={(e) => {
-                                                   const percent = parseFloat(e.target.value);
-                                                   const base = formData.baseSalary || 0;
-                                                   const newVal = base * (percent / 100);
-                                                   setFormData({
-                                                      ...formData,
-                                                      salaryAdvancePercent: percent,
-                                                      salaryAdvanceValue: parseFloat(newVal.toFixed(2))
-                                                   });
-                                                }}
-                                                placeholder="40"
-                                                className="input-primary pr-8 font-bold"
-                                             />
-                                             <span className="absolute right-3 top-3.5 text-gray-500 font-bold">%</span>
-                                          </div>
-                                       </div>
-                                       <div className="space-y-2">
-                                          <label className="text-xs font-medium text-gray-400 ml-1">Valor Fixo (R$)</label>
-                                          <div className="relative">
-                                             <span className="absolute left-2 top-3.5 text-gray-500 font-bold text-xs">R$</span>
-                                             <CurrencyInput
-                                                value={formData.salaryAdvanceValue || 0}
-                                                onValueChange={(val) => {
-                                                   const base = formData.baseSalary || 0;
-                                                   const newPercent = base > 0 ? (val / base) * 100 : 0;
-                                                   setFormData({
-                                                      ...formData,
-                                                      salaryAdvanceValue: val,
-                                                      salaryAdvancePercent: parseFloat(newPercent.toFixed(1))
-                                                   });
-                                                }}
-                                                placeholder="0,00"
-                                                className="input-primary pl-7 font-bold"
+                                                min="1"
+                                                max="31"
+                                                value={formData.salaryAdvanceDay || ''}
+                                                onChange={(e) => setFormData({ ...formData, salaryAdvanceDay: parseInt(e.target.value) })}
+                                                placeholder="15"
+                                                className="input-primary font-bold"
                                              />
                                           </div>
                                        </div>
-                                       <div className="space-y-2">
-                                          <label className="text-xs font-medium text-gray-400 ml-1">Dia do Vale</label>
-                                          <input
-                                             type="number"
-                                             min="1"
-                                             max="31"
-                                             value={formData.salaryAdvanceDay || ''}
-                                             onChange={(e) => setFormData({ ...formData, salaryAdvanceDay: parseInt(e.target.value) })}
-                                             placeholder="15"
-                                             className="input-primary font-bold"
-                                          />
-                                       </div>
-                                    </div>
 
-                                    <div className="space-y-2 border-t border-gray-800 pt-4">
-                                       <div className="flex justify-between items-center">
-                                          <label className="text-xs font-medium text-gray-400">Outros Descontos (Simulação)</label>
-                                          <button
-                                             onClick={() => setFormData({
-                                                ...formData,
-                                                valeDeductions: [...(formData.valeDeductions || []), { id: Date.now().toString(), name: '', value: '', type: 'R$' }]
-                                             })}
-                                             className="text-[10px] bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-gray-300 transition-colors flex items-center gap-1"
-                                          >
-                                             <Plus size={12} /> Adicionar
-                                          </button>
-                                       </div>
-
-                                       <div
-                                          className="flex items-center gap-2 mb-3 cursor-pointer group"
-                                          onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
-                                       >
-                                          <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                             <Check size={12} strokeWidth={4} />
-                                          </div>
-                                          <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
-                                             Isento de descontos (INSS/IRRF zerados)
-                                          </span>
-                                       </div>
-
-                                       {(formData.valeDeductions || []).map((deduction, index) => (
-                                          <div key={deduction.id} className="flex gap-2 animate-fade-in">
-                                             <input
-                                                type="text"
-                                                placeholder="Nome"
-                                                value={deduction.name}
-                                                onChange={e => {
-                                                   const newArr = [...(formData.valeDeductions || [])];
-                                                   newArr[index].name = e.target.value;
-                                                   setFormData({ ...formData, valeDeductions: newArr });
-                                                }}
-                                                className="input-primary text-xs py-1.5 flex-1 min-w-0"
-                                             />
-                                             <div className="flex gap-1 w-24 shrink-0">
-                                                {deduction.type === 'R$' ? (
-                                                   <CurrencyInput
-                                                      value={parseFloat(deduction.value.replace(',', '.') || '0')}
-                                                      onValueChange={(val) => {
-                                                         const newArr = [...(formData.valeDeductions || [])];
-                                                         newArr[index].value = val.toString();
-                                                         setFormData({ ...formData, valeDeductions: newArr });
-                                                      }}
-                                                      className="input-primary text-xs py-1.5 w-full text-right"
-                                                      placeholder="0,00"
-                                                   />
-                                                ) : (
-                                                   <input
-                                                      type="text"
-                                                      placeholder="%"
-                                                      value={deduction.value}
-                                                      onChange={e => {
-                                                         const newArr = [...(formData.valeDeductions || [])];
-                                                         newArr[index].value = e.target.value;
-                                                         setFormData({ ...formData, valeDeductions: newArr });
-                                                      }}
-                                                      className="input-primary text-xs py-1.5 w-full text-right"
-                                                   />
-                                                )}
-                                             </div>
-                                             <button
-                                                onClick={() => {
-                                                   const newArr = [...(formData.valeDeductions || [])];
-                                                   newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
-                                                   setFormData({ ...formData, valeDeductions: newArr });
-                                                }}
-                                                className="bg-gray-800 text-gray-400 text-[10px] px-1.5 rounded border border-gray-700 shrink-0 w-8"
-                                             >
-                                                {deduction.type}
-                                             </button>
+                                       <div className="space-y-2 border-t border-gray-800 pt-4">
+                                          <div className="flex justify-between items-center">
+                                             <label className="text-xs font-medium text-gray-400">Outros Descontos (Simulação)</label>
                                              <button
                                                 onClick={() => setFormData({
                                                    ...formData,
-                                                   valeDeductions: (formData.valeDeductions || []).filter(d => d.id !== deduction.id)
+                                                   valeDeductions: [...(formData.valeDeductions || []), { id: Date.now().toString(), name: '', value: '', type: 'R$' }]
                                                 })}
-                                                className="text-red-400 hover:bg-red-900/20 p-1.5 rounded transition-colors"
+                                                className="text-[10px] bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-gray-300 transition-colors flex items-center gap-1"
                                              >
-                                                <Trash2 size={14} />
+                                                <Plus size={12} /> Adicionar
                                              </button>
                                           </div>
-                                       ))}
-                                       {(formData.valeDeductions || []).length === 0 && (
-                                          <p className="text-[10px] text-gray-600 italic">Nenhum desconto extra cadastrado.</p>
-                                       )}
-                                    </div>
-                                 </div>
 
-                                 {/* Preview Card */}
-                                 <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
-                                    <div>
-                                       <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2 mb-3">Previsão de Fechamento</h5>
-                                       {(() => {
-                                          const base = formData.baseSalary || 0;
-                                          const dependents = 0; // Could add input for this later or fetch from profile
-                                          const isExempt = formData.valeExemptFromDiscounts || false;
-
-                                          // CLT Logic (Same as SalaryManager)
-                                          let inss = 0;
-                                          if (!isExempt) {
-                                             if (base <= 1518.00) inss = base * 0.075;
-                                             else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
-                                             else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
-                                             else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
-                                             else inss = 951.63;
-                                          }
-
-                                          const deductibleDependents = dependents * 189.59;
-                                          const baseA = base - inss - deductibleDependents;
-                                          const simplifiedDiscount = 607.20;
-                                          const baseB = base - simplifiedDiscount;
-                                          const finalBase = Math.min(baseA, baseB);
-
-                                          const calcTax = (b: number) => {
-                                             if (b <= 2428.80) return 0;
-                                             if (b <= 2826.65) return (b * 0.075) - 182.16;
-                                             if (b <= 3751.05) return (b * 0.15) - 394.16;
-                                             if (b <= 4664.68) return (b * 0.225) - 675.49;
-                                             return (b * 0.275) - 908.73;
-                                          };
-
-                                          // Correct IRRF calculation logic
-                                          let irrf = 0;
-                                          if (!isExempt) {
-                                             const taxA = Math.max(0, calcTax(baseA));
-                                             const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
-                                             irrf = Math.min(taxA, taxB);
-                                          }
-
-                                          const valePercent = formData.salaryAdvancePercent || 40;
-                                          const valeAmount = base * (valePercent / 100);
-
-                                          const totalCustom = (formData.valeDeductions || []).reduce((acc, curr) => {
-                                             const val = parseFloat(curr.value.replace(',', '.'));
-                                             if (isNaN(val)) return acc;
-                                             if (curr.type === '%') return acc + (base * (val / 100));
-                                             return acc + val;
-                                          }, 0);
-
-                                          const net = base - inss - irrf - valeAmount - totalCustom;
-
-                                          const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-                                          return (
-                                             <div className="space-y-2 text-xs">
-                                                <div className="flex justify-between">
-                                                   <span className="text-gray-400">Salário Bruto</span>
-                                                   <span className="text-gray-300 font-medium">{format(base)}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                   <span className="text-gray-400">INSS (Estimado)</span>
-                                                   <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(inss)}</span>
-                                                </div>
-                                                <div className="flex justify-between">
-                                                   <span className="text-gray-400">IRRF (Estimado)</span>
-                                                   <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(irrf)}</span>
-                                                </div>
-                                                <div className="flex justify-between py-1 border-y border-gray-800/50 my-1">
-                                                   <span className="text-[#d97757]">Vale ({valePercent}%)</span>
-                                                   <span className="text-[#d97757] font-bold">- {format(valeAmount)}</span>
-                                                </div>
-                                                {totalCustom > 0 && (
-                                                   <div className="flex justify-between">
-                                                      <span className="text-gray-400">Outros</span>
-                                                      <span className="text-red-400">- {format(totalCustom)}</span>
-                                                   </div>
-                                                )}
-                                                <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
-                                                   <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
-                                                   <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                                      <NumberFlow
-                                                         value={net}
-                                                         format={{ style: 'currency', currency: 'BRL' }}
-                                                         locales="pt-BR"
-                                                      />
-                                                   </span>
-                                                </div>
+                                          <div
+                                             className="flex items-center gap-2 mb-3 cursor-pointer group"
+                                             onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
+                                          >
+                                             <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                                <Check size={12} strokeWidth={4} />
                                              </div>
-                                          );
-                                       })()}
+                                             <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
+                                                Isento de descontos (INSS/IRRF zerados)
+                                             </span>
+                                          </div>
+
+                                          {(formData.valeDeductions || []).map((deduction, index) => (
+                                             <div key={deduction.id} className="flex gap-2 animate-fade-in">
+                                                <input
+                                                   type="text"
+                                                   placeholder="Nome"
+                                                   value={deduction.name}
+                                                   onChange={e => {
+                                                      const newArr = [...(formData.valeDeductions || [])];
+                                                      newArr[index].name = e.target.value;
+                                                      setFormData({ ...formData, valeDeductions: newArr });
+                                                   }}
+                                                   className="input-primary text-xs py-1.5 flex-1 min-w-0"
+                                                />
+                                                <div className="flex gap-1 w-24 shrink-0">
+                                                   {deduction.type === 'R$' ? (
+                                                      <CurrencyInput
+                                                         value={parseFloat(deduction.value.replace(',', '.') || '0')}
+                                                         onValueChange={(val) => {
+                                                            const newArr = [...(formData.valeDeductions || [])];
+                                                            newArr[index].value = val.toString();
+                                                            setFormData({ ...formData, valeDeductions: newArr });
+                                                         }}
+                                                         className="input-primary text-xs py-1.5 w-full text-right"
+                                                         placeholder="0,00"
+                                                      />
+                                                   ) : (
+                                                      <input
+                                                         type="text"
+                                                         placeholder="%"
+                                                         value={deduction.value}
+                                                         onChange={e => {
+                                                            const newArr = [...(formData.valeDeductions || [])];
+                                                            newArr[index].value = e.target.value;
+                                                            setFormData({ ...formData, valeDeductions: newArr });
+                                                         }}
+                                                         className="input-primary text-xs py-1.5 w-full text-right"
+                                                      />
+                                                   )}
+                                                </div>
+                                                <button
+                                                   onClick={() => {
+                                                      const newArr = [...(formData.valeDeductions || [])];
+                                                      newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
+                                                      setFormData({ ...formData, valeDeductions: newArr });
+                                                   }}
+                                                   className="bg-gray-800 text-gray-400 text-[10px] px-1.5 rounded border border-gray-700 shrink-0 w-8"
+                                                >
+                                                   {deduction.type}
+                                                </button>
+                                                <button
+                                                   onClick={() => setFormData({
+                                                      ...formData,
+                                                      valeDeductions: (formData.valeDeductions || []).filter(d => d.id !== deduction.id)
+                                                   })}
+                                                   className="text-red-400 hover:bg-red-900/20 p-1.5 rounded transition-colors"
+                                                >
+                                                   <Trash2 size={14} />
+                                                </button>
+                                             </div>
+                                          ))}
+                                          {(formData.valeDeductions || []).length === 0 && (
+                                             <p className="text-[10px] text-gray-600 italic">Nenhum desconto extra cadastrado.</p>
+                                          )}
+                                       </div>
+                                    </div>
+
+                                    {/* Preview Card */}
+                                    <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
+                                       <div>
+                                          <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2 mb-3">Previsão de Fechamento</h5>
+                                          {(() => {
+                                             const base = formData.baseSalary || 0;
+                                             const dependents = 0; // Could add input for this later or fetch from profile
+                                             const isExempt = formData.valeExemptFromDiscounts || false;
+
+                                             // CLT Logic (Same as SalaryManager)
+                                             let inss = 0;
+                                             if (!isExempt) {
+                                                if (base <= 1518.00) inss = base * 0.075;
+                                                else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
+                                                else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
+                                                else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
+                                                else inss = 951.63;
+                                             }
+
+                                             const deductibleDependents = dependents * 189.59;
+                                             const baseA = base - inss - deductibleDependents;
+                                             const simplifiedDiscount = 607.20;
+                                             const baseB = base - simplifiedDiscount;
+                                             const finalBase = Math.min(baseA, baseB);
+
+                                             const calcTax = (b: number) => {
+                                                if (b <= 2428.80) return 0;
+                                                if (b <= 2826.65) return (b * 0.075) - 182.16;
+                                                if (b <= 3751.05) return (b * 0.15) - 394.16;
+                                                if (b <= 4664.68) return (b * 0.225) - 675.49;
+                                                return (b * 0.275) - 908.73;
+                                             };
+
+                                             // Correct IRRF calculation logic
+                                             let irrf = 0;
+                                             if (!isExempt) {
+                                                const taxA = Math.max(0, calcTax(baseA));
+                                                const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
+                                                irrf = Math.min(taxA, taxB);
+                                             }
+
+                                             const valePercent = formData.salaryAdvancePercent || 40;
+                                             const valeAmount = base * (valePercent / 100);
+
+                                             const totalCustom = (formData.valeDeductions || []).reduce((acc, curr) => {
+                                                const val = parseFloat(curr.value.replace(',', '.'));
+                                                if (isNaN(val)) return acc;
+                                                if (curr.type === '%') return acc + (base * (val / 100));
+                                                return acc + val;
+                                             }, 0);
+
+                                             const net = base - inss - irrf - valeAmount - totalCustom;
+
+                                             const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+                                             return (
+                                                <div className="space-y-2 text-xs">
+                                                   <div className="flex justify-between">
+                                                      <span className="text-gray-400">Salário Bruto</span>
+                                                      <span className="text-gray-300 font-medium">{format(base)}</span>
+                                                   </div>
+                                                   <div className="flex justify-between">
+                                                      <span className="text-gray-400">INSS (Estimado)</span>
+                                                      <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(inss)}</span>
+                                                   </div>
+                                                   <div className="flex justify-between">
+                                                      <span className="text-gray-400">IRRF (Estimado)</span>
+                                                      <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(irrf)}</span>
+                                                   </div>
+                                                   <div className="flex justify-between py-1 border-y border-gray-800/50 my-1">
+                                                      <span className="text-[#d97757]">Vale ({valePercent}%)</span>
+                                                      <span className="text-[#d97757] font-bold">- {format(valeAmount)}</span>
+                                                   </div>
+                                                   {totalCustom > 0 && (
+                                                      <div className="flex justify-between">
+                                                         <span className="text-gray-400">Outros</span>
+                                                         <span className="text-red-400">- {format(totalCustom)}</span>
+                                                      </div>
+                                                   )}
+                                                   <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
+                                                      <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
+                                                      <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                                         <NumberFlow
+                                                            value={net}
+                                                            format={{ style: 'currency', currency: 'BRL' }}
+                                                            locales="pt-BR"
+                                                         />
+                                                      </span>
+                                                   </div>
+                                                </div>
+                                             );
+                                          })()}
+                                       </div>
                                     </div>
                                  </div>
                               </div>
-                           </div>
                            )}
 
                            <button
@@ -2231,7 +2247,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          </div>
 
          {/* Externalized 2FA Modal */}
-         <TwoFactorModal
+         < TwoFactorModal
             isOpen={isTwoFactorModalOpen}
             onClose={() => setIsTwoFactorModalOpen(false)}
             onSuccess={handle2FASuccess}
@@ -2242,14 +2258,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          />
 
          {/* Credit Card Modal */}
-         <CreditCardModal
+         < CreditCardModal
             isOpen={isCardModalOpen}
             onClose={() => setIsCardModalOpen(false)}
             onSave={handleUpdateCard}
          />
 
          {/* Delete Account Modal */}
-         <DeleteAccountModal
+         < DeleteAccountModal
             isOpen={isDeleteModalOpen}
             onClose={() => setIsDeleteModalOpen(false)}
             onConfirm={handleDeleteAccount}

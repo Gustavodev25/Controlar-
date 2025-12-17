@@ -16,6 +16,7 @@ import { Dropdown, DropdownTrigger, DropdownContent, DropdownLabel } from './Dro
 import { CustomSelect, CustomMonthPicker } from './UIComponents';
 import { NotificationCenter } from './NotificationCenter';
 import { UserMenu } from './UserMenu';
+import { SyncStatusPanel } from './SyncStatusPanel';
 import { User, Member, Reminder, Budget, Transaction, AppNotification as SystemNotification } from '../types';
 import { TabType } from './Sidebar';
 
@@ -84,6 +85,11 @@ interface HeaderProps {
   onBackToProfile?: () => void;
   isInFamilyView?: boolean;
   showFamilyOption?: boolean;
+
+  // Sync Status Props
+  userId?: string | null;
+  hasConnectedAccounts?: boolean;
+  onSyncComplete?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -122,7 +128,10 @@ export const Header: React.FC<HeaderProps> = ({
   onFamilyView,
   onBackToProfile,
   isInFamilyView,
-  showFamilyOption
+  showFamilyOption,
+  userId,
+  hasConnectedAccounts,
+  onSyncComplete
 }) => {
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW'
@@ -143,9 +152,9 @@ export const Header: React.FC<HeaderProps> = ({
       case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
       case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
       case 'admin_overview': return { title: 'Painel Administrativo', desc: 'Visão geral do sistema.' };
-      case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar usuários interessados.' };
-      case 'admin_email': return { title: 'Campanhas de Email', desc: 'Criar e enviar mensagens.' };
-      case 'admin_coupons': return { title: 'Cupons de Desconto', desc: 'Gerenciar códigos promocionais.' };
+      case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar solicitações de acesso.' };
+      case 'admin_email': return { title: 'Mensagem em Geral', desc: 'Criar e enviar mensagens.' };
+      case 'admin_coupons': return { title: 'Gerenciar Cupons', desc: 'Criar e editar códigos promocionais.' };
       case 'admin_feedbacks': return { title: 'Feedbacks', desc: 'Gerenciar feedbacks e bugs reportados pelos usuários.' };
       case 'admin_users': return { title: 'Usuários', desc: 'Gerenciar usuários cadastrados no sistema.' };
       case 'credit_cards': return { title: 'Faturas', desc: 'Gerencie suas despesas em cartões de crédito.' };
@@ -350,6 +359,7 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
 
+          {/* Compact Sync Status - only show when user has connected accounts */}
           <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
 
           {/* Notification Center */}

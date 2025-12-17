@@ -143,6 +143,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     nextBillingDate: toLocalISODate(nextBillingDate),
                     paymentMethod: 'COUPON_100',
                     couponUsed: couponId,
+                    startDate: toLocalISODate(new Date()),
                 };
 
                 const updatedUser = {
@@ -238,6 +239,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     paymentMethod: 'CREDIT_CARD',
                     asaasCustomerId: customerData.customer.id,
                     asaasSubscriptionId: subscriptionData.subscription?.id || subscriptionData.payment?.id,
+                    couponUsed: couponId,
+                    startDate: toLocalISODate(new Date()),
                 };
 
                 const updatedUser = {

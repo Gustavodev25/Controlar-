@@ -30,6 +30,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
     const toast = useToasts();
 
     // Form State
+    const [name, setName] = useState('');
     const [category, setCategory] = useState('');
     const [limitAmount, setLimitAmount] = useState('');
     const [alertThreshold, setAlertThreshold] = useState('80');
@@ -63,11 +64,13 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
 
         if (budget) {
             setEditingBudget(budget);
+            setName(budget.name || '');
             setCategory(budget.category);
             setLimitAmount(budget.limitAmount.toString());
             setAlertThreshold(budget.alertThreshold.toString());
         } else {
             setEditingBudget(null);
+            setName('');
             setCategory('');
             setLimitAmount('');
             setAlertThreshold('80');
@@ -87,6 +90,7 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
         }
 
         const budgetData: Omit<Budget, 'id'> = {
+            name: name || undefined,
             category,
             limitAmount: parseFloat(limitAmount),
             month: 'recurring', // MVP: Recurring only for now
@@ -204,10 +208,15 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                                     <MathMaxMin size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="font-bold text-white">{budget.category}</h3>
-                                    <p className="text-xs text-gray-500">
-                                        {budget.memberId ? members.find(m => m.id === budget.memberId)?.name : 'Geral'}
-                                    </p>
+                                    <h3 className="font-bold text-white">{budget.name || budget.category}</h3>
+                                    <div className="flex flex-col">
+                                        {budget.name && (
+                                            <span className="text-[10px] text-gray-400 font-medium uppercase tracking-wider">{budget.category}</span>
+                                        )}
+                                        <p className="text-xs text-gray-500">
+                                            {budget.memberId ? members.find(m => m.id === budget.memberId)?.name : 'Geral'}
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -301,6 +310,21 @@ export const Budgets: React.FC<BudgetsProps> = ({ userId, transactions, members,
                         {/* Content */}
                         <div className="px-6 py-4 overflow-y-visible custom-scrollbar relative z-10">
                             <form onSubmit={handleSave} className="space-y-4 animate-fade-in">
+
+                                {/* Name (Optional) */}
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Nome da Meta (Opcional)</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="text"
+                                            value={name}
+                                            onChange={(e) => setName(e.target.value)}
+                                            className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white px-4 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600"
+                                            placeholder="Ex: Viagem para Paris, Carro Novo..."
+                                            autoFocus
+                                        />
+                                    </div>
+                                </div>
 
                                 {/* Category */}
                                 <div className="space-y-1">

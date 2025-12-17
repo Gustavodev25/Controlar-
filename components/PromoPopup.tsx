@@ -1,21 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, ExternalLink } from './Icons';
+import { PromoPopup as PromoPopupType } from '../types';
 
-export interface PromoPopupData {
-    id: string;
-    title: string;
-    message: string;
-    imageUrl?: string;
-    buttonText?: string;
-    buttonLink?: string;
-    type?: 'info' | 'promo' | 'update';
-    dismissible?: boolean;
-    expiresAt?: string;
-}
+export type PromoPopupData = PromoPopupType;
 
 interface PromoPopupProps {
-    popup: PromoPopupData | null;
+    popup: PromoPopupType | null;
     onDismiss: (id: string) => void;
 }
 

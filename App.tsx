@@ -41,9 +41,12 @@ import { InviteLanding } from './components/InviteLanding';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
+import { AdminPixels } from './components/AdminPixels';
+import { MetaPixelLoader } from './components/MetaPixelLoader';
 import { AdminFeedbacks } from './components/AdminFeedbacks';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminSubscriptions } from './components/AdminSubscriptions';
+import { AdminControl } from './components/AdminControl';
 import AdminEmailMessage from './components/AdminEmailMessage';
 import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
@@ -2234,10 +2237,10 @@ const App: React.FC = () => {
       // Sync window: 00:00 to 00:05
       if (hours === 0 && minutes < 5) {
         console.log('[Auto Sync] Executing midnight sync...');
-        
+
         // Mark as done for today immediately to prevent double trigger
         localStorage.setItem('last_auto_sync_date', todayStr);
-        
+
         // Trigger the standard sync flow
         handleSyncOpenFinance();
       }
@@ -2245,7 +2248,7 @@ const App: React.FC = () => {
 
     // Check every 30 seconds
     const interval = setInterval(checkAndSync, 30 * 1000);
-    
+
     // Run check immediately on mount
     checkAndSync();
 
@@ -2813,6 +2816,7 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
       <Analytics />
+      <MetaPixelLoader />
       <ToastContainer />
       <GlobalSyncToast />
       <InviteAcceptModal
@@ -2890,6 +2894,8 @@ const App: React.FC = () => {
             }}
             isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
             showFamilyOption={effectivePlan === 'family'}
+            userId={userId}
+            hasConnectedAccounts={connectedAccounts.length > 0}
           />
 
           {/* Feedback Banner - Only on Dashboard */}
@@ -2922,12 +2928,12 @@ const App: React.FC = () => {
               <AdminEmailMessage currentUser={currentUser} />
             ) : activeTab === 'admin_coupons' ? (
               <AdminCoupons />
+            ) : activeTab === 'admin_pixels' ? (
+              <AdminPixels />
             ) : activeTab === 'admin_feedbacks' ? (
               <AdminFeedbacks />
-            ) : activeTab === 'admin_users' ? (
-              <AdminUsers />
-            ) : activeTab === 'admin_subscriptions' ? (
-              <AdminSubscriptions />
+            ) : activeTab === 'admin_control' || activeTab === 'admin_users' || activeTab === 'admin_subscriptions' ? (
+              <AdminControl />
             ) : (
               /* Normal Dashboard Content */
               activeMemberId === 'FAMILY_OVERVIEW' ? (
