@@ -495,109 +495,54 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </>
               )}
             </div>
+          </div>
 
-            {!isAdminMode && (
-              <div className="space-y-2 pt-4 border-t border-gray-800/50 flex flex-col items-center w-full">
-                {isOpen && <p className="w-full text-xs font-bold text-gray-500 uppercase tracking-widest px-2 mb-2">Coinzinha</p>}
-
-                {/* Botão desabilitado no modo Auto */}
-                {isProMode ? (
-                  <div
-                    className={`
-                      relative flex items-center outline-none group transition-all duration-300 cursor-not-allowed opacity-50
-                      ${isOpen ? 'w-full gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
-                      ${isOpen ? 'border border-gray-600/30 bg-gray-600/5' : ''}
-                    `}
-                    title="No modo Auto, transações são importadas automaticamente"
-                  >
-                    <div className="relative flex items-center justify-center shrink-0">
-                      <img src={coinzinhaImg} alt="Coinzinha" className="w-5 h-5 object-contain grayscale opacity-50" />
-                    </div>
-
-                    <AnimatePresence>
-                      {isOpen && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                          className="font-medium text-sm text-gray-500 ml-0"
-                        >
-                          Modo Auto ativo
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </div>
-                ) : (
-                  <button
-                    onClick={onOpenAIModal}
-                    className={`
-                        relative flex items-center outline-none group transition-all duration-300
-                        ${isOpen ? 'w-full gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
-                        ${isOpen ? 'border border-[#d97757]/30 bg-[#d97757]/5 hover:bg-[#d97757]/10' : 'hover:bg-gray-800'}
-                      `}
-                  >
-                    <div className="relative flex items-center justify-center shrink-0">
-                      <img src={coinzinhaImg} alt="Coinzinha" className={`w-5 h-5 object-contain transition-transform duration-300 ${!isOpen ? 'group-hover:scale-110' : ''}`} />
-                    </div>
-
-                    <AnimatePresence>
-                      {isOpen && (
-                        <motion.span
-                          initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                          className="font-bold text-sm text-[#d97757] ml-0"
-                        >
-                          Lançar com Coinzinha
-                        </motion.span>
-                      )}
-                    </AnimatePresence>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Footer - Beta Badge + Feedback Button (hidden in admin mode) */}
-            {!isAdminMode && (
-              <div className={`mt-auto pt-4 border-t border-gray-800/50 ${isOpen ? 'px-3' : 'px-2'} space-y-2`}>
-                {/* Beta Version Badge */}
-                <div className={`flex items-center ${isOpen ? 'gap-2 px-2' : 'justify-center'}`}>
-                  <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                  <AnimatePresence>
-                    {isOpen && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                        className="text-[10px] font-bold text-amber-500/80 uppercase tracking-wider"
-                      >
-                        Versão beta da Controlar+ v0.1.0
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
+          {/* Footer - Beta Badge + Feedback Button (hidden in admin mode) */}
+          {!isAdminMode && (
+            <div className={`mt-auto border-t border-gray-800/50 ${isOpen ? 'p-4' : 'p-2'} space-y-2 bg-[#30302E]`}>
+              {/* Beta Version Badge */}
+              <div className={`flex items-center ${isOpen ? 'gap-2 px-2' : 'justify-center'}`}>
+                <div className="text-[#D97757]">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask-2"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M15 2a1 1 0 0 1 0 2v5.674l.062 .03a7 7 0 0 1 3.85 5.174l.037 .262a7 7 0 0 1 -3.078 6.693a1 1 0 0 1 -.553 .167h-6.635a1 1 0 0 1 -.552 -.166a7 7 0 0 1 .807 -12.134l.062 -.028v-5.672a1 1 0 1 1 0 -2h6zm-2 2h-2v6.34a1 1 0 0 1 -.551 .894l-.116 .049a5 5 0 0 0 -2.92 2.717h9.172a5 5 0 0 0 -2.918 -2.715a1 1 0 0 1 -.667 -.943v-6.342z" /></svg>
                 </div>
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                      className="text-[10px] font-bold uppercase tracking-wider text-white"
+                    >
+                      Versão beta da Controlar+ <span className="text-[#D97757]">v0.1.0</span>
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </div>
 
-                {/* Feedback Button */}
-                <button
-                  onClick={onOpenFeedback}
-                  className={`
+              {/* Feedback Button */}
+              <button
+                onClick={onOpenFeedback}
+                className={`
                     relative flex items-center outline-none group transition-all duration-300 w-full
                     ${isOpen ? 'gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
                     text-gray-500 hover:bg-gray-800/50 hover:text-gray-300
                   `}
-                >
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <MessageSquare size={18} className="transition-transform duration-300 group-hover:scale-110" />
-                  </div>
+              >
+                <div className="relative flex items-center justify-center shrink-0">
+                  <MessageSquare size={18} className="transition-transform duration-300 group-hover:scale-110" />
+                </div>
 
-                  <AnimatePresence>
-                    {isOpen && (
-                      <motion.span
-                        initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                        className="font-medium text-sm text-gray-400 group-hover:text-gray-300"
-                      >
-                        Enviar Feedback
-                      </motion.span>
-                    )}
-                  </AnimatePresence>
-                </button>
-              </div>
-            )}
-          </div>
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                      className="font-medium text-sm text-gray-400 group-hover:text-gray-300"
+                    >
+                      Enviar Feedback
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+            </div>
+          )}
         </motion.aside>
       </LayoutGroup>
 

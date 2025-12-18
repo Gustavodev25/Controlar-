@@ -88,34 +88,41 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   });
 
   // Initialize or fallback to the first account if selection is invalid or null
-  const [selectedCheckingAccountId, setSelectedCheckingAccountId] = useState<string | null>(() => {
+  // Initialize or fallback to all accounts if selection is invalid or null
+  const [selectedCheckingAccountIds, setSelectedCheckingAccountIds] = useState<string[]>(() => {
     if (typeof window !== 'undefined') {
-      const stored = localStorage.getItem('finances_selected_checking_account');
-      // If we have a stored ID, check if it's still valid in the filtered list (optimization: hard to check here without list, so just return it)
-      return stored;
+      const stored = localStorage.getItem('finances_selected_checking_accounts');
+      if (stored) {
+        try {
+          return JSON.parse(stored);
+        } catch { }
+      }
+      // Migration: Check for legacy single selection
+      const legacy = localStorage.getItem('finances_selected_checking_account');
+      if (legacy) return [legacy];
     }
-    return null;
+    return []; // Empty means ALL
   });
 
-  // Ensure we always have a valid selection if accounts exist
+  // Ensure we always have valid selections (filter out removed accounts, but don't force selection)
   useEffect(() => {
     if (checkingAccounts.length > 0) {
-      const isValid = selectedCheckingAccountId && checkingAccounts.some(acc => acc.id === selectedCheckingAccountId);
-      if (!isValid) {
-        setSelectedCheckingAccountId(checkingAccounts[0].id);
+      if (selectedCheckingAccountIds.length > 0) {
+        const validIds = selectedCheckingAccountIds.filter(id => checkingAccounts.some(acc => acc.id === id));
+        if (validIds.length !== selectedCheckingAccountIds.length) {
+          setSelectedCheckingAccountIds(validIds);
+        }
       }
     }
-  }, [checkingAccounts, selectedCheckingAccountId]);
+  }, [checkingAccounts, selectedCheckingAccountIds]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      if (selectedCheckingAccountId) {
-        localStorage.setItem('finances_selected_checking_account', selectedCheckingAccountId);
-      } else {
-        localStorage.removeItem('finances_selected_checking_account');
-      }
+      localStorage.setItem('finances_selected_checking_accounts', JSON.stringify(selectedCheckingAccountIds));
+      // Cleanup legacy
+      localStorage.removeItem('finances_selected_checking_account');
     }
-  }, [selectedCheckingAccountId]);
+  }, [selectedCheckingAccountIds]);
 
   const [activeCardIndex, setActiveCardIndex] = useState(0);
 
@@ -527,7 +534,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   // Get current card data
   const currentCard = creditAccounts[activeCardIndex];
-  const currentCardInvoice = cardInvoices[activeCardIndex] || { invoice: 0, limit: 0, available: 0 };
+  const currentCardInvoice = cardInvoices[activeCardIndex] || {
+    invoice: 0, limit: 0, available: 0,
+    cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, futureInvoices: []
+  };
 
   // Drag state for card carousel
   const [isDragging, setIsDragging] = useState(false);
@@ -548,13 +558,42 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   };
 
   // Calculate displayed checking balance based on selection
-  const displayedCheckingBalance = selectedCheckingAccountId
-    ? (checkingAccounts.find(acc => acc.id === selectedCheckingAccountId)?.balance ?? 0)
-    : (accountBalances?.checking ?? 0);
+  const displayedCheckingBalance = useMemo(() => {
+    // If none selected, sum ALL checking accounts
+    if (selectedCheckingAccountIds.length === 0) {
+      return accountBalances?.checking ?? 0;
+    }
+    // Else sum selected
+    return checkingAccounts
+      .filter(acc => selectedCheckingAccountIds.includes(acc.id))
+      .reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
+  }, [selectedCheckingAccountIds, checkingAccounts, accountBalances]);
 
-  const selectedCheckingAccount = selectedCheckingAccountId
-    ? checkingAccounts.find(acc => acc.id === selectedCheckingAccountId)
-    : null;
+  // Label logic
+  const checkingLabel = useMemo(() => {
+    if (selectedCheckingAccountIds.length === 0) return 'Saldo em Conta';
+    if (selectedCheckingAccountIds.length === 1) {
+      const acc = checkingAccounts.find(a => a.id === selectedCheckingAccountIds[0]);
+      return acc?.institution || acc?.name || 'Conta';
+    }
+    return `Contas Selecionadas (${selectedCheckingAccountIds.length})`;
+  }, [selectedCheckingAccountIds, checkingAccounts]);
+
+  // Calculate adjusted Total Income based on selected checking account
+  const adjustedTotalIncome = useMemo(() => {
+    // Safety check
+    if (!toggles) return stats.totalIncome;
+
+    // Check if Checking is included
+    const isCheckingIncluded = toggles.includeChecking;
+
+    if (!isCheckingIncluded) {
+      return stats.totalIncome;
+    }
+
+    // Add displayed Checking Balance to Income
+    return stats.totalIncome + displayedCheckingBalance;
+  }, [stats.totalIncome, toggles, displayedCheckingBalance]);
 
   // Calculate adjusted Total Balance based on selected checking account
   const adjustedTotalBalance = useMemo(() => {
@@ -646,18 +685,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                 <div>
                   <div className="flex items-center gap-2">
                     <p className="text-sm text-gray-400 font-medium">
-                      {selectedCheckingAccount
-                        ? (selectedCheckingAccount.institution || selectedCheckingAccount.name || 'Conta')
-                        : 'Saldo em Conta'}
+                      {checkingLabel}
                     </p>
-                    {checkingAccounts.length > 1 && !selectedCheckingAccountId && (
+                    {checkingAccounts.length > 0 && selectedCheckingAccountIds.length === 0 && (
                       <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono">
-                        {checkingAccounts.length} contas
+                        Todas ({checkingAccounts.length})
                       </span>
                     )}
-                    {selectedCheckingAccountId && (
+                    {selectedCheckingAccountIds.length > 0 && (
                       <span className="text-[10px] text-emerald-500 bg-emerald-900/30 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">
-                        1 de {checkingAccounts.length}
+                        {selectedCheckingAccountIds.length} de {checkingAccounts.length}
                       </span>
                     )}
                   </div>
@@ -708,8 +745,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                         {checkingAccounts.map((acc) => (
                           <div
                             key={acc.id}
-                            onClick={() => setSelectedCheckingAccountId(acc.id)}
-                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountId === acc.id
+                            onClick={() => {
+                              setSelectedCheckingAccountIds(prev => {
+                                if (prev.includes(acc.id)) {
+                                  return prev.filter(id => id !== acc.id);
+                                } else {
+                                  return [...prev, acc.id];
+                                }
+                              });
+                            }}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer transition-all ${selectedCheckingAccountIds.includes(acc.id)
                               ? 'bg-emerald-900/30 border border-emerald-500/30'
                               : 'bg-transparent hover:bg-gray-800'
                               }`}
@@ -727,7 +772,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               <p className={`text-sm font-bold font-mono flex-shrink-0 ${(acc.balance ?? 0) >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
                                 {formatCurrency(acc.balance ?? 0)}
                               </p>
-                              {selectedCheckingAccountId === acc.id && (
+                              {selectedCheckingAccountIds.includes(acc.id) && (
                                 <Check size={14} className="text-emerald-400" />
                               )}
                             </div>
@@ -791,7 +836,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     return null;
                   }
 
-                  const cardInvoice = cardInvoices[index] || { invoice: 0, limit: 0, available: 0 };
+                  const cardInvoice = cardInvoices[index] || {
+                    invoice: 0, limit: 0, available: 0,
+                    cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, futureInvoices: []
+                  };
                   const currentInvoiceValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
                   const nextInvoiceValue = cardInvoice?.nextInvoice ?? 0;
                   const formatDueDate = (dateStr?: string) => {
@@ -806,6 +854,15 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
                   // Dynamic z-index
                   const zIndex = creditAccounts.length - offset;
+
+                  const selectedType = cardInvoiceType[card.id] || 'current';
+                  const displayValue = selectedType === 'used_total'
+                    ? (cardInvoice?.usedTotal ?? 0)
+                    : (cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0);
+
+                  const displayLabel = selectedType === 'used_total'
+                    ? 'total usado'
+                    : (dashboardDate ? 'fatura do mês' : 'fatura atual');
 
                   return (
                     <motion.div
@@ -873,14 +930,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                             <div className="flex items-baseline gap-2">
                               <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
                                 <NumberFlow
-                                  value={(cardInvoice.payable ?? cardInvoice.invoice)}
+                                  value={displayValue}
                                   format={{ style: 'currency', currency: 'BRL' }}
                                   locales="pt-BR"
                                 />
                               </p>
                               {isCurrent && (
                                 <span className="text-xs text-gray-500 font-medium">
-                                  {dashboardDate ? 'mes' : 'atual'}
+                                  {displayLabel}
                                 </span>
                               )}
                             </div>
@@ -1020,8 +1077,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                           {(() => {
                             // Use the card's calculated limit (may be proportional)
                             const limit = cardInvoice.limit || 0;
-                            // Use absolute value as extra safety for progress bar
-                            const invoice = Math.abs((cardInvoice.payable ?? cardInvoice.invoice) || 0);
+                            // Use absolute value as extra safety for progress bar, based on selected view
+                            const invoice = Math.abs(displayValue || 0);
 
                             // Calculate percentage width
                             let widthPercentage = 0;
@@ -1142,29 +1199,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
-          <div>
-            <p className="text-sm text-gray-400 font-medium">{labels?.balance || 'Saldo Total'}</p>
-            <p className={`text-2xl font-bold mt-1 ${adjustedTotalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
-              <NumberFlow
-                value={adjustedTotalBalance}
-                format={{ style: 'currency', currency: 'BRL' }}
-                locales="pt-BR"
-              />
-            </p>
-          </div>
-          <div className="p-3 bg-blue-900/20 rounded-lg text-blue-400">
-            <Wallet size={24} />
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
           <div>
             <p className="text-sm text-gray-400 font-medium">{labels?.income || 'Receitas'}</p>
             <p className="text-2xl font-bold mt-1 text-green-400">
               <NumberFlow
-                value={stats.totalIncome}
+                value={adjustedTotalIncome}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
@@ -1198,23 +1239,20 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           </div>
         </div>
 
-        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between relative overflow-hidden">
-          <div className="relative z-10">
-            {/* Changed generic label to accommodate Year/Custom filters */}
-            <p className="text-sm text-gray-400 font-medium">{labels?.savings || 'Resultado do Periodo'}</p>
-            <p className="text-2xl font-bold mt-1 text-purple-400">
+        <div className="bg-[#30302E] p-6 rounded-xl shadow-sm border border-gray-800 flex items-center justify-between">
+          <div>
+            <p className="text-sm text-gray-400 font-medium">{labels?.balance || 'Saldo Total'}</p>
+            <p className={`text-2xl font-bold mt-1 ${adjustedTotalBalance >= 0 ? 'text-white' : 'text-red-400'}`}>
               <NumberFlow
-                value={stats.monthlySavings}
+                value={adjustedTotalBalance}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
             </p>
           </div>
-          <div className="p-3 bg-purple-900/20 rounded-lg text-purple-400 relative z-10">
-            <Sparkles size={24} />
+          <div className="p-3 bg-blue-900/20 rounded-lg text-blue-400">
+            <Wallet size={24} />
           </div>
-          {/* Decorative background element */}
-          <div className="absolute -right-4 -bottom-4 w-24 h-24 bg-gradient-to-br from-purple-900/20 to-transparent rounded-full opacity-50"></div>
         </div>
       </div>
     </div >

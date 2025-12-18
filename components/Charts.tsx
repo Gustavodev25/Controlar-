@@ -20,17 +20,16 @@ interface ChartsProps {
   isLoading?: boolean;
 }
 
-// Pastel Color Palette (harmonious, like avatar colors)
+// Orange Color Palette (Terracotta themed)
 const COLORS = [
-  '#F5B895', // Pastel Orange/Peach
-  '#A5D6E8', // Pastel Sky Blue  
-  '#A8E0C0', // Pastel Mint/Emerald
-  '#D4B5E0', // Pastel Violet/Purple
-  '#F5C6C6', // Pastel Rose/Pink
-  '#F9E4A6', // Pastel Yellow/Amber
-  '#B8D4E8', // Pastel Indigo/Blue
-  '#C5E8E0', // Pastel Teal/Cyan
-  '#F5D0A9', // Pastel Orange/Red
+  '#d97757', // Primary Terracotta
+  '#eb8f71', // Lighter Terracotta
+  '#f5a890', // Soft Orange
+  '#fcbfad', // Pale Orange
+  '#c45d3c', // Darker Rust
+  '#ad4628', // Deep Auburn
+  '#db7e60', // Warm Orange
+  '#e69a83', // Muted Clay
 ];
 
 const translateCategory = (category: string) => {

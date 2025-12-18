@@ -13,7 +13,8 @@ import {
   orderBy,
   getDocs,
   limit,
-  writeBatch
+  writeBatch,
+  runTransaction
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup } from "../types";
@@ -21,6 +22,46 @@ import { AppNotification } from "../types";
 
 
 // --- User Services ---
+export const logConnection = async (userId: string, log: any) => {
+  if (!db) return [];
+  const userRef = doc(db, "users", userId);
+  const snap = await getDoc(userRef);
+
+  if (snap.exists()) {
+    const data = snap.data();
+    let existingLogs = data.connectionLogs || [];
+
+    // Ensure we are working with an array
+    if (!Array.isArray(existingLogs)) existingLogs = [];
+
+    // Check if the latest log is from the same device/session (prevent spam on refresh)
+    const latestLog = existingLogs[0];
+    const isSameSession = latestLog &&
+      latestLog.device === log.device &&
+      latestLog.os === log.os &&
+      latestLog.browser === log.browser &&
+      latestLog.ip === log.ip;
+
+    let newLogs;
+    if (isSameSession) {
+      // Update the timestamp of the existing log and mark as current
+      const updatedLatest = { ...latestLog, timestamp: log.timestamp, isCurrent: true };
+      // Mark others as not current just in case
+      const others = existingLogs.slice(1).map((l: any) => ({ ...l, isCurrent: false }));
+      newLogs = [updatedLatest, ...others];
+    } else {
+      // Mark all previous logs as not current
+      const previousLogs = existingLogs.map((l: any) => ({ ...l, isCurrent: false }));
+      // Prepend new log
+      newLogs = [log, ...previousLogs].slice(0, 10);
+    }
+
+    await updateDoc(userRef, { connectionLogs: newLogs });
+    return newLogs;
+  }
+  return [log]; // Fallback for first time or errors
+};
+
 export const updateUserProfile = async (userId: string, data: Partial<User>) => {
   if (!db) return;
   const userRef = doc(db, "users", userId);
@@ -73,6 +114,17 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
 
       console.log('[DB getUserProfile] Final profile.isAdmin:', profile.isAdmin);
       console.log('[DB getUserProfile] Final profile.subscription:', profile.subscription);
+
+      if (data.connectionLogs && Array.isArray(data.connectionLogs)) {
+        profile.connectionLogs = data.connectionLogs;
+      }
+
+      // Load dailyConnectionCredits from root if available
+      if (data.dailyConnectionCredits) {
+        profile.dailyConnectionCredits = data.dailyConnectionCredits;
+      } else {
+        profile.dailyConnectionCredits = { date: '', count: 0 };
+      }
 
       // If there was no profile at all but we have root isAdmin, still return it
       if (Object.keys(profile).length === 1 && profile.isAdmin !== undefined) {
@@ -154,11 +206,25 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
         profile.subscription = data.subscription;
       }
 
+      // Map dailyConnectionCredits from root if present
+      // IMPORTANT: This field is stored at root level, not inside profile
+      if (data.dailyConnectionCredits) {
+        console.log('[DB Listener] Found dailyConnectionCredits in root:', JSON.stringify(data.dailyConnectionCredits));
+        profile.dailyConnectionCredits = data.dailyConnectionCredits;
+      } else {
+        console.log('[DB Listener] dailyConnectionCredits NOT found in root for user:', userId);
+        // Initialize with empty state if not present (user never used credits)
+        // This ensures the field is always defined
+        profile.dailyConnectionCredits = { date: '', count: 0 };
+      }
+
       console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
       console.log('[DB listenToUserProfile] Returning profile with subscription:', profile.subscription);
+      console.log('[DB listenToUserProfile] Returning profile with dailyConnectionCredits:', JSON.stringify(profile.dailyConnectionCredits));
 
       callback(profile);
     } else {
+      console.log('[DB Listener] User document does not exist:', userId);
       callback({});
     }
   });
@@ -1458,10 +1524,49 @@ export const listenToAuditLogs = (userId: string, callback: (logs: AuditLogEntry
       logs.push({ id: docSnap.id, ...(docSnap.data() as AuditLogEntry) });
     });
     // Sort by timestamp desc
-    logs.sort((a, b) => (b.timestamp || "").localeCompare(a.timestamp || ""));
+    logs.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     callback(logs);
   });
 };
+
+// --- Daily Connection Credits ---
+export const incrementDailyConnectionCredits = async (userId: string) => {
+  if (!db) return;
+  console.log('[DB] Incrementing daily credits for user (Transaction):', userId);
+  const userRef = doc(db, "users", userId);
+
+  try {
+    const newCount = await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw "User does not exist!";
+      }
+
+      const userData = userDoc.data();
+      const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
+      const today = new Date().toLocaleDateString('en-CA');
+
+      let newCredits;
+      if (credits.date !== today) {
+        // Reset for new day
+        newCredits = { date: today, count: 1 };
+      } else {
+        // Increment for today
+        newCredits = { ...credits, count: credits.count + 1 };
+      }
+
+      transaction.set(userRef, { dailyConnectionCredits: newCredits }, { merge: true });
+      return newCredits.count;
+    });
+
+    console.log('[DB] Credit increment transaction successful. New count:', newCount);
+    return newCount;
+  } catch (error) {
+    console.error('[DB] Error incrementing credits (Transaction):', error);
+    throw error;
+  }
+};
+
 
 // --- Coupon Services ---
 

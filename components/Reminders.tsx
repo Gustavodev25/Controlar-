@@ -205,7 +205,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // Modal Animation & State
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
-  const [modalMode, setModalMode] = useState<ModalMode>('ai');
+  const [modalMode, setModalMode] = useState<ModalMode>('manual');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
   // AI State - Chat System (igual AIModal)
@@ -256,6 +256,8 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // State para filtro de mês
   const currentMonth = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`;
   const [filterMonth, setFilterMonth] = useState(currentMonth);
+  // State para filtro de tipo (A Pagar / A Receber)
+  const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
 
   // Animation state for bottom bar
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
@@ -494,7 +496,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         frequency: 'monthly'
       });
       setEditingReminder(null);
-      setModalMode('ai');
+      setModalMode('manual');
       setAiInput('');
       setChatMessages([]);
       setGenerationStatus('idle');
@@ -520,8 +522,12 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     setShowBulkEditModal(false);
   };
   const sortedReminders = useMemo(() => {
-    return [...reminders].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [reminders]);
+    let result = [...reminders];
+    if (filterType !== 'all') {
+      result = result.filter(r => (r.type || 'expense') === filterType);
+    }
+    return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [reminders, filterType]);
   const selectedReminders = useMemo(() => {
     return reminders.filter((r) => selectedIds.includes(r.id));
   }, [reminders, selectedIds]);
@@ -597,6 +603,28 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                 </DropdownItem>
               </DropdownContent>
             </Dropdown>
+
+            {/* Filter Type Toggles */}
+            <div className="flex bg-[#272725] p-1 rounded-lg border border-[#373734] shrink-0">
+              <button
+                onClick={() => setFilterType('all')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'all' ? 'bg-[#373734] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Todos
+              </button>
+              <button
+                onClick={() => setFilterType('expense')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'expense' ? 'bg-red-500/10 text-red-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Pagar
+              </button>
+              <button
+                onClick={() => setFilterType('income')}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'income' ? 'bg-emerald-500/10 text-emerald-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+              >
+                Receber
+              </button>
+            </div>
 
             {/* Month Picker - Flex grow em mobile */}
             <div className="flex-1 sm:flex-none sm:w-40 lg:w-48">
@@ -741,41 +769,10 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
             {/* Header Modal - Tabs Compactas */}
             <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
               {!editingReminder ? (
-                <div className="relative flex bg-[#272725]/60 p-0.5 rounded-lg">
-                  {/* Indicador animado que desliza */}
-                  <div
-                    className="absolute top-0.5 bottom-0.5 bg-[#d97757] rounded-md transition-all duration-300 ease-out shadow-md shadow-[#d97757]/20"
-                    style={{
-                      width: 'calc(50% - 2px)',
-                      left: modalMode === 'ai' ? '2px' : 'calc(50% + 2px)',
-                    }}
-                  />
-
-                  <button
-                    onClick={() => setModalMode('ai')}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
-                      ? 'text-white'
-                      : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                  >
-                    <img
-                      src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
-                      alt="Coinzinha"
-                    />
-                    Coinzinha
-                  </button>
-                  <button
-                    onClick={() => setModalMode('manual')}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'manual'
-                      ? 'text-white'
-                      : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                  >
-                    <Plus size={12} className={`transition-transform duration-300 ${modalMode === 'manual' ? 'rotate-0' : 'rotate-90'}`} />
-                    Manual
-                  </button>
-                </div>
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Plus size={14} className="text-[#d97757]" />
+                  Novo Lembrete
+                </h3>
               ) : (
                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                   <Edit2 size={14} className="text-[#d97757]" />

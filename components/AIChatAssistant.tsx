@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect, useMemo, type JSX } from 'react';
-import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
     Sparkles,
@@ -1041,7 +1040,6 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     // --- PAGE MODE (ZEN MODE) ---
     // When activeTab === 'chat', render full-screen in a portal
     const isPageMode = activeTab === 'chat';
-    const chatMountPoint = typeof document !== 'undefined' ? document.getElementById('chat-mount-point') : null;
 
     // Check if this is the empty state (only welcome message)
     const isEmptyState = isPageMode && (
@@ -1095,11 +1093,11 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     );
 
     // Page Mode Render (Zen Mode - Full Screen)
-    if (isPageMode && chatMountPoint) {
-        return createPortal(
-            <div className="flex h-full w-full bg-[#30302E] overflow-hidden">
+    if (isPageMode) {
+        return (
+            <div className="flex h-full w-full bg-[#262624] overflow-hidden">
                 {/* Left Sidebar (Desktop) - History */}
-                <div className={`hidden lg:flex border-r border-[#3a3a3a] flex-col transition-all duration-300 ${isSidebarCollapsed ? 'w-0 overflow-hidden opacity-0' : 'w-[280px]'}`}>
+                <div className={`hidden lg:flex ml-4 my-4 h-[calc(100%-2rem)] bg-[#30302E] border border-[#3a3a3a] rounded-3xl flex-col transition-all duration-300 ${isSidebarCollapsed ? 'w-0 overflow-hidden opacity-0 ml-0 border-0' : 'w-[280px]'}`}>
                     <div className="p-4">
                         <button
                             onClick={handleNewChat}
@@ -1143,7 +1141,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                 </div>
 
                 {/* Main Chat Area */}
-                <div className="flex-1 flex flex-col relative min-w-0">
+                <div className="flex-1 flex flex-col relative min-w-0 bg-[#262624]">
                     {/* Header - Toggle Sidebar & Close Button */}
                     <div className="absolute top-0 left-0 right-0 p-4 z-50 flex items-center justify-between pointer-events-none">
                         {/* Toggle Sidebar Button */}
@@ -1495,7 +1493,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                     </div>
 
                     {/* Input Area */}
-                    <div className="p-4 lg:p-6 bg-[#30302E] shrink-0">
+                    <div className="p-4 lg:p-6 bg-[#262624] shrink-0">
                         <div className="max-w-3xl mx-auto w-full">
                             <div className="flex items-center gap-3 bg-[#2a2a2a] border border-[#3a3a3a] focus-within:border-[#d97757]/50 focus-within:ring-1 focus-within:ring-[#d97757]/50 rounded-2xl px-4 py-3 shadow-lg transition-all">
                                 <input
@@ -1520,8 +1518,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                         </div>
                     </div>
                 </div>
-            </div>,
-            chatMountPoint
+            </div>
         );
     }
 

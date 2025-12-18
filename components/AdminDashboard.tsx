@@ -76,7 +76,7 @@ const KPICard = ({
         data={trendData}
         height={80}
         width={120}
-        colors={[color]}
+        color={color}
         area
         showHighlight
         showTooltip
@@ -447,7 +447,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               }]}
               height={300}
               grid={{ horizontal: true }}
-              tooltip={{ trigger: 'item' }}
               sx={{
                 [`& .${axisClasses.left} .${axisClasses.label}`]: { stroke: '#fff' },
                 [`& .${axisClasses.bottom} .${axisClasses.tickLabel}`]: { fill: '#9CA3AF' },
@@ -473,20 +472,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                     paddingAngle: 5,
                     cornerRadius: 5,
                     cx: 140, // adjust center X manually if container is small, or rely on auto
-                    highlightScope: { faded: 'global', highlighted: 'item' },
-                    faded: { innerRadius: 30, additionalRadius: -30, color: 'gray' },
+                    highlightScope: { fade: 'global', highlighted: 'item' },
+                    fade: { innerRadius: 30, additionalRadius: -30, color: 'gray' },
                   },
                 ]}
                 height={250}
                 slotProps={{
                   legend: {
-                    direction: 'row',
-                    position: { vertical: 'bottom', horizontal: 'middle' },
+                    position: { vertical: 'bottom', horizontal: 'center' },
                     padding: 0,
-                    labelStyle: { fill: '#fff' }
                   }
                 }}
-                tooltip={{ trigger: 'item' }}
+                sx={{
+                  '& .MuiChartsLegend-root text': { fill: '#fff !important' }
+                }}
               />
             ) : (
               <div className="text-gray-500 text-sm">Sem dados de planos</div>
@@ -534,7 +533,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 }]}
                 height={300}
                 margin={{ left: 50 }}
-                tooltip={{ trigger: 'item' }}
                 sx={{
                   '& .MuiChartsLegend-root text': { fill: '#fff !important' }
                 }}
@@ -577,7 +575,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               sx={{
                 '& .MuiChartsLegend-root text': { fill: '#fff !important' }
               }}
-              tooltip={{ trigger: 'axis' }}
             />
           </div>
         </div>

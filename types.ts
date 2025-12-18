@@ -24,6 +24,7 @@ export interface User {
     asaasSubscriptionId?: string;
     couponUsed?: string;
     startDate?: string;
+    autoRenew?: boolean;
   };
   paymentMethodDetails?: {
     last4: string;
@@ -45,6 +46,22 @@ export interface User {
     city: string;
     state: string;
   };
+  dailyConnectionCredits?: {
+    date: string; // YYYY-MM-DD
+    count: number;
+  };
+  connectionLogs?: ConnectionLog[];
+}
+
+export interface ConnectionLog {
+  id: string;
+  os: string;
+  browser: string;
+  ip: string;
+  location: string;
+  device: string;
+  timestamp: string;
+  isCurrent?: boolean;
 }
 
 export interface FamilyGroup {

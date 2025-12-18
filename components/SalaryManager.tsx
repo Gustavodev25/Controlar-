@@ -15,10 +15,11 @@ interface SalaryManagerProps {
   advanceValue?: number;
   advancePercent?: number;
   advanceDay?: number;
-  onUpdateSalary: (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }) => void;
+  onUpdateSalary: (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => void;
   onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
   onEditClick?: () => void;
   isSalaryLaunched?: boolean;
+  salaryExemptFromDiscounts?: boolean;
   isProMode?: boolean;
   onToggleProMode?: (value: boolean) => void;
   userPlan?: 'starter' | 'pro' | 'family';
@@ -41,6 +42,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   onAddExtra,
   onEditClick,
   isSalaryLaunched,
+  salaryExemptFromDiscounts,
   isProMode = false,
   onToggleProMode,
   userPlan = 'starter',
@@ -54,6 +56,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [isEditing, setIsEditing] = useState(false);
   const [tempSalary, setTempSalary] = useState(baseSalary.toString());
   const [tempPaymentDay, setTempPaymentDay] = useState(paymentDay?.toString() || '5');
+  const [tempSalaryTaxExempt, setTempSalaryTaxExempt] = useState(!!salaryExemptFromDiscounts);
 
   // Split / Advance Logic
   const [hasAdvance, setHasAdvance] = useState(!!(advancePercent && advancePercent > 0) || !!(advanceValue && advanceValue > 0));
@@ -261,10 +264,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
     }
 
     onUpdateSalary(val, day, {
+      advanceValue: 0,
       advancePercent: hasAdvance ? advPercent : 0,
-      advanceValue: 0, // We prefer percent now
       advanceDay: hasAdvance ? advDay : undefined
-    });
+    }, tempSalaryTaxExempt);
 
     setIsEditing(false);
   };
@@ -399,7 +402,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                 </div>
               )}
 
-              <DropdownContent width="w-64" align="right" portal>
+              <DropdownContent width="w-64" align="left" portal>
                 <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-700/50 px-2 pt-1">
                   <div className="p-1.5 rounded bg-orange-900/30 text-orange-400">
                     <Settings size={12} />
@@ -526,7 +529,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             <div className="flex items-center gap-2">
               <Coins size={18} className="text-[#d97757]" />
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                {isProMode ? 'Renda Estimada' : 'Salário Base'}
+                {isProMode ? 'Renda Configurada' : 'Salário Base'}
               </h3>
               {isProMode && (
                 <span className="text-[9px] bg-[#d97757]/20 text-[#d97757] px-1.5 py-0.5 rounded font-medium">
@@ -586,6 +589,23 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                       className="bg-gray-800 text-white text-sm font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
                     />
                   </div>
+                </div>
+
+                {/* Opção de Isenção de Impostos (Apenas para o Salário Principal) */}
+                <div className="bg-gray-800/50 rounded-xl p-3 border border-gray-700/50 mb-3 flex items-center justify-between">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-medium text-gray-300">Isento de descontos</span>
+                    <span className="text-[10px] text-gray-500">INSS/IRRF zerados no salário principal.</span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={tempSalaryTaxExempt}
+                      onChange={(e) => setTempSalaryTaxExempt(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
+                  </label>
                 </div>
 
                 {/* Divisão de Salário / Vale */}
@@ -682,39 +702,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   </p>
                 )}
               </div>
-            ) : isProMode ? (
-              // Modo Pro: Exibição somente leitura da estimativa
-              <div className="p-2 -ml-2 w-full">
-                {estimatedSalary > 0 ? (
-                  <div className="flex flex-col w-full">
-                    <div className="flex items-baseline gap-1">
-                      <span className="text-4xl font-bold text-white">
-                        {formatCurrency(estimatedSalary)}
-                      </span>
-                      <span className="text-sm text-gray-500 font-medium">/mês</span>
-                    </div>
 
-                    <div className="flex flex-wrap gap-2 mt-2">
-                      <span className="text-xs text-emerald-400 flex items-center gap-1 bg-emerald-900/30 px-2 py-1 rounded border border-emerald-500/30">
-                        <div className="w-6 h-6 flex items-center justify-center">
-                          <Lottie animationData={coinAnimation} loop={true} />
-                        </div>
-                        Analisado através das transações
-                      </span>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xl font-medium text-gray-400 flex items-center gap-2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 animate-spin"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M4.05 11a8 8 0 1 1 .5 4m-.5 5v-5h5" /></svg>
-                      Aguardando dados
-                    </span>
-                    <span className="text-xs text-gray-500 ml-8">
-                      Conecte suas contas para ver a estimativa
-                    </span>
-                  </div>
-                )}
-              </div>
             ) : (
               // Modo Manual: Editável por clique
               <div
@@ -853,19 +841,28 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   let targetDate = new Date(today.getFullYear(), today.getMonth(), pDay)
                   const dateStr = targetDate.toISOString().split('T')[0];
 
-                  // Calculate Advance (Value or Percent)
+                  // 1. Calculate Advance (Vale) - Always based on Gross Base Salary
                   let advance = advanceValue || 0;
-
-                  // Calculate based on percent if preferred (and configured)
                   if (advancePercent && advancePercent > 0) {
                     advance = baseSalary * (advancePercent / 100);
                   }
-
-                  // Round to 2 decimals
+                  // Round Vale
                   advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-                  const salaryRemaining = Math.max(0, baseSalary - advance);
+
+                  // 2. Calculate Taxes (if not exempt)
+                  let totalTaxes = 0;
+                  if (!salaryExemptFromDiscounts) {
+                    // Assuming 0 dependents for quick launch. Ideally this should be a user setting.
+                    const { inss, irrf } = calculateCLT(baseSalary, 0);
+                    totalTaxes = inss + irrf;
+                  }
+
+                  // 3. Calculate Net & Remaining
+                  const netSalary = baseSalary - totalTaxes;
+                  const salaryRemaining = Math.max(0, netSalary - advance);
 
                   // 1. Register Remaining Salary (Main Payment)
+                  // Note: If taxes are high, remaining might be low.
                   onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
 
                   // 2. Register Advance (Vale)

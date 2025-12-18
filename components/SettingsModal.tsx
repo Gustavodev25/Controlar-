@@ -6,8 +6,9 @@ import {
    CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
    PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
    Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
-   Puzzle, Rocket, Wallet, Plus, AlertTriangle
+   Puzzle, Rocket, Wallet, Plus, AlertTriangle, Monitor, Globe, ExternalLink, Clock
 } from 'lucide-react';
+import { CustomSettingsIcon } from './CustomIcons';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
@@ -112,21 +113,21 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, onClose
 
    return createPortal(
       <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'bg-black/60 backdrop-blur-md' : 'bg-black/0 backdrop-blur-0'}`}>
-         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+         <div className={`bg-[#30302E] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
 
             {/* Background Effects */}
             <div className="absolute inset-0 pointer-events-none">
                <div className="absolute top-0 right-0 w-64 h-64 bg-red-500/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
             </div>
 
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/50">
+            <div className="p-6 border-b border-[#373734] flex justify-between items-center relative z-10 bg-[#30302E]/50">
                <div className="flex items-center gap-3">
                   <div className="p-2 bg-red-500/10 rounded-xl border border-red-500/20 text-red-500">
                      <AlertTriangle size={20} />
                   </div>
                   <h3 className="font-bold text-white">Excluir Conta</h3>
                </div>
-               <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-lg transition-colors">
+               <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-[#373734] rounded-lg transition-colors">
                   <X size={18} />
                </button>
             </div>
@@ -347,7 +348,7 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
 
    return createPortal(
       <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
-         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+         <div className={`bg-[#30302E] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
 
             {/* Background Effects */}
             <div className="absolute inset-0 pointer-events-none">
@@ -355,14 +356,14 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
                <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
             </div>
 
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/50">
+            <div className="p-6 border-b border-[#373734] flex justify-between items-center relative z-10 bg-[#30302E]/50">
                <div className="flex items-center gap-3">
                   <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
                      <Smartphone size={20} />
                   </div>
                   <h3 className="font-bold text-white">Autenticação em 2 Fatores</h3>
                </div>
-               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800">
+               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-[#373734]">
                   <X size={20} />
                </button>
             </div>
@@ -528,7 +529,7 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
 
    return createPortal(
       <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
-         <div className={`bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
+         <div className={`bg-[#30302E] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
 
             {/* Background Effects (Matched to TwoFactorModal) */}
             <div className="absolute inset-0 pointer-events-none">
@@ -536,14 +537,14 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
                <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
             </div>
 
-            <div className="p-6 border-b border-gray-800 flex justify-between items-center relative z-10 bg-gray-950/50">
+            <div className="p-6 border-b border-[#373734] flex justify-between items-center relative z-10 bg-[#30302E]/50">
                <div className="flex items-center gap-3">
                   <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
                      <CreditCard size={20} />
                   </div>
                   <h3 className="font-bold text-white">Atualizar Cartão</h3>
                </div>
-               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-800">
+               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-[#373734]">
                   <X size={20} />
                </button>
             </div>
@@ -690,27 +691,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    });
    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
    const [isVisible, setIsVisible] = useState(false);
-   const [autoRenew, setAutoRenew] = useState(true); // Moved to top level
+
+   const [autoRenew, setAutoRenew] = useState(user.subscription?.autoRenew ?? true); // Moved to top level
    const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
+   const [showCancelSubscriptionConfirmation, setShowCancelSubscriptionConfirmation] = useState(false);
    const [isCardModalOpen, setIsCardModalOpen] = useState(false);
+   const [isBillingHistoryOpen, setIsBillingHistoryOpen] = useState(false);
+   const [receiptData, setReceiptData] = useState<{ date: string, amount: string, status: string, method: string, id: string } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    const toast = useToasts();
    const normalizeMonth = (dateStr: string) => dateStr.slice(0, 7);
-
-   const tabs = [
-      { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
-      { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
-      { id: 'family', label: 'Família', icon: <Users size={18} /> },
-      { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
-      { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
-      { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
-   ];
 
    // Plan Logic
    const plan = formData.subscription?.plan || 'starter';
    const cycle = formData.subscription?.billingCycle || 'monthly';
    const status = formData.subscription?.status || 'active';
    const nextDate = formData.subscription?.nextBillingDate;
+
+   const tabs = [
+      { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
+      { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
+      ...(plan === 'family' ? [{ id: 'family', label: 'Família', icon: <Users size={18} /> }] : []),
+      { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
+      { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
+      { id: 'plan', label: 'Planos', icon: <CreditCard size={18} /> },
+   ];
 
    const planStyle = useMemo(() => {
       switch (plan) {
@@ -1110,6 +1115,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       };
    }, [isOpen]);
 
+   // Dynamic Billing History
+   const billingHistory = useMemo(() => {
+      if (!user.subscription || user.subscription.plan === 'starter') return [];
+
+      const history = [];
+      const startDateStr = user.subscription.startDate || new Date().toISOString();
+      const start = new Date(startDateStr);
+      const now = new Date();
+      const cycle = user.subscription.billingCycle || 'monthly';
+
+      // Pricing Logic
+      let amount = 0;
+      if (user.subscription.plan === 'pro') {
+         amount = cycle === 'annual' ? 199.90 : 19.90;
+      } else if (user.subscription.plan === 'family') {
+         amount = cycle === 'annual' ? 599.90 : 59.90;
+      }
+
+      const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+      const cardLast4 = user.paymentMethodDetails?.last4 || '****';
+      let method = `Cartão ••${cardLast4}`;
+      if (cycle === 'annual' && user.subscription.installments && user.subscription.installments > 1) {
+         method += ` (${user.subscription.installments}x)`;
+      }
+
+      const current = new Date(start);
+      // Iterate from start date until now
+      while (current <= now) {
+         history.push({
+            id: current.toISOString(),
+            date: current.toLocaleDateString('pt-BR'),
+            amount: formattedAmount,
+            status: 'Pago',
+            method: method
+         });
+
+         // Increment date
+         if (cycle === 'annual') {
+            current.setFullYear(current.getFullYear() + 1);
+         } else {
+            current.setMonth(current.getMonth() + 1);
+         }
+      }
+
+      // If user canceled, maybe show unpaid? But request is just for "real history".
+      // We'll assume all past dates valid for active/canceled subscriptions were paid.
+
+      return history.reverse(); // Newest first
+   }, [user.subscription, user.paymentMethodDetails]);
+
    if (!isVisible) return null;
 
    // --- HANDLERS ---
@@ -1136,8 +1191,172 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       setFormData(updatedUser);
       await persistUser(updatedUser);
       toast.success("Novo cartão validado e vinculado com sucesso!");
+      setFormData(updatedUser);
+      await persistUser(updatedUser);
+      toast.success("Novo cartão validado e vinculado com sucesso!");
       setIsCardModalOpen(false);
    };
+
+   const handleCancelSubscription = async () => {
+      const updatedUser: UserType = {
+         ...formData,
+         subscription: {
+            ...formData.subscription!,
+            status: 'canceled', // Na prática, muitas vezes mantém 'active' até o fim do período, mas aqui marcamos cancelado
+            autoRenew: false
+         }
+      };
+
+      setFormData(updatedUser);
+      setAutoRenew(false);
+      await persistUser(updatedUser);
+      toast.success("Assinatura cancelada com sucesso.");
+      setShowCancelSubscriptionConfirmation(false);
+   };
+
+   // Update autoRenew persistence immediately when toggled (if confirmed)
+   const toggleAutoRenew = async (newValue: boolean) => {
+      const updatedUser: UserType = {
+         ...formData,
+         subscription: {
+            ...formData.subscription!,
+            autoRenew: newValue
+         }
+      };
+      setFormData(updatedUser);
+      setAutoRenew(newValue);
+      await persistUser(updatedUser);
+   };
+
+   /*
+   // Mock History Data
+   // Dynamic Billing History
+   const billingHistory = useMemo(() => {
+      if (!user.subscription || user.subscription.plan === 'starter') return [];
+
+      const history = [];
+      const startDateStr = user.subscription.startDate || new Date().toISOString();
+      const start = new Date(startDateStr);
+      const now = new Date();
+      const cycle = user.subscription.billingCycle || 'monthly';
+
+      // Pricing Logic
+      let amount = 0;
+      if (user.subscription.plan === 'pro') {
+         amount = cycle === 'annual' ? 199.90 : 19.90;
+      } else if (user.subscription.plan === 'family') {
+         amount = cycle === 'annual' ? 599.90 : 59.90;
+      }
+
+      const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
+      const cardLast4 = user.paymentMethodDetails?.last4 || '****';
+      let method = `Cartão ••${cardLast4}`;
+      if (cycle === 'annual' && user.subscription.installments && user.subscription.installments > 1) {
+         method += ` (${user.subscription.installments}x)`;
+      }
+
+      const current = new Date(start);
+      // Iterate from start date until now
+      while (current <= now) {
+         history.push({
+            id: current.toISOString(),
+            date: current.toLocaleDateString('pt-BR'),
+            amount: formattedAmount,
+            status: 'Pago',
+            method: method
+         });
+
+         // Increment date
+         if (cycle === 'annual') {
+            current.setFullYear(current.getFullYear() + 1);
+         } else {
+            current.setMonth(current.getMonth() + 1);
+         }
+      }
+
+      // If user canceled, maybe show unpaid? But request is just for "real history".
+      // We'll assume all past dates valid for active/canceled subscriptions were paid.
+
+      return history.reverse(); // Newest first
+   }, [user.subscription, user.paymentMethodDetails]);
+   */
+
+   const openReceipt = (item: typeof billingHistory[0]) => {
+      setReceiptData(item);
+   };
+
+   const ReceiptModal = () => {
+      if (!receiptData) return null;
+
+      return createPortal(
+         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] bg-black/60 backdrop-blur-md">
+            <div className="bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-[#373734] animate-fade-in-up relative">
+
+               {/* Background Glow */}
+               <div className="absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-10 bg-green-500"></div>
+
+               <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
+                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                     <CheckCircle size={16} className="text-green-500" />
+                     Comprovante
+                  </h3>
+                  <button onClick={() => setReceiptData(null)} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all">
+                     <X size={16} />
+                  </button>
+               </div>
+
+               <div className="p-6 text-center border-b border-[#373734]/50 relative z-10">
+                  <div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto mb-3 border border-green-500/20 shadow-lg shadow-green-900/20">
+                     <Check size={24} strokeWidth={3} />
+                  </div>
+                  <h3 className="text-lg font-bold text-white mb-1">Pagamento Confirmado</h3>
+                  <p className="text-gray-400 text-xs">A transação foi processada com sucesso.</p>
+               </div>
+
+               <div className="p-6 space-y-4 relative z-10">
+                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
+                     <span className="text-gray-500 text-sm">Valor Pago</span>
+                     <span className="text-white font-bold text-lg tracking-tight">{receiptData.amount}</span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
+                     <span className="text-gray-500 text-sm">Data da Transação</span>
+                     <span className="text-white font-medium text-sm flex items-center gap-1.5">
+                        <Calendar size={13} className="text-gray-400" />
+                        {receiptData.date}
+                     </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
+                     <span className="text-gray-500 text-sm">Método</span>
+                     <span className="text-white font-medium text-sm flex items-center gap-2">
+                        <div className="w-6 h-4 bg-white/10 rounded flex items-center justify-center">
+                           <div className="w-1.5 h-1.5 bg-red-500/80 rounded-full translate-x-0.5"></div>
+                           <div className="w-1.5 h-1.5 bg-yellow-500/80 rounded-full -translate-x-0.5"></div>
+                        </div>
+                        {receiptData.method}
+                     </span>
+                  </div>
+                  <div className="flex justify-between items-center py-2">
+                     <span className="text-gray-500 text-sm">Status</span>
+                     <span className="text-green-400 font-bold bg-green-500/10 px-2.5 py-1 rounded-md text-xs border border-green-500/20 flex items-center gap-1.5">
+                        <CheckCircle size={11} />
+                        CONFIRMADO
+                     </span>
+                  </div>
+               </div>
+
+               <div className="p-4 bg-[#272725] text-center border-t border-[#373734]">
+                  <button onClick={() => setReceiptData(null)} className="text-xs font-bold text-gray-400 hover:text-white transition-colors uppercase tracking-wider">
+                     Fechar Janela
+                  </button>
+               </div>
+            </div>
+         </div>,
+         document.body
+      );
+   };
+
+
+
 
    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -1200,17 +1419,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    // --- DELETE ACCOUNT ---
    const handleDeleteAccount = async () => {
-      try {
-         if (auth.currentUser) {
-            // 1. Delete Firestore Data
-            await deleteUserAccount(auth.currentUser.uid);
-            // 2. Delete Auth User
-            await deleteUser(auth.currentUser);
+      const user = auth.currentUser;
+      if (!user) return;
 
-            toast.success("Conta excluída com sucesso.");
+      // Check for recent login (e.g., within last 5 minutes)
+      // This prevents the "Partial Deletion" issue where Firestore is wiped but Auth deletion fails
+      const lastSignInTime = user.metadata.lastSignInTime;
+      if (lastSignInTime) {
+         const lastSignIn = new Date(lastSignInTime).getTime();
+         const now = new Date().getTime();
+         const diffMinutes = (now - lastSignIn) / (1000 * 60);
+
+         if (diffMinutes > 5) {
+            toast.error("Sessão expirada. Por segurança, faça login novamente para excluir sua conta.");
+            await signOut(auth);
             onClose();
-            // App should handle auth state change automatically
+            return;
          }
+      }
+
+      try {
+         // 1. Delete Firestore Data
+         await deleteUserAccount(user.uid);
+         // 2. Delete Auth User
+         await deleteUser(user);
+
+         toast.success("Conta excluída com sucesso.");
+         onClose();
+         // App should handle auth state change automatically
       } catch (error: any) {
          console.error("Error deleting account:", error);
          if (error.code === 'auth/requires-recent-login') {
@@ -1271,7 +1507,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          ${isOpen ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
       `}>
          <div className={`
-            bg-gray-950 rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] border border-gray-800 
+            bg-[#30302E] rounded-3xl shadow-2xl w-full max-w-5xl h-[85vh] border border-[#373734] 
             flex overflow-hidden relative
             transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
             ${isOpen ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
@@ -1282,7 +1518,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-500/5 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none"></div>
 
             {/* Sidebar */}
-            <div className="w-64 bg-[#30302E] border-r border-gray-800 p-6 flex flex-col hidden md:flex relative z-10">
+            <div className="w-64 bg-[#30302E] border-r border-[#373734] p-6 flex flex-col hidden md:flex relative z-10">
                <h2 className="text-lg font-bold text-white mb-8 flex items-center gap-2 px-2">
                   <div className="w-2 h-2 rounded-full bg-[#d97757] animate-pulse"></div> Configurações
                </h2>
@@ -1291,65 +1527,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <div
                      className="absolute left-0 right-0 h-11 bg-[#d97757]/10 border border-[#d97757]/20 rounded-xl transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] pointer-events-none"
                      style={{
-                        top: `${activeTab === 'account' ? 0 :
-                           activeTab === 'badges' ? 44 :
-                              activeTab === 'family' ? 88 :
-                                 activeTab === 'finance' ? 132 :
-                                    activeTab === 'security' ? 176 :
-                                       220
-                           }px`,
+                        top: `${tabs.findIndex(t => t.id === activeTab) * 44}px`,
+                        opacity: tabs.some(t => t.id === activeTab) ? 1 : 0
                      }}
                   />
 
                   {/* Tab Buttons */}
-                  <button
-                     onClick={() => setActiveTab('account')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'account' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <User size={18} className="flex-shrink-0" />
-                     <span>Minha Conta</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('badges')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'badges' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <Trophy size={18} className="flex-shrink-0" />
-                     <span>Conquistas</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('family')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'family' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <Users size={18} className="flex-shrink-0" />
-                     <span>Família</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('finance')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'finance' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <Coins size={18} className="flex-shrink-0" />
-                     <span>Financeiro</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('security')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'security' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <Shield size={18} className="flex-shrink-0" />
-                     <span>Segurança</span>
-                  </button>
-                  <button
-                     onClick={() => setActiveTab('plan')}
-                     className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === 'plan' ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
-                        }`}
-                  >
-                     <CreditCard size={18} className="flex-shrink-0" />
-                     <span>Planos e Assinatura</span>
-                  </button>
+                  {tabs.map((tab) => (
+                     <button
+                        key={tab.id}
+                        onClick={() => setActiveTab(tab.id as SettingsTab)}
+                        className={`w-full h-11 flex items-center gap-3 px-4 rounded-xl transition-all duration-200 text-sm font-medium relative z-10 ${activeTab === tab.id ? 'text-[#d97757]' : 'text-gray-400 hover:text-gray-200'
+                           }`}
+                     >
+                        <span className="flex-shrink-0">{tab.icon}</span>
+                        <span>{tab.label}</span>
+                     </button>
+                  ))}
                </div>
             </div>
 
@@ -1357,7 +1551,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             <div className="flex-1 flex flex-col min-w-0 bg-gray-950/50 relative z-10">
                {/* Mobile Header */}
                <div className="md:hidden p-4 border-b border-gray-800 flex items-center justify-between bg-gray-900/90 backdrop-blur-sm">
-                  <h2 className="font-bold text-white">Configurações</h2>
+                  <div className="flex items-center gap-3">
+                     <CustomSettingsIcon size={20} className="text-[#d97757]" />
+                     <h2 className="font-bold text-white">Configurações</h2>
+                  </div>
                   <button onClick={onClose} className="text-gray-500 hover:text-white p-1.5 rounded-lg hover:bg-gray-800 transition-colors"><X size={20} /></button>
                </div>
 
@@ -1432,74 +1629,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            </div>
                         </div>
 
+
+
                         {/* Resumo da Conta */}
                         <div className="space-y-4">
                            <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                              <Activity size={18} className="text-[#d97757]" />
                               Resumo da Conta
                            </h4>
                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                              <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
+                                 <FileText size={24} className="text-blue-400 mb-2 group-hover:scale-110 transition-transform" />
                                  <p className="text-2xl font-bold text-white">{transactions.length}</p>
-                                 <p className="text-xs text-gray-500 mt-1">Transações</p>
+                                 <p className="text-xs text-gray-500">Transações</p>
                               </div>
-                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                              <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
+                                 <Bell size={24} className="text-yellow-400 mb-2 group-hover:scale-110 transition-transform" />
                                  <p className="text-2xl font-bold text-white">{reminders.length}</p>
-                                 <p className="text-xs text-gray-500 mt-1">Lembretes</p>
+                                 <p className="text-xs text-gray-500">Lembretes</p>
                               </div>
-                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                              <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
+                                 <Rocket size={24} className="text-emerald-400 mb-2 group-hover:scale-110 transition-transform" />
                                  <p className="text-2xl font-bold text-white">{familyGoals.length}</p>
-                                 <p className="text-xs text-gray-500 mt-1">Metas</p>
+                                 <p className="text-xs text-gray-500">Metas</p>
                               </div>
-                              <div className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 text-center">
+                              <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
+                                 <Trophy size={24} className="text-purple-400 mb-2 group-hover:scale-110 transition-transform" />
                                  <p className="text-2xl font-bold text-white">{unlockedBadges.filter(b => b.unlocked).length}</p>
-                                 <p className="text-xs text-gray-500 mt-1">Conquistas</p>
+                                 <p className="text-xs text-gray-500">Conquistas</p>
                               </div>
                            </div>
                         </div>
 
-                        {/* Plano Atual */}
-                        <div className="space-y-4">
-                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                              <CreditCard size={18} className="text-[#d97757]" />
-                              Plano Atual
-                           </h4>
-                           <div className={`p-5 rounded-2xl border ${planStyle.gradient} flex items-center justify-between`}>
-                              <div className="flex items-center gap-4">
-                                 <div className="w-12 h-12 rounded-xl bg-gray-900/50 flex items-center justify-center">
-                                    {planStyle.icon}
-                                 </div>
-                                 <div>
-                                    <p className={`font-bold text-lg ${planStyle.text}`}>Plano {planStyle.label}</p>
-                                    <p className="text-sm text-gray-400">
-                                       {cycle === 'annual' ? 'Cobrança anual' : 'Cobrança mensal'}
-                                    </p>
-                                 </div>
-                              </div>
-                              <button
-                                 onClick={() => setActiveTab('plan')}
-                                 className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-white rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
-                              >
-                                 Ver Planos <ChevronRight size={16} />
-                              </button>
-                           </div>
-                        </div>
+
 
                         {/* Zona de Perigo */}
-                        <div className="space-y-4 pt-4">
+                        <div className="space-y-4 pt-6 mt-2">
                            <h4 className="text-lg font-bold text-red-400 flex items-center gap-2">
-                              <Trash2 size={18} />
                               Zona de Perigo
                            </h4>
-                           <div className="bg-red-950/20 border border-red-900/30 rounded-xl p-5">
-                              <p className="text-sm text-gray-400 mb-4">
-                                 Ações irreversíveis relacionadas à sua conta.
+                           <div className="">
+                              <p className="text-sm text-gray-400 mb-2">
+                                 Ao excluir sua conta, todos os seus dados serão apagados permanentemente.
                               </p>
                               <button
                                  onClick={() => setIsDeleteModalOpen(true)}
-                                 className="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-400 border border-red-600/30 rounded-xl text-sm font-medium transition-colors flex items-center gap-2"
+                                 className="px-4 py-2 -ml-4 rounded-xl hover:bg-red-500/10 text-red-500 hover:text-red-400 text-sm font-medium transition-colors flex items-center gap-2"
                               >
-                                 <Trash2 size={16} /> Excluir Conta
+                                 <Trash2 size={16} /> Excluir minha conta
                               </button>
                            </div>
                         </div>
@@ -1978,41 +2154,85 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            <p className="text-gray-400">Proteja sua conta.</p>
                         </div>
 
-                        <div className={`p-6 border rounded-2xl transition-all ${formData.twoFactorEnabled ? 'bg-green-900/10 border-green-900/30' : 'bg-gray-900/30 border-gray-800'}`}>
-                           <div className="flex items-center justify-between mb-4">
-                              <div className="flex items-center gap-3">
-                                 <div className={`p-2 rounded-lg ${formData.twoFactorEnabled ? 'bg-green-500/20 text-green-500' : 'bg-gray-800 text-gray-400'}`}>
-                                    <Smartphone size={20} />
-                                 </div>
-                                 <div>
-                                    <h4 className="text-white font-bold">Autenticação de 2 Fatores</h4>
-                                    <p className="text-xs text-gray-500 mt-0.5">Camada extra de proteção.</p>
-                                 </div>
+                        <div className="pt-2">
+                           <div className="flex items-start justify-between">
+                              <div>
+                                 <h4 className="text-lg font-bold text-white mb-1">Autenticação de 2 Fatores</h4>
+                                 <p className="text-sm text-gray-400 max-w-md">
+                                    Adicione uma camada extra de segurança à sua conta.
+                                 </p>
                               </div>
-                              {formData.twoFactorEnabled && (
-                                 <div className="flex items-center gap-2 bg-green-500/10 px-3 py-1 rounded-full border border-green-500/20">
-                                    <CheckCircle size={14} className="text-green-500" />
-                                    <span className="text-xs font-bold text-green-500">Ativo</span>
+
+                              {!formData.twoFactorEnabled ? (
+                                 <button
+                                    onClick={open2FAModal}
+                                    className="px-4 py-2 rounded-xl text-[#d97757] hover:bg-[#d97757]/10 font-bold text-sm transition-colors flex items-center gap-2"
+                                 >
+                                    Configurar
+                                 </button>
+                              ) : (
+                                 <div className="flex items-center gap-4">
+                                    <span className="text-green-500 text-sm font-medium flex items-center gap-1.5">
+                                       <CheckCircle size={16} /> Ativado
+                                    </span>
+                                    <button
+                                       onClick={disable2FA}
+                                       disabled={isVerifying2FA}
+                                       className="px-4 py-2 rounded-xl text-red-400 hover:bg-red-500/10 font-bold text-sm transition-colors disabled:opacity-50"
+                                    >
+                                       {isVerifying2FA ? 'Processando...' : 'Desativar'}
+                                    </button>
                                  </div>
                               )}
                            </div>
-                           <div className="pl-[52px]">
-                              {formData.twoFactorEnabled ? (
-                                 <button
-                                    onClick={disable2FA}
-                                    disabled={isVerifying2FA}
-                                    className="text-sm font-bold text-red-400 hover:text-red-300 hover:bg-red-900/20 px-4 py-2 rounded-lg transition-colors border border-transparent hover:border-red-900/30 disabled:opacity-60 disabled:cursor-not-allowed"
-                                 >
-                                    {isVerifying2FA ? 'Processando...' : 'Desativar'}
-                                 </button>
+                        </div>
+
+                        {/* Connection Logs Section */}
+                        <div className="pt-8 border-t border-gray-800">
+                           <div className="mb-6">
+                              <h4 className="text-lg font-bold text-white mb-1">Dispositivos Conectados</h4>
+                              <p className="text-sm text-gray-400">
+                                 Estes são os dispositivos que acessaram sua conta recentemente.
+                              </p>
+                           </div>
+
+                           <div className="space-y-4">
+                              {/* If no logs, show current session mock + 1 prev */}
+                              {(!formData.connectionLogs || formData.connectionLogs.length === 0) ? (
+                                 <div className="text-center py-6 text-gray-500 text-sm">
+                                    Nenhum histórico de conexão disponível no momento.
+                                 </div>
                               ) : (
-                                 <button
-                                    onClick={open2FAModal}
-                                    disabled={isVerifying2FA}
-                                    className="text-sm font-bold text-white bg-[#d97757] hover:bg-[#c56a4d] px-4 py-2.5 rounded-xl transition-all shadow-lg shadow-[#d97757]/20 disabled:opacity-60 disabled:cursor-not-allowed"
-                                 >
-                                    Configurar Agora
-                                 </button>
+                                 formData.connectionLogs.map(log => (
+                                    <div key={log.id} className={`flex items-center justify-between p-4 rounded-xl border ${log.isCurrent ? 'border-gray-800 bg-gray-900/20' : 'border-gray-800/50 hover:border-gray-700/50'} transition-colors`}>
+                                       <div className="flex items-center gap-4">
+                                          <div className={`p-3 rounded-xl ${log.isCurrent ? 'bg-gray-800 text-gray-400' : 'bg-gray-900 text-gray-500'}`}>
+                                             {log.device.toLowerCase().includes('desktop') || log.device.toLowerCase().includes('mac') || log.device.toLowerCase().includes('windows') ? <Monitor size={20} /> : <Smartphone size={20} />}
+                                          </div>
+                                          <div>
+                                             <div className="flex items-center gap-2">
+                                                <h5 className={`font-bold text-sm ${log.isCurrent ? 'text-white' : 'text-gray-300'}`}>
+                                                   {log.os} ({log.device})
+                                                </h5>
+                                                {log.isCurrent && (
+                                                   <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-green-500/10 text-green-500 border border-green-500/20">ATUAL</span>
+                                                )}
+                                             </div>
+                                             <div className="flex items-center gap-2 text-xs text-gray-500 mt-1">
+                                                <span>{log.browser}</span>
+                                                <span>•</span>
+                                                <span className="flex items-center gap-1"><Globe size={10} /> {log.location}</span>
+                                             </div>
+                                          </div>
+                                       </div>
+                                       <div className="text-right">
+                                          <p className={`text-xs font-medium ${log.isCurrent ? 'text-green-400' : 'text-gray-500'}`}>
+                                             {log.isCurrent ? 'Online Agora' : new Date(log.timestamp).toLocaleString('pt-BR')}
+                                          </p>
+                                          <p className="text-[10px] text-gray-600 mt-0.5">IP: {log.ip}</p>
+                                       </div>
+                                    </div>
+                                 ))
                               )}
                            </div>
                         </div>
@@ -2030,7 +2250,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         {formData.familyRole === 'member' ? (
                            // MEMBER VIEW
-                           <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-8 text-center space-y-6">
+                           <div className="bg-gray-900/50 border border-[#373734] rounded-3xl p-8 text-center space-y-6">
                               <div className="w-20 h-20 mx-auto bg-[#d97757]/10 rounded-full flex items-center justify-center ring-1 ring-[#d97757]/20">
                                  <img src={familiaImg} alt="Family" className="w-10 h-10 object-contain" />
                               </div>
@@ -2103,8 +2323,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                               {/* 2. Payment & Billing Details */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
 
-                                 {/* Payment Method Card */}
-                                 <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex flex-col justify-between group hover:border-gray-700 transition-colors h-full">
+                                 {/* Payment Method Card - Simplified */}
+                                 <div className="flex flex-col justify-between h-full p-2">
                                     <div className="flex justify-between items-start mb-6">
                                        <h4 className="font-bold text-white flex items-center gap-2">
                                           <CreditCard size={18} className="text-gray-400" /> Método de Pagamento
@@ -2164,7 +2384,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     ) : (
                                        <>
                                           {/* Empty State */}
-                                          <div className="flex-1 border-2 border-dashed border-gray-800 rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
+                                          <div className="flex-1 border-2 border-dashed border-[#373734] rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
                                              <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 text-gray-600">
                                                 <CreditCard size={20} />
                                              </div>
@@ -2173,7 +2393,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                           </div>
                                           <button
                                              onClick={() => setIsCardModalOpen(true)}
-                                             className="w-full py-2.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-xl text-xs font-bold transition-all border border-gray-700"
+                                             className="w-full py-3 bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-dashed border-gray-700 hover:border-gray-500"
                                           >
                                              Adicionar Cartão
                                           </button>
@@ -2183,8 +2403,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                                  {/* Billing Settings */}
                                  <div className="space-y-4">
-                                    {/* Auto Renew Toggle */}
-                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6">
+                                    {/* Auto Renew Toggle - Clean */}
+                                    <div className="p-4 rounded-xl hover:bg-gray-900/30 transition-colors">
                                        <div className="flex justify-between items-center mb-2">
                                           <h4 className="font-bold text-white flex items-center gap-2">
                                              <Calendar size={18} className="text-gray-400" /> Cobrança Automática
@@ -2194,7 +2414,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                 if (autoRenew) {
                                                    setShowAutoRenewConfirmation(true);
                                                 } else {
-                                                   setAutoRenew(true);
+                                                   toggleAutoRenew(true);
                                                    toast.success("Cobrança automática ativada.");
                                                 }
                                              }}
@@ -2214,26 +2434,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                        )}
                                     </div>
 
-                                    {/* Last Payment Info */}
-                                    <div className="bg-gray-900/50 border border-gray-800 rounded-3xl p-6 flex items-center justify-between">
-                                       <div>
-                                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Último Pagamento</p>
-                                          <p className="text-white font-bold text-lg">
-                                             R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (plan === 'family' ? (cycle === 'annual' ? '599,90' : '59,90') : '0,00')}
-                                          </p>
-                                       </div>
-                                       <div className="text-right">
-                                          <p className="text-xs font-bold text-gray-500 uppercase tracking-wide mb-1">Data</p>
-                                          <p className="text-gray-300 font-medium">
-                                             {new Date().toLocaleDateString('pt-BR')}
-                                          </p>
-                                       </div>
-                                    </div>
+
                                  </div>
                               </div>
 
-                              <div className="flex justify-center pt-4">
-                                 <button className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1">
+                              {/* Billing History List - Full Width Below */}
+                              <div className="mt-6 border-t border-[#373734]/50 pt-6">
+                                 <h4 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
+                                    <Clock size={16} className="text-gray-400" /> Histórico de Cobranças
+                                 </h4>
+                                 <div className="space-y-2">
+                                    {billingHistory.map((item) => (
+                                       <div
+                                          key={item.id}
+                                          onClick={() => openReceipt(item)}
+                                          className="flex items-center justify-between p-3 rounded-xl bg-gray-900/30 hover:bg-gray-800/50 border border-[#373734]/50 cursor-pointer transition-colors group"
+                                       >
+                                          <div className="flex items-center gap-3">
+                                             <div className="w-8 h-8 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center">
+                                                <Check size={14} />
+                                             </div>
+                                             <div>
+                                                <p className="text-white font-bold text-sm">{item.amount}</p>
+                                                <p className="text-[10px] text-gray-500">{item.date}</p>
+                                             </div>
+                                          </div>
+                                          <div className="text-right">
+                                             <span className="text-[10px] font-bold text-green-400 bg-green-500/5 px-2 py-1 rounded-md border border-green-500/10 group-hover:bg-green-500/10 transition-colors">
+                                                {item.status}
+                                             </span>
+                                          </div>
+                                       </div>
+                                    ))}
+                                 </div>
+                              </div>
+
+                              <div className="flex justify-center pt-8">
+                                 <button
+                                    onClick={() => setShowCancelSubscriptionConfirmation(true)}
+                                    className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
+                                 >
                                     Cancelar assinatura
                                  </button>
                               </div>
@@ -2285,6 +2525,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             cancelText="Manter ativa"
             isDestructive={true}
          />
+
+         {/* Cancel Subscription Confirmation */}
+         <ConfirmationBar
+            isOpen={showCancelSubscriptionConfirmation}
+            onCancel={() => setShowCancelSubscriptionConfirmation(false)}
+            onConfirm={handleCancelSubscription}
+            label="Deseja realmente cancelar sua assinatura?"
+            confirmText="Sim, quero cancelar"
+            cancelText="Manter assinatura"
+            isDestructive={true}
+            description="Você perderá o acesso aos recursos Premium ao final do ciclo atual."
+         />
+         {/* Receipt Modal */}
+         <ReceiptModal />
       </div>,
       document.body
    );

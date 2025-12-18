@@ -1,8 +1,20 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import * as dbService from '../services/database';
 
-export const MetaPixelLoader: React.FC = () => {
+declare global {
+    interface Window {
+        fbq: any;
+        _fbq: any;
+    }
+}
+
+interface MetaPixelLoaderProps {
+    activeTab?: string;
+}
+
+export const MetaPixelLoader: React.FC<MetaPixelLoaderProps> = ({ activeTab }) => {
     const [pixelId, setPixelId] = useState<string | null>(null);
+    const prevTab = useRef(activeTab);
 
     useEffect(() => {
         const loadPixel = async () => {
@@ -26,6 +38,7 @@ export const MetaPixelLoader: React.FC = () => {
 
         const script = document.createElement('script');
         script.id = 'meta-pixel-script';
+        // Initialize Pixel and track initial PageView
         script.innerHTML = `
       !function(f,b,e,v,n,t,s)
       {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
@@ -47,6 +60,19 @@ export const MetaPixelLoader: React.FC = () => {
       />`;
         document.body.appendChild(noscript);
     }, [pixelId]);
+
+    // Track PageView only when activeTab changes (navigation)
+    useEffect(() => {
+        if (!pixelId) return;
+
+        // Only track if activeTab has changed from the previous value
+        if (activeTab !== prevTab.current) {
+            if (window.fbq) {
+                window.fbq('track', 'PageView');
+            }
+            prevTab.current = activeTab;
+        }
+    }, [pixelId, activeTab]);
 
     return null;
 };

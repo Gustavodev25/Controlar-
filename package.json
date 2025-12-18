@@ -20,6 +20,7 @@
     "@mui/x-charts": "^8.22.0",
     "@number-flow/react": "^0.5.10",
     "@stripe/stripe-js": "^8.5.3",
+    "@types/ua-parser-js": "^0.7.39",
     "@vercel/analytics": "^1.6.1",
     "axios": "^1.13.2",
     "clsx": "^2.1.1",
@@ -40,7 +41,8 @@
     "sonner": "^2.0.7",
     "stripe": "^20.0.0",
     "tailwind-merge": "^3.4.0",
-    "twilio": "^5.10.6"
+    "twilio": "^5.10.6",
+    "ua-parser-js": "^2.0.7"
   },
   "devDependencies": {
     "@types/node": "^22.14.0",

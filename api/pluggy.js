@@ -166,6 +166,64 @@ const getInvoiceMonthKey = (dateStr, closingDay) => {
     return `${year}-${String(month + 1).padStart(2, '0')}`;
 };
 
+const addMonthsUTC = (dateStr, months) => {
+    if (!dateStr) return null;
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const dt = new Date(Date.UTC(y, m - 1, d));
+    dt.setUTCMonth(dt.getUTCMonth() + months);
+    return dt.toISOString().split('T')[0];
+};
+
+const generateProjectedInstallments = async (userId, tx, account, billsMap, closingDay) => {
+    if (!userId || !tx || !account) return;
+    const meta = tx.creditCardMetadata || {};
+    const totalInstallments = meta.totalInstallments;
+    const currentInstallment = meta.installmentNumber || 1;
+    const purchaseDate = (meta.purchaseDate || tx.date || '').split('T')[0];
+
+    if (!totalInstallments || totalInstallments <= currentInstallment) return;
+
+    for (let i = currentInstallment + 1; i <= totalInstallments; i++) {
+        const providerId = `${tx.id}_installment_${i}`;
+        const projectedDate = purchaseDate ? addMonthsUTC(purchaseDate, i - 1) : null;
+
+        // Calculate projected month key
+        let invoiceMonthKey = null;
+        if (closingDay && projectedDate) {
+            invoiceMonthKey = getInvoiceMonthKey(projectedDate, closingDay);
+        } else if (projectedDate) {
+            invoiceMonthKey = projectedDate.slice(0, 7);
+        }
+
+        const rawAmount = Number(tx.amount || 0);
+        const amount = Math.abs(meta.totalAmount ? (meta.totalAmount / totalInstallments) : rawAmount);
+
+        const txData = {
+            date: projectedDate || purchaseDate,
+            description: tx.description,
+            amount,
+            category: translatePluggyCategory(tx.category),
+            type: rawAmount >= 0 ? 'expense' : 'income',
+            status: 'pending', // Future is always pending
+            cardId: account.id,
+            cardName: account.name || 'Cartão',
+            installmentNumber: i,
+            totalInstallments,
+            importSource: 'pluggy',
+            providerId: providerId,
+            providerItemId: account.itemId,
+            invoiceMonthKey,
+            pluggyRaw: { ...tx, creditCardMetadata: { ...meta, installmentNumber: i, billId: null } },
+            isProjected: true,
+            syncedAt: new Date().toISOString()
+        };
+
+        if (txData.date) {
+            await upsertTransaction(userId, 'creditCardTransactions', txData, providerId);
+        }
+    }
+};
+
 // --- DB Operations (Server-Side) ---
 
 const updateSyncStatus = async (userId, state, message, details = null) => {
@@ -214,18 +272,11 @@ const upsertTransaction = async (userId, collectionName, txData, providerId) => 
     const db = firebaseAdmin.firestore();
     const collectionRef = db.collection('users').doc(userId).collection(collectionName);
 
-    const snapshot = await collectionRef.where('providerId', '==', providerId).limit(1).get();
-
-    if (!snapshot.empty) {
-        // User requested to ONLY save new transactions. 
-        // If it exists, we skip updating to preserve any manual edits (categories, etc).
-        return;
+    // Always merge/update to ensure latest status/data
+    if (providerId) {
+        await collectionRef.doc(String(providerId)).set(txData, { merge: true });
     } else {
-        if (providerId) {
-            await collectionRef.doc(String(providerId)).set(txData, { merge: true });
-        } else {
-            await collectionRef.add(txData);
-        }
+        await collectionRef.add(txData);
     }
 };
 
@@ -284,6 +335,18 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     console.log(`>>> Starting Server-Side Sync for Item ${itemId} (User: ${userId}) | Mode: ${fromWebhook ? 'Webhook' : 'Full'}`);
     await updateSyncStatus(userId, 'in_progress', 'Sincronizando contas e transações...');
 
+    // 0. Fetch Item details to get connector (institution) name
+    let institutionName = 'Banco';
+    let connectorImageUrl = null;
+    try {
+        const itemData = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+        institutionName = itemData.connector?.name || 'Banco';
+        connectorImageUrl = itemData.connector?.imageUrl || null;
+        console.log(`>>> Item ${itemId} institution: ${institutionName}`);
+    } catch (e) {
+        console.warn('>>> Could not fetch item details for institution name:', e.message);
+    }
+
     // 1. Fetch Accounts
     let accounts = [];
     try {
@@ -307,6 +370,9 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     }
 
     // 2. Determine date range for transaction fetch
+    // (Consolidated logic inside the loop mainly, but let's notify user)
+    await updateSyncStatus(userId, 'in_progress', `Analisando ${accounts.length} contas conectadas...`, { current: 0, total: accounts.length });
+
     const today = new Date();
     let from, to;
 
@@ -333,7 +399,14 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
 
     let newTransactionsCount = 0;
 
-    for (const account of accounts) {
+    for (let i = 0; i < accounts.length; i++) {
+        const account = accounts[i];
+        const progress = Math.round(((i) / accounts.length) * 100);
+
+        // Notify processing of specific account
+        const accName = account.marketingName || account.name || 'Conta';
+        await updateSyncStatus(userId, 'in_progress', `Analisando: ${accName}...`, { current: progress, total: 100 });
+
         const type = (account.type || '').toUpperCase();
         const subtype = (account.subtype || '').toUpperCase();
         const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
@@ -348,18 +421,55 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
             currency: account.currencyCode || 'BRL',
             lastUpdated: new Date().toISOString(),
             connectionMode: 'AUTO',
+            institution: institutionName,
+            connectorImageUrl: connectorImageUrl,
         };
 
         // Correct collection: accounts
         await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts')
             .doc(account.id).set(accountData, { merge: true });
 
+        // Determine optimal 'from' date for transactions
+        let fromDateForTx = new Date();
+        fromDateForTx.setMonth(fromDateForTx.getMonth() - 6); // Default: 6 months back for safety
+        let fromStr = fromDateForTx.toISOString().split('T')[0];
+        let dateMsg = "últimos 6 meses";
+
+        try {
+            // Find latest transaction for this item to avoid re-reading everything
+            const txQuery = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions')
+                .where('providerItemId', '==', itemId)
+                .orderBy('date', 'desc')
+                .limit(1);
+
+            const txSnap = await txQuery.get();
+            if (!txSnap.empty) {
+                const lastTxDate = txSnap.docs[0].data().date;
+                if (lastTxDate) {
+                    const lastDate = new Date(lastTxDate);
+                    // Smart Sync: Only fetch from 2 days before the last transaction to catch late settlements.
+                    // This strictly prevents re-reading months of history as requested.
+                    lastDate.setDate(lastDate.getDate() - 2);
+                    fromStr = lastDate.toISOString().split('T')[0];
+                    dateMsg = `após ${new Date(fromStr).toLocaleDateString('pt-BR')}`;
+                    console.log(`>>> Incremental Sync: Fetching from ${fromStr}`);
+                }
+            } else {
+                console.log(`>>> Full Sync: Fetching from ${fromStr}`);
+            }
+        } catch (e) {
+            console.warn('>>> Could not optimize sync date, using default:', e.message);
+        }
+
+        // Update status: Searching transactions
+        await updateSyncStatus(userId, 'in_progress', `Buscando lançamentos (${dateMsg})...`, { current: progress + 5, total: 100 });
+
         // Fetch Transactions
         let transactions = [];
         try {
             let page = 1, totalPages = 1;
             do {
-                const res = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from, to, page, pageSize: 500 });
+                const res = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from: fromStr, to, page, pageSize: 500 });
                 transactions.push(...(res.results || []));
                 totalPages = res.totalPages || 1;
                 page++;
@@ -369,9 +479,14 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
             continue;
         }
 
+        if (transactions.length > 0) {
+            await updateSyncStatus(userId, 'in_progress', `Processando ${transactions.length} lançamentos...`, { current: progress + 10, total: 100 });
+        }
+
         // Fetch Bills (Credit Card Only)
         let billsMap = new Map();
         if (isCredit) {
+            await updateSyncStatus(userId, 'in_progress', `Verificando faturas...`, { current: progress + 15, total: 100 });
             try {
                 const res = await pluggyRequest('GET', '/bills', apiKey, null, { accountId: account.id, pageSize: 100 });
                 (res.results || []).forEach(b => billsMap.set(b.id, b));
@@ -424,6 +539,11 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 };
 
                 await upsertTransaction(userId, 'creditCardTransactions', txData, tx.id);
+
+                // Generate Future Installments
+                if (meta.totalInstallments && meta.totalInstallments > 1) {
+                    await generateProjectedInstallments(userId, tx, account, billsMap, closingDay);
+                }
             } else {
                 const amount = Math.abs(rawAmount);
                 const txData = {
@@ -450,9 +570,8 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     await updateSyncStatus(userId, 'success', 'Sincronização concluída com sucesso!');
 
     // Send System Notification
-    const msg = newTransactionsCount > 0
-        ? `Seus dados bancários foram atualizados. ${newTransactionsCount} lançamentos processados.`
-        : 'Sincronização concluída. Seus dados estão atualizados.';
+    // Simplified message as requested by user
+    const msg = 'Sincronização concluída. Seus dados estão atualizados.';
 
     await addSystemNotification(userId, 'Open Finance Atualizado', msg, 'update');
 };
@@ -715,8 +834,9 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
             }
         }
 
-        // 3. Save ONLY new items
-        const newItems = items.filter(item => !existingIds.has(item.tx.id));
+        // 3. Save ALL items (Upsert to update status/details)
+        // const newItems = items.filter(item => !existingIds.has(item.tx.id)); // OLD: Skip existing
+        const newItems = items; // NEW: Upsert all
 
         for (const item of newItems) {
             const { tx, account, isCredit } = item;
@@ -1190,9 +1310,52 @@ router.get('/webhook-worker', async (req, res) => {
     });
 });
 
-// Trigger Sync (Manual)
+// Helper: Poll item status until completion or timeout, then sync
+const pollAndSync = async (apiKey, itemId, userId) => {
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_ATTEMPTS = 40; // ~2 minutes timeout
+
+    console.log(`>>> Starting Polling for Item ${itemId} (User: ${userId})`);
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        try {
+            await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+            const item = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+            const status = item.status;
+
+            console.log(`>>> Poll #${i + 1} Item ${itemId}: ${status}`);
+
+            if (status === 'UPDATED') {
+                await updateSyncStatus(userId, 'in_progress', 'Banco atualizado. Buscando transações...');
+                // Run the sync
+                await syncItem(apiKey, itemId, userId, { fromWebhook: false, fullSync: false }); // Incremental-ish sync
+                return;
+            }
+
+            if (status === 'LOGIN_ERROR') {
+                await updateSyncStatus(userId, 'error', 'Erro: Credenciais bancárias inválidas.');
+                return;
+            }
+
+            if (status === 'WAITING_USER_INPUT') {
+                await updateSyncStatus(userId, 'error', 'Erro: Ação necessária no banco (MFA).');
+                return;
+            }
+
+            // If still UPDATING, continue loop
+        } catch (e) {
+            console.error(`>>> Polling error for ${itemId}:`, e.message);
+        }
+    }
+
+    // Timeout
+    await updateSyncStatus(userId, 'error', 'Tempo limite excedido na atualização do banco.');
+};
+
+// Trigger Sync (Manual) - Now with background polling fallback
 router.post('/trigger-sync', async (req, res) => {
-    const { itemId, userId } = req.body; // Accept userId from body
+    const { itemId, userId } = req.body;
     if (!itemId) return res.status(400).json({ error: 'itemId required' });
 
     // Update status immediately so UI reacts
@@ -1202,8 +1365,17 @@ router.post('/trigger-sync', async (req, res) => {
 
     try {
         const apiKey = await getPluggyApiKey();
+
+        // 1. Tell Pluggy to update
         await pluggyRequest('PATCH', `/items/${itemId}`, apiKey, {});
-        res.json({ success: true, message: 'Sync triggered.' });
+
+        // 2. Start background polling (Fire and Forget)
+        // We don't await this, so the UI gets a response fast, but the server keeps working.
+        pollAndSync(apiKey, itemId, userId).catch(err => {
+            console.error(`Background polling failed for ${itemId}:`, err);
+        });
+
+        res.json({ success: true, message: 'Sync process started.' });
     } catch (e) {
         if (userId) {
             await updateSyncStatus(userId, 'error', 'Falha ao solicitar atualização.');
@@ -1212,40 +1384,59 @@ router.post('/trigger-sync', async (req, res) => {
     }
 });
 
-// Legacy Sync (Kept for frontend compatibility for now)
+// Modern Sync (Replaces 'Legacy' with robust server-side sync)
 router.post('/sync', async (req, res) => {
-    // ... Legacy implementation maintained for fallback ...
-    const { itemId } = req.body;
+    const { itemId, userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'UserId is required for sync.' });
+    }
+
     try {
         const apiKey = await getPluggyApiKey();
+
+        // 1. Perform Server-Side Sync (Robust, saves to Firestore)
+        // Force fullSync to ensure we get 12 months of history as requested
+        await syncItem(apiKey, itemId, userId, { fullSync: true });
+
+        // 2. Fetch the synced accounts from DB to return to frontend
+        // This maintains compatibility with BankConnectModal which expects a list of accounts
+        const db = firebaseAdmin.firestore();
+        const accountsSnap = await db.collection('users').doc(userId).collection('accounts')
+            .where('itemId', '==', itemId).get();
+
         const accounts = [];
-        let page = 1;
-        do {
-            const r = await pluggyRequest('GET', '/accounts', apiKey, null, { itemId, page, pageSize: 200 });
-            accounts.push(...(r.results || []));
-            page++;
-        } while (page <= (1));
+        accountsSnap.forEach(doc => {
+            const data = doc.data();
+            accounts.push({
+                account: {
+                    id: data.id,
+                    itemId: data.itemId,
+                    name: data.name,
+                    marketingName: data.name,
+                    type: data.type,
+                    subtype: data.subtype,
+                    balance: data.balance,
+                    currencyCode: data.currency,
+                    creditData: {
+                        // Minimal credit data for frontend mapping if needed
+                        brand: data.brand,
+                        creditLimit: data.creditLimit
+                    },
+                    connector: {
+                        name: data.institution,
+                        imageUrl: data.connectorImageUrl
+                    }
+                },
+                transactions: [], // We don't return 1000s of txs to frontend anymore, it's in DB.
+                bills: []
+            });
+        });
 
-        const results = [];
-        const today = new Date();
-        const from = new Date(today.setMonth(today.getMonth() - 12)).toISOString().split('T')[0];
-        const to = new Date().toISOString().split('T')[0];
+        res.json({ success: true, accounts });
 
-        for (const account of accounts) {
-            const txsRes = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from, to, pageSize: 500 });
-            const transactions = txsRes.results || [];
-            let bills = [];
-            const isCredit = (account.type || '').toUpperCase().includes('CREDIT');
-            if (isCredit) {
-                try {
-                    const bRes = await pluggyRequest('GET', '/bills', apiKey, null, { accountId: account.id });
-                    bills = bRes.results || [];
-                } catch (e) { }
-            }
-            results.push({ account, transactions, bills });
-        }
-        res.json({ success: true, accounts: results });
     } catch (e) {
+        console.error('Sync failed:', e);
         res.status(500).json({ error: 'Sync failed', details: e.message });
     }
 });

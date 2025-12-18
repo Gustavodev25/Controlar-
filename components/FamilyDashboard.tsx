@@ -224,28 +224,27 @@ export const FamilyDashboard: React.FC<FamilyDashboardProps> = ({
             {!familyGroup && !loadingFamily && (
                 <EmptyState
                     image="/assets/familia.png"
-                    title={currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro'
+                    title={currentUser?.subscription?.plan === 'family'
                         ? 'Configure sua Família'
                         : 'Crie sua Família'
                     }
-                    description={currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro'
+                    description={currentUser?.subscription?.plan === 'family'
                         ? 'Você já tem o plano ativo! Agora crie o grupo para convidar os membros.'
                         : 'Compartilhe os benefícios Premium com quem você ama. Acompanhem metas juntos e gerenciem o orçamento doméstico.'
                     }
                     action={{
-                        label: currentUser?.subscription?.plan === 'family' || currentUser?.subscription?.plan === 'pro'
+                        label: currentUser?.subscription?.plan === 'family'
                             ? 'Criar Grupo Familiar'
                             : 'Ativar Plano Familiar',
                         onClick: () => {
                             if (userId) {
                                 const currentPlan = currentUser?.subscription?.plan || 'starter';
-                                if (currentPlan === 'starter') {
+                                if (currentPlan !== 'family') {
                                     if (onUpgrade) onUpgrade();
                                     return;
                                 }
                                 const toastId = toast.loading("Criando grupo familiar...");
-                                const plan = currentPlan === 'pro' ? 'pro' : 'family';
-                                familyService.initializeFamilyGroup(userId, plan)
+                                familyService.initializeFamilyGroup(userId, 'family')
                                     .then(() => {
                                         toast.dismiss(toastId);
                                         toast.success("Grupo familiar criado!");

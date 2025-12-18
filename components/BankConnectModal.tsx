@@ -14,6 +14,10 @@ interface BankConnectModalProps {
     userId: string | null;
     onSuccess?: (accounts: ConnectedAccount[]) => void;
     forceSyncItemId?: string | null;
+    // Credit system props
+    dailyCredits?: { date: string; count: number };
+    maxCreditsPerDay?: number;
+    userPlan?: string;
 }
 
 const API_BASE = '/api';
@@ -103,7 +107,10 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     onClose,
     userId,
     onSuccess,
-    forceSyncItemId
+    forceSyncItemId,
+    dailyCredits,
+    maxCreditsPerDay = 3,
+    userPlan = 'pro'
 }) => {
     // UI States
     const [view, setView] = useState<'connect' | 'manage'>('connect');
@@ -120,6 +127,30 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     const [existingItems, setExistingItems] = useState<any[]>([]);
     const [isDeletingItem, setIsDeletingItem] = useState<string | null>(null);
     const [showPluggyWidget, setShowPluggyWidget] = useState(false);
+
+    // Credit verification
+    const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const isNewConnection = !forceSyncItemId; // true = connecting new bank, false = syncing existing
+
+    // NOTE: When dailyCredits is undefined, it means the user has NEVER used credits before
+    // (the field doesn't exist in Firebase yet). This is NOT "loading" state.
+    // In this case, the user has all credits available (count = 0).
+    const effectiveCredits = dailyCredits || { date: '', count: 0 };
+
+    // If date is today, use the count. If date is different (yesterday or empty), credits reset to 0.
+    const creditsUsedToday = (effectiveCredits.date === todayDateStr) ? effectiveCredits.count : 0;
+
+    // hasCredit logic:
+    // - Starter plan: always false (no credits)
+    // - Otherwise: check if credits used today < max
+    // NOTE: Both new connections AND syncs consume credits
+    // NOTE: undefined dailyCredits means user never used credits = has all credits available
+    const hasCredit = userPlan === 'starter'
+        ? false
+        : (creditsUsedToday < maxCreditsPerDay);
+
+    // For UI purposes - we consider credits "loaded" if we have a userId
+    const isCreditsLoaded = !!userId;
 
     const normalizeAccount = useCallback((account: any, bills: ProviderBill[]): ConnectedAccount => {
         const creditData = account.creditData || {};
@@ -189,219 +220,34 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         };
     }, []);
 
-    const mapBankTransaction = useCallback((tx: any, account: ConnectedAccount): Omit<Transaction, 'id'> | null => {
-        const date = toDateOnly(tx?.date);
-        if (!date) return null;
+    // --- Client-Side Sync Logic Removed (Moved to Server) ---
+    // mapBankTransaction, buildCardTransaction, generateProjectedInstallments, 
+    // syncBankTransactions, syncCreditCardTransactions were removed 
+    // to prevent client-side permission errors. 
+    // The server now handles all transaction saving/updates.
 
-        const rawAmount = Number(tx?.amount || 0);
-        const amount = Math.abs(rawAmount);
-        const pluggyType = (tx?.type || '').toUpperCase();
-        const isIncome = pluggyType === 'CREDIT' || rawAmount > 0;
-        const status = (tx?.status || '').toUpperCase() === 'PENDING' ? 'pending' : 'completed';
-
-        return {
-            description: tx?.description || 'Movimentacao',
-            amount,
-            date,
-            category: translatePluggyCategory(tx?.category),
-            type: isIncome ? 'income' : 'expense',
-            status,
-            importSource: 'pluggy',
-            providerId: tx?.id,
-            providerItemId: account.itemId,
-            accountId: account.id,
-            accountType: account.subtype || account.type,
-            pluggyRaw: tx
-        };
-    }, []);
-
-    const buildCardTransaction = useCallback(
-        (
-            tx: any,
-            account: ConnectedAccount,
-            billsMap: Map<string, ProviderBill>,
-            closingDay: number | null,
-            dueDay: number | null,
-            isProjected: boolean = false,
-            overrideInstallment?: number,
-            overrideTotal?: number,
-            providerIdOverride?: string,
-            projectedAmountOverride?: number
-        ): Omit<CreditCardTransaction, 'id'> | null => {
-            const meta = tx?.creditCardMetadata || {};
-            const purchaseDate = toDateOnly(meta.purchaseDate || tx?.date);
-            const postDate = toDateOnly(tx?.date || purchaseDate);
-            const anchorDate = postDate || purchaseDate;
-            if (!anchorDate) return null;
-
-            const rawAmount = Number(projectedAmountOverride ?? tx?.amount ?? 0);
-            const totalInstallments = overrideTotal ?? meta.totalInstallments;
-            const installmentNumber = overrideInstallment ?? meta.installmentNumber;
-
-            const billId = meta.billId || null;
-            const bill = billId ? billsMap.get(billId) : undefined;
-
-            let invoiceMonthKey = bill?.dueDate ? bill.dueDate.slice(0, 7) : computeInvoiceMonthKey(anchorDate, closingDay, dueDay);
-            let invoiceSource = bill?.dueDate ? 'pluggy_billId' : 'pluggy_close_rule';
-
-            let invoiceDueDate = bill?.dueDate || buildDueDateFromMonth(invoiceMonthKey, dueDay) || undefined;
-            if (!invoiceMonthKey && invoiceDueDate) {
-                invoiceMonthKey = invoiceDueDate.slice(0, 7);
-            }
-
-            const amount = Math.abs(totalInstallments && meta.totalAmount
-                ? (meta.totalAmount / totalInstallments)
-                : rawAmount);
-            const type = rawAmount >= 0 ? 'expense' : 'income';
-            const status = isProjected
-                ? 'pending'
-                : (tx?.status || '').toUpperCase() === 'PENDING'
-                    ? 'pending'
-                    : 'completed';
-
-            return {
-                date: postDate,
-                description: tx?.description || 'Lancamento Cartao',
-                amount,
-                category: translatePluggyCategory(tx?.category),
-                type,
-                status,
-                cardId: account.id,
-                cardName: account.name,
-                installmentNumber: installmentNumber || undefined,
-                totalInstallments: totalInstallments || undefined,
-                importSource: 'pluggy',
-                providerId: providerIdOverride || tx?.id,
-                providerItemId: account.itemId,
-                invoiceDate: invoiceMonthKey ? `${invoiceMonthKey}-01` : undefined,
-                invoiceDueDate: invoiceDueDate || undefined,
-                invoiceMonthKey: invoiceMonthKey || undefined,
-                pluggyBillId: billId,
-                invoiceSource,
-                pluggyRaw: tx,
-                isProjected
-            };
-        },
-        []
-    );
-
-    const generateProjectedInstallments = useCallback(
-        async (
-            tx: any,
-            account: ConnectedAccount,
-            billsMap: Map<string, ProviderBill>,
-            closingDay: number | null,
-            dueDay: number | null
-        ) => {
-            if (!userId) return 0;
-            const meta = tx?.creditCardMetadata || {};
-            const totalInstallments = meta.totalInstallments;
-            const currentInstallment = meta.installmentNumber || 1;
-            const purchaseDate = toDateOnly(meta.purchaseDate || tx?.date);
-
-            if (!totalInstallments || totalInstallments <= currentInstallment) return 0;
-
-            let projectedCount = 0;
-            for (let i = currentInstallment + 1; i <= totalInstallments; i++) {
-                const providerId = `${tx?.id || account.id}_installment_${i}`;
-                const projectedDate = purchaseDate ? addMonthsUTC(purchaseDate, i - 1) : null;
-                const projectedTx = buildCardTransaction(
-                    {
-                        ...tx,
-                        date: projectedDate || tx?.date,
-                        creditCardMetadata: {
-                            ...meta,
-                            installmentNumber: i,
-                            totalInstallments,
-                            billId: null // Clear billId for future installments so they don't get stuck in the current invoice
-                        }
-                    },
-                    account,
-                    billsMap,
-                    closingDay,
-                    dueDay,
-                    true,
-                    i,
-                    totalInstallments,
-                    providerId
-                );
-
-                if (projectedTx) {
-                    await dbService.upsertCreditCardTransaction(userId, projectedTx);
-                    projectedCount++;
-                }
-            }
-
-            return projectedCount;
-        },
-        [buildCardTransaction, userId]
-    );
-
-    const syncBankTransactions = useCallback(
-        async (account: ConnectedAccount, txs: any[]) => {
-            if (!userId) return 0;
-            let count = 0;
-
-            for (const tx of txs || []) {
-                const mapped = mapBankTransaction(tx, account);
-                if (!mapped) continue;
-                await dbService.upsertImportedTransaction(userId, mapped, tx?.id);
-                count++;
-            }
-
-            return count;
-        },
-        [mapBankTransaction, userId]
-    );
-
-    const syncCreditCardTransactions = useCallback(
-        async (account: ConnectedAccount, txs: any[], bills: ProviderBill[]) => {
-            if (!userId) return { saved: 0, projected: 0 };
-
-            const billsMap = new Map<string, ProviderBill>();
-            bills.forEach((bill) => billsMap.set(bill.id, bill));
-
-            const closingDay = parseDay(account.balanceCloseDate);
-            const dueDay = parseDay(account.balanceDueDate);
-
-            let saved = 0;
-            let projected = 0;
-
-            for (const tx of txs || []) {
-                const mapped = buildCardTransaction(tx, account, billsMap, closingDay, dueDay, false);
-                if (mapped) {
-                    await dbService.upsertCreditCardTransaction(userId, mapped);
-                    saved++;
-                }
-
-                projected += await generateProjectedInstallments(tx, account, billsMap, closingDay, dueDay);
-            }
-
-            return { saved, projected };
-        },
-        [buildCardTransaction, generateProjectedInstallments, userId]
-    );
 
     const runFullSync = useCallback(
         async (itemId: string) => {
             if (!userId) return [];
 
             setSyncStatus('syncing');
-            setSyncMessage('Sincronizando contas e transacoes...');
+            setSyncMessage('Sincronizando contas e transacoes (Servidor)...');
             clearSyncProgress();
 
             // Show initial progress
             saveSyncProgress({
-                step: 'Conectando ao banco...',
+                step: 'Processando no servidor...',
                 current: 0,
-                total: 1,
+                total: 100,
                 startedAt: Date.now()
             });
 
+            // Call the robust server-side sync (formerly Legacy, now Modern)
             const response = await fetch(`${API_BASE}/pluggy/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId, monthsBack: 2, monthsForward: 4 })
+                body: JSON.stringify({ itemId, userId, monthsBack: 12 }) // Added userId
             });
 
             const data = await response.json();
@@ -417,73 +263,37 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 throw new Error(data.error || 'Erro ao sincronizar dados do Pluggy.');
             }
 
+            const accountsRaw = data.accounts || [];
             const syncedAccounts: ConnectedAccount[] = [];
-            let bankCount = 0;
-            let cardCount = 0;
-            let projectedCount = 0;
 
-            const accounts = data.accounts || [];
-            const totalAccounts = accounts.length;
-
-            for (let i = 0; i < accounts.length; i++) {
-                const entry = accounts[i];
+            // We just map the accounts for UI update. The Server ALREADY saved everything (accounts + txs).
+            for (const entry of accountsRaw) {
                 if (!entry?.account) continue;
-
-                // Update progress for each account
-                saveSyncProgress({
-                    step: `Salvando conta ${i + 1} de ${totalAccounts}...`,
-                    current: i,
-                    total: totalAccounts,
-                    startedAt: Date.now()
-                });
-
-                const bills = mapBills(entry.bills || []);
+                // Helper to map robustly
+                const bills = mapBills(entry.bills || []); // likely empty from server now, but that's fine
                 const account = normalizeAccount(entry.account, bills);
-                await dbService.addConnectedAccount(userId, account);
                 syncedAccounts.push(account);
-
-                const type = (account.type || '').toUpperCase();
-                const subtype = (account.subtype || '').toUpperCase();
-                const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
-
-                const txCount = (entry.transactions || []).length;
-                saveSyncProgress({
-                    step: `Salvando ${txCount} transacoes...`,
-                    current: i,
-                    total: totalAccounts,
-                    startedAt: Date.now()
-                });
-
-                if (isCredit) {
-                    const { saved, projected } = await syncCreditCardTransactions(account, entry.transactions || [], bills);
-                    cardCount += saved;
-                    projectedCount += projected;
-                } else {
-                    bankCount += await syncBankTransactions(account, entry.transactions || []);
-                }
             }
 
             setSyncStatus('success');
-            const summary = projectedCount > 0
-                ? `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao (+${projectedCount} parcelas futuras).`
-                : `Sincronizamos ${bankCount} movimentacoes e ${cardCount} lancamentos de cartao.`;
+            const summary = `Sincronização concluída! ${syncedAccounts.length} contas processadas.`;
             setSyncMessage(summary);
 
             // Show completion progress
             saveSyncProgress({
                 step: summary,
-                current: totalAccounts,
-                total: totalAccounts,
+                current: 100,
+                total: 100,
                 isComplete: true,
                 startedAt: Date.now()
             });
 
-            // Clear progress after delay
+            console.log('[BankConnectModal] Sync complete (Server-Side). Calling onSuccess callback.');
             setTimeout(() => clearSyncProgress(), 5000);
 
             return syncedAccounts;
         },
-        [normalizeAccount, syncBankTransactions, syncCreditCardTransactions, userId]
+        [normalizeAccount, userId]
     );
 
     // Animation effect (igual Reminders modal)
@@ -560,7 +370,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             // First try to fetch from Pluggy Remote API
             const response = await fetch(`${API_BASE}/pluggy/items?userId=${encodeURIComponent(userId)}`);
             const data = await response.json();
-            
+
             if (response.ok) {
                 // API returns { success: true, items: [...] }
                 setExistingItems(data.items || data.results || []);
@@ -571,22 +381,22 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 if (response.status === 401 || response.status === 403) {
                     // Fallback to Local DB items if Remote fails due to auth/permission
                     console.warn('Pluggy Remote Auth failed. Falling back to Local DB items.');
-                    
+
                     try {
                         const localResp = await fetch(`${API_BASE}/pluggy/db-items/${encodeURIComponent(userId)}`);
                         const localData = await localResp.json();
                         if (localResp.ok && localData.items) {
-                             setExistingItems(localData.items);
-                             setView('manage');
-                             // Show a non-blocking toast or message?
-                             // For now, just set error null so UI shows list
-                             setError(null); 
+                            setExistingItems(localData.items);
+                            setView('manage');
+                            // Show a non-blocking toast or message?
+                            // For now, just set error null so UI shows list
+                            setError(null);
                         } else {
-                             setError('Não foi possível carregar as conexões (Remoto e Local falharam).');
+                            setError('Não foi possível carregar as conexões (Remoto e Local falharam).');
                         }
                     } catch (localErr) {
-                         console.error('Error fetching local items:', localErr);
-                         setError('Erro ao carregar conexões locais.');
+                        console.error('Error fetching local items:', localErr);
+                        setError('Erro ao carregar conexões locais.');
                     }
                 } else {
                     setError('Não foi possível carregar as conexões existentes.');
@@ -595,18 +405,18 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         } catch (err) {
             console.error('Error fetching items:', err);
             // Try fallback even on network error? Maybe.
-             try {
+            try {
                 const localResp = await fetch(`${API_BASE}/pluggy/db-items/${encodeURIComponent(userId)}`);
                 const localData = await localResp.json();
                 if (localResp.ok && localData.items) {
-                        setExistingItems(localData.items);
-                        setView('manage');
-                        setError(null); 
+                    setExistingItems(localData.items);
+                    setView('manage');
+                    setError(null);
                 } else {
-                     setError('Erro ao carregar conexões.');
+                    setError('Erro ao carregar conexões.');
                 }
             } catch (localErr) {
-                 setError('Erro ao carregar conexões.');
+                setError('Erro ao carregar conexões.');
             }
         } finally {
             setIsLoading(false);
@@ -688,6 +498,18 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             return;
         }
 
+        // Consume credit for BOTH new connections AND re-syncs
+        // Every Pluggy operation consumes 1 daily credit
+        try {
+            const operationType = isNewConnection ? 'NEW connection' : 're-sync';
+            console.log(`[BankConnectModal] Consuming daily credit for ${operationType}...`);
+            await dbService.incrementDailyConnectionCredits(userId);
+            console.log('[BankConnectModal] Daily credit consumed successfully. Credits used today:', creditsUsedToday + 1);
+        } catch (creditErr) {
+            console.error('[BankConnectModal] Failed to consume credit:', creditErr);
+            // We do not block the flow here, but we log it.
+        }
+
         try {
             setSyncStatus('syncing');
             setSyncMessage('Conexao autenticada. Sincronizando transacoes...');
@@ -695,6 +517,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             const synced = await runFullSync(data.item?.id);
             await fetchExistingItems();
 
+            console.log('[BankConnectModal] Calling onSuccess with synced data:', synced);
+            // Note: handleBankConnected in ConnectedAccounts no longer needs to increment credits
             if (onSuccess) onSuccess(synced);
 
             setTimeout(() => {
@@ -705,7 +529,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             setError(err?.message || 'Erro ao sincronizar transacoes.');
             setSyncStatus('error');
         }
-    }, [fetchExistingItems, onClose, onSuccess, runFullSync, userId]);
+    }, [fetchExistingItems, onClose, onSuccess, runFullSync, userId, creditsUsedToday, isNewConnection]);
 
 
 
@@ -725,24 +549,24 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         // Handle expected duplicate-item errors by redirecting user to manage view
         if (duplicateError) {
             console.log('Pluggy: User attempted to add an existing item.', existingItemId ? `ID: ${existingItemId}` : 'No ID found');
-            
+
             // Force view to manage immediately
-            setView('manage'); 
+            setView('manage');
             setError('Este banco já está conectado. Você pode gerenciar ou remover a conexão existente.');
             setSyncStatus('idle');
             setSyncMessage('');
 
             // If we have the ID, ensure it is in the list even if fetch fails
             if (existingItemId) {
-                 // Add a temporary "orphan" item to the list so user can delete it
-                 setExistingItems(prev => {
-                     if (prev.find(i => i.id === existingItemId)) return prev;
-                     return [...prev, {
-                         id: existingItemId,
-                         connector: { name: 'Banco Conectado (Detectado)', imageUrl: null },
-                         status: 'ORPHAN (Aguardando Ação)'
-                     }];
-                 });
+                // Add a temporary "orphan" item to the list so user can delete it
+                setExistingItems(prev => {
+                    if (prev.find(i => i.id === existingItemId)) return prev;
+                    return [...prev, {
+                        id: existingItemId,
+                        connector: { name: 'Banco Conectado (Detectado)', imageUrl: null },
+                        status: 'ORPHAN (Aguardando Ação)'
+                    }];
+                });
             }
 
             fetchExistingItems();
@@ -1013,10 +837,31 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
                                         {/* Botão */}
                                         <button
-                                            onClick={() => setShowPluggyWidget(true)}
-                                            className="w-full mt-2 px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
+                                            onClick={() => {
+                                                // Double-check credit before opening widget
+                                                if (!hasCredit) {
+                                                    if (!isCreditsLoaded) {
+                                                        setError('Aguarde o carregamento das informações de crédito.');
+                                                    } else {
+                                                        setError(`Limite de ${maxCreditsPerDay} créditos diários atingido. Seus créditos serão renovados à meia-noite.`);
+                                                    }
+                                                    return;
+                                                }
+                                                setShowPluggyWidget(true);
+                                            }}
+                                            disabled={!hasCredit}
+                                            className={`w-full mt-2 px-6 py-3 rounded-xl transition-colors text-sm font-bold shadow-lg ${!hasCredit
+                                                ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
+                                                : 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-[#d97757]/20'
+                                                }`}
                                         >
-                                            Conectar Banco
+                                            {!isCreditsLoaded
+                                                ? 'Carregando...'
+                                                : !hasCredit
+                                                    ? 'Sem créditos disponíveis'
+                                                    : isNewConnection
+                                                        ? 'Conectar Banco'
+                                                        : 'Sincronizar Banco'}
                                         </button>
                                     </div>
                                 )}

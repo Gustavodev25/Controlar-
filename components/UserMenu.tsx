@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { User as UserType } from '../types';
-import { LogOut, Settings, Users, LayoutDashboard } from './Icons';
+import { LogOut, Users, LayoutDashboard } from './Icons';
+import { CustomSettingsIcon as SettingsIcon } from './CustomIcons';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownSeparator } from './Dropdown';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 
@@ -49,7 +50,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
 
   // Get avatar colors based on user name
   const avatarColors = getAvatarColors(user.name);
-  const hasCustomAvatar = user.avatarUrl?.includes('url');
+  const hasCustomAvatar = user.avatarUrl && user.avatarUrl.includes('url');
 
   return (
     <Dropdown>
@@ -87,7 +88,7 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
             </DropdownItem>
           )}
 
-          <DropdownItem onClick={onOpenSettings} icon={Settings} shortcut="→">
+          <DropdownItem onClick={onOpenSettings} icon={SettingsIcon} shortcut="→">
             Configurações
           </DropdownItem>
 

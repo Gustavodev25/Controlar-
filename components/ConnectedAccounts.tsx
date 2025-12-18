@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, AlertCircle, Loader2 } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info } from "./Icons";
 import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
@@ -11,6 +11,8 @@ import { useToasts } from "./Toast";
 import { TooltipIcon } from "./UIComponents";
 import { ConfirmationBar } from './ConfirmationBar';
 import { BankConnectModal } from "./BankConnectModal";
+import Lottie from "lottie-react";
+import linkAnimation from "../assets/link.json";
 
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
@@ -18,11 +20,13 @@ interface ConnectedAccountsProps {
   onRefresh?: () => void;
   onDebugSync?: () => void;
   lastSynced?: Record<string, string>;
-  storageKey?: string;
   userId?: string | null;
-  memberId?: string;
+  selectedMemberId?: string;
   isProMode?: boolean;
   isAdmin?: boolean;
+  userPlan?: string;
+  onUpgrade?: () => void;
+  dailyCredits?: { date: string, count: number };
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
@@ -34,7 +38,6 @@ const formatCurrency = (value?: number, currency: string = "BRL") => {
   }
 };
 
-// Tradução dos tipos de conta do Pluggy
 const translateAccountType = (type?: string, subtype?: string): string => {
   const typeMap: Record<string, string> = {
     'BANK': 'Banco',
@@ -51,12 +54,10 @@ const translateAccountType = (type?: string, subtype?: string): string => {
     'CHECKING': 'Conta Corrente',
   };
 
-  // Se tiver subtype, prioriza a tradução dele
   if (subtype && subtypeMap[subtype]) {
     return subtypeMap[subtype];
   }
 
-  // Se tiver type, traduz
   const translatedType = type ? (typeMap[type] || type) : '';
   const translatedSubtype = subtype ? (subtypeMap[subtype] || subtype) : '';
 
@@ -71,6 +72,14 @@ interface ItemSyncStatus {
   id: string; // itemId
   status: string; // 'UPDATED', 'UPDATING', 'LOGIN_ERROR', etc.
   lastUpdatedAt: string | null;
+  connectorName?: string;
+}
+
+interface GlobalSyncStatus {
+  state: string;
+  message?: string;
+  details?: any;
+  lastUpdated?: string;
 }
 
 export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
@@ -81,7 +90,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   lastSynced = {},
   userId,
   isProMode = true,
-  isAdmin = false
+  isAdmin = false,
+  userPlan = 'starter',
+  onUpgrade,
+  dailyCredits
 }) => {
   const [limitView, setLimitView] = useState<Set<string>>(new Set());
   const activeToastId = useRef<string | number | null>(null);
@@ -90,96 +102,82 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
   const [forceSyncItemId, setForceSyncItemId] = useState<string | null>(null);
+  const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; syncedToday: boolean; isFresh: boolean } | null>>({});
 
-  // Timer State with structure for Auto (24h) and Manual (15m)
-  const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; isFresh: boolean } | null>>({});
-
-  // Sync Status State
   const [itemStatuses, setItemStatuses] = useState<Record<string, ItemSyncStatus>>({});
   const [isSyncingItem, setIsSyncingItem] = useState<Record<string, boolean>>({});
+  const [globalSyncStatus, setGlobalSyncStatus] = useState<GlobalSyncStatus | null>(null);
 
   const accountsPerPage = 3;
   const toast = useToasts();
 
-  // Constants
-  const AUTO_SYNC_INTERVAL = 24 * 60 * 60 * 1000; // 24 hours
-  const MANUAL_SYNC_COOLDOWN = 15 * 60 * 1000; // 15 minutes
+  // --- DAILY CREDIT LOGIC ---
+  const MAX_CREDITS_PER_DAY = (userPlan === 'starter') ? 0 : 3;
+  // Use today's date to validate credits
+  const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
-  const handleBankConnected = (newAccounts: ConnectedAccount[]) => {
-    if (forceSyncItemId) {
-      toast.success("Sincronização concluída.");
-    } else {
-      toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+  // Debug logic
+  useEffect(() => {
+    console.log('[ConnectedAccounts] Received dailyCredits:', dailyCredits, 'Today:', todayDateStr);
+  }, [dailyCredits, todayDateStr]);
+
+  // NOTE: When dailyCredits is undefined, it means the user has NEVER used credits before
+  // (the field doesn't exist in Firebase yet). This is different from "loading".
+  // In this case, the user has all credits available (count = 0).
+  // We know data is loaded because we have userId from the parent component.
+  const effectiveCredits = dailyCredits || { date: '', count: 0 };
+
+  // Logic: if date is today, use the count. If date is different (yesterday or empty), credits reset to 0.
+  const creditsUsedToday = (effectiveCredits.date === todayDateStr) ? effectiveCredits.count : 0;
+
+  // hasCredit logic:
+  // - Starter plan: always false (no credits available)
+  // - Otherwise: check if credits used today < max
+  // NOTE: undefined dailyCredits means user never used credits = has all credits available
+  const hasCredit = (userPlan === 'starter')
+    ? false
+    : (creditsUsedToday < MAX_CREDITS_PER_DAY);
+
+  // For UI purposes - we consider credits "loaded" if we have a userId (user data is loaded)
+  const isCreditsLoaded = !!userId;
+
+  // Debug Helper
+  const handleDebugIncrement = async () => {
+    if (userId) {
+      console.log('[Debug] Manually triggering credit increment...');
+      const newCount = await dbService.incrementDailyConnectionCredits(userId);
+      toast.success(`Debug: Créditos incrementados para ${newCount}`);
     }
-    if (onRefresh) onRefresh();
   };
 
-  // Fetch sync status periodically
-  const fetchItemStatuses = useCallback(async () => {
-    if (!userId) return;
-    try {
-      const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
-      const data = await response.json();
-      if (data.success && data.items) {
-        const statusMap: Record<string, ItemSyncStatus> = {};
-        data.items.forEach((item: any) => {
-          statusMap[item.id] = {
-            id: item.id,
-            status: item.status,
-            lastUpdatedAt: item.lastUpdatedAt
-          };
-        });
-        setItemStatuses(statusMap);
-
-        // Update active sync toast if exists
-        if (data.syncStatus && activeToastId.current) {
-          const { state, message } = data.syncStatus;
-
-          if (state === 'in_progress' || state === 'pending') {
-            sonnerToast.loading(message || "Sincronizando...", { id: activeToastId.current });
-          } else if (state === 'success') {
-            sonnerToast.success(message || "Sincronização concluída!", { id: activeToastId.current });
-            activeToastId.current = null; // Stop tracking
-            if (onRefresh) onRefresh();
-          } else if (state === 'error') {
-            sonnerToast.error(message || "Erro na sincronização.", { id: activeToastId.current });
-            activeToastId.current = null;
-          }
-        }
-
-        // Also update global refresh if needed
-        if (data.syncStatus?.state === 'success' && onRefresh) {
-          // Optional: Trigger refresh if we detect a completed sync that we weren't tracking locally
-        }
-      }
-    } catch (error) {
-      console.error("Error fetching statuses", error);
-    }
-  }, [userId, onRefresh]);
-
-  useEffect(() => {
-    fetchItemStatuses();
-    const interval = setInterval(fetchItemStatuses, 10000); // Poll every 10s
-    return () => clearInterval(interval);
-  }, [fetchItemStatuses]);
-
-  // Helper to calculate time remaining
   const calculateTimers = (lastSyncedStr: string) => {
-    if (!lastSyncedStr) return null;
+    if (!lastSyncedStr) return {
+      auto: { h: 0, m: 0, s: 0 },
+      cooldownMs: 0,
+      syncedToday: false,
+      isFresh: false
+    };
+
     const lastSync = new Date(lastSyncedStr);
+    const now = new Date();
 
     if (isNaN(lastSync.getTime())) return null;
 
-    const now = new Date();
     const elapsed = now.getTime() - lastSync.getTime();
 
-    // Auto Sync Timer (Count down to 24h)
-    const nextAutoSyncMs = Math.max(0, AUTO_SYNC_INTERVAL - elapsed);
+    // Global Reset is always next midnight
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const nextAutoSyncMs = nextMidnight.getTime() - now.getTime();
 
-    // Manual Sync Cooldown (Count down to 15m)
-    const manualCooldownMs = Math.max(0, MANUAL_SYNC_COOLDOWN - elapsed);
+    // Check if last sync was today (same date)
+    const lastSyncDate = lastSync.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const todayDate = now.toLocaleDateString('en-CA');
+    const syncedToday = lastSyncDate === todayDate;
 
-    // Format Auto Sync
+    // If synced today, cooldown until midnight. Otherwise, no cooldown.
+    const manualCooldownMs = syncedToday ? nextAutoSyncMs : 0;
+
     const h = Math.floor(nextAutoSyncMs / (1000 * 60 * 60));
     const m = Math.floor((nextAutoSyncMs % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((nextAutoSyncMs % (1000 * 60)) / 1000);
@@ -187,22 +185,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return {
       auto: { h, m, s },
       cooldownMs: manualCooldownMs,
-      isFresh: elapsed < 5 * 60 * 1000 // Considered "fresh" if updated < 5 mins ago
+      syncedToday,
+      isFresh: elapsed < 5 * 60 * 1000 // 5 mins fresh
     };
   };
 
-  // Update timers every second
+  // Maintain timer state for display
   useEffect(() => {
     const updateTimers = () => {
-      const newTimers: Record<string, { auto: { h: number; m: number; s: number }, cooldownMs: number, isFresh: boolean } | null> = {};
-
+      const newTimers: Record<string, { auto: { h: number; m: number; s: number }, cooldownMs: number, syncedToday: boolean, isFresh: boolean } | null> = {};
       const mergedLastSynced = { ...lastSynced };
       Object.values(itemStatuses).forEach(status => {
         if (status.lastUpdatedAt) {
           mergedLastSynced[status.id] = status.lastUpdatedAt;
         }
       });
-
       Object.entries(mergedLastSynced).forEach(([id, dateStr]) => {
         if (dateStr) {
           newTimers[id] = calculateTimers(dateStr);
@@ -216,27 +213,111 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return () => clearInterval(interval);
   }, [lastSynced, itemStatuses]);
 
-  // Agrupa contas por itemId (mesma conexão bancária) para garantir que contas do mesmo banco fiquem juntas
+  let connectButtonTooltip = "";
+  if (userPlan === 'starter') {
+    connectButtonTooltip = "Plano Starter não permite conexões automáticas. Faça um upgrade!";
+  } else if (!isCreditsLoaded) {
+    connectButtonTooltip = "Carregando informações de crédito...";
+  } else if (!hasCredit) {
+    connectButtonTooltip = `Limite de ${MAX_CREDITS_PER_DAY} conexões diárias atingido. Aguarde até meia-noite.`;
+  }
+
+  const handleBankConnected = async (newAccounts: ConnectedAccount[]) => {
+    if (forceSyncItemId) {
+      toast.success("Sincronização concluída.");
+    } else {
+      toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+    }
+    // Note: Credits are now updated immediately in BankConnectModal.tsx upon success.
+    // We no longer need to call incrementDailyConnectionCredits here.
+
+    if (onRefresh) onRefresh();
+  };
+
+  const fetchItemStatuses = useCallback(async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
+      const data = await response.json();
+      if (data.success && data.items) {
+        const statusMap: Record<string, ItemSyncStatus> = {};
+        data.items.forEach((item: any) => {
+          statusMap[item.id] = {
+            id: item.id,
+            status: item.status,
+            lastUpdatedAt: item.lastUpdatedAt,
+            connectorName: item.connectorName || null
+          };
+        });
+        setItemStatuses(statusMap);
+
+        if (data.syncStatus) {
+          setGlobalSyncStatus(data.syncStatus);
+        }
+
+        if (data.syncStatus && activeToastId.current) {
+          const { state, message } = data.syncStatus;
+
+          if (state === 'in_progress' || state === 'pending') {
+            // Loading state...
+          } else if (state === 'success') {
+            sonnerToast.success(message || "Sincronização concluída!", { id: activeToastId.current });
+            activeToastId.current = null;
+            if (onRefresh) onRefresh();
+          } else if (state === 'error') {
+            sonnerToast.error(message || "Erro na sincronização.", { id: activeToastId.current });
+            activeToastId.current = null;
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching statuses", error);
+    }
+  }, [userId, onRefresh]);
+
+  // Poll for connection statuses
+  useEffect(() => {
+    fetchItemStatuses();
+    const interval = setInterval(fetchItemStatuses, 10000);
+    return () => clearInterval(interval);
+  }, [fetchItemStatuses]);
+
+  // Global Timer Display Logic
+  const globalTimerDisplay = useMemo(() => {
+    const now = new Date();
+    const nextMidnight = new Date(now);
+    nextMidnight.setHours(24, 0, 0, 0);
+    const diff = nextMidnight.getTime() - now.getTime();
+
+    const h = Math.floor(diff / (1000 * 60 * 60));
+    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+    const s = Math.floor((diff % (1000 * 60)) / 1000);
+    return { h, m, s };
+  }, [timers /* trigger re-calc on tick */]);
+
+
   const groupedAccounts = useMemo(() => {
     const groups: Record<string, { accounts: ConnectedAccount[], itemId: string, institution: string }> = {};
     accounts.forEach((acc) => {
-      // Usa itemId como chave principal para agrupar contas da mesma conexão
       const key = acc.itemId || acc.institution || "Outros";
+      const itemStatus = acc.itemId ? itemStatuses[acc.itemId] : null;
+      const connectorName = itemStatus?.connectorName;
+      const institutionName = acc.institution || connectorName || "Banco";
+
       if (!groups[key]) {
         groups[key] = {
           accounts: [],
           itemId: acc.itemId,
-          institution: acc.institution || "Banco"
+          institution: institutionName
         };
       }
       groups[key].accounts.push(acc);
-      // Atualiza o nome da instituição se encontrar um melhor
-      if (acc.institution && acc.institution !== "Banco" && groups[key].institution === "Banco") {
-        groups[key].institution = acc.institution;
+      if (institutionName !== "Banco" && groups[key].institution === "Banco") {
+        groups[key].institution = institutionName;
       }
     });
     return groups;
-  }, [accounts]);
+  }, [accounts, itemStatuses]);
 
   const toggleLimitView = (id: string) => {
     setLimitView(prev => {
@@ -259,7 +340,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return type === 'SAVINGS' || subtype === 'SAVINGS' || subtype === 'SAVINGS_ACCOUNT';
   };
 
-  // Helper para obter ícone e cor baseado no tipo de conta
   const getAccountIcon = (acc: ConnectedAccount) => {
     if (isCardFromInstitution(acc)) {
       return { icon: <CreditCard size={18} />, bgClass: 'bg-amber-500/10 text-amber-500' };
@@ -267,15 +347,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (isSavingsAccount(acc)) {
       return { icon: <Pig size={18} />, bgClass: 'bg-emerald-500/10 text-emerald-400' };
     }
-    // Conta corrente ou outro tipo
     return { icon: <Wallet size={18} />, bgClass: 'bg-[#d97757]/10 text-[#d97757]' };
   };
 
   const handleManualSync = async (itemId: string) => {
     if (!userId || isSyncingItem[itemId]) return;
 
-    // Start tracking with toast
-    activeToastId.current = sonnerToast.loading("Iniciando processo de reconexão...");
+    // Check if already synced today
+    const itemTimer = timers[itemId];
+    if (itemTimer?.syncedToday) {
+      toast.error(`Este banco já foi sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`);
+      return;
+    }
+
+    // Check if user has credits available
+    if (!hasCredit) {
+      toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários. Aguarde até meia-noite.`);
+      return;
+    }
 
     setIsSyncingItem(prev => ({ ...prev, [itemId]: true }));
     try {
@@ -286,17 +375,16 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       });
       const data = await response.json();
       if (data.success) {
-        // Update toast to pending status immediately
-        sonnerToast.loading("Solicitando atualização ao banco...", { id: activeToastId.current });
-        fetchItemStatuses(); // Refresh immediately
+        toast.info("Sincronização iniciada com sucesso!");
+        // Consume 1 credit for manual sync
+        await dbService.incrementDailyConnectionCredits(userId);
+        fetchItemStatuses();
       } else {
-        sonnerToast.error(data.error || "Erro ao iniciar sincronização.", { id: activeToastId.current });
-        activeToastId.current = null;
+        toast.error(data.error || "Erro ao iniciar sincronização.");
       }
     } catch (error) {
       console.error("Sync error", error);
-      sonnerToast.error("Erro ao sincronizar.", { id: activeToastId.current });
-      activeToastId.current = null;
+      toast.error("Erro ao sincronizar.");
     } finally {
       setIsSyncingItem(prev => ({ ...prev, [itemId]: false }));
     }
@@ -304,12 +392,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
   const handleDeleteInstitution = async () => {
     if (!userId || !deleteData) return;
-
     const { accounts: institutionAccounts, institutionName } = deleteData;
-
     setIsDeleting(institutionName);
     try {
-      // Delete all accounts from this institution
       for (const acc of institutionAccounts) {
         await dbService.deleteConnectedAccount(userId, acc.id);
       }
@@ -343,11 +428,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     );
   }
 
-  // --- MANUAL MODE BLOCK ---
   if (!isProMode) {
     return (
       <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-2xl font-bold text-white tracking-tight">Open Finance Bloqueado</h2>
@@ -367,25 +450,79 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   return (
     <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div>
             <h2 className="text-2xl font-bold text-white tracking-tight">Contas Conectadas</h2>
-            <p className="text-gray-400 text-sm mt-1">Gerencie seus bancos e cartões</p>
+            <div className="flex items-center gap-1.5 mt-1 text-gray-400">
+              {userPlan !== 'starter' && (
+                <div className="w-5 h-5 flex items-center justify-center -ml-1">
+                  <Lottie animationData={linkAnimation} loop={true} />
+                </div>
+              )}
+              <p className="text-sm">
+                {userPlan === 'starter'
+                  ? 'Conexão automática indisponível no Starter'
+                  : `${creditsUsedToday} de ${MAX_CREDITS_PER_DAY} conexões usadas`
+                }
+              </p>
+              {userPlan !== 'starter' && (
+                <TooltipIcon content="Seus créditos diários são renovados automaticamente à meia-noite.">
+                  <Info size={14} className="text-gray-500 hover:text-gray-300 cursor-help" />
+                </TooltipIcon>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => {
-              setForceSyncItemId(null);
-              setShowBankModal(true);
-            }}
-            className="bg-[#d97757] hover:bg-[#c66646] text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm"
-          >
-            <Plus size={18} />
-            <span className="hidden sm:inline">Conectar Banco</span>
-          </button>
+          {/* Global Timer Display - VALID IF: Not Starter AND Has Accounts AND Timer Loaded */}
+          {userPlan !== 'starter' && accounts.length > 0 && globalTimerDisplay && (
+            <div className="flex items-center gap-3 mr-2 animate-fade-in bg-gray-900/30 px-3 py-1.5 rounded-xl border border-gray-800/50 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-gray-500">
+                <span className="hidden md:inline">Próxima Sincronização:</span>
+              </div>
+              <div className="flex items-center gap-1 font-mono text-white font-bold text-sm bg-gray-950 px-3 py-1.5 rounded-lg border border-gray-800 shadow-inner">
+                <NumberFlow value={globalTimerDisplay.h} format={{ minimumIntegerDigits: 2 }} transformTiming={{ duration: 500 }} />
+                <span className="text-gray-600">:</span>
+                <NumberFlow value={globalTimerDisplay.m} format={{ minimumIntegerDigits: 2 }} transformTiming={{ duration: 500 }} />
+                <span className="text-gray-600">:</span>
+                <NumberFlow value={globalTimerDisplay.s} format={{ minimumIntegerDigits: 2 }} transformTiming={{ duration: 500 }} />
+              </div>
+            </div>
+          )}
+
+          <TooltipIcon content={connectButtonTooltip || "Conectar nova instituição (Consome 1 crédito)"}>
+            <button
+              onClick={() => {
+                if (userPlan === 'starter' && onUpgrade) {
+                  onUpgrade();
+                  return;
+                }
+                if (!hasCredit || !isCreditsLoaded) return;
+                setForceSyncItemId(null);
+                setShowBankModal(true);
+              }}
+              disabled={(!hasCredit || !isCreditsLoaded) && userPlan !== 'starter'}
+              className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm ${
+                hasCredit && isCreditsLoaded
+                  ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
+                  : userPlan === 'starter'
+                    ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
+                    : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+              }`}
+            >
+              {userPlan === 'starter' ? <Lock size={18} /> : <Plus size={18} />}
+              <span className="hidden sm:inline">
+                {userPlan === 'starter'
+                  ? 'Desbloquear Conexão'
+                  : !isCreditsLoaded
+                    ? 'Carregando...'
+                    : 'Conectar Banco'}
+              </span>
+            </button>
+          </TooltipIcon>
+
           {onRefresh && accounts.length > 0 && (
             <button
               onClick={onRefresh}
@@ -398,7 +535,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
       </div>
 
-      {/* List Header */}
       <div className="flex items-center justify-between mt-2">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 font-bold">Suas conexões</p>
@@ -419,15 +555,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           {Object.entries(groupedAccounts).map(([groupKey, data]) => {
             const { accounts: institutionAccounts, institution: institutionName, itemId } = data;
 
-            // Logic for sync header
             const timer = itemId ? timers[itemId] : null;
             const itemStatus = itemId ? itemStatuses[itemId] : null;
             const isUpdating = itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true;
             const isLoginError = itemStatus?.status === 'LOGIN_ERROR';
             const isWait = itemStatus?.status === 'WAITING_USER_INPUT';
-            const isFresh = timer?.isFresh || false;
-
-            const canManuallySync = itemId && (timer?.cooldownMs === 0 || isLoginError);
 
             const currentPage = accountPages[groupKey] || 1;
             const totalPages = Math.ceil(institutionAccounts.length / accountsPerPage);
@@ -441,7 +573,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
                 <div className="backdrop-blur-sm p-5 rounded-t-2xl border-b border-gray-800 flex flex-col relative z-10 gap-4" style={{ backgroundColor: '#333432' }}>
 
-                  {/* Top Bar: Icon + Name + Actions */}
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
@@ -456,14 +587,51 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* Status badges for errors only */}
+                      {itemId && (isLoginError || isWait) && (
+                        <div className="mr-2">
+                          {isLoginError ? (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20">
+                              <AlertCircle size={12} className="text-red-400" />
+                              <span className="text-[10px] text-red-400 font-bold uppercase">Erro Login</span>
+                            </div>
+                          ) : isWait ? (
+                            <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-yellow-500/10 border border-yellow-500/20">
+                              <AlertCircle size={12} className="text-yellow-400" />
+                              <span className="text-[10px] text-yellow-400 font-bold uppercase">Ação Necessária</span>
+                            </div>
+                          ) : null}
+                        </div>
+                      )}
+
                       {itemId && (
-                        <TooltipIcon content="Sincronizar agora">
+                        <TooltipIcon content={
+                          isUpdating ? "Sincronização em andamento..." :
+                            timer?.syncedToday ? `Já sincronizado hoje. Próxima sincronização em ${timer.auto.h}h ${timer.auto.m}m` :
+                              !hasCredit ? `Sem créditos diários disponíveis.` :
+                                "Sincronizar agora (1x por dia)"
+                        }>
                           <button
                             onClick={() => handleManualSync(itemId)}
-                            disabled={isDeleting !== null || isUpdating}
-                            className={`p-2 rounded-lg transition-all disabled:opacity-50 ${isUpdating ? 'animate-spin text-[#d97757]' : 'text-[#d97757] hover:text-[#e08b70] hover:bg-[#d97757]/10'}`}
+                            disabled={!hasCredit || isDeleting !== null || isUpdating || timer?.syncedToday}
+                            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${
+                              isUpdating
+                                ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
+                                : (!hasCredit || isDeleting !== null || timer?.syncedToday)
+                                  ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
+                                  : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
+                            }`}
                           >
-                            {isUpdating ? <Loader2 size={18} /> : <RotateCcw size={18} />}
+                            <RotateCcw size={14} className={isUpdating ? "animate-spin" : ""} />
+                            <span className="hidden sm:inline">
+                              {isUpdating
+                                ? (globalSyncStatus?.state === 'in_progress' && globalSyncStatus?.message
+                                    ? globalSyncStatus.message
+                                    : "Puxando dados...")
+                                : timer?.syncedToday
+                                  ? `${timer.auto.h}h ${timer.auto.m}m`
+                                  : 'Sincronizar'}
+                            </span>
                           </button>
                         </TooltipIcon>
                       )}
@@ -479,39 +647,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
                   </div>
 
-                  {/* Status Bar */}
-                  {itemId && (
-                    <div className="flex items-center justify-between text-xs bg-gray-900/50 p-2 rounded-lg border border-gray-800/50">
-                      <div className="flex items-center gap-1.5">
-                        {isUpdating ? (
-                          <>
-                            <Loader2 size={12} className="text-[#d97757] animate-spin" />
-                            <span className="text-[#d97757] font-medium">Sincronizando...</span>
-                          </>
-                        ) : isLoginError ? (
-                          <>
-                            <AlertCircle size={12} className="text-red-400" />
-                            <span className="text-red-400 font-medium">Erro de login</span>
-                          </>
-                        ) : isWait ? (
-                          <>
-                            <AlertCircle size={12} className="text-yellow-400" />
-                            <span className="text-yellow-400 font-medium">Aguardando ação</span>
-                          </>
-                        ) : (
-                          <>
-                            <CheckCircle size={12} className="text-green-500/70" />
-                            <span className="text-green-500/70 font-medium">Conectado</span>
-                          </>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-1.5 text-gray-500">
-                        {/* Status Right Side Cleared */}
-                      </div>
-                    </div>
-                  )}
-
                 </div>
 
                 <div className="p-4 relative z-10 flex-1" style={{ backgroundColor: '#30302E' }}>
@@ -525,15 +660,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       className="space-y-3"
                     >
                       {paginatedInstitutionAccounts.map((acc) => {
-                        const isCredit = isCardFromInstitution(acc);
-                        const showLimit = limitView.has(acc.id);
-
-                        const limit = acc.creditLimit || 0;
-                        const available = acc.availableCreditLimit || 0;
-                        const used = limit - available;
-                        const limitPercentage = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
                         const isManual = acc.connectionMode === 'MANUAL';
-
                         return (
                           <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
                             <div className="p-4">
@@ -607,7 +734,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
       )}
 
-      {/* Delete Confirmation */}
+      {/* Confirmation Bar */}
       <ConfirmationBar
         isOpen={!!deleteData}
         onCancel={() => setDeleteData(null)}
@@ -620,7 +747,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         isDestructive={true}
       />
 
-      {/* Bank Connect Modal */}
       <BankConnectModal
         isOpen={showBankModal}
         onClose={() => {
@@ -630,6 +756,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         userId={userId || null}
         onSuccess={handleBankConnected}
         forceSyncItemId={forceSyncItemId}
+        dailyCredits={dailyCredits}
+        maxCreditsPerDay={MAX_CREDITS_PER_DAY}
+        userPlan={userPlan}
       />
 
     </div>

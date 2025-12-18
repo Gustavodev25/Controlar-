@@ -182,6 +182,8 @@ export interface ConfirmationBarProps {
     position?: 'top' | 'bottom';
     /** Size variant */
     size?: 'sm' | 'default' | 'lg';
+    /** Optional description text */
+    description?: string;
 }
 
 /**
@@ -212,11 +214,12 @@ export const ConfirmationBar: React.FC<ConfirmationBarProps> = ({
     isDestructive = false,
     position = 'bottom',
     size = 'default',
+    description,
 }) => {
     const sizeClasses = {
-        sm: 'h-10',
-        default: 'h-11',
-        lg: 'h-12',
+        sm: 'min-h-[40px]',
+        default: 'min-h-[44px]',
+        lg: 'min-h-[48px]',
     };
 
     const positionClasses = {
@@ -302,6 +305,11 @@ export const ConfirmationBar: React.FC<ConfirmationBarProps> = ({
                                     : isSaving
                                         ? savingLabel
                                         : label}
+                            {description && !error && !success && !isSaving && (
+                                <span className="block text-xs font-normal text-gray-400 -mt-0.5">
+                                    {description}
+                                </span>
+                            )}
                         </motion.span>
                     </motion.div>
 

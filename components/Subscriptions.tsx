@@ -200,7 +200,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
 
   // Mode state
-  const [modalMode, setModalMode] = useState<'ai' | 'manual'>('ai');
+  const [modalMode, setModalMode] = useState<'ai' | 'manual'>('manual');
 
   // AI State - Chat System (igual Reminders)
   interface ChatMessage {
@@ -231,7 +231,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     name: '',
     amount: '',
     billingCycle: 'monthly' as 'monthly' | 'yearly',
-    category: 'Lazer',
+    category: '',
     status: 'active' as 'active' | 'canceled'
   });
 
@@ -472,8 +472,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     setIsModalOpen(false);
     setTimeout(() => {
       setEditingId(null);
-      setFormData({ name: '', amount: '', billingCycle: 'monthly', category: 'Lazer', status: 'active' });
-      setModalMode('ai');
+      setFormData({ name: '', amount: '', billingCycle: 'monthly', category: '', status: 'active' });
+      setModalMode('manual');
       setAiInput('');
       setChatMessages([]);
       setGenerationStatus('idle');
@@ -786,41 +786,10 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
             {/* Header Modal - Tabs Compactas */}
             <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
               {!editingId ? (
-                <div className="relative flex bg-[#272725]/60 p-0.5 rounded-lg">
-                  {/* Indicador animado que desliza */}
-                  <div
-                    className="absolute top-0.5 bottom-0.5 bg-[#d97757] rounded-md transition-all duration-300 ease-out shadow-md shadow-[#d97757]/20"
-                    style={{
-                      width: 'calc(50% - 2px)',
-                      left: modalMode === 'ai' ? '2px' : 'calc(50% + 2px)',
-                    }}
-                  />
-
-                  <button
-                    onClick={() => setModalMode('ai')}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'ai'
-                      ? 'text-white'
-                      : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                  >
-                    <img
-                      src={coinzinhaImg}
-                      className={`w-3.5 h-3.5 rounded-full object-cover transition-all duration-300 ${modalMode === 'ai' ? 'ring-1 ring-white/30' : 'opacity-60'}`}
-                      alt="Coinzinha"
-                    />
-                    Coinzinha
-                  </button>
-                  <button
-                    onClick={() => setModalMode('manual')}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[11px] font-semibold transition-all duration-300 flex items-center gap-1.5 min-w-[90px] justify-center ${modalMode === 'manual'
-                      ? 'text-white'
-                      : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                  >
-                    <Plus size={12} className={`transition-transform duration-300 ${modalMode === 'manual' ? 'rotate-0' : 'rotate-90'}`} />
-                    Manual
-                  </button>
-                </div>
+                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
+                  <Plus size={14} className="text-[#d97757]" />
+                  Nova Assinatura
+                </h3>
               ) : (
                 <h3 className="text-sm font-semibold text-white flex items-center gap-2">
                   <Edit2 size={14} className="text-[#d97757]" />

@@ -57,8 +57,48 @@ import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { translatePluggyCategory } from './services/openFinanceService';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
+import { UAParser } from 'ua-parser-js';
 
 // Removed FilterMode type definition as it is imported from components/Header
+
+// Helper to capture connection details
+const captureDeviceDetails = async (uid: string) => {
+  try {
+    const parser = new UAParser();
+    const result = parser.getResult();
+
+    // Fetch IP and Location
+    let ip = 'Unknown';
+    let location = 'Unknown';
+    try {
+      const res = await fetch('https://ipapi.co/json/');
+      if (res.ok) {
+        const data = await res.json();
+        ip = data.ip || 'Unknown';
+        location = `${data.city || 'Desconhecido'}, ${data.region_code || ''}`;
+      }
+    } catch (e) {
+      console.warn("Could not fetch IP/Location", e);
+    }
+
+    const log = {
+      id: crypto.randomUUID(),
+      os: `${result.os.name || 'Unknown'} ${result.os.version || ''}`,
+      browser: `${result.browser.name || 'Unknown'} ${result.browser.version || ''}`,
+      device: result.device.type ? `${result.device.vendor || ''} ${result.device.model || ''}` : 'Desktop',
+      ip,
+      location,
+      timestamp: new Date().toISOString(),
+      isCurrent: true
+    };
+
+    const updatedLogs = await dbService.logConnection(uid, log);
+    return updatedLogs;
+  } catch (err) {
+    console.error("Error capturing device details:", err);
+    return null;
+  }
+};
 
 interface PendingTwoFactor {
   uid: string;
@@ -532,13 +572,19 @@ const App: React.FC = () => {
   }, [cardInvoiceTypes]);
 
   // Member Management State
-  const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('finances_active_member_id');
-      return (saved as string | 'FAMILY_OVERVIEW') || 'FAMILY_OVERVIEW';
+  const [activeMemberId, setActiveMemberId] = useState<string | 'FAMILY_OVERVIEW'>('FAMILY_OVERVIEW');
+
+  // Enforce "Visão Geral" (Admin Profile) as default view on load
+  const hasSetInitialMemberRef = React.useRef(false);
+  useEffect(() => {
+    if (!hasSetInitialMemberRef.current && members.length > 0) {
+      const admin = members.find(m => m.role === 'admin') || members[0];
+      if (admin) {
+        setActiveMemberId(admin.id);
+        hasSetInitialMemberRef.current = true;
+      }
     }
-    return 'FAMILY_OVERVIEW';
-  });
+  }, [members]);
 
   // Modals State
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -604,6 +650,50 @@ const App: React.FC = () => {
     setLastSyncMap(newMap);
   }, [connectedAccounts]);
 
+  // State for institution names from Pluggy items
+  const [itemConnectorNames, setItemConnectorNames] = useState<Record<string, string>>({});
+
+  // Fetch institution names from items-status API
+  useEffect(() => {
+    if (!userId || connectedAccounts.length === 0) return;
+
+    const fetchConnectorNames = async () => {
+      try {
+        const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
+        const data = await response.json();
+        if (data.success && data.items) {
+          const namesMap: Record<string, string> = {};
+          data.items.forEach((item: { id: string; connectorName?: string }) => {
+            if (item.connectorName) {
+              namesMap[item.id] = item.connectorName;
+            }
+          });
+          setItemConnectorNames(namesMap);
+        }
+      } catch (error) {
+        console.error('Error fetching connector names:', error);
+      }
+    };
+
+    fetchConnectorNames();
+  }, [userId, connectedAccounts.length]);
+
+  // Enrich connected accounts with institution names from items-status
+  const enrichedConnectedAccounts = useMemo(() => {
+    return connectedAccounts.map(acc => {
+      // Se já tem institution preenchida, mantém
+      if (acc.institution && acc.institution !== 'Banco') {
+        return acc;
+      }
+      // Tenta pegar o nome do connector do mapa
+      const connectorName = acc.itemId ? itemConnectorNames[acc.itemId] : null;
+      if (connectorName) {
+        return { ...acc, institution: connectorName };
+      }
+      return acc;
+    });
+  }, [connectedAccounts, itemConnectorNames]);
+
   useEffect(() => {
     if (!userId) {
       setNotifications([]);
@@ -668,7 +758,9 @@ const App: React.FC = () => {
             // Include family info to ensure Family Goals work correctly from the start
             familyGroupId: profile?.familyGroupId,
             familyRole: profile?.familyRole,
-            subscription: profile?.subscription
+            subscription: profile?.subscription,
+            connectionLogs: profile?.connectionLogs || [],
+            dailyConnectionCredits: profile?.dailyConnectionCredits || { date: '', count: 0 }
           };
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
@@ -689,6 +781,13 @@ const App: React.FC = () => {
           setPendingTwoFactor(null);
           setUserId(firebaseUser.uid);
           setIsLoadingData(true);
+
+          // Log connection and update local state
+          const updatedLogs = await captureDeviceDetails(firebaseUser.uid);
+          if (updatedLogs && Array.isArray(updatedLogs)) {
+            baseProfile.connectionLogs = updatedLogs;
+          }
+
           setCurrentUser(baseProfile);
         } catch (err) {
           console.error("Erro ao carregar perfil:", err);
@@ -784,6 +883,8 @@ const App: React.FC = () => {
   useEffect(() => {
     if (!userId) return;
 
+
+
     const unsubTx = dbService.listenToTransactions(userId, (data) => {
       setTransactions(data);
       setIsLoadingData(false);
@@ -807,22 +908,33 @@ const App: React.FC = () => {
 
     const unsubProfile = dbService.listenToUserProfile(userId, (data) => {
       setCurrentUser(prev => {
-        if (!prev) return null;
+        // If no previous user, try to construct from data or return null if insufficient
+        if (!prev) {
+          if (data.name) return data as User;
+          return null;
+        }
 
-        console.log('[Profile Listener] Profile update received:', {
-          prevIsAdmin: prev.isAdmin,
-          dataIsAdmin: data.isAdmin,
-          willPreserve: data.isAdmin === undefined && prev.isAdmin !== undefined
+        console.log('[Profile Listener] Profile update received;', {
+          credits: JSON.stringify(data.dailyConnectionCredits),
+          prevCredits: JSON.stringify(prev.dailyConnectionCredits)
         });
 
-        // Preserve isAdmin if it was already set and new data doesn't have it
+        // Merge existing user with new profile data
         const updatedUser = { ...prev, ...data };
-        // If the new data doesn't have isAdmin defined but prev had it, keep prev's value
+
+        // IMPORTANT: Always use the dailyConnectionCredits from the listener
+        // The listener always returns this field (even if empty { date: '', count: 0 })
+        // This ensures the UI always has the latest credit count from Firebase
+        if (data.dailyConnectionCredits) {
+          updatedUser.dailyConnectionCredits = data.dailyConnectionCredits;
+          console.log('[Profile Listener] Updated dailyConnectionCredits:', JSON.stringify(data.dailyConnectionCredits));
+        }
+
+        // Preserve isAdmin logic (existing)
         if (data.isAdmin === undefined && prev.isAdmin !== undefined) {
           updatedUser.isAdmin = prev.isAdmin;
         }
 
-        console.log('[Profile Listener] Final user isAdmin:', updatedUser.isAdmin);
         return updatedUser;
       });
     });
@@ -1114,7 +1226,8 @@ const App: React.FC = () => {
         id.includes('credit');
     };
 
-    const checkingAccounts = connectedAccounts
+    // Use enrichedConnectedAccounts to include institution names
+    const checkingAccounts = enrichedConnectedAccounts
       .filter(a => {
         const subtype = (a.subtype || '').toUpperCase();
         const type = (a.type || '').toUpperCase();
@@ -1146,7 +1259,7 @@ const App: React.FC = () => {
 
     const checking = checkingAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
 
-    const creditAccounts = connectedAccounts.filter(a => isCreditCard(a));
+    const creditAccounts = enrichedConnectedAccounts.filter(a => isCreditCard(a));
 
 
     const credit = creditAccounts.reduce((acc, a) => ({
@@ -1157,7 +1270,7 @@ const App: React.FC = () => {
     }), { used: 0, available: 0, limit: 0, accounts: [] as ConnectedAccount[] });
 
     return { checking, checkingAccounts, credit };
-  }, [connectedAccounts, getCurrentInvoiceAmount]);
+  }, [enrichedConnectedAccounts, getCurrentInvoiceAmount]);
 
   // AUTO-ENABLE ALL CARDS ON LOAD (Only if user hasn't configured preferences yet)
   useEffect(() => {
@@ -1173,19 +1286,19 @@ const App: React.FC = () => {
 
   // NEW: Filter Savings Accounts
   const connectedSavingsAccounts = useMemo(() => {
-    return connectedAccounts.filter(a =>
+    return enrichedConnectedAccounts.filter(a =>
       a.type === 'SAVINGS' ||
       a.subtype === 'SAVINGS_ACCOUNT' ||
       a.subtype === 'SAVINGS'
     );
-  }, [connectedAccounts]);
+  }, [enrichedConnectedAccounts]);
 
   // NEW: Account Map for Lookups
   const accountMap = useMemo(() => {
     const map = new Map<string, ConnectedAccount>();
-    connectedAccounts.forEach(a => map.set(a.id, a));
+    enrichedConnectedAccounts.forEach(a => map.set(a.id, a));
     return map;
-  }, [connectedAccounts]);
+  }, [enrichedConnectedAccounts]);
 
   // 1. Filter by Member (Base filtering) AND Account Mode Visibility
 
@@ -1668,63 +1781,10 @@ const App: React.FC = () => {
 
     const incomes = filteredDashboardTransactions.filter(incomeFilter);
 
-    // DEBUG: Log all transactions to see what's coming from Open Finance
-    console.log('=== DEBUG DESPESAS ===');
-    console.log('includeOpenFinanceInStats:', includeOpenFinanceInStats);
-    console.log('Total filteredDashboardTransactions:', filteredDashboardTransactions.length);
-    console.log('checkingAccountIds:', Array.from(checkingAccountIds));
-    console.log('creditCardAccountIds:', Array.from(creditCardAccountIds));
-
-    // Log transactions that have accountId in checkingAccountIds
+    // Initial filtering for Checking Expenses (Logic kept, logs removed)
     const checkingTxs = filteredDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
-    console.log('Transações de conta corrente encontradas:', checkingTxs.length);
-
-    // DEBUG: Specific check for checking account expenses
-    const checkingExpenses = checkingTxs.filter(t => {
-      const desc = (t.description || '').toUpperCase();
-      const isExpenseByDesc =
-        desc.includes('ENVIADO') ||
-        desc.includes('ENVIADA') ||
-        desc.includes('PAG ') ||
-        desc.includes('PAGAMENTO') ||
-        desc.includes('DEBITO') ||
-        desc.includes('DÉBITO') ||
-        desc.includes('EMPRESTIMO') ||
-        desc.includes('EMPRÉSTIMO') ||
-        desc.includes('TRANSFERENCIA ENVIADA') ||
-        desc.includes('TRANSFERÊNCIA ENVIADA') ||
-        desc.includes('SAQUE') ||
-        desc.includes('COMPRA') ||
-        desc.includes('TARIFA');
-
-      return t.type === 'expense' || t.amount < 0 || isExpenseByDesc;
-    });
-    console.log('Despesas reais em conta corrente:', checkingExpenses.length);
-    checkingExpenses.slice(0, 5).forEach(t => {
-      console.log(`  Checking Expense: "${t.description}" | type: ${t.type} | amount: ${t.amount}`);
-    });
-
-    // DEBUG: Raw Transactions Check
-    console.log('=== RAW TRANSACTIONS CHECK ===');
-    const rawCheckingTxs = transactions.filter(t =>
-      t.accountId &&
-      (t.accountId.includes('klavi_acc_22518081502090_3402_43346088') ||
-        t.accountId.includes('klavi_acc_22518081502090_6710_73468350'))
-    );
-    console.log('Total Raw Transactions for target accounts:', rawCheckingTxs.length);
-    const rawExpenses = rawCheckingTxs.filter(t => t.type === 'expense' || t.amount < 0);
-    console.log('Raw Expenses found:', rawExpenses.length);
-    rawExpenses.forEach(t => {
-      console.log(`  RAW EXPENSE: "${t.description}" | amount: ${t.amount} | date: ${t.date} | ignored: ${t.ignored}`);
-    });
-    console.log('=== END RAW CHECK ===');
-
-    checkingTxs.slice(0, 10).forEach(t => {
-      console.log(`  - "${t.description}" | type: ${t.type} | amount: ${t.amount} | accountId: ${t.accountId} | sourceType: ${(t as any).sourceType} | providerId: ${(t as any).providerId}`);
-    });
 
     // Base Expenses (All types) - Exclude credit card transactions entirely
-    // Credit card expenses will be calculated from the invoice amount of enabled cards
     const baseExpenses = filteredDashboardTransactions.filter(t => {
       // Check description for expense patterns (for transactions that may have wrong type)
       const desc = (t.description || '').toUpperCase();
@@ -1746,17 +1806,11 @@ const App: React.FC = () => {
       // Consider as expense if type is 'expense' OR amount is negative OR description indicates expense
       const isExpense = t.type === 'expense' || t.amount < 0 || isExpenseByDescription;
 
-      // DEBUG: Log why transaction is/isn't considered expense
-      if (t.accountId && checkingAccountIds.has(t.accountId)) {
-        console.log(`[EXPENSE CHECK] "${t.description}" | type=${t.type} | amount=${t.amount} | isExpenseByDesc=${isExpenseByDescription} | isExpense=${isExpense}`);
-      }
-
       if (!isExpense) return false;
       if (t.isInvestment) return false;
       if (t.category.startsWith('Caixinha')) return false;
 
       // Check if this is a checking/savings account transaction
-      // Either by sourceType or by accountId belonging to a non-credit account
       const isAccountTransaction = (t as any).sourceType === 'account' ||
         (t.accountId && checkingAccountIds.has(t.accountId));
 
@@ -1768,23 +1822,17 @@ const App: React.FC = () => {
 
       // If it's a credit card transaction, exclude it (will be calculated from invoice)
       if (isCreditCard) {
-        console.log(`[FILTERED - CREDIT CARD] "${t.description}"`);
         return false;
       }
 
       // Filter Open Finance - check if transaction belongs to Open Finance
       const isOpenFinanceTx = !!(t.importSource || (t as any).providerId || isAccountTransaction);
       if (!includeOpenFinanceInStats && isOpenFinanceTx) {
-        console.log(`[FILTERED - OPEN FINANCE OFF] "${t.description}" | isOpenFinanceTx=${isOpenFinanceTx}`);
         return false;
       }
 
-      console.log(`[INCLUDED AS EXPENSE] "${t.description}" | amount=${t.amount}`);
       return true;
     });
-
-    console.log('baseExpenses encontradas:', baseExpenses.length);
-    console.log('=== FIM DEBUG ===');
 
     const totalIncome = incomes.reduce((acc, t) => acc + Math.abs(t.amount), 0);
     const nonCCSpending = baseExpenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
@@ -2130,8 +2178,8 @@ const App: React.FC = () => {
         setIsSyncingCards(true);
         saveSyncProgress({
           step: status.message,
-          current: 0,
-          total: 100, // Indeterminate progress
+          current: status.current || 0,
+          total: status.total || 100,
           startedAt: updateTime
         });
       } else if (status.state === 'success') {
@@ -2515,7 +2563,7 @@ const App: React.FC = () => {
         text: "Transação excluída.",
         actionLabel: "Desfazer",
         onAction: () => {
-          if (userId) dbService.restoreTransaction(userId, t);
+          if (userId && deleted) dbService.restoreTransaction(userId, deleted);
         }
       });
     } catch (e) {
@@ -2523,14 +2571,15 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }) => {
+  const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => {
     if (userId) {
       await dbService.updateUserProfile(userId, {
         baseSalary: newSalary,
         salaryPaymentDay: paymentDay,
         salaryAdvanceValue: advanceOptions?.advanceValue,
         salaryAdvancePercent: advanceOptions?.advancePercent,
-        salaryAdvanceDay: advanceOptions?.advanceDay
+        salaryAdvanceDay: advanceOptions?.advanceDay,
+        salaryExemptFromDiscounts: salaryExemptFromDiscounts
       });
       toast.success("Configurações de renda atualizadas.");
     }
@@ -2816,9 +2865,10 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-950 flex text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
       <Analytics />
-      <MetaPixelLoader />
+
       <ToastContainer />
       <GlobalSyncToast />
+      <MetaPixelLoader activeTab={activeTab} />
       <InviteAcceptModal
         isOpen={showInviteModal}
         onAccept={handleAcceptInvite}
@@ -2827,379 +2877,405 @@ const App: React.FC = () => {
         isProcessing={isProcessingInvite}
       />
 
-      <div id="chat-mount-point" className={activeTab === 'chat' ? 'fixed inset-0 z-50 bg-[#30302E] flex flex-col' : 'hidden'} />
+
 
       {/* Sidebar */}
-      {activeTab !== 'chat' && (
-        <Sidebar
-          isOpen={isSidebarOpen}
-          setIsOpen={setSidebarOpen}
+
+      <Sidebar
+        isOpen={isSidebarOpen}
+        setIsOpen={setSidebarOpen}
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        isAdminMode={isAdminMode}
+        activeMemberId={activeMemberId}
+        members={members}
+        onSelectMember={setActiveMemberId}
+        onAddMember={handleAddMember}
+        onDeleteMember={handleDeleteMember}
+        userPlan={effectivePlan}
+        isAdmin={currentUser?.isAdmin}
+        overdueRemindersCount={overdueRemindersCount}
+        onOpenAIModal={() => handleOpenAIModal('transaction')}
+        onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+        isProMode={isProMode}
+      />
+
+
+      {/* Main Content */}
+      <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'} ${activeTab === 'chat' ? 'flex flex-col h-screen overflow-hidden' : ''}`}>
+        <Header
+          isSidebarOpen={isSidebarOpen}
+          setSidebarOpen={setSidebarOpen}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
-          isAdminMode={isAdminMode}
           activeMemberId={activeMemberId}
           members={members}
-          onSelectMember={setActiveMemberId}
-          onAddMember={handleAddMember}
-          onDeleteMember={handleDeleteMember}
-          userPlan={effectivePlan}
-          isAdmin={currentUser?.isAdmin}
-          overdueRemindersCount={overdueRemindersCount}
-          onOpenAIModal={() => handleOpenAIModal('transaction')}
-          onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+          currentUser={currentUser}
+          isLimitReached={isLimitReached}
+          filterMode={filterMode}
+          setFilterMode={setFilterMode}
+          dashboardDate={dashboardDate}
+          setDashboardDate={setDashboardDate}
+          dashboardYear={dashboardYear}
+          setDashboardYear={setDashboardYear}
+          dashboardCategory={dashboardCategory}
+          projectionSettings={projectionSettings}
+          setProjectionSettings={setProjectionSettings}
           isProMode={isProMode}
+          showProjectionMenu={showProjectionMenu}
+          setShowProjectionMenu={setShowProjectionMenu}
+          onResetFilters={handleResetFilters}
+          reminders={reminders}
+          budgets={budgets}
+          transactions={transactions}
+          notifications={notifications}
+          onArchiveNotification={handleArchiveNotification}
+          onDeleteNotification={handleDeleteNotification}
+          onMarkReadNotification={handleMarkReadNotification}
+          isAdminMode={isAdminMode}
+          setIsAdminMode={setIsAdminMode}
+          setIsSettingsOpen={setIsSettingsOpen}
+          onLogout={() => auth.signOut()}
+          onFamilyView={() => setActiveMemberId('FAMILY_OVERVIEW')}
+          onBackToProfile={() => {
+            const admin = members.find(m => m.role === 'admin') || members[0];
+            if (admin) setActiveMemberId(admin.id);
+          }}
+          isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
+          showFamilyOption={effectivePlan === 'family'}
+          userId={userId}
+          hasConnectedAccounts={connectedAccounts.length > 0}
+        />
+
+        {/* Feedback Banner - Only on Dashboard */}
+        {activeTab === 'dashboard' && (
+          <FeedbackBanner
+            userEmail={currentUser?.email}
+            userName={currentUser?.name}
+            userId={userId || undefined}
+          />
+        )}
+
+        <div className={activeTab === 'chat' ? "flex-1 overflow-hidden relative" : "p-3 lg:p-6 max-w-7xl mx-auto"}>
+
+          {/* Subscription Page - High Priority Render */}
+          {activeTab === 'subscription' && currentUser ? (
+            <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
+              <SubscriptionPage
+                user={currentUser}
+                onBack={() => setActiveTab('dashboard')}
+                onUpdateUser={async (u) => {
+                  if (userId) await dbService.updateUserProfile(userId, u);
+                }}
+              />
+            </div>
+          ) : activeTab === 'admin_overview' ? (
+            <AdminDashboard user={currentUser} />
+          ) : activeTab === 'admin_waitlist' ? (
+            <AdminWaitlist />
+          ) : activeTab === 'admin_email' ? (
+            <AdminEmailMessage currentUser={currentUser} />
+          ) : activeTab === 'admin_coupons' ? (
+            <AdminCoupons />
+          ) : activeTab === 'admin_pixels' ? (
+            <AdminPixels />
+          ) : activeTab === 'admin_feedbacks' ? (
+            <AdminFeedbacks />
+          ) : activeTab === 'admin_control' || activeTab === 'admin_users' || activeTab === 'admin_subscriptions' ? (
+            <AdminControl />
+          ) : (
+            /* Normal Dashboard Content */
+            activeMemberId === 'FAMILY_OVERVIEW' ? (
+              <FamilyOverview
+                stats={stats}
+                goals={familyGoals}
+                isLoading={isLoadingData}
+                accountBalances={accountBalances}
+                creditCardTransactions={creditCardTransactions}
+                dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                toggles={{
+                  includeChecking: includeCheckingInStats,
+                  setIncludeChecking: setIncludeCheckingInStats,
+                  includeCredit: includeCreditCardInStats,
+                  setIncludeCredit: setIncludeCreditCardInStats,
+                  creditCardUseTotalLimit: creditCardUseTotalLimit,
+                  setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                  creditCardUseFullLimit: creditCardUseFullLimit,
+                  setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                  includeOpenFinance: includeOpenFinanceInStats,
+                  setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                  enabledCreditCardIds: enabledCreditCardIds,
+                  setEnabledCreditCardIds: setEnabledCreditCardIds
+                }}
+                isProMode={isProMode}
+                onActivateProMode={() => setIsProMode(true)}
+                userPlan={effectivePlan}
+                onUpgradeClick={() => setActiveTab('subscription')}
+                onAddGoal={handleAddGoal}
+                onUpdateGoal={handleUpdateGoal}
+                onDeleteGoal={handleDeleteGoal}
+                onAddTransaction={handleAddTransaction}
+              />
+            ) : (
+              <>
+                {activeTab === 'dashboard' && (
+                  <>
+                    {/* Only show Salary Manager in Monthly mode where it makes sense */}
+                    {filterMode === 'month' && !dashboardCategory && (
+                      <SalaryManager
+                        baseSalary={currentUser.baseSalary || 0}
+                        currentIncome={stats.totalIncome}
+                        estimatedSalary={stats.totalIncome}
+                        paymentDay={currentUser.salaryPaymentDay}
+                        advanceValue={currentUser.salaryAdvanceValue}
+                        advancePercent={currentUser.salaryAdvancePercent}
+                        advanceDay={currentUser.salaryAdvanceDay}
+                        onUpdateSalary={handleUpdateSalary}
+                        onAddExtra={handleAddExtraIncome}
+                        salaryExemptFromDiscounts={currentUser.salaryExemptFromDiscounts}
+                        onEditClick={() => {
+                          setSettingsInitialTab('finance');
+                          setIsSettingsOpen(true);
+                        }}
+                        isSalaryLaunched={(() => {
+                          const today = new Date();
+                          const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                          return memberFilteredTransactions.some(t =>
+                            t.description === "Salário Mensal" &&
+                            t.date.startsWith(currentMonth) &&
+                            !t.ignored
+                          );
+                        })()}
+                        isProMode={isProMode}
+                        onToggleProMode={(val) => {
+                          // Validação extra: Usuários Starter não podem ativar modo AUTO
+                          const userPlan = currentUser?.subscription?.plan || 'starter';
+                          if (userPlan === 'starter' && val) {
+                            // Ignorar tentativa de ativar Auto para Starter
+                            return;
+                          }
+                          if (val) {
+                            setShowGlobalModeModal('AUTO');
+                          } else {
+                            setShowGlobalModeModal('MANUAL');
+                          }
+                        }}
+                        userPlan={effectivePlan}
+                        onUpgradeClick={() => setActiveTab('subscription')}
+                        includeOpenFinance={includeOpenFinanceInStats}
+                        onToggleOpenFinance={setIncludeOpenFinanceInStats}
+                        viewFilter={viewFilter}
+                        onViewFilterChange={setViewFilter}
+                      />
+                    )}
+                    <StatsCards
+                      stats={stats}
+                      isLoading={isLoadingData}
+                      accountBalances={accountBalances}
+                      creditCardTransactions={creditCardTransactions}
+                      dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                      toggles={{
+                        includeChecking: includeCheckingInStats,
+                        setIncludeChecking: setIncludeCheckingInStats,
+                        includeCredit: includeCreditCardInStats,
+                        setIncludeCredit: setIncludeCreditCardInStats,
+                        creditCardUseTotalLimit: creditCardUseTotalLimit,
+                        setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                        creditCardUseFullLimit: creditCardUseFullLimit,
+                        setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                        includeOpenFinance: includeOpenFinanceInStats,
+                        setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                        enabledCreditCardIds: enabledCreditCardIds,
+                        setEnabledCreditCardIds: setEnabledCreditCardIds,
+                        cardInvoiceTypes: cardInvoiceTypes,
+                        setCardInvoiceTypes: setCardInvoiceTypes
+                      }}
+                      isProMode={isProMode}
+                      onActivateProMode={() => setIsProMode(true)}
+                      userPlan={effectivePlan}
+                      onUpgradeClick={() => setActiveTab('subscription')}
+                    />                    <div className="animate-fade-in space-y-6">
+                      <DashboardCharts
+                        transactions={filteredDashboardTransactions}
+                        reminders={filteredReminders}
+                        stats={stats}
+                        dashboardDate={dashboardDate}
+                        filterMode={filterMode}
+                      />
+                      {filterMode === 'month' && (
+                        <FinanceCalendar
+                          month={dashboardDate}
+                          transactions={filteredCalendarTransactions}
+                          reminders={filteredReminders}
+                          isLoading={isLoadingData}
+                        />
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {activeTab === 'table' && (
+                  <div className="h-[calc(100vh-140px)] animate-fade-in">
+                    <ExcelTable
+                      transactions={checkingTransactions}
+                      onDelete={handleDeleteTransaction}
+                      onUpdate={handleUpdateTransaction}
+                      isManualMode={!isProMode}
+                      onAdd={handleAddTransaction}
+                      accounts={accountBalances.checkingAccounts}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'credit_cards' && (
+                  <div className="h-[calc(100vh-140px)] animate-fade-in">
+                    <CreditCardTable
+                      transactions={creditCardTransactions}
+                      onDelete={handleDeleteTransaction}
+                      onUpdate={handleUpdateTransaction}
+                      creditCardAccounts={accountBalances?.credit?.accounts}
+                      userId={userId || undefined}
+                      onSync={handleSyncOpenFinance}
+                      isSyncing={isSyncingCards}
+                      isManualMode={!isProMode}
+                      onAdd={handleAddTransaction}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'reminders' && (
+                  <Reminders
+                    reminders={filteredReminders}
+                    onAddReminder={handleAddReminder}
+                    onDeleteReminder={handleDeleteReminder}
+                    onPayReminder={handlePayReminder}
+                    onUpdateReminder={handleUpdateReminder}
+                    isProMode={isProMode}
+                    userPlan={effectivePlan}
+                    onUpgrade={() => setActiveTab('subscription')}
+                  />
+                )}
+
+                {activeTab === 'subscriptions' && (
+                  <Subscriptions
+                    subscriptions={subscriptions}
+                    transactions={memberFilteredTransactions}
+                    onAddSubscription={handleAddSubscription}
+                    onUpdateSubscription={handleUpdateSubscription}
+                    onDeleteSubscription={handleDeleteSubscription}
+                    currentDate={filterMode === 'month' ? dashboardDate : undefined}
+                    isProMode={isProMode}
+                    userPlan={effectivePlan}
+                    onUpgrade={() => setActiveTab('subscription')}
+                  />
+                )}
+
+                {activeTab === 'investments' && (
+                  <div className="h-[calc(100vh-280px)] animate-fade-in">
+                    <Investments
+                      investments={memberInvestments}
+                      connectedSavingsAccounts={connectedSavingsAccounts}
+                      transactions={savingsTransactions}
+                      onAdd={handleAddInvestment}
+                      onUpdate={handleUpdateInvestment}
+                      onDelete={handleDeleteInvestment}
+                      onAddTransaction={handleAddTransaction}
+                      userPlan={effectivePlan}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'fire' && (
+                  <div className="flex-1 space-y-6 animate-fade-in">
+                    <FireCalculator
+                      netWorth={totalMemberInvestments}
+                      averageMonthlySavings={averageMonthlySavings}
+                      averageMonthlyExpense={averageMonthlyExpense}
+                      userPlan={effectivePlan}
+                      onUpgradeClick={() => {
+                        setSettingsInitialTab('plan');
+                        setIsSettingsOpen(true);
+                      }}
+                    />
+                  </div>
+                )}
+
+
+                {activeTab === 'connections' && (
+                  <div className="flex-1 space-y-6 animate-fade-in">
+                    <ConnectedAccounts
+                      accounts={enrichedConnectedAccounts}
+                      lastSynced={lastSyncMap}
+                      userId={userId}
+                      isProMode={isProMode}
+                      isAdmin={currentUser?.isAdmin}
+                      onDebugSync={handleDebugSync}
+                      userPlan={effectivePlan}
+                      onUpgrade={() => setActiveTab('subscription')}
+                      dailyCredits={currentUser?.dailyConnectionCredits}
+                    />
+                  </div>
+                )}
+
+                {activeTab === 'budgets' && userId && (
+                  <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
+
+
+                    <Budgets
+                      userId={userId}
+                      transactions={transactions}
+                      members={members}
+                      activeMemberId={activeMemberId}
+                      budgets={budgets}
+                      userPlan={effectivePlan}
+                    />
+                  </div>
+                )}
+              </>
+            )
+          )}
+          {activeTab === 'chat' && (
+            <div className="h-full animate-fade-in relative z-10">
+              <AIChatAssistant
+                onAddTransaction={handleAddTransaction}
+                onAddReminder={handleAddReminder}
+                onAddSubscription={handleAddSubscription}
+                transactions={transactions}
+                budgets={budgets}
+                investments={investments}
+                userPlan={effectivePlan}
+                userName={currentUser?.name}
+                userId={userId || undefined}
+                isProMode={isProMode}
+                onUpgrade={() => setActiveTab('subscription')}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+              />
+            </div>
+          )}
+        </div>
+      </main>
+
+      {/* Floating Chat Assistant (Visible on all tabs except 'chat') */}
+      {activeTab !== 'chat' && (
+        <AIChatAssistant
+          onAddTransaction={handleAddTransaction}
+          onAddReminder={handleAddReminder}
+          onAddSubscription={handleAddSubscription}
+          transactions={transactions}
+          budgets={budgets}
+          investments={investments}
+          userPlan={effectivePlan}
+          userName={currentUser?.name}
+          userId={userId || undefined}
+          isProMode={isProMode}
+          onUpgrade={() => setActiveTab('subscription')}
+          activeTab={activeTab}
+          setActiveTab={setActiveTab}
         />
       )}
 
-      {/* Main Content */}
-      {activeTab !== 'chat' && (
-        <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'}`}>
-          <Header
-            isSidebarOpen={isSidebarOpen}
-            setSidebarOpen={setSidebarOpen}
-            activeTab={activeTab}
-            setActiveTab={setActiveTab}
-            activeMemberId={activeMemberId}
-            members={members}
-            currentUser={currentUser}
-            isLimitReached={isLimitReached}
-            filterMode={filterMode}
-            setFilterMode={setFilterMode}
-            dashboardDate={dashboardDate}
-            setDashboardDate={setDashboardDate}
-            dashboardYear={dashboardYear}
-            setDashboardYear={setDashboardYear}
-            dashboardCategory={dashboardCategory}
-            projectionSettings={projectionSettings}
-            setProjectionSettings={setProjectionSettings}
-            isProMode={isProMode}
-            showProjectionMenu={showProjectionMenu}
-            setShowProjectionMenu={setShowProjectionMenu}
-            onResetFilters={handleResetFilters}
-            reminders={reminders}
-            budgets={budgets}
-            transactions={transactions}
-            notifications={notifications}
-            onArchiveNotification={handleArchiveNotification}
-            onDeleteNotification={handleDeleteNotification}
-            onMarkReadNotification={handleMarkReadNotification}
-            isAdminMode={isAdminMode}
-            setIsAdminMode={setIsAdminMode}
-            setIsSettingsOpen={setIsSettingsOpen}
-            onLogout={() => auth.signOut()}
-            onFamilyView={() => setActiveMemberId('FAMILY_OVERVIEW')}
-            onBackToProfile={() => {
-              const admin = members.find(m => m.role === 'admin') || members[0];
-              if (admin) setActiveMemberId(admin.id);
-            }}
-            isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
-            showFamilyOption={effectivePlan === 'family'}
-            userId={userId}
-            hasConnectedAccounts={connectedAccounts.length > 0}
-          />
 
-          {/* Feedback Banner - Only on Dashboard */}
-          {activeTab === 'dashboard' && (
-            <FeedbackBanner
-              userEmail={currentUser?.email}
-              userName={currentUser?.name}
-              userId={userId || undefined}
-            />
-          )}
-
-          <div className="p-3 lg:p-6 max-w-7xl mx-auto">
-
-            {/* Subscription Page - High Priority Render */}
-            {activeTab === 'subscription' && currentUser ? (
-              <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
-                <SubscriptionPage
-                  user={currentUser}
-                  onBack={() => setActiveTab('dashboard')}
-                  onUpdateUser={async (u) => {
-                    if (userId) await dbService.updateUserProfile(userId, u);
-                  }}
-                />
-              </div>
-            ) : activeTab === 'admin_overview' ? (
-              <AdminDashboard user={currentUser} />
-            ) : activeTab === 'admin_waitlist' ? (
-              <AdminWaitlist />
-            ) : activeTab === 'admin_email' ? (
-              <AdminEmailMessage currentUser={currentUser} />
-            ) : activeTab === 'admin_coupons' ? (
-              <AdminCoupons />
-            ) : activeTab === 'admin_pixels' ? (
-              <AdminPixels />
-            ) : activeTab === 'admin_feedbacks' ? (
-              <AdminFeedbacks />
-            ) : activeTab === 'admin_control' || activeTab === 'admin_users' || activeTab === 'admin_subscriptions' ? (
-              <AdminControl />
-            ) : (
-              /* Normal Dashboard Content */
-              activeMemberId === 'FAMILY_OVERVIEW' ? (
-                <FamilyOverview
-                  stats={stats}
-                  goals={familyGoals}
-                  isLoading={isLoadingData}
-                  accountBalances={accountBalances}
-                  creditCardTransactions={creditCardTransactions}
-                  dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                  toggles={{
-                    includeChecking: includeCheckingInStats,
-                    setIncludeChecking: setIncludeCheckingInStats,
-                    includeCredit: includeCreditCardInStats,
-                    setIncludeCredit: setIncludeCreditCardInStats,
-                    creditCardUseTotalLimit: creditCardUseTotalLimit,
-                    setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                    creditCardUseFullLimit: creditCardUseFullLimit,
-                    setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                    includeOpenFinance: includeOpenFinanceInStats,
-                    setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                    enabledCreditCardIds: enabledCreditCardIds,
-                    setEnabledCreditCardIds: setEnabledCreditCardIds
-                  }}
-                  isProMode={isProMode}
-                  onActivateProMode={() => setIsProMode(true)}
-                  userPlan={effectivePlan}
-                  onUpgradeClick={() => setActiveTab('subscription')}
-                  onAddGoal={handleAddGoal}
-                  onUpdateGoal={handleUpdateGoal}
-                  onDeleteGoal={handleDeleteGoal}
-                  onAddTransaction={handleAddTransaction}
-                />
-              ) : (
-                <>
-                  {activeTab === 'dashboard' && (
-                    <>
-                      {/* Only show Salary Manager in Monthly mode where it makes sense */}
-                      {filterMode === 'month' && !dashboardCategory && (
-                        <SalaryManager
-                          baseSalary={currentUser.baseSalary || 0}
-                          currentIncome={stats.totalIncome}
-                          estimatedSalary={stats.totalIncome}
-                          paymentDay={currentUser.salaryPaymentDay}
-                          advanceValue={currentUser.salaryAdvanceValue}
-                          advancePercent={currentUser.salaryAdvancePercent}
-                          advanceDay={currentUser.salaryAdvanceDay}
-                          onUpdateSalary={handleUpdateSalary}
-                          onAddExtra={handleAddExtraIncome}
-                          onEditClick={() => {
-                            setSettingsInitialTab('finance');
-                            setIsSettingsOpen(true);
-                          }}
-                          isSalaryLaunched={(() => {
-                            const today = new Date();
-                            const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-                            return memberFilteredTransactions.some(t =>
-                              t.description === "Salário Mensal" &&
-                              t.date.startsWith(currentMonth) &&
-                              !t.ignored
-                            );
-                          })()}
-                          isProMode={isProMode}
-                          onToggleProMode={(val) => {
-                            // Validação extra: Usuários Starter não podem ativar modo AUTO
-                            const userPlan = currentUser?.subscription?.plan || 'starter';
-                            if (userPlan === 'starter' && val) {
-                              // Ignorar tentativa de ativar Auto para Starter
-                              return;
-                            }
-                            if (val) {
-                              setShowGlobalModeModal('AUTO');
-                            } else {
-                              setShowGlobalModeModal('MANUAL');
-                            }
-                          }}
-                          userPlan={effectivePlan}
-                          onUpgradeClick={() => setActiveTab('subscription')}
-                          includeOpenFinance={includeOpenFinanceInStats}
-                          onToggleOpenFinance={setIncludeOpenFinanceInStats}
-                          viewFilter={viewFilter}
-                          onViewFilterChange={setViewFilter}
-                        />
-                      )}
-                      <StatsCards
-                        stats={stats}
-                        isLoading={isLoadingData}
-                        accountBalances={accountBalances}
-                        creditCardTransactions={creditCardTransactions}
-                        dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                        toggles={{
-                          includeChecking: includeCheckingInStats,
-                          setIncludeChecking: setIncludeCheckingInStats,
-                          includeCredit: includeCreditCardInStats,
-                          setIncludeCredit: setIncludeCreditCardInStats,
-                          creditCardUseTotalLimit: creditCardUseTotalLimit,
-                          setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                          creditCardUseFullLimit: creditCardUseFullLimit,
-                          setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                          includeOpenFinance: includeOpenFinanceInStats,
-                          setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                          enabledCreditCardIds: enabledCreditCardIds,
-                          setEnabledCreditCardIds: setEnabledCreditCardIds,
-                          cardInvoiceTypes: cardInvoiceTypes,
-                          setCardInvoiceTypes: setCardInvoiceTypes
-                        }}
-                        isProMode={isProMode}
-                        onActivateProMode={() => setIsProMode(true)}
-                        userPlan={effectivePlan}
-                        onUpgradeClick={() => setActiveTab('subscription')}
-                      />                    <div className="animate-fade-in space-y-6">
-                        <DashboardCharts
-                          transactions={filteredDashboardTransactions}
-                          reminders={filteredReminders}
-                          stats={stats}
-                          dashboardDate={dashboardDate}
-                          filterMode={filterMode}
-                        />
-                        {filterMode === 'month' && (
-                          <FinanceCalendar
-                            month={dashboardDate}
-                            transactions={filteredCalendarTransactions}
-                            reminders={filteredReminders}
-                            isLoading={isLoadingData}
-                          />
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {activeTab === 'table' && (
-                    <div className="h-[calc(100vh-140px)] animate-fade-in">
-                      <ExcelTable
-                        transactions={checkingTransactions}
-                        onDelete={handleDeleteTransaction}
-                        onUpdate={handleUpdateTransaction}
-                        isManualMode={!isProMode}
-                        onAdd={handleAddTransaction}
-                        accounts={accountBalances.checkingAccounts}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'credit_cards' && (
-                    <div className="h-[calc(100vh-140px)] animate-fade-in">
-                      <CreditCardTable
-                        transactions={creditCardTransactions}
-                        onDelete={handleDeleteTransaction}
-                        onUpdate={handleUpdateTransaction}
-                        creditCardAccounts={accountBalances?.credit?.accounts}
-                        userId={userId || undefined}
-                        onSync={handleSyncOpenFinance}
-                        isSyncing={isSyncingCards}
-                        isManualMode={!isProMode}
-                        onAdd={handleAddTransaction}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'reminders' && (
-                    <Reminders
-                      reminders={filteredReminders}
-                      onAddReminder={handleAddReminder}
-                      onDeleteReminder={handleDeleteReminder}
-                      onPayReminder={handlePayReminder}
-                      onUpdateReminder={handleUpdateReminder}
-                      isProMode={isProMode}
-                      userPlan={effectivePlan}
-                      onUpgrade={() => setActiveTab('subscription')}
-                    />
-                  )}
-
-                  {activeTab === 'subscriptions' && (
-                    <Subscriptions
-                      subscriptions={subscriptions}
-                      transactions={memberFilteredTransactions}
-                      onAddSubscription={handleAddSubscription}
-                      onUpdateSubscription={handleUpdateSubscription}
-                      onDeleteSubscription={handleDeleteSubscription}
-                      currentDate={filterMode === 'month' ? dashboardDate : undefined}
-                      isProMode={isProMode}
-                      userPlan={effectivePlan}
-                      onUpgrade={() => setActiveTab('subscription')}
-                    />
-                  )}
-
-                  {activeTab === 'investments' && (
-                    <div className="h-[calc(100vh-280px)] animate-fade-in">
-                      <Investments
-                        investments={memberInvestments}
-                        connectedSavingsAccounts={connectedSavingsAccounts}
-                        transactions={savingsTransactions}
-                        onAdd={handleAddInvestment}
-                        onUpdate={handleUpdateInvestment}
-                        onDelete={handleDeleteInvestment}
-                        onAddTransaction={handleAddTransaction}
-                        userPlan={effectivePlan}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'fire' && (
-                    <div className="flex-1 space-y-6 animate-fade-in">
-                      <FireCalculator
-                        netWorth={totalMemberInvestments}
-                        averageMonthlySavings={averageMonthlySavings}
-                        averageMonthlyExpense={averageMonthlyExpense}
-                        userPlan={effectivePlan}
-                        onUpgradeClick={() => {
-                          setSettingsInitialTab('plan');
-                          setIsSettingsOpen(true);
-                        }}
-                      />
-                    </div>
-                  )}
-
-
-                  {activeTab === 'connections' && (
-                    <div className="flex-1 space-y-6 animate-fade-in">
-                      <ConnectedAccounts
-                        accounts={connectedAccounts}
-                        lastSynced={lastSyncMap}
-                        userId={userId}
-                        isProMode={isProMode}
-                        isAdmin={currentUser?.isAdmin}
-                        onDebugSync={handleDebugSync}
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'budgets' && userId && (
-                    <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
-
-
-                      <Budgets
-                        userId={userId}
-                        transactions={transactions}
-                        members={members}
-                        activeMemberId={activeMemberId}
-                        budgets={budgets}
-                        userPlan={effectivePlan}
-                      />
-                    </div>
-                  )}
-                </>
-              )
-            )}
-          </div>
-        </main>
-      )}
-
-      <AIChatAssistant
-        onAddTransaction={handleAddTransaction}
-        onAddReminder={handleAddReminder}
-        onAddSubscription={handleAddSubscription}
-        transactions={transactions}
-        budgets={budgets}
-        investments={investments}
-        userPlan={effectivePlan}
-        userName={currentUser?.name}
-        userId={userId || undefined}
-        isProMode={isProMode}
-        onUpgrade={() => setActiveTab('subscription')}
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-      />
 
       <AIModal
         isOpen={isAIModalOpen}
@@ -3227,7 +3303,7 @@ const App: React.FC = () => {
         familyGoals={familyGoals}
         investments={investments}
         reminders={reminders}
-        connectedAccounts={connectedAccounts}
+        connectedAccounts={enrichedConnectedAccounts}
         onNavigateToSubscription={() => {
           setIsSettingsOpen(false);
           setActiveTab('subscription');
