@@ -1707,7 +1707,13 @@ const App: React.FC = () => {
     const isCurrentMonthView = filterMode === 'month' && dashboardDate === currentMonthKey;
 
     // Build a Set of all credit card account IDs for fast lookup
+    // Build a Set of all credit card account IDs for fast lookup directly from the recognized cards
+    // This ensures consistency: if it's in the Card Carousel, its transactions are excluded from Base Expenses.
     const creditCardAccountIds = new Set<string>();
+    if (accountBalances?.credit?.accounts) {
+      accountBalances.credit.accounts.forEach(acc => creditCardAccountIds.add(acc.id));
+    }
+    // Fallback: Check explicitly for credit types in the map (for detached accounts)
     accountMap.forEach((acc) => {
       const type = (acc.subtype || acc.type || "").toUpperCase();
       const isCreditId = acc.id && (acc.id.includes('_cc_') || acc.id.includes('credit'));
@@ -1756,7 +1762,7 @@ const App: React.FC = () => {
 
       // EXCLUDE credit card transactions from Income
       const isCreditCardByType = (t.accountType || '').toUpperCase().includes('CREDIT');
-      const isCreditCardByAccountId = t.accountId && creditCardAccountIds.has(t.accountId);
+      const isCreditCardByAccountId = t.accountId && (creditCardAccountIds.has(t.accountId) || enabledCreditCardIds.includes(t.accountId));
       if (isCreditCardByType || isCreditCardByAccountId) return false;
 
       // Salary Visibility Logic
@@ -1777,8 +1783,8 @@ const App: React.FC = () => {
       if (!includeOpenFinanceInStats && isOpenFinanceTx) return false;
 
       // EXCLUDE checking account transactions from Income if toggle is OFF
-      // This ensures "Incluir no Saldo" toggle also affects the Income calculation
-      if (!includeCheckingInStats && isAccountTransaction) return false;
+      // REMOVED: behavior changed to keep flow stats visible
+      // if (!includeCheckingInStats && isAccountTransaction) return false;
 
       return true;
     };
@@ -1792,6 +1798,32 @@ const App: React.FC = () => {
     const baseExpenses = filteredDashboardTransactions.filter(t => {
       // Check description for expense patterns (for transactions that may have wrong type)
       const desc = (t.description || '').toUpperCase();
+
+      // EXCLUDE internal transfers and credit card payments (prevent double counting)
+      const isTransfer =
+        desc.includes('TRANSFERENCIA') ||
+        desc.includes('TRANSF') ||
+        desc.includes('TEV') ||
+        desc.includes('DOC/TED') ||
+        desc.includes('APLICACAO') ||
+        desc.includes('RESGATE');
+
+      const isCreditCardPayment =
+        desc.includes('PAGAMENTO FATURA') ||
+        desc.includes('PAG FATURA') ||
+        desc.includes('PGTO FATURA') ||
+        desc.includes('PGTO CARTAO') ||
+        desc.includes('PAGTO CARTAO') ||
+        desc.includes('CREDIT CARD') ||
+        desc.includes('CARTAO DE CREDITO') ||
+        desc.includes('FATURA CARTAO') ||
+        desc.includes('DEBITO AUT. FATURA') ||
+        desc.includes('DEBITO AUTOMATICO FATURA') ||
+        desc.includes('PGTO TITULO BANCO') ||
+        (t.category && t.category.toUpperCase().includes('FATURA')) ||
+        (t.category && t.category.toUpperCase().includes('CARTÃO'));
+
+      if (isTransfer || isCreditCardPayment) return false;
       const isExpenseByDescription =
         desc.includes('ENVIADO') ||
         desc.includes('ENVIADA') ||
@@ -1820,7 +1852,7 @@ const App: React.FC = () => {
 
       // Check if it's a credit card transaction
       const isCreditCardByType = (t.accountType || '').toUpperCase().includes('CREDIT');
-      const isCreditCardByAccountId = t.accountId && creditCardAccountIds.has(t.accountId);
+      const isCreditCardByAccountId = t.accountId && (creditCardAccountIds.has(t.accountId) || enabledCreditCardIds.includes(t.accountId));
       const isCreditCardBySource = (t as any).sourceType === 'credit_card' || ((t as any).tags || []).includes('Cartão de Crédito');
       const isCreditCard = isCreditCardByType || isCreditCardByAccountId || isCreditCardBySource;
 
@@ -1836,10 +1868,10 @@ const App: React.FC = () => {
       }
 
       // EXCLUDE checking account transactions from Expenses if toggle is OFF
-      // This ensures "Incluir no Saldo" toggle also affects the Expense calculation
-      if (!includeCheckingInStats && isAccountTransaction) {
-        return false;
-      }
+      // REMOVED: behavior changed to keep flow stats visible
+      // if (!includeCheckingInStats && isAccountTransaction) {
+      //   return false;
+      // }
 
       return true;
     });
@@ -1971,10 +2003,26 @@ const App: React.FC = () => {
             return null;
           })();
 
+          // Calculate robust Used Total (matching StatsCards logic)
+          let usedTotalValue = 0;
+          const hasValidUsedLimit = card.usedCreditLimit !== undefined && card.usedCreditLimit !== null && card.usedCreditLimit >= 0;
+          const hasValidCreditLimit = card.creditLimit !== undefined && card.creditLimit !== null && card.creditLimit > 0;
+          const hasValidAvailableLimit = card.availableCreditLimit !== undefined && card.availableCreditLimit !== null;
+
+          if (hasValidUsedLimit) {
+            usedTotalValue = card.usedCreditLimit!;
+          } else if (hasValidCreditLimit && hasValidAvailableLimit) {
+            usedTotalValue = Math.max(0, card.creditLimit! - card.availableCreditLimit!);
+          } else if (card.balance !== undefined && card.balance !== null && Math.abs(card.balance) > 0) {
+            usedTotalValue = Math.abs(card.balance);
+          } else {
+            usedTotalValue = currentInvoiceAmount;
+          }
+
           const selectedInvoiceAmount = selectedType === 'next' && nextInvoiceAmount !== null
             ? nextInvoiceAmount
             : selectedType === 'used_total'
-              ? Math.abs(card.balance || 0)
+              ? usedTotalValue
               : currentInvoiceAmount;
 
           finalCCExpense += selectedInvoiceAmount;

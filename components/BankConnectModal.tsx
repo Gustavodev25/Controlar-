@@ -18,6 +18,7 @@ interface BankConnectModalProps {
     dailyCredits?: { date: string; count: number };
     maxCreditsPerDay?: number;
     userPlan?: string;
+    isAdmin?: boolean;
 }
 
 const API_BASE = '/api';
@@ -110,7 +111,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     forceSyncItemId,
     dailyCredits,
     maxCreditsPerDay = 3,
-    userPlan = 'pro'
+    userPlan = 'pro',
+    isAdmin = false
 }) => {
     // UI States
     const [view, setView] = useState<'connect' | 'manage'>('connect');
@@ -141,13 +143,16 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     const creditsUsedToday = (effectiveCredits.date === todayDateStr) ? effectiveCredits.count : 0;
 
     // hasCredit logic:
+    // - Admin: always true (unlimited credits)
     // - Starter plan: always false (no credits)
     // - Otherwise: check if credits used today < max
     // NOTE: Both new connections AND syncs consume credits
     // NOTE: undefined dailyCredits means user never used credits = has all credits available
-    const hasCredit = userPlan === 'starter'
-        ? false
-        : (creditsUsedToday < maxCreditsPerDay);
+    const hasCredit = isAdmin
+        ? true
+        : userPlan === 'starter'
+            ? false
+            : (creditsUsedToday < maxCreditsPerDay);
 
     // For UI purposes - we consider credits "loaded" if we have a userId
     const isCreditsLoaded = !!userId;

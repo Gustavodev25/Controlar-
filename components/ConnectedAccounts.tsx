@@ -131,12 +131,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const creditsUsedToday = (effectiveCredits.date === todayDateStr) ? effectiveCredits.count : 0;
 
   // hasCredit logic:
+  // - Admin: always true (unlimited credits)
   // - Starter plan: always false (no credits available)
   // - Otherwise: check if credits used today < max
   // NOTE: undefined dailyCredits means user never used credits = has all credits available
-  const hasCredit = (userPlan === 'starter')
-    ? false
-    : (creditsUsedToday < MAX_CREDITS_PER_DAY);
+  const hasCredit = isAdmin
+    ? true
+    : (userPlan === 'starter')
+      ? false
+      : (creditsUsedToday < MAX_CREDITS_PER_DAY);
 
   // For UI purposes - we consider credits "loaded" if we have a userId (user data is loaded)
   const isCreditsLoaded = !!userId;
@@ -517,10 +520,12 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               <p className="text-sm">
                 {userPlan === 'starter'
                   ? 'Conexão automática indisponível no Starter'
-                  : `${creditsUsedToday} de ${MAX_CREDITS_PER_DAY} conexões usadas`
+                  : isAdmin
+                    ? 'Créditos ilimitados (Admin)'
+                    : `${creditsUsedToday} de ${MAX_CREDITS_PER_DAY} conexões usadas`
                 }
               </p>
-              {userPlan !== 'starter' && (
+              {userPlan !== 'starter' && !isAdmin && (
                 <TooltipIcon content="Seus créditos diários são renovados automaticamente à meia-noite.">
                   <Info size={14} className="text-gray-500 hover:text-gray-300 cursor-help" />
                 </TooltipIcon>
@@ -546,7 +551,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             </div>
           )}
 
-          <TooltipIcon content={connectButtonTooltip || "Conectar nova instituição (Consome 1 crédito)"}>
+          <TooltipIcon content={connectButtonTooltip || (isAdmin ? "Conectar nova instituição" : "Conectar nova instituição (Consome 1 crédito)")}>
             <button
               onClick={() => {
                 if (userPlan === 'starter' && onUpgrade) {
@@ -675,7 +680,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                           isUpdating ? "Sincronização em andamento..." :
                             timer?.syncedToday ? `Já sincronizado hoje. Próxima sincronização em ${timer.auto.h}h ${timer.auto.m}m` :
                               !hasCredit ? `Sem créditos diários disponíveis.` :
-                                "Sincronizar agora (1x por dia)"
+                                isAdmin ? "Sincronizar agora" : "Sincronizar agora (1x por dia)"
                         }>
                           <button
                             onClick={() => handleManualSync(itemId)}
@@ -876,6 +881,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         dailyCredits={dailyCredits}
         maxCreditsPerDay={MAX_CREDITS_PER_DAY}
         userPlan={userPlan}
+        isAdmin={isAdmin}
       />
 
     </div>

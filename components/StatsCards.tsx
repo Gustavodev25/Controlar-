@@ -117,17 +117,23 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     return []; // Empty means ALL
   });
 
-  // Ensure we always have valid selections (filter out removed accounts, but don't force selection)
+  // Ensure we always have valid selections and initialize with all accounts selected by default
   useEffect(() => {
     if (checkingAccounts.length > 0) {
-      if (selectedCheckingAccountIds.length > 0) {
+      const allAccountIds = checkingAccounts.map(acc => acc.id);
+
+      // If no accounts selected yet (first load or empty), select ALL accounts by default
+      if (selectedCheckingAccountIds.length === 0) {
+        setSelectedCheckingAccountIds(allAccountIds);
+      } else {
+        // Filter out removed accounts (accounts that no longer exist)
         const validIds = selectedCheckingAccountIds.filter(id => checkingAccounts.some(acc => acc.id === id));
         if (validIds.length !== selectedCheckingAccountIds.length) {
-          setSelectedCheckingAccountIds(validIds);
+          setSelectedCheckingAccountIds(validIds.length > 0 ? validIds : allAccountIds);
         }
       }
     }
-  }, [checkingAccounts, selectedCheckingAccountIds]);
+  }, [checkingAccounts]);
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -645,15 +651,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   // Calculate displayed checking balance based on selection
   const displayedCheckingBalance = useMemo(() => {
-    // If none selected, sum ALL checking accounts
+    // Sum only the selected accounts (if none selected, return 0)
     if (selectedCheckingAccountIds.length === 0) {
-      return accountBalances?.checking ?? 0;
+      return 0;
     }
-    // Else sum selected
     return checkingAccounts
       .filter(acc => selectedCheckingAccountIds.includes(acc.id))
       .reduce((sum, acc) => sum + (acc.balance ?? 0), 0);
-  }, [selectedCheckingAccountIds, checkingAccounts, accountBalances]);
+  }, [selectedCheckingAccountIds, checkingAccounts]);
 
   // Label logic
   const checkingLabel = useMemo(() => {
@@ -662,36 +667,31 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       const acc = checkingAccounts.find(a => a.id === selectedCheckingAccountIds[0]);
       return acc?.institution || acc?.name || 'Conta';
     }
+    // If all accounts are selected, show "Saldo em Conta"
+    if (selectedCheckingAccountIds.length === checkingAccounts.length) {
+      return 'Saldo em Conta';
+    }
     return `Contas Selecionadas (${selectedCheckingAccountIds.length})`;
   }, [selectedCheckingAccountIds, checkingAccounts]);
 
   // Calculate adjusted Total Income based on selected checking account
-  // NOTE: We no longer add checking balance to income - that caused double counting
-  // The checking account transactions are already included in stats.totalIncome when the toggle is ON
-  // Adding the balance again would duplicate the amount
+  // When "Incluir no Saldo" is enabled, add checking balance to income
   const adjustedTotalIncome = useMemo(() => {
-    // Just return the stats totalIncome - no adjustments needed here
-    // Checking account toggle only affects totalBalance, not income
-    return stats.totalIncome;
-  }, [stats.totalIncome]);
-
-  // Calculate adjusted Total Balance based on selected checking account
-  const adjustedTotalBalance = useMemo(() => {
-    // Safety check
-    if (!accountBalances || !toggles) return stats.totalBalance;
-
-    // Check if Checking is included in the global stats calculation
-    const isCheckingIncluded = toggles.includeChecking;
-
-    if (!isCheckingIncluded) {
-      return stats.totalBalance;
+    if (toggles?.includeChecking && displayedCheckingBalance > 0) {
+      return stats.totalIncome + displayedCheckingBalance;
     }
+    return stats.totalIncome;
+  }, [stats.totalIncome, toggles?.includeChecking, displayedCheckingBalance]);
 
-    const totalChecking = accountBalances.checking || 0;
+  // Calculate adjusted Total Expense: add selected credit card invoice when enabled
+  const adjustedTotalExpense = useMemo(() => {
+    return stats.totalExpense + selectedCardInvoiceTotal;
+  }, [stats.totalExpense, selectedCardInvoiceTotal]);
 
-    // Adjust: Remove total, add displayed (which is selected or total)
-    return stats.totalBalance - totalChecking + displayedCheckingBalance;
-  }, [stats.totalBalance, toggles, accountBalances, displayedCheckingBalance]);
+  // Calculate adjusted Total Balance: simply Income - Expenses
+  const adjustedTotalBalance = useMemo(() => {
+    return adjustedTotalIncome - adjustedTotalExpense;
+  }, [adjustedTotalIncome, adjustedTotalExpense]);
 
   // Helper to translate account type/subtype to Portuguese
   const getAccountTypeLabel = (acc: ConnectedAccount) => {
@@ -767,12 +767,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     <p className="text-sm text-gray-400 font-medium">
                       {checkingLabel}
                     </p>
-                    {checkingAccounts.length > 0 && selectedCheckingAccountIds.length === 0 && (
+                    {checkingAccounts.length > 0 && selectedCheckingAccountIds.length === checkingAccounts.length && (
                       <span className="text-[10px] text-gray-500 bg-gray-800 px-1.5 py-0.5 rounded font-mono">
                         Todas ({checkingAccounts.length})
                       </span>
                     )}
-                    {selectedCheckingAccountIds.length > 0 && (
+                    {selectedCheckingAccountIds.length > 0 && selectedCheckingAccountIds.length < checkingAccounts.length && (
                       <span className="text-[10px] text-emerald-500 bg-emerald-900/30 px-1.5 py-0.5 rounded font-mono border border-emerald-500/30">
                         {selectedCheckingAccountIds.length} de {checkingAccounts.length}
                       </span>
@@ -1098,42 +1098,37 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                             <Check size={12} strokeWidth={4} />
                                           </div>                                                                        </div>
 
-                                        {/* Modes - Only visible if enabled */}
-                                        {isEnabled && (
-                                          <>
-                                            <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
-                                              <div
-                                                onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
-                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                              >
-                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                  Fatura Atual
-                                                </span>
-                                                <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
-                                                  {formatCurrency(currentVal)}
-                                                </span>
-                                              </div>
-
-                                              <div
-                                                onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
-                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                              >
-                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                  Total Usado
-                                                </span>
-                                                <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                  {formatCurrency(usedVal)}
-                                                </span>
-                                              </div>
+                                        <div className={`transition-all duration-300 ${isEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
+                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
+                                            <div
+                                              onClick={(e) => { e.stopPropagation(); setMode('current'); }}
+                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
+                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                            >
+                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                Fatura Atual
+                                              </span>
+                                              <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
+                                                {formatCurrency(currentVal)}
+                                              </span>
                                             </div>
 
-
-                                          </>
-                                        )}
+                                            <div
+                                              onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
+                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
+                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                            >
+                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                Total Usado
+                                              </span>
+                                              <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                {formatCurrency(usedVal)}
+                                              </span>
+                                            </div>
+                                          </div>
+                                        </div>
                                       </div>
                                     );
                                   })}
@@ -1307,7 +1302,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
             </div>
             <p className="text-2xl font-bold mt-1 text-red-400">
               <NumberFlow
-                value={stats.totalExpense}
+                value={adjustedTotalExpense}
                 format={{ style: 'currency', currency: 'BRL' }}
                 locales="pt-BR"
               />
