@@ -17,6 +17,7 @@ const readEnvFile = (filePath) => {
 export const loadEnv = ({ rootDir = process.cwd(), mode = process.env.NODE_ENV } = {}) => {
   if (loaded) return;
 
+  // Load files in order: .env first, then .env.local (which overrides .env)
   const files = ['.env', '.env.local'];
   const normalizedMode = (mode || '').trim();
   if (normalizedMode) {
@@ -29,7 +30,7 @@ export const loadEnv = ({ rootDir = process.cwd(), mode = process.env.NODE_ENV }
     if (!raw) continue;
     const parsed = dotenv.parse(raw);
     for (const [key, value] of Object.entries(parsed)) {
-      if (preservedKeys.has(key)) continue;
+      // Always override with values from later files (.env.local takes precedence)
       process.env[key] = value;
     }
   }

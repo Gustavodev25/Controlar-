@@ -27,6 +27,21 @@ const TOKEN_TTL_MS = 10 * 60 * 1000;
 
 // --- Helpers ---
 
+// Remove undefined values from object (Firestore doesn't accept undefined)
+const removeUndefined = (obj) => {
+    if (obj === null || obj === undefined) return null;
+    if (typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(removeUndefined);
+
+    const cleaned = {};
+    for (const [key, value] of Object.entries(obj)) {
+        if (value !== undefined) {
+            cleaned[key] = typeof value === 'object' ? removeUndefined(value) : value;
+        }
+    }
+    return cleaned;
+};
+
 const stableStringify = (value) => {
     if (value === null) return 'null';
     const type = typeof value;
@@ -52,35 +67,74 @@ const getWebhookEventId = (event) => {
 };
 
 const getPluggyApiKey = async () => {
-    if (PLUGGY_API_KEY_STATIC) return PLUGGY_API_KEY_STATIC;
+    if (PLUGGY_API_KEY_STATIC) {
+        console.log('>>> Using static Pluggy API Key');
+        return PLUGGY_API_KEY_STATIC;
+    }
+
     if (cachedApiKey && Date.now() < cachedApiKeyExpiry) {
-        // console.log('Using cached Pluggy API Key'); 
+        console.log('>>> Using cached Pluggy API Key (valid for', Math.round((cachedApiKeyExpiry - Date.now()) / 1000), 'seconds)');
         return cachedApiKey;
     }
-    if (authInProgress) return authInProgress;
 
-    if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
-        console.error('MISSING PLUGGY CREDENTIALS in env');
-        throw new Error('Pluggy credentials not configured.');
+    if (authInProgress) {
+        console.log('>>> Auth already in progress, waiting...');
+        return authInProgress;
     }
 
-    console.log(`Generating new Pluggy Token... ID starts with: ${PLUGGY_CLIENT_ID.substring(0, 4)}`);
+    if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
+        console.error('>>> CRITICAL: MISSING PLUGGY CREDENTIALS in env');
+        console.error('>>> PLUGGY_CLIENT_ID exists:', !!PLUGGY_CLIENT_ID);
+        console.error('>>> PLUGGY_CLIENT_SECRET exists:', !!PLUGGY_CLIENT_SECRET);
+        throw new Error('Credenciais do Pluggy não configuradas. Verifique PLUGGY_CLIENT_ID e PLUGGY_CLIENT_SECRET no .env');
+    }
+
+    console.log(`>>> Generating new Pluggy Token...`);
+    console.log(`>>> Client ID: ${PLUGGY_CLIENT_ID.substring(0, 8)}...${PLUGGY_CLIENT_ID.substring(PLUGGY_CLIENT_ID.length - 4)}`);
+    console.log(`>>> API URL: ${PLUGGY_API_URL}`);
 
     authInProgress = (async () => {
         try {
             const response = await axios.post(
                 `${PLUGGY_API_URL}/auth`,
                 { clientId: PLUGGY_CLIENT_ID, clientSecret: PLUGGY_CLIENT_SECRET },
-                { headers: { 'Content-Type': 'application/json' } }
+                {
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 30000 // 30 second timeout
+                }
             );
+
+            if (!response.data?.apiKey) {
+                console.error('>>> Pluggy auth response missing apiKey:', response.data);
+                throw new Error('Resposta de autenticação do Pluggy inválida');
+            }
+
             cachedApiKey = response.data.apiKey;
             cachedApiKeyExpiry = Date.now() + TOKEN_TTL_MS;
-            console.log('Pluggy Token generated successfully.');
+            console.log('>>> Pluggy Token generated successfully! Expires in', TOKEN_TTL_MS / 1000, 'seconds');
             return cachedApiKey;
         } catch (error) {
-            console.error('Error generating Pluggy Token:', error.response?.data || error.message);
+            const status = error.response?.status;
+            const errorData = error.response?.data;
+
+            console.error('>>> Error generating Pluggy Token:');
+            console.error('>>>   Status:', status);
+            console.error('>>>   Response:', JSON.stringify(errorData, null, 2));
+            console.error('>>>   Message:', error.message);
+
             cachedApiKey = null;
-            throw error;
+            cachedApiKeyExpiry = 0;
+
+            // Provide user-friendly error messages
+            if (status === 401 || status === 403) {
+                throw new Error('Credenciais do Pluggy inválidas. Verifique CLIENT_ID e CLIENT_SECRET.');
+            } else if (status === 429) {
+                throw new Error('Muitas requisições ao Pluggy. Aguarde alguns minutos.');
+            } else if (error.code === 'ECONNREFUSED' || error.code === 'ENOTFOUND') {
+                throw new Error('Não foi possível conectar ao servidor do Pluggy. Verifique sua conexão.');
+            } else {
+                throw new Error(`Erro na autenticação do Pluggy: ${errorData?.message || error.message}`);
+            }
         } finally {
             authInProgress = null;
         }
@@ -174,7 +228,7 @@ const addMonthsUTC = (dateStr, months) => {
     return dt.toISOString().split('T')[0];
 };
 
-const generateProjectedInstallments = async (userId, tx, account, billsMap, closingDay) => {
+const generateProjectedInstallments = async (userId, tx, account, billsMap, closingDay, cardDisplayName = null) => {
     if (!userId || !tx || !account) return;
     const meta = tx.creditCardMetadata || {};
     const totalInstallments = meta.totalInstallments;
@@ -182,6 +236,9 @@ const generateProjectedInstallments = async (userId, tx, account, billsMap, clos
     const purchaseDate = (meta.purchaseDate || tx.date || '').split('T')[0];
 
     if (!totalInstallments || totalInstallments <= currentInstallment) return;
+
+    // Determine card name - use passed name, or calculate from account data
+    const effectiveCardName = cardDisplayName || account.creditData?.brand || account.marketingName || account.name || 'Cartão';
 
     for (let i = currentInstallment + 1; i <= totalInstallments; i++) {
         const providerId = `${tx.id}_installment_${i}`;
@@ -206,7 +263,7 @@ const generateProjectedInstallments = async (userId, tx, account, billsMap, clos
             type: rawAmount >= 0 ? 'expense' : 'income',
             status: 'pending', // Future is always pending
             cardId: account.id,
-            cardName: account.name || 'Cartão',
+            cardName: effectiveCardName,
             installmentNumber: i,
             totalInstallments,
             importSource: 'pluggy',
@@ -244,7 +301,7 @@ const updateSyncStatus = async (userId, state, message, details = null) => {
 
         await firebaseAdmin.firestore().collection('users').doc(userId)
             .collection('sync_status').doc('pluggy')
-            .set(updateData, { merge: true });
+            .set(removeUndefined(updateData), { merge: true });
     } catch (e) {
         console.error('Error updating sync status:', e);
     }
@@ -271,12 +328,13 @@ const upsertTransaction = async (userId, collectionName, txData, providerId) => 
     if (!firebaseAdmin) return;
     const db = firebaseAdmin.firestore();
     const collectionRef = db.collection('users').doc(userId).collection(collectionName);
+    const cleanedData = removeUndefined(txData);
 
     // Always merge/update to ensure latest status/data
     if (providerId) {
-        await collectionRef.doc(String(providerId)).set(txData, { merge: true });
+        await collectionRef.doc(String(providerId)).set(cleanedData, { merge: true });
     } else {
-        await collectionRef.add(txData);
+        await collectionRef.add(cleanedData);
     }
 };
 
@@ -352,14 +410,26 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     try {
         let page = 1, totalPages = 1;
         do {
+            console.log(`>>> Fetching accounts page ${page} for item ${itemId}...`);
             const res = await pluggyRequest('GET', '/accounts', apiKey, null, { itemId, page, pageSize: 200 });
-            accounts.push(...(res.results || []));
+            const results = res.results || [];
+            console.log(`>>> Found ${results.length} accounts on page ${page}`);
+
+            // Log each account for debugging
+            results.forEach((acc, idx) => {
+                console.log(`>>>   Account ${idx + 1}: id=${acc.id}, type=${acc.type}, subtype=${acc.subtype}, name=${acc.marketingName || acc.name}, balance=${acc.balance}`);
+            });
+
+            accounts.push(...results);
             totalPages = res.totalPages || 1;
             page++;
         } while (page <= totalPages);
+
+        console.log(`>>> Total accounts fetched: ${accounts.length}`);
     } catch (e) {
         console.error('>>> Error fetching accounts:', e.message);
-        await updateSyncStatus(userId, 'error', 'Erro ao buscar contas.');
+        console.error('>>> Error details:', e.response?.data || e);
+        await updateSyncStatus(userId, 'error', 'Erro ao buscar contas. Verifique suas credenciais.');
         return;
     }
 
@@ -409,56 +479,180 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
 
         const type = (account.type || '').toUpperCase();
         const subtype = (account.subtype || '').toUpperCase();
-        const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+        const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT_CARD');
+        const isSavings = subtype.includes('SAVINGS') || type.includes('SAVINGS');
+        const isChecking = subtype.includes('CHECKING') || type.includes('CHECKING') || type === 'BANK';
+
+        // Log account classification
+        console.log(`>>> Processing account ${account.id}: type=${type}, subtype=${subtype}, isCredit=${isCredit}, isSavings=${isSavings}, isChecking=${isChecking}`);
+
+        // Fetch Bills (Credit Card Only) - Moved up to populate account balance correctly
+        let billsMap = new Map();
+        let currentInvoiceBalance = null;
+
+        if (isCredit) {
+            await updateSyncStatus(userId, 'in_progress', `Verificando faturas...`, { current: progress + 2, total: 100 });
+            try {
+                const res = await pluggyRequest('GET', '/bills', apiKey, null, { accountId: account.id, pageSize: 100 });
+                const bills = res.results || [];
+                console.log(`>>> Bills fetched for ${account.id}:`, bills.length, 'bills');
+                bills.forEach(b => {
+                    billsMap.set(b.id, b);
+                    console.log(`>>>   Bill: id=${b.id}, dueDate=${b.dueDate}, totalAmount=${b.totalAmount}, state=${b.state}, status=${b.status}`);
+                });
+
+                // Find the current active invoice (Open, Closed or Overdue) to show as balance
+                // Sort by due date descending to get the latest relevant one
+                // Check both 'state' and 'status' fields (Pluggy API may use either)
+                // Also normalize to uppercase for comparison
+                const activeBill = bills
+                    .sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))
+                    .find(b => {
+                        const state = (b.state || b.status || '').toUpperCase();
+                        return ['OPEN', 'OVERDUE', 'CLOSED'].includes(state);
+                    });
+
+                if (activeBill) {
+                    // Use totalAmount (total invoice value) or balance (remaining to pay)
+                    // Usually for 'current spending', totalAmount of the OPEN bill is the current consumption.
+                    currentInvoiceBalance = activeBill.totalAmount ?? activeBill.balance ?? 0;
+                    console.log(`>>> Found active bill for ${account.id}: ${activeBill.dueDate} - R$${currentInvoiceBalance} (${activeBill.state || activeBill.status})`);
+                } else if (bills.length > 0) {
+                    // Fallback: If no active bill with expected states, use the most recent bill
+                    const mostRecentBill = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))[0];
+                    if (mostRecentBill) {
+                        currentInvoiceBalance = mostRecentBill.totalAmount ?? mostRecentBill.balance ?? 0;
+                        console.log(`>>> Using most recent bill for ${account.id}: ${mostRecentBill.dueDate} - R$${currentInvoiceBalance} (${mostRecentBill.state || mostRecentBill.status})`);
+                    }
+                }
+            } catch (e) {
+                console.warn(`>>> Error fetching bills for ${account.id}:`, e.message);
+            }
+        }
+
+        // Determine friendly account type name
+        let accountTypeName = 'Conta';
+        if (isCredit) {
+            accountTypeName = 'Cartão de Crédito';
+        } else if (isSavings) {
+            accountTypeName = 'Poupança';
+        } else if (isChecking) {
+            accountTypeName = 'Conta Corrente';
+        }
+
+        // Use the fetched invoice balance if available, otherwise fallback to account.balance
+        // If account.balance is 0 and we have an invoice, we definitely want the invoice amount.
+        const finalBalance = (currentInvoiceBalance !== null && currentInvoiceBalance !== undefined)
+            ? currentInvoiceBalance
+            : (account.balance ?? 0);
+
+        // Determine the best display name for the account
+        // For credit cards, prioritize brand (Visa, Mastercard, etc.)
+        let accountDisplayName = accountTypeName;
+        if (isCredit) {
+            const brand = account.creditData?.brand;
+            const cardName = account.marketingName || account.name;
+
+            // Priority for credit cards:
+            // 1. Brand + marketingName (e.g., "Visa Platinum")
+            // 2. Just brand (e.g., "Visa")
+            // 3. marketingName if it's meaningful (not a number)
+            // 4. Fallback to "Cartão de Crédito"
+            if (brand && cardName && !/^\d/.test(cardName)) {
+                // If cardName already includes brand, use it as-is
+                if (cardName.toLowerCase().includes(brand.toLowerCase())) {
+                    accountDisplayName = cardName;
+                } else {
+                    accountDisplayName = `${brand} ${cardName}`;
+                }
+            } else if (brand) {
+                accountDisplayName = brand;
+            } else if (cardName && !/^\d/.test(cardName)) {
+                // marketingName exists and doesn't start with a number (not an account number)
+                accountDisplayName = cardName;
+            } else {
+                accountDisplayName = 'Cartão de Crédito';
+            }
+            console.log(`>>> Credit card name resolved: brand=${brand}, marketingName=${account.marketingName}, name=${account.name} -> "${accountDisplayName}"`);
+        } else {
+            // For bank accounts, use marketingName or name if they're meaningful
+            const bankName = account.marketingName || account.name;
+            if (bankName && !/^\d{6,}$/.test(bankName) && !/^\d+[-\/]/.test(bankName)) {
+                accountDisplayName = bankName;
+            }
+        }
 
         const accountData = {
             id: account.id,
             itemId: account.itemId,
-            name: account.marketingName || account.name || 'Conta',
+            name: accountDisplayName,
             type: account.type,
             subtype: account.subtype,
-            balance: account.balance ?? 0,
+            accountTypeName, // Friendly name: 'Conta Corrente', 'Poupança', 'Cartão de Crédito'
+            isCredit,
+            isSavings,
+            isChecking,
+            balance: finalBalance,
             currency: account.currencyCode || 'BRL',
             lastUpdated: new Date().toISOString(),
             connectionMode: 'AUTO',
             institution: institutionName,
             connectorImageUrl: connectorImageUrl,
+            // Credit card specific data
+            ...(isCredit && account.creditData ? {
+                creditLimit: account.creditData.creditLimit,
+                availableCreditLimit: account.creditData.availableCreditLimit,
+                balanceCloseDate: account.creditData.balanceCloseDate,
+                balanceDueDate: account.creditData.balanceDueDate,
+                brand: account.creditData.brand,
+                closingDay: account.creditData.balanceCloseDate
+                    ? parseInt(account.creditData.balanceCloseDate.split('T')[0].split('-')[2], 10)
+                    : null
+            } : {}),
+            // Bank account specific data
+            ...(account.bankData ? {
+                bankNumber: account.bankData.bankNumber,
+                branchNumber: account.bankData.branchNumber,
+                accountNumber: account.bankData.number,
+                transferNumber: account.bankData.transferNumber
+            } : {})
         };
+
+        console.log(`>>> Saving account: ${accountData.name} (${accountTypeName}) - Balance: ${accountData.balance}`);
 
         // Correct collection: accounts
         await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts')
-            .doc(account.id).set(accountData, { merge: true });
+            .doc(account.id).set(removeUndefined(accountData), { merge: true });
 
         // Determine optimal 'from' date for transactions
-        let fromDateForTx = new Date();
-        fromDateForTx.setMonth(fromDateForTx.getMonth() - 6); // Default: 6 months back for safety
-        let fromStr = fromDateForTx.toISOString().split('T')[0];
-        let dateMsg = "últimos 6 meses";
+        let fromStr = from; // Default to the range calculated above (7 days or 12 months)
+        let dateMsg = fullSync ? "últimos 12 meses" : "últimos 7 dias";
 
-        try {
-            // Find latest transaction for this item to avoid re-reading everything
-            const txQuery = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions')
-                .where('providerItemId', '==', itemId)
-                .orderBy('date', 'desc')
-                .limit(1);
+        if (!fullSync) {
+            try {
+                // Find latest transaction for this item to avoid re-reading everything
+                const txQuery = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions')
+                    .where('providerItemId', '==', itemId)
+                    .orderBy('date', 'desc')
+                    .limit(1);
 
-            const txSnap = await txQuery.get();
-            if (!txSnap.empty) {
-                const lastTxDate = txSnap.docs[0].data().date;
-                if (lastTxDate) {
-                    const lastDate = new Date(lastTxDate);
-                    // Smart Sync: Only fetch from 2 days before the last transaction to catch late settlements.
-                    // This strictly prevents re-reading months of history as requested.
-                    lastDate.setDate(lastDate.getDate() - 2);
-                    fromStr = lastDate.toISOString().split('T')[0];
-                    dateMsg = `após ${new Date(fromStr).toLocaleDateString('pt-BR')}`;
-                    console.log(`>>> Incremental Sync: Fetching from ${fromStr}`);
+                const txSnap = await txQuery.get();
+                if (!txSnap.empty) {
+                    const lastTxDate = txSnap.docs[0].data().date;
+                    if (lastTxDate) {
+                        const lastDate = new Date(lastTxDate);
+                        // Smart Sync: Only fetch from 2 days before the last transaction
+                        lastDate.setDate(lastDate.getDate() - 2);
+                        fromStr = lastDate.toISOString().split('T')[0];
+                        dateMsg = `após ${new Date(fromStr).toLocaleDateString('pt-BR')}`;
+                        console.log(`>>> Incremental Sync: Fetching from ${fromStr}`);
+                    }
                 }
-            } else {
-                console.log(`>>> Full Sync: Fetching from ${fromStr}`);
+            } catch (e) {
+                console.warn('>>> Could not optimize sync date, using default:', e.message);
             }
-        } catch (e) {
-            console.warn('>>> Could not optimize sync date, using default:', e.message);
+        } else {
+            console.log(`>>> Full Sync Enforced: Fetching from ${fromStr}`);
         }
 
         // Update status: Searching transactions
@@ -467,31 +661,33 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         // Fetch Transactions
         let transactions = [];
         try {
+            console.log(`>>> Fetching transactions for account ${account.id} from ${fromStr} to ${to}...`);
             let page = 1, totalPages = 1;
             do {
                 const res = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from: fromStr, to, page, pageSize: 500 });
-                transactions.push(...(res.results || []));
+                const results = res.results || [];
+                console.log(`>>>   Page ${page}: Found ${results.length} transactions`);
+                transactions.push(...results);
                 totalPages = res.totalPages || 1;
                 page++;
             } while (page <= totalPages);
+            console.log(`>>> Total transactions for account ${account.id}: ${transactions.length}`);
         } catch (e) {
             console.error(`>>> Error fetching transactions for ${account.id}:`, e.message);
+            console.error(`>>> Error details:`, e.response?.data || e);
             continue;
         }
 
         if (transactions.length > 0) {
             await updateSyncStatus(userId, 'in_progress', `Processando ${transactions.length} lançamentos...`, { current: progress + 10, total: 100 });
+            console.log(`>>> Processing ${transactions.length} transactions for account ${account.id} (isCredit: ${isCredit})...`);
+        } else {
+            console.log(`>>> No transactions found for account ${account.id}`);
         }
 
-        // Fetch Bills (Credit Card Only)
-        let billsMap = new Map();
-        if (isCredit) {
-            await updateSyncStatus(userId, 'in_progress', `Verificando faturas...`, { current: progress + 15, total: 100 });
-            try {
-                const res = await pluggyRequest('GET', '/bills', apiKey, null, { accountId: account.id, pageSize: 100 });
-                (res.results || []).forEach(b => billsMap.set(b.id, b));
-            } catch (e) { /* ignore */ }
-        }
+        // Fetch Bills (Credit Card Only) - MOVED UP
+        // Logic was moved to line ~486 to populate account balance
+        // We keep billsMap for the transaction processing below
 
         const closingDay = account.creditData?.balanceCloseDate
             ? parseInt(account.creditData.balanceCloseDate.split('T')[0].split('-')[2], 10) : null;
@@ -527,7 +723,7 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     type: rawAmount >= 0 ? 'expense' : 'income',
                     status: tx.status === 'PENDING' ? 'pending' : 'completed',
                     cardId: account.id,
-                    cardName: account.marketingName || account.name || 'Cartão',
+                    cardName: accountDisplayName,
                     installmentNumber: meta.installmentNumber || 0,
                     totalInstallments: meta.totalInstallments || 0,
                     importSource: 'pluggy',
@@ -539,10 +735,11 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 };
 
                 await upsertTransaction(userId, 'creditCardTransactions', txData, tx.id);
+                console.log(`>>>   Saved credit card tx: ${tx.id} - ${tx.description} - R$${amount}`);
 
                 // Generate Future Installments
                 if (meta.totalInstallments && meta.totalInstallments > 1) {
-                    await generateProjectedInstallments(userId, tx, account, billsMap, closingDay);
+                    await generateProjectedInstallments(userId, tx, account, billsMap, closingDay, accountDisplayName);
                 }
             } else {
                 const amount = Math.abs(rawAmount);
@@ -562,11 +759,13 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 };
 
                 await upsertTransaction(userId, 'transactions', txData, tx.id);
+                console.log(`>>>   Saved bank tx: ${tx.id} - ${tx.description} - R$${amount}`);
             }
         }
+        console.log(`>>> Finished processing transactions for account ${account.id}`);
     }
 
-    console.log(`>>> Server-Side Sync Completed for ${itemId}`);
+    console.log(`>>> Server-Side Sync Completed for ${itemId}. Total transactions processed: ${newTransactionsCount}`);
     await updateSyncStatus(userId, 'success', 'Sincronização concluída com sucesso!');
 
     // Send System Notification
@@ -579,12 +778,38 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
 
 // --- Routes ---
 
-router.get('/debug-auth', (req, res) => {
-    res.json({
+router.get('/debug-auth', async (req, res) => {
+    console.log('>>> Debug auth endpoint called');
+
+    const debugInfo = {
+        timestamp: new Date().toISOString(),
         hasClientId: !!PLUGGY_CLIENT_ID,
-        clientIdPrefix: PLUGGY_CLIENT_ID ? PLUGGY_CLIENT_ID.substring(0, 5) + '...' : 'MISSING',
+        hasClientSecret: !!PLUGGY_CLIENT_SECRET,
+        hasStaticApiKey: !!PLUGGY_API_KEY_STATIC,
+        clientIdPrefix: PLUGGY_CLIENT_ID ? `${PLUGGY_CLIENT_ID.substring(0, 8)}...${PLUGGY_CLIENT_ID.slice(-4)}` : 'MISSING',
+        apiUrl: PLUGGY_API_URL,
         envPath: path.resolve(process.cwd(), '.env'),
-    });
+        cachedToken: !!cachedApiKey,
+        tokenExpiresIn: cachedApiKey ? Math.max(0, Math.round((cachedApiKeyExpiry - Date.now()) / 1000)) : 0,
+        firebaseAdminReady: !!firebaseAdmin
+    };
+
+    // Test auth if credentials exist
+    if (PLUGGY_CLIENT_ID && PLUGGY_CLIENT_SECRET) {
+        try {
+            const apiKey = await getPluggyApiKey();
+            debugInfo.authTest = 'SUCCESS';
+            debugInfo.apiKeyPrefix = apiKey ? `${apiKey.substring(0, 10)}...` : 'N/A';
+        } catch (e) {
+            debugInfo.authTest = 'FAILED';
+            debugInfo.authError = e.message;
+        }
+    } else {
+        debugInfo.authTest = 'SKIPPED - Missing credentials';
+    }
+
+    console.log('>>> Debug info:', JSON.stringify(debugInfo, null, 2));
+    res.json(debugInfo);
 });
 
 router.get('/db-items/:userId', async (req, res) => {
@@ -614,6 +839,33 @@ router.get('/db-items/:userId', async (req, res) => {
         });
 
         res.json({ success: true, items: Array.from(itemsMap.values()) });
+    } catch (e) {
+        res.status(500).json({ error: 'DB Error', details: e.message });
+    }
+});
+
+// Debug: List all accounts for a user
+router.get('/db-accounts/:userId', async (req, res) => {
+    const { userId } = req.params;
+    if (!firebaseAdmin) return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    try {
+        const db = firebaseAdmin.firestore();
+        const accountsSnap = await db.collection('users').doc(userId).collection('accounts').get();
+        const accounts = [];
+        accountsSnap.forEach(doc => {
+            accounts.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Also get credit card transactions count
+        const ccTxSnap = await db.collection('users').doc(userId).collection('creditCardTransactions').limit(100).get();
+        const bankTxSnap = await db.collection('users').doc(userId).collection('transactions').limit(100).get();
+
+        res.json({
+            success: true,
+            accounts,
+            creditCardTransactionsCount: ccTxSnap.size,
+            bankTransactionsCount: bankTxSnap.size
+        });
     } catch (e) {
         res.status(500).json({ error: 'DB Error', details: e.message });
     }
@@ -861,6 +1113,18 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
 
                 const amount = Math.abs(meta.totalInstallments && meta.totalAmount ? (meta.totalAmount / meta.totalInstallments) : rawAmount);
 
+                // Determine card display name - prioritize brand for credit cards
+                const brand = account?.brand || account?.creditData?.brand;
+                const cardNameRaw = account?.name || account?.marketingName;
+                let cardDisplayName = 'Cartão';
+                if (brand && cardNameRaw && !/^\d/.test(cardNameRaw)) {
+                    cardDisplayName = cardNameRaw.toLowerCase().includes(brand.toLowerCase()) ? cardNameRaw : `${brand} ${cardNameRaw}`;
+                } else if (brand) {
+                    cardDisplayName = brand;
+                } else if (cardNameRaw && !/^\d/.test(cardNameRaw)) {
+                    cardDisplayName = cardNameRaw;
+                }
+
                 txData = {
                     date: purchaseDate,
                     description: tx.description,
@@ -869,7 +1133,7 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
                     type: rawAmount >= 0 ? 'expense' : 'income',
                     status: tx.status === 'PENDING' ? 'pending' : 'completed',
                     cardId: account.id,
-                    cardName: account?.name || 'Cartão',
+                    cardName: cardDisplayName,
                     installmentNumber: meta.installmentNumber || 0,
                     totalInstallments: meta.totalInstallments || 0,
                     importSource: 'pluggy',
@@ -901,7 +1165,7 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
 
             // Direct Save (We already checked existence)
             // Use txId as document ID for better idempotency
-            await collectionRef.doc(String(txId)).set(txData, { merge: true });
+            await collectionRef.doc(String(txId)).set(removeUndefined(txData), { merge: true });
             savedCount++;
         }
     }
@@ -1388,12 +1652,19 @@ router.post('/trigger-sync', async (req, res) => {
 router.post('/sync', async (req, res) => {
     const { itemId, userId } = req.body;
 
+    console.log(`>>> Sync endpoint called: itemId=${itemId}, userId=${userId}`);
+
     if (!userId) {
-        return res.status(400).json({ error: 'UserId is required for sync.' });
+        return res.status(400).json({ error: 'UserId é obrigatório para sincronização.' });
+    }
+
+    if (!itemId) {
+        return res.status(400).json({ error: 'ItemId é obrigatório para sincronização.' });
     }
 
     try {
         const apiKey = await getPluggyApiKey();
+        console.log('>>> API Key obtained for sync');
 
         // 1. Perform Server-Side Sync (Robust, saves to Firestore)
         // Force fullSync to ensure we get 12 months of history as requested
@@ -1406,8 +1677,16 @@ router.post('/sync', async (req, res) => {
             .where('itemId', '==', itemId).get();
 
         const accounts = [];
+        let checkingCount = 0, savingsCount = 0, creditCount = 0;
+
         accountsSnap.forEach(doc => {
             const data = doc.data();
+
+            // Count by type
+            if (data.isCredit) creditCount++;
+            else if (data.isSavings) savingsCount++;
+            else if (data.isChecking) checkingCount++;
+
             accounts.push({
                 account: {
                     id: data.id,
@@ -1416,12 +1695,24 @@ router.post('/sync', async (req, res) => {
                     marketingName: data.name,
                     type: data.type,
                     subtype: data.subtype,
+                    accountTypeName: data.accountTypeName, // 'Conta Corrente', 'Poupança', 'Cartão de Crédito'
+                    isCredit: data.isCredit,
+                    isSavings: data.isSavings,
+                    isChecking: data.isChecking,
                     balance: data.balance,
                     currencyCode: data.currency,
                     creditData: {
-                        // Minimal credit data for frontend mapping if needed
                         brand: data.brand,
-                        creditLimit: data.creditLimit
+                        creditLimit: data.creditLimit,
+                        availableCreditLimit: data.availableCreditLimit,
+                        balanceCloseDate: data.balanceCloseDate,
+                        balanceDueDate: data.balanceDueDate
+                    },
+                    bankData: {
+                        bankNumber: data.bankNumber,
+                        branchNumber: data.branchNumber,
+                        accountNumber: data.accountNumber,
+                        transferNumber: data.transferNumber
                     },
                     connector: {
                         name: data.institution,
@@ -1433,25 +1724,76 @@ router.post('/sync', async (req, res) => {
             });
         });
 
-        res.json({ success: true, accounts });
+        console.log(`>>> Sync complete! Accounts: ${accounts.length} (Corrente: ${checkingCount}, Poupança: ${savingsCount}, Cartão: ${creditCount})`);
+
+        res.json({
+            success: true,
+            accounts,
+            summary: {
+                total: accounts.length,
+                checking: checkingCount,
+                savings: savingsCount,
+                credit: creditCount
+            }
+        });
 
     } catch (e) {
-        console.error('Sync failed:', e);
-        res.status(500).json({ error: 'Sync failed', details: e.message });
+        console.error('>>> Sync failed:', e.message);
+        console.error('>>> Sync error details:', e.response?.data || e);
+
+        let userMessage = 'Falha na sincronização.';
+        if (e.message.includes('Credenciais')) {
+            userMessage = e.message;
+        } else if (e.message.includes('conexão') || e.message.includes('connect')) {
+            userMessage = 'Erro de conexão com o Pluggy. Tente novamente.';
+        }
+
+        res.status(500).json({ error: userMessage, details: e.message });
     }
 });
 
 router.post('/create-token', async (req, res) => {
     const { userId } = req.body;
+    console.log(`>>> Creating connect token for user: ${userId || 'anonymous'}`);
+
     try {
         const apiKey = await getPluggyApiKey();
+        console.log('>>> API Key obtained, creating connect token...');
+
+        const webhookUrl = process.env.PLUGGY_WEBHOOK_URL || 'https://financeiro-ai-pro.vercel.app/api/pluggy/webhook';
+        console.log(`>>> Webhook URL: ${webhookUrl}`);
+
         const connectTokenResponse = await pluggyRequest('POST', '/connect_token', apiKey, {
             clientUserId: userId || 'anonymous',
-            options: { avoidDuplicates: true, webhookUrl: 'https://financeiro-ai-pro.vercel.app/api/pluggy/webhook' }
+            options: {
+                avoidDuplicates: true,
+                webhookUrl
+            }
         });
+
+        if (!connectTokenResponse?.accessToken) {
+            console.error('>>> Connect token response missing accessToken:', connectTokenResponse);
+            throw new Error('Resposta do Pluggy sem accessToken');
+        }
+
+        console.log('>>> Connect token created successfully!');
         res.json({ success: true, accessToken: connectTokenResponse.accessToken });
     } catch (error) {
-        res.status(500).json({ error: 'Error creating token', details: error.message });
+        console.error('>>> Error creating connect token:', error.message);
+        console.error('>>> Error details:', error.response?.data || error);
+
+        const status = error.response?.status;
+        let userMessage = 'Erro ao criar token de conexão.';
+
+        if (status === 401 || status === 403) {
+            userMessage = 'Credenciais do Pluggy inválidas. Contate o suporte.';
+        } else if (status === 429) {
+            userMessage = 'Limite de requisições atingido. Aguarde alguns minutos.';
+        } else if (error.message) {
+            userMessage = error.message;
+        }
+
+        res.status(status || 500).json({ error: userMessage, details: error.message });
     }
 });
 
@@ -1460,9 +1802,24 @@ router.get('/items', async (req, res) => {
     try {
         const apiKey = await getPluggyApiKey();
 
-        // Prefer listing items via local DB itemIds + GET /items/{id} (some tenants return 401 on GET /items)
+        // Strategy 1: Try to fetch from Pluggy Remote API first (Source of Truth)
         let items = [];
-        if (firebaseAdmin && userId) {
+        // This allows finding "orphaned" items that exist in Pluggy but not in our DB
+        let fetchedFromRemote = false;
+        try {
+            if (userId) {
+                const resData = await pluggyRequest('GET', '/items', apiKey, null, { clientUserId: userId });
+                if (resData && Array.isArray(resData.results)) {
+                    items = resData.results;
+                    fetchedFromRemote = true;
+                }
+            }
+        } catch (remoteErr) {
+            console.warn('GET /items remote fetch failed (likely 401/403 or network), falling back to local DB strategy:', remoteErr.message);
+        }
+
+        // Strategy 2: Fallback to Local DB itemIds if Remote failed
+        if (!fetchedFromRemote && firebaseAdmin && userId) {
             try {
                 const db = firebaseAdmin.firestore();
                 const accSnap = await db.collection('users').doc(String(userId))
@@ -1487,8 +1844,8 @@ router.get('/items', async (req, res) => {
             }
         }
 
-        // Fallback only if we don't have DB access (Firebase Admin not configured)
-        if (!firebaseAdmin) {
+        // Fallback 3: If still empty and no admin (shouldn't happen here but keeping structure)
+        if (!fetchedFromRemote && !firebaseAdmin) {
             const resData = await pluggyRequest('GET', '/items', apiKey, null, { clientUserId: userId });
             items = resData.results || [];
         }

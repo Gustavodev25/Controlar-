@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { PluggyConnect } from 'react-pluggy-connect';
-import { X, Loader2, Building, CheckCircle, AlertCircle, ShieldCheck, Info, Zap } from './Icons';
+import { X, ShieldCheck, Zap, Info, Loader2, AlertCircle, CheckCircle, Building, Link, RefreshCw } from 'lucide-react';
 import { ConnectedAccount, ProviderBill, Transaction } from '../types';
 import * as dbService from '../services/database';
 import type { CreditCardTransaction } from '../services/database';
@@ -154,14 +154,16 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
     const normalizeAccount = useCallback((account: any, bills: ProviderBill[]): ConnectedAccount => {
         const creditData = account.creditData || {};
+        const bankData = account.bankData || {};
 
         // Helper to extract account number from various sources
         const getAccountNumber = () => {
-            // Priority 1: explicit number field
+            // Priority 1: bankData fields from server
+            if (bankData.accountNumber) return bankData.accountNumber;
+            if (bankData.number) return bankData.number;
+            if (bankData.transferNumber) return bankData.transferNumber;
+            // Priority 2: explicit number field
             if (account.number) return account.number;
-            // Priority 2: bankData fields
-            if (account.bankData?.number) return account.bankData.number;
-            if (account.bankData?.transferNumber) return account.bankData.transferNumber;
             // Priority 3: Extract from name if it looks like an account number (e.g., "123/4567-8" or "12345678")
             if (account.name && (/^\d{3}\/\d{4}\//.test(account.name) || /^\d+[-\/]/.test(account.name) || /^\d{6,}$/.test(account.name))) {
                 return account.name;
@@ -171,16 +173,48 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
         // Helper to determine the best display name for the account (avoid raw account numbers)
         const getAccountDisplayName = () => {
-            // Priority: marketingName > name (if not a number format) > brand > subtype > generic
+            const type = (account.type || '').toUpperCase();
+            const subtype = (account.subtype || '').toUpperCase();
+            const isCredit = account.isCredit || type.includes('CREDIT') || subtype.includes('CREDIT');
+
+            // Special handling for credit cards - prioritize brand
+            if (isCredit) {
+                const brand = creditData.brand;
+                const cardName = account.marketingName || account.name;
+                const isValidCardName = cardName && !/^\d/.test(cardName); // Not starting with a number
+
+                if (brand && isValidCardName) {
+                    // If cardName already includes brand, use it as-is
+                    if (cardName.toLowerCase().includes(brand.toLowerCase())) {
+                        return cardName;
+                    }
+                    return `${brand} ${cardName}`;
+                } else if (brand) {
+                    return brand;
+                } else if (isValidCardName) {
+                    return cardName;
+                }
+                return 'Cartão de Crédito';
+            }
+
+            // For non-credit accounts, use original logic
+            // Priority 0: Use accountTypeName from server if available
+            if (account.accountTypeName && account.accountTypeName !== 'Conta') {
+                return account.name || account.marketingName || account.accountTypeName;
+            }
+            // Priority 1: marketingName
             if (account.marketingName) return account.marketingName;
+            // Priority 2: name (if not a number format)
             if (account.name && !/^\d{3}\/\d{4}\//.test(account.name) && !/^\d+[-\/]/.test(account.name) && !/^\d{6,}$/.test(account.name)) {
                 return account.name;
             }
-            if (creditData.brand) return creditData.brand;
+            // Priority 3: Use server-provided type flags
+            if (account.isSavings) return 'Poupança';
+            if (account.isChecking) return 'Conta Corrente';
+            // Priority 4: Infer from type/subtype
             if (account.subtype) return account.subtype;
-            if (account.type === 'CREDIT_CARD' || account.type === 'CREDIT') return 'Cartão de Crédito';
-            if (account.type === 'BANK' || account.type === 'CHECKING') return 'Conta Corrente';
-            if (account.type === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT' || account.subtype === 'SAVINGS') return 'Poupança';
+            if (type.includes('SAVINGS') || subtype.includes('SAVINGS')) return 'Poupança';
+            if (type === 'BANK' || type.includes('CHECKING') || subtype.includes('CHECKING')) return 'Conta Corrente';
             return 'Conta';
         };
 
@@ -191,7 +225,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             // Priority 2: institution name from parent item
             if (account.item?.connector?.name) return account.item.connector.name;
             // Priority 3: bankData organization name
-            if (account.bankData?.organizationName) return account.bankData.organizationName;
+            if (bankData.organizationName) return bankData.organizationName;
             // Priority 4: Use marketing name if it looks like a bank name
             if (account.marketingName && !/^\d/.test(account.marketingName)) return account.marketingName;
             // Fallback
@@ -204,6 +238,10 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             name: getAccountDisplayName(),
             type: account.type ?? null,
             subtype: account.subtype ?? null,
+            accountTypeName: account.accountTypeName ?? null, // 'Conta Corrente', 'Poupança', 'Cartão de Crédito'
+            isCredit: account.isCredit ?? false,
+            isSavings: account.isSavings ?? false,
+            isChecking: account.isChecking ?? false,
             institution: getInstitutionName(),
             balance: account.balance ?? 0,
             currency: account.currencyCode ?? null,
@@ -216,7 +254,11 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             balanceDueDate: creditData.balanceDueDate ?? null,
             minimumPayment: creditData.minimumPayment ?? null,
             bills,
-            accountNumber: getAccountNumber()
+            accountNumber: getAccountNumber(),
+            // Bank data
+            bankNumber: bankData.bankNumber ?? null,
+            branchNumber: bankData.branchNumber ?? null,
+            transferNumber: bankData.transferNumber ?? null
         };
     }, []);
 
@@ -232,7 +274,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             if (!userId) return [];
 
             setSyncStatus('syncing');
-            setSyncMessage('Sincronizando contas e transacoes (Servidor)...');
+            setSyncMessage('Sincronizando contas e transações (Servidor)...');
             clearSyncProgress();
 
             // Show initial progress
@@ -243,17 +285,21 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 startedAt: Date.now()
             });
 
+            console.log('[BankConnectModal] Starting sync for itemId:', itemId);
+
             // Call the robust server-side sync (formerly Legacy, now Modern)
             const response = await fetch(`${API_BASE}/pluggy/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ itemId, userId, monthsBack: 12 }) // Added userId
+                body: JSON.stringify({ itemId, userId })
             });
 
             const data = await response.json();
+            console.log('[BankConnectModal] Sync response:', data);
+
             if (!response.ok) {
                 saveSyncProgress({
-                    step: 'Erro na conexao',
+                    step: 'Erro na conexão',
                     error: data.error || 'Erro ao sincronizar',
                     current: 0,
                     total: 1,
@@ -275,20 +321,33 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 syncedAccounts.push(account);
             }
 
+            // Build summary message with account types
+            const summary = data.summary;
+            let summaryParts = [`${syncedAccounts.length} contas processadas`];
+            if (summary) {
+                const parts = [];
+                if (summary.checking > 0) parts.push(`${summary.checking} Conta${summary.checking > 1 ? 's' : ''} Corrente${summary.checking > 1 ? 's' : ''}`);
+                if (summary.savings > 0) parts.push(`${summary.savings} Poupança${summary.savings > 1 ? 's' : ''}`);
+                if (summary.credit > 0) parts.push(`${summary.credit} Cartão${summary.credit > 1 ? 'ões' : ''}`);
+                if (parts.length > 0) {
+                    summaryParts = [`Sincronização concluída! ${parts.join(', ')}`];
+                }
+            }
+
             setSyncStatus('success');
-            const summary = `Sincronização concluída! ${syncedAccounts.length} contas processadas.`;
-            setSyncMessage(summary);
+            const summaryMessage = summaryParts.join('. ');
+            setSyncMessage(summaryMessage);
 
             // Show completion progress
             saveSyncProgress({
-                step: summary,
+                step: summaryMessage,
                 current: 100,
                 total: 100,
                 isComplete: true,
                 startedAt: Date.now()
             });
 
-            console.log('[BankConnectModal] Sync complete (Server-Side). Calling onSuccess callback.');
+            console.log('[BankConnectModal] Sync complete (Server-Side). Accounts:', syncedAccounts.length);
             setTimeout(() => clearSyncProgress(), 5000);
 
             return syncedAccounts;
@@ -647,21 +706,41 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                         {view === 'manage' && (
                             <div className="space-y-4 animate-fade-in">
                                 <p className="text-sm text-gray-400 text-center mb-2">
-                                    Identificamos conexões ativas na sua conta Pluggy. Você pode removê-las para conectar novamente.
+                                    Gerencie suas conexões bancárias ativas.
                                 </p>
 
                                 {isLoading ? (
-                                    <p className="text-center text-gray-500 py-8">Carregando conexões...</p>
+                                    <div className="flex justify-center py-8">
+                                        <Loader2 className="animate-spin text-[#d97757]" size={24} />
+                                    </div>
                                 ) : existingItems.length === 0 ? (
-                                    <p className="text-center text-gray-500 py-8">Nenhuma conexão encontrada.</p>
+                                    <div className="flex flex-col items-center justify-center py-6 gap-3 text-center">
+                                        <p className="text-gray-500">
+                                            Nenhuma conexão encontrada no momento.
+                                        </p>
+                                        <p className="text-xs text-gray-600 max-w-[250px]">
+                                            Se você já conectou um banco, ele deve aparecer aqui.
+                                            Tente recarregar para buscar diretamente do servidor.
+                                        </p>
+                                        <button
+                                            onClick={fetchExistingItems}
+                                            className="flex items-center gap-2 text-xs bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-lg transition-colors border border-gray-700"
+                                        >
+                                            <RefreshCw size={14} />
+                                            Buscar Conexões na Nuvem
+                                        </button>
+                                    </div>
                                 ) : (
                                     <div className="space-y-3">
                                         {existingItems.map((item) => (
                                             <div key={item.id} className="bg-gray-900 border border-gray-800 rounded-xl p-4 flex items-center justify-between">
                                                 <div className="flex items-center gap-3">
                                                     {item.connector && (
-                                                        <div className="w-10 h-10 rounded-full bg-white p-1 overflow-hidden">
-                                                            <img src={item.connector.imageUrl} alt={item.connector.name} className="w-full h-full object-contain" />
+                                                        <div className="w-10 h-10 rounded-full bg-white p-1 overflow-hidden flex items-center justify-center">
+                                                            {item.connector.imageUrl ?
+                                                                <img src={item.connector.imageUrl} alt={item.connector.name} className="w-full h-full object-contain" />
+                                                                : <Building size={20} className="text-gray-400" />
+                                                            }
                                                         </div>
                                                     )}
                                                     <div>

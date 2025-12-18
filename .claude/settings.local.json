@@ -22,7 +22,9 @@
       "Bash(git push:*)",
       "Bash(curl:*)",
       "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\")",
-      "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\\api\")"
+      "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\\api\")",
+      "Bash(netstat:*)",
+      "Bash(taskkill //F //PID 23844)"
     ],
     "deny": [],
     "ask": []

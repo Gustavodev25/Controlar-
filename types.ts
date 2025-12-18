@@ -263,11 +263,17 @@ export interface ConnectedAccount {
   name: string;
   type?: string;
   subtype?: string;
+  // Friendly account type classification
+  accountTypeName?: string; // 'Conta Corrente', 'Poupança', 'Cartão de Crédito'
+  isCredit?: boolean;
+  isSavings?: boolean;
+  isChecking?: boolean;
   institution?: string;
   balance?: number;
   currency?: string;
   lastUpdated?: string;
   previewTransactions?: ConnectedTransactionPreview[];
+  // Credit card specific
   creditLimit?: number;
   availableCreditLimit?: number;
   brand?: string;
@@ -279,7 +285,11 @@ export interface ConnectedAccount {
   bills?: ProviderBill[];
   connectionMode?: 'AUTO' | 'MANUAL';
   initialBalance?: number;
-  accountNumber?: string; // Número da conta bancária
+  // Bank account specific
+  accountNumber?: string;
+  bankNumber?: string;
+  branchNumber?: string;
+  transferNumber?: string;
 }
 
 export interface AppNotification {
