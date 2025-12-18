@@ -2,18 +2,26 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { User, Coupon } from '../types';
 import * as dbService from '../services/database';
 import NumberFlow from '@number-flow/react';
-import { SparkLineChart } from '@mui/x-charts/SparkLineChart';
-import { BarChart } from '@mui/x-charts/BarChart';
-import { LineChart } from '@mui/x-charts/LineChart';
-import { PieChart } from '@mui/x-charts/PieChart';
-import { axisClasses } from '@mui/x-charts/ChartsAxis';
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+  AreaChart,
+  Area
+} from 'recharts';
 import {
   Users,
-  CreditCard,
   TrendingUp,
-  Activity,
   DollarSign,
-  Crown,
   MapPin
 } from 'lucide-react';
 
@@ -26,7 +34,28 @@ interface SystemUser extends User {
   id: string;
 }
 
-const COLORS = ['#d97757', '#34D399', '#60A5FA', '#F87171', '#8B5CF6', '#F59E0B'];
+const PLAN_COLORS = {
+  starter: '#525252',
+  pro: '#d97757',
+  family: '#D4B996'
+};
+
+const CustomTooltip = ({ active, payload, label, formatter }: any) => {
+  if (active && payload && payload.length) {
+    return (
+      <div className="bg-[#1c1c1a] border border-gray-800 p-3 rounded-xl shadow-xl">
+        {label && <p className="text-gray-400 text-xs mb-1">{label}</p>}
+        {payload.map((entry: any, index: number) => (
+          <p key={index} className="text-sm font-bold flex items-center gap-2" style={{ color: entry.color || entry.fill }}>
+            <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
+            {formatter ? formatter(entry.value) : entry.value}
+          </p>
+        ))}
+      </div>
+    );
+  }
+  return null;
+};
 
 const KPICard = ({
   title,
@@ -46,49 +75,53 @@ const KPICard = ({
   color: string,
   trendPercent?: number,
   footer?: string
-}) => (
-  <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-5 flex items-center justify-between overflow-hidden relative group hover:border-[#4a4a48] transition-colors h-[140px]">
-    <div className="z-10 flex flex-col justify-between h-full w-[60%]">
-      <div>
-        <h3 className="text-sm font-bold text-gray-200">{title}</h3>
-        <div className="flex items-center gap-2 mt-4">
-          <span className="text-2xl font-bold text-white tracking-tight">
-            <NumberFlow
-              value={value}
-              format={prefix === 'R$' ? { style: 'currency', currency: 'BRL' } : { style: 'decimal', maximumFractionDigits: 1 }}
-              suffix={suffix}
-            />
-          </span>
-          {trendPercent !== undefined && (
-            <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${trendPercent >= 0 ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'}`}>
-              {trendPercent >= 0 ? <TrendingUp size={10} /> : <TrendingUp size={10} className="rotate-180" />}
-              {Math.abs(trendPercent)}%
+}) => {
+  const chartData = trendData.map((val, i) => ({ i, val }));
+
+  return (
+    <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-5 flex items-center justify-between overflow-hidden relative group hover:border-[#4a4a48] transition-colors h-[140px]">
+      <div className="z-10 flex flex-col justify-between h-full w-[60%]">
+        <div>
+          <h3 className="text-sm font-bold text-gray-200">{title}</h3>
+          <div className="flex items-center gap-2 mt-4">
+            <span className="text-2xl font-bold text-white tracking-tight">
+              <NumberFlow
+                value={value}
+                format={prefix === 'R$' ? { style: 'currency', currency: 'BRL' } : { style: 'decimal', maximumFractionDigits: 1 }}
+                suffix={suffix}
+              />
             </span>
-          )}
+            {trendPercent !== undefined && (
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded flex items-center gap-0.5 ${trendPercent >= 0 ? 'text-emerald-400 bg-emerald-400/10' : 'text-red-400 bg-red-400/10'}`}>
+                {trendPercent >= 0 ? <TrendingUp size={10} /> : <TrendingUp size={10} className="rotate-180" />}
+                {Math.abs(trendPercent)}%
+              </span>
+            )}
+          </div>
+          {footer && <p className="text-[10px] text-gray-500 mt-2 font-medium">{footer}</p>}
         </div>
-        {footer && <p className="text-[10px] text-gray-500 mt-2 font-medium">{footer}</p>}
+      </div>
+
+      {/* Mini Chart (Recharts Area) */}
+      <div className="w-[40%] h-[80%] flex items-end justify-end absolute bottom-0 right-0 opacity-50 group-hover:opacity-80 transition-opacity pointer-events-none">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData}>
+            <Area
+              type="natural"
+              dataKey="val"
+              stroke={color}
+              strokeWidth={2}
+              fill={color}
+              fillOpacity={0.4}
+              isAnimationActive={true}
+              activeDot={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
       </div>
     </div>
-
-    {/* Mini Chart (MUI X Sparkline) */}
-    <div className="w-[40%] h-[80%] flex items-end justify-end absolute bottom-2 right-2 opacity-80 group-hover:opacity-100 transition-opacity">
-      <SparkLineChart
-        data={trendData}
-        height={80}
-        width={120}
-        color={color}
-        area
-        showHighlight
-        showTooltip
-        sx={{
-          '& .MuiAreaElement-root': {
-            fillOpacity: 0.2,
-          }
-        }}
-      />
-    </div>
-  </div>
-);
+  );
+};
 
 export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [users, setUsers] = useState<SystemUser[]>([]);
@@ -230,8 +263,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     });
 
     const totalSubscribedUsers = activeUsers + totalFree + (users.filter(u => u.subscription?.status === 'canceled').length);
-    const canceledUsers = users.filter(u => u.subscription?.status === 'canceled').length;
-    const churnRate = totalSubscribedUsers > 0 ? (canceledUsers / totalSubscribedUsers) * 100 : 0;
+    const conversionRate = users.length > 0 ? (activeUsers / users.length) * 100 : 0;
 
     // ARPU (Ticket Médio)
     const arpu = activeUsers > 0 ? totalMRR / activeUsers : 0;
@@ -303,9 +335,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const chartData = Object.entries(projectionMap).map(([name, value]) => ({ name, value }));
     const planData = [
-      { id: 0, label: 'Starter', value: planCounts.starter, color: COLORS[0] },
-      { id: 1, label: 'Pro', value: planCounts.pro, color: COLORS[1] },
-      { id: 2, label: 'Family', value: planCounts.family, color: COLORS[2] },
+      { name: 'Starter', value: planCounts.starter, color: PLAN_COLORS.starter },
+      { name: 'Pro', value: planCounts.pro, color: PLAN_COLORS.pro },
+      { name: 'Family', value: planCounts.family, color: PLAN_COLORS.family },
     ].filter(d => d.value > 0);
 
     return {
@@ -314,7 +346,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       activeUsers,
       totalFree,
       arpu,
-      churnRate,
+      conversionRate,
       pendingRevenue,
       newUsers,
       chartData,
@@ -328,8 +360,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
     };
   }, [users, coupons]);
-
-  const maxUserGrowth = Math.max(...(stats.trends.users.map(d => d.value) || [0]));
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-20">
@@ -367,7 +397,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           footer="Crescimento constante"
         />
         <KPICard
-          title="Assinantes Premium"
+          title="Assinantes"
           value={stats.activeUsers}
           trendData={stats.trends.usersValues}
           color="#3B82F6"
@@ -394,14 +424,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           color="#F59E0B"
           footer="Média por assinante pago"
         />
+
         <KPICard
-          title="Churn Rate"
-          value={stats.churnRate}
+          title="Taxa de Conversão"
+          value={stats.conversionRate}
           suffix="%"
           trendData={stats.trends.generic}
-          color="#EF4444"
-          trendPercent={-2.1}
-          footer="Abaixo da média do mercado"
+          color="#10B981"
+          trendPercent={2.1}
+          footer="Visitantes -> Pagantes"
         />
         <KPICard
           title="Receita Pendente"
@@ -413,173 +444,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         />
       </div>
 
-      {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        {/* 1. Bar Chart (User Growth) */}
-        <div className="lg:col-span-2 bg-[#30302E] border border-[#373734] rounded-2xl p-6 relative">
-          <div className="flex justify-between items-start mb-2">
-            <div>
-              <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                <Users size={20} className="text-[#8B5CF6]" />
-                Crescimento de Usuários
-              </h3>
-              <p className="text-sm text-gray-400">Novos usuários ativos nos últimos 6 meses</p>
-            </div>
-          </div>
-
-          <div className="h-[300px] w-full mt-4">
-            <BarChart
-              dataset={stats.trends.users}
-              xAxis={[{
-                scaleType: 'band',
-                dataKey: 'name',
-                tickLabelStyle: { fill: '#9CA3AF' }
-              }]}
-              yAxis={[{
-                tickLabelStyle: { fill: '#9CA3AF' }
-              }]}
-              series={[{
-                dataKey: 'value',
-                color: '#8B5CF6',
-                label: 'Usuários',
-                valueFormatter: (v) => `${v}`,
-              }]}
-              height={300}
-              grid={{ horizontal: true }}
-              sx={{
-                [`& .${axisClasses.left} .${axisClasses.label}`]: { stroke: '#fff' },
-                [`& .${axisClasses.bottom} .${axisClasses.tickLabel}`]: { fill: '#9CA3AF' },
-                // Hide generic legend if unnecessary or style it
-                '& .MuiChartsLegend-root text': { fill: '#fff !important' }
-              }}
-              margin={{ top: 10, bottom: 30, left: 40, right: 10 }}
-            />
-          </div>
-        </div>
-
-        {/* 2. Donut Chart (Plans) */}
-        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-6">Distribuição de Planos</h3>
-          <div className="h-[250px] w-full flex items-center justify-center relative">
-            {stats.planData.length > 0 ? (
-              <PieChart
-                series={[
-                  {
-                    data: stats.planData,
-                    innerRadius: 70,
-                    outerRadius: 90,
-                    paddingAngle: 5,
-                    cornerRadius: 5,
-                    cx: 140, // adjust center X manually if container is small, or rely on auto
-                    highlightScope: { fade: 'global', highlighted: 'item' },
-                    fade: { innerRadius: 30, additionalRadius: -30, color: 'gray' },
-                  },
-                ]}
-                height={250}
-                slotProps={{
-                  legend: {
-                    position: { vertical: 'bottom', horizontal: 'center' },
-                    padding: 0,
-                  }
-                }}
-                sx={{
-                  '& .MuiChartsLegend-root text': { fill: '#fff !important' }
-                }}
-              />
-            ) : (
-              <div className="text-gray-500 text-sm">Sem dados de planos</div>
-            )}
-
-            {stats.planData.length > 0 && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none pb-8" style={{ left: '-10px', top: '-20px' }}>
-                <div className="text-center">
-                  <span className="text-3xl font-bold text-white block">
-                    {stats.activeUsers + stats.totalFree}
-                  </span>
-                  <span className="text-xs text-gray-400 uppercase tracking-wider">Total</span>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 3. Horizontal Bar (Heatmap style) for Locations */}
-        <div className="lg:col-span-1 bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <MapPin size={20} className="text-[#F59E0B]" />
-              Top Localizações
-            </h3>
-          </div>
-
-          <div className="h-[300px] w-full">
-            {stats.locationsChartData.length > 0 ? (
-              <BarChart
-                layout="horizontal" // Switch to horizontal layout
-                dataset={stats.locationsChartData}
-                yAxis={[{
-                  scaleType: 'band',
-                  dataKey: 'name',
-                  tickLabelStyle: { fill: '#fff', fontWeight: 'bold' }
-                }]}
-                xAxis={[{
-                  hideTooltip: true,
-                }]}
-                series={[{
-                  dataKey: 'value',
-                  color: '#F59E0B',
-                  label: 'Usuários'
-                }]}
-                height={300}
-                margin={{ left: 50 }}
-                sx={{
-                  '& .MuiChartsLegend-root text': { fill: '#fff !important' }
-                }}
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center text-gray-500 text-sm">
-                Sem dados de localização
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* 4. Revenue Estimated (Line/Area) */}
-        <div className="lg:col-span-2 bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <DollarSign size={20} className="text-[#10B981]" />
-            Faturamento Estimado (12 Meses)
-          </h3>
-          <div className="h-[300px] w-full">
-            <LineChart
-              dataset={stats.chartData}
-              xAxis={[{
-                scaleType: 'point',
-                dataKey: 'name',
-                tickLabelStyle: { fill: '#9CA3AF' }
-              }]}
-              yAxis={[{
-                valueFormatter: (v) => `R$${v}`,
-                tickLabelStyle: { fill: '#9CA3AF' }
-              }]}
-              series={[{
-                dataKey: 'value',
-                area: true,
-                color: '#10B981',
-                showMark: false,
-                label: 'Receita Estimada'
-              }]}
-              height={300}
-              grid={{ horizontal: true }}
-              sx={{
-                '& .MuiChartsLegend-root text': { fill: '#fff !important' }
-              }}
-            />
-          </div>
-        </div>
-
-      </div>
-    </div>
+    </div >
   );
 };

@@ -308,13 +308,13 @@ Objetivo:
         { role: 'user', content: text }
       ]
     });
-    
+
     // Extract text from response content
     const reply = response.content
       .filter(block => block.type === 'text')
       .map(block => block.text)
       .join('');
-      
+
     return reply;
   } catch (e) {
     console.error('Claude Error:', e);
@@ -624,6 +624,34 @@ router.post('/asaas/customer', async (req, res) => {
   }
 });
 
+// Get customer by CPF/CNPJ (for refund lookup)
+router.get('/asaas/customer', async (req, res) => {
+  const { cpfCnpj } = req.query;
+
+  if (!cpfCnpj) {
+    return res.status(400).json({ error: 'CPF/CNPJ é obrigatório.' });
+  }
+
+  try {
+    const searchResult = await asaasRequest(
+      'GET',
+      `/customers?cpfCnpj=${cpfCnpj.replace(/\D/g, '')}`
+    );
+
+    if (searchResult.data && searchResult.data.length > 0) {
+      res.json({ success: true, customer: searchResult.data[0] });
+    } else {
+      res.status(404).json({ error: 'Cliente não encontrado.' });
+    }
+  } catch (error) {
+    console.error('>>> Customer search error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao buscar cliente.',
+      details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
 router.post('/asaas/subscription', async (req, res) => {
   const {
     customerId,
@@ -892,7 +920,7 @@ router.delete('/asaas/subscription/:subscriptionId', async (req, res) => {
 router.get('/asaas/payments', async (req, res) => {
   try {
     const { customer, subscription, status, limit, offset } = req.query;
-    
+
     // Build query string
     const params = new URLSearchParams();
     if (customer) params.append('customer', customer);
@@ -900,9 +928,9 @@ router.get('/asaas/payments', async (req, res) => {
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit);
     if (offset) params.append('offset', offset);
-    
+
     const queryString = params.toString() ? `?${params.toString()}` : '';
-    
+
     const result = await asaasRequest('GET', `/payments${queryString}`);
     res.json({ success: true, ...result });
   } catch (error) {
@@ -923,6 +951,30 @@ router.get('/asaas/payment/:paymentId', async (req, res) => {
     res.status(500).json({
       error: 'Erro ao buscar pagamento.',
       details: error.response?.data
+    });
+  }
+});
+
+router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
+  const { paymentId } = req.params;
+  const { value, description } = req.body;
+
+  try {
+    const payload = {
+      value: value || undefined, // Optional: for partial refunds
+      description: description || 'Solicitado pelo cliente (7 dias)'
+    };
+
+    const result = await asaasRequest('POST', `/payments/${paymentId}/refund`, payload);
+
+    console.log(`>>> Payment ${paymentId} refunded:`, result);
+
+    res.json({ success: true, result });
+  } catch (error) {
+    console.error('>>> Refund error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao estornar pagamento.',
+      details: error.response?.data?.errors?.[0]?.description || error.message
     });
   }
 });

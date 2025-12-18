@@ -16,12 +16,13 @@ export interface User {
   twoFactorSecret?: string | null;
   subscription?: {
     plan: 'starter' | 'pro' | 'family';
-    status: 'active' | 'canceled' | 'past_due' | 'pending_payment';
+    status: 'active' | 'canceled' | 'past_due' | 'pending_payment' | 'refunded';
     billingCycle: 'monthly' | 'annual';
     nextBillingDate?: string;
     installments?: number;
     asaasCustomerId?: string;
     asaasSubscriptionId?: string;
+    asaasPaymentId?: string; // ID do último pagamento para estorno
     couponUsed?: string;
     startDate?: string;
     autoRenew?: boolean;

@@ -1776,6 +1776,10 @@ const App: React.FC = () => {
       const isOpenFinanceTx = !!(t.importSource || (t as any).providerId || isAccountTransaction);
       if (!includeOpenFinanceInStats && isOpenFinanceTx) return false;
 
+      // EXCLUDE checking account transactions from Income if toggle is OFF
+      // This ensures "Incluir no Saldo" toggle also affects the Income calculation
+      if (!includeCheckingInStats && isAccountTransaction) return false;
+
       return true;
     };
 
@@ -1828,6 +1832,12 @@ const App: React.FC = () => {
       // Filter Open Finance - check if transaction belongs to Open Finance
       const isOpenFinanceTx = !!(t.importSource || (t as any).providerId || isAccountTransaction);
       if (!includeOpenFinanceInStats && isOpenFinanceTx) {
+        return false;
+      }
+
+      // EXCLUDE checking account transactions from Expenses if toggle is OFF
+      // This ensures "Incluir no Saldo" toggle also affects the Expense calculation
+      if (!includeCheckingInStats && isAccountTransaction) {
         return false;
       }
 
@@ -2072,14 +2082,18 @@ const App: React.FC = () => {
     const finalTotalIncome = totalIncome + projectedIncome;
     const finalTotalExpense = totalExpense + projectedExpense;
 
-    // Calculate Balance Base (Checking)
-    let balanceBase = 0;
-    if (includeCheckingInStats) {
-      balanceBase = accountBalances.checking;
-    }
+    // Calculate Final Balance
+    let finalBalance = 0;
 
-    // User requested: Saldo Total = Checking + Income - Expense
-    const finalBalance = balanceBase + finalTotalIncome - finalTotalExpense;
+    if (includeCheckingInStats) {
+      // If Checking is Enabled: Balance = Current Funds (API) + Projected Flow
+      // We DO NOT add past income/expense because the API balance already includes them.
+      // This prevents the "double counting" issue.
+      finalBalance = accountBalances.checking + (projectedIncome - projectedExpense);
+    } else {
+      // If Checking is Disabled: Balance = Net Monthly Flow (Income - Expense)
+      finalBalance = finalTotalIncome - finalTotalExpense;
+    }
     const finalMonthlySavings = finalTotalIncome - finalTotalExpense;
 
     return {

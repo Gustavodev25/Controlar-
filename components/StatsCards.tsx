@@ -666,20 +666,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   }, [selectedCheckingAccountIds, checkingAccounts]);
 
   // Calculate adjusted Total Income based on selected checking account
+  // NOTE: We no longer add checking balance to income - that caused double counting
+  // The checking account transactions are already included in stats.totalIncome when the toggle is ON
+  // Adding the balance again would duplicate the amount
   const adjustedTotalIncome = useMemo(() => {
-    // Safety check
-    if (!toggles) return stats.totalIncome;
-
-    // Check if Checking is included
-    const isCheckingIncluded = toggles.includeChecking;
-
-    if (!isCheckingIncluded) {
-      return stats.totalIncome;
-    }
-
-    // Add displayed Checking Balance to Income
-    return stats.totalIncome + displayedCheckingBalance;
-  }, [stats.totalIncome, toggles, displayedCheckingBalance]);
+    // Just return the stats totalIncome - no adjustments needed here
+    // Checking account toggle only affects totalBalance, not income
+    return stats.totalIncome;
+  }, [stats.totalIncome]);
 
   // Calculate adjusted Total Balance based on selected checking account
   const adjustedTotalBalance = useMemo(() => {
@@ -1310,11 +1304,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <p className="text-sm text-gray-400 font-medium">{labels?.expense || 'Despesas'}</p>
-              {!hideCards && cardsIncludedInExpenses.size > 0 && (
-                <span className="text-[10px] text-orange-400 bg-orange-900/30 px-1.5 py-0.5 rounded font-medium">
-                  + {cardsIncludedInExpenses.size} cartao{cardsIncludedInExpenses.size > 1 ? 'es' : ''}
-                </span>
-              )}
             </div>
             <p className="text-2xl font-bold mt-1 text-red-400">
               <NumberFlow

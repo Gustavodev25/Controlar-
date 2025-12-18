@@ -9,6 +9,7 @@ import {
    Puzzle, Rocket, Wallet, Plus, AlertTriangle, Monitor, Globe, ExternalLink, Clock
 } from 'lucide-react';
 import { CustomSettingsIcon } from './CustomIcons';
+import { UniversalModal, ModalSection, ModalDivider } from './UniversalModal';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
@@ -456,19 +457,12 @@ interface CreditCardModalProps {
 const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSave }) => {
    const [step, setStep] = useState<'input' | 'verifying'>('input');
    const [cardData, setCardData] = useState({ number: '', holder: '', expiry: '', cvc: '' });
-   const [isAnimating, setIsAnimating] = useState(false);
-   const [isVisible, setIsVisible] = useState(false);
    const toast = useToasts();
 
    useEffect(() => {
       if (isOpen) {
-         setIsVisible(true);
          setStep('input');
          setCardData({ number: '', holder: '', expiry: '', cvc: '' });
-         requestAnimationFrame(() => requestAnimationFrame(() => setIsAnimating(true)));
-      } else {
-         setIsAnimating(false);
-         setTimeout(() => setIsVisible(false), 300);
       }
    }, [isOpen]);
 
@@ -526,138 +520,120 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
       return v;
    };
 
-   if (!isVisible) return null;
-
-   return createPortal(
-      <div className={`fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}`}>
-         <div className={`bg-[#30302E] rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col relative transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}>
-
-            {/* Background Effects (Matched to TwoFactorModal) */}
-            <div className="absolute inset-0 pointer-events-none">
-               <div className="absolute top-0 right-0 w-40 h-40 bg-[#d97757]/10 rounded-full blur-3xl -mr-10 -mt-10"></div>
-               <div className="absolute bottom-0 left-0 w-40 h-40 bg-blue-500/10 rounded-full blur-3xl -ml-10 -mb-10"></div>
-            </div>
-
-            <div className="p-6 border-b border-[#373734] flex justify-between items-center relative z-10 bg-[#30302E]/50">
-               <div className="flex items-center gap-3">
-                  <div className="p-2 bg-[#d97757]/20 rounded-lg text-[#d97757]">
-                     <CreditCard size={20} />
+   return (
+      <UniversalModal
+         isOpen={isOpen}
+         onClose={onClose}
+         title="Atualizar Cartão"
+         icon={<CreditCard size={20} />}
+         themeColor="#d97757"
+         width="max-w-md"
+         zIndex="z-[10000]"
+      >
+         {step === 'input' ? (
+            <div className="space-y-6 animate-fade-in">
+               {/* Visual Card Preview - Adjusted for narrower container */}
+               <div className="relative w-full h-40 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 shadow-xl p-5 flex flex-col justify-between overflow-hidden group">
+                  <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+                  <div className="flex justify-between items-start z-10">
+                     <div className="w-10 h-6 bg-white/10 rounded flex items-center justify-center gap-1">
+                        <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
+                        <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
+                     </div>
+                     <Wifi size={16} className="text-gray-500 rotate-90" />
                   </div>
-                  <h3 className="font-bold text-white">Atualizar Cartão</h3>
-               </div>
-               <button onClick={onClose} className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-[#373734]">
-                  <X size={20} />
-               </button>
-            </div>
-
-            <div className="p-8 relative z-10">
-               {step === 'input' ? (
-                  <div className="space-y-6">
-                     {/* Visual Card Preview - Adjusted for narrower container */}
-                     <div className="relative w-full h-40 rounded-2xl bg-gradient-to-br from-gray-800 to-gray-900 border border-gray-700 shadow-xl p-5 flex flex-col justify-between overflow-hidden group">
-                        <div className="absolute inset-0 bg-gradient-to-r from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
-                        <div className="flex justify-between items-start z-10">
-                           <div className="w-10 h-6 bg-white/10 rounded flex items-center justify-center gap-1">
-                              <div className="w-2.5 h-2.5 rounded-full bg-red-500/80"></div>
-                              <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/80"></div>
+                  <div className="z-10 space-y-3">
+                     <div className="text-lg font-mono text-gray-200 tracking-widest drop-shadow-md truncate">
+                        {cardData.number || '•••• •••• •••• ••••'}
+                     </div>
+                     <div className="flex justify-between items-end">
+                        <div className="overflow-hidden">
+                           <div className="text-[8px] uppercase text-gray-500 font-bold">Nome</div>
+                           <div className="text-xs text-gray-300 font-medium uppercase tracking-wide truncate max-w-[120px]">
+                              {cardData.holder || 'SEU NOME'}
                            </div>
-                           <Wifi size={16} className="text-gray-500 rotate-90" />
                         </div>
-                        <div className="z-10 space-y-3">
-                           <div className="text-lg font-mono text-gray-200 tracking-widest drop-shadow-md truncate">
-                              {cardData.number || '•••• •••• •••• ••••'}
-                           </div>
-                           <div className="flex justify-between items-end">
-                              <div className="overflow-hidden">
-                                 <div className="text-[8px] uppercase text-gray-500 font-bold">Nome</div>
-                                 <div className="text-xs text-gray-300 font-medium uppercase tracking-wide truncate max-w-[120px]">
-                                    {cardData.holder || 'SEU NOME'}
-                                 </div>
-                              </div>
-                              <div className="text-right shrink-0">
-                                 <div className="text-[8px] uppercase text-gray-500 font-bold">Validade</div>
-                                 <div className="text-xs text-gray-300 font-mono">
-                                    {cardData.expiry || 'MM/AA'}
-                                 </div>
-                              </div>
+                        <div className="text-right shrink-0">
+                           <div className="text-[8px] uppercase text-gray-500 font-bold">Validade</div>
+                           <div className="text-xs text-gray-300 font-mono">
+                              {cardData.expiry || 'MM/AA'}
                            </div>
                         </div>
                      </div>
+                  </div>
+               </div>
 
-                     {/* Form Fields */}
-                     <div className="space-y-4">
-                        <div>
-                           <div className="relative">
-                              <input
-                                 type="text"
-                                 value={formatCardNumber(cardData.number)}
-                                 onChange={e => setCardData({ ...cardData, number: e.target.value })}
-                                 placeholder="0000 0000 0000 0000"
-                                 className="input-primary pl-10 font-mono text-sm"
-                                 maxLength={19}
-                              />
-                              <CreditCard size={16} className="absolute left-3 top-3.5 text-gray-500" />
-                           </div>
-                        </div>
+               {/* Form Fields */}
+               <div className="space-y-4">
+                  <div>
+                     <div className="relative">
+                        <input
+                           type="text"
+                           value={formatCardNumber(cardData.number)}
+                           onChange={e => setCardData({ ...cardData, number: e.target.value })}
+                           placeholder="0000 0000 0000 0000"
+                           className="input-primary pl-10 font-mono text-sm"
+                           maxLength={19}
+                        />
+                        <CreditCard size={16} className="absolute left-3 top-3.5 text-gray-500" />
+                     </div>
+                  </div>
 
-                        <div>
+                  <div>
+                     <input
+                        type="text"
+                        value={cardData.holder}
+                        onChange={e => setCardData({ ...cardData, holder: e.target.value.toUpperCase() })}
+                        placeholder="Nome no cartão"
+                        className="input-primary uppercase text-sm"
+                     />
+                  </div>
+
+                  <div className="flex gap-3">
+                     <div className="flex-1">
+                        <input
+                           type="text"
+                           value={formatExpiry(cardData.expiry)}
+                           onChange={e => setCardData({ ...cardData, expiry: e.target.value })}
+                           placeholder="MM/AA"
+                           className="input-primary text-center font-mono text-sm"
+                           maxLength={5}
+                        />
+                     </div>
+                     <div className="w-20">
+                        <div className="relative">
                            <input
                               type="text"
-                              value={cardData.holder}
-                              onChange={e => setCardData({ ...cardData, holder: e.target.value.toUpperCase() })}
-                              placeholder="Nome no cartão"
-                              className="input-primary uppercase text-sm"
+                              value={cardData.cvc}
+                              onChange={e => setCardData({ ...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                              placeholder="CVC"
+                              className="input-primary text-center font-mono pl-6 text-sm"
+                              maxLength={4}
                            />
-                        </div>
-
-                        <div className="flex gap-3">
-                           <div className="flex-1">
-                              <input
-                                 type="text"
-                                 value={formatExpiry(cardData.expiry)}
-                                 onChange={e => setCardData({ ...cardData, expiry: e.target.value })}
-                                 placeholder="MM/AA"
-                                 className="input-primary text-center font-mono text-sm"
-                                 maxLength={5}
-                              />
-                           </div>
-                           <div className="w-20">
-                              <div className="relative">
-                                 <input
-                                    type="text"
-                                    value={cardData.cvc}
-                                    onChange={e => setCardData({ ...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                                    placeholder="CVC"
-                                    className="input-primary text-center font-mono pl-6 text-sm"
-                                    maxLength={4}
-                                 />
-                                 <Lock size={12} className="absolute left-2 top-3.5 text-gray-500" />
-                              </div>
-                           </div>
+                           <Lock size={12} className="absolute left-2 top-3.5 text-gray-500" />
                         </div>
                      </div>
+                  </div>
+               </div>
 
-                     <button
-                        onClick={handleSave}
-                        disabled={!cardData.number || !cardData.holder || !cardData.expiry || !cardData.cvc}
-                        className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                     >
-                        Verificar e Salvar
-                     </button>
-                  </div>
-               ) : (
-                  <div className="py-8 flex flex-col items-center text-center animate-fade-in">
-                     <div className="w-16 h-16 border-4 border-[#d97757]/20 border-t-[#d97757] rounded-full animate-spin mb-6"></div>
-                     <h3 className="text-xl font-bold text-white mb-2">Validando cartão...</h3>
-                     <p className="text-gray-400 text-sm max-w-xs">
-                        Estamos verificando os dados com a operadora.
-                     </p>
-                  </div>
-               )}
+               <button
+                  onClick={handleSave}
+                  disabled={!cardData.number || !cardData.holder || !cardData.expiry || !cardData.cvc}
+                  className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+               >
+                  Verificar e Salvar
+               </button>
             </div>
-         </div>
-      </div>,
-      document.body
+         ) : (
+            <div className="py-8 flex flex-col items-center text-center animate-fade-in">
+               <div className="w-16 h-16 border-4 border-[#d97757]/20 border-t-[#d97757] rounded-full animate-spin mb-6"></div>
+               <h3 className="text-xl font-bold text-white mb-2">Validando cartão...</h3>
+               <p className="text-gray-400 text-sm max-w-xs">
+                  Estamos verificando os dados com a operadora.
+               </p>
+            </div>
+         )}
+      </UniversalModal>
    );
 };
 
@@ -696,9 +672,21 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const [autoRenew, setAutoRenew] = useState(user.subscription?.autoRenew ?? true); // Moved to top level
    const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
    const [showCancelSubscriptionConfirmation, setShowCancelSubscriptionConfirmation] = useState(false);
+   const [showRefundConfirmation, setShowRefundConfirmation] = useState(false);
+   const [isProcessingRefund, setIsProcessingRefund] = useState(false);
    const [isCardModalOpen, setIsCardModalOpen] = useState(false);
    const [isBillingHistoryOpen, setIsBillingHistoryOpen] = useState(false);
-   const [receiptData, setReceiptData] = useState<{ date: string, amount: string, status: string, method: string, id: string } | null>(null);
+   const [receiptData, setReceiptData] = useState<{
+      date: string;
+      amount: string;
+      status: string;
+      method: string;
+      id: string;
+      originalAmount?: string;
+      discountPercent?: number;
+      couponCode?: string;
+      couponType?: string;
+   } | null>(null);
    const fileInputRef = useRef<HTMLInputElement>(null);
    const toast = useToasts();
    const normalizeMonth = (dateStr: string) => dateStr.slice(0, 7);
@@ -709,9 +697,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const status = formData.subscription?.status || 'active';
    const nextDate = formData.subscription?.nextBillingDate;
 
+   // Refund Eligibility - Check if within 7 days of subscription start
+   const isRefundEligible = useMemo(() => {
+      if (!formData.subscription?.startDate || plan === 'starter') return false;
+      const startDate = new Date(formData.subscription.startDate);
+      const now = new Date();
+      const daysSinceStart = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      return daysSinceStart <= 7 && status === 'active';
+   }, [formData.subscription?.startDate, plan, status]);
+
+   const daysUntilRefundExpires = useMemo(() => {
+      if (!formData.subscription?.startDate) return 0;
+      const startDate = new Date(formData.subscription.startDate);
+      const now = new Date();
+      const daysSinceStart = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
+      return Math.max(0, 7 - daysSinceStart);
+   }, [formData.subscription?.startDate]);
+
    const tabs = [
       { id: 'account', label: 'Minha Conta', icon: <User size={18} /> },
-      { id: 'badges', label: 'Conquistas', icon: <Trophy size={18} /> },
       ...(plan === 'family' ? [{ id: 'family', label: 'Família', icon: <Users size={18} /> }] : []),
       { id: 'finance', label: 'Financeiro', icon: <Coins size={18} /> },
       { id: 'security', label: 'Segurança', icon: <Shield size={18} /> },
@@ -1132,11 +1136,56 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       loadCoupon();
    }, [user.subscription?.couponUsed]);
 
+   // Check if subscription was obtained with 100% discount (free via coupon)
+   const isFreeCouponSubscription = useMemo(() => {
+      if (!usedCoupon) return false;
+
+      // Check for 100% percentage coupon
+      if (usedCoupon.type === 'percentage' && usedCoupon.value === 100) {
+         return true;
+      }
+
+      // Check for progressive coupon with 100% first month
+      if (usedCoupon.type === 'progressive') {
+         const firstMonthDiscount = usedCoupon.progressiveDiscounts?.find(d => d.month === 1);
+         if (firstMonthDiscount?.discount === 100) {
+            return true;
+         }
+      }
+
+      return false;
+   }, [usedCoupon]);
+
+   // Check if there was a real payment made (for refund purposes)
+   const hasRealPayment = useMemo(() => {
+      // If no Asaas IDs exist, likely no payment was made
+      const hasAsaasData = !!(
+         formData.subscription?.asaasCustomerId ||
+         formData.subscription?.asaasSubscriptionId ||
+         formData.subscription?.asaasPaymentId
+      );
+
+      // If it's a free coupon subscription, no real payment
+      if (isFreeCouponSubscription) return false;
+
+      return hasAsaasData;
+   }, [formData.subscription, isFreeCouponSubscription]);
+
    // Dynamic Billing History with Coupon Support
    const billingHistory = useMemo(() => {
       if (!user.subscription || user.subscription.plan === 'starter') return [];
 
-      const history: { id: string; date: string; amount: string; status: string; method: string }[] = [];
+      const history: {
+         id: string;
+         date: string;
+         amount: string;
+         status: string;
+         method: string;
+         originalAmount?: string;
+         discountPercent?: number;
+         couponCode?: string;
+         couponType?: string;
+      }[] = [];
       const startDateStr = user.subscription.startDate || new Date().toISOString();
       const start = new Date(startDateStr);
       const now = new Date();
@@ -1163,28 +1212,36 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       while (current <= now) {
          // Calculate amount with coupon discount
          let finalAmount = baseAmount;
+         let discountPercent = 0;
 
          if (usedCoupon) {
             if (usedCoupon.type === 'progressive') {
                // Progressive coupon: different discount per month
                const rule = usedCoupon.progressiveDiscounts?.find(d => d.month === monthIndex);
-               const discountPercent = rule?.discount || 0;
+               discountPercent = rule?.discount || 0;
                finalAmount = Math.max(0, baseAmount * (1 - discountPercent / 100));
             } else if (usedCoupon.type === 'percentage') {
+               discountPercent = usedCoupon.value;
                finalAmount = Math.max(0, baseAmount * (1 - usedCoupon.value / 100));
             } else if (usedCoupon.type === 'fixed') {
+               discountPercent = Math.round((usedCoupon.value / baseAmount) * 100);
                finalAmount = Math.max(0, baseAmount - usedCoupon.value);
             }
          }
 
          const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(finalAmount);
+         const formattedOriginal = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(baseAmount);
 
          history.push({
             id: current.toISOString(),
             date: current.toLocaleDateString('pt-BR'),
             amount: formattedAmount,
-            status: 'Pago',
-            method: method
+            status: finalAmount === 0 ? 'Grátis' : 'Pago',
+            method: finalAmount === 0 ? 'Cupom 100%' : method,
+            originalAmount: discountPercent > 0 ? formattedOriginal : undefined,
+            discountPercent: discountPercent > 0 ? discountPercent : undefined,
+            couponCode: usedCoupon?.code,
+            couponType: usedCoupon?.type
          });
 
          // Increment date
@@ -1246,6 +1303,114 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       await persistUser(updatedUser);
       toast.success("Assinatura cancelada com sucesso.");
       setShowCancelSubscriptionConfirmation(false);
+   };
+
+   const handleRefund = async () => {
+      if (!isRefundEligible) {
+         toast.error("O prazo para estorno expirou.");
+         return;
+      }
+
+      // Check if this is a free coupon subscription
+      if (isFreeCouponSubscription || !hasRealPayment) {
+         toast.error("Não há pagamento para estornar. Seu plano foi ativado com cupom de 100% de desconto.");
+         return;
+      }
+
+      setIsProcessingRefund(true);
+
+      try {
+         // Helper function to process refund once we have paymentId
+         const processRefund = async (paymentId: string) => {
+            const refundRes = await fetch(`/api/asaas/payment/${paymentId}/refund`, {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({ description: 'Estorno solicitado pelo cliente (garantia 7 dias)' })
+            });
+
+            const refundData = await refundRes.json();
+
+            if (!refundRes.ok) {
+               throw new Error(refundData.details || refundData.error || 'Erro ao estornar');
+            }
+
+            // Update user subscription status
+            const updatedUser: UserType = {
+               ...formData,
+               subscription: {
+                  ...formData.subscription!,
+                  status: 'refunded',
+                  plan: 'starter',
+                  autoRenew: false
+               }
+            };
+
+            setFormData(updatedUser);
+            setAutoRenew(false);
+            await persistUser(updatedUser);
+            toast.success("Estorno realizado com sucesso! O valor será devolvido em até 7 dias úteis.");
+            setShowRefundConfirmation(false);
+         };
+
+         // Try to get payment ID from different sources
+         const directPaymentId = formData.subscription?.asaasPaymentId;
+
+         // 1. If we have a direct payment ID, use it
+         if (directPaymentId && !directPaymentId.startsWith('20')) {
+            await processRefund(directPaymentId);
+            return;
+         }
+
+         // 2. Try to get from customer ID
+         let customerId = formData.subscription?.asaasCustomerId;
+
+         // 3. If no customer ID, try to find by CPF
+         if (!customerId && formData.cpf) {
+            const cpfClean = formData.cpf.replace(/\D/g, '');
+            const searchRes = await fetch(`/api/asaas/customer?cpfCnpj=${cpfClean}`);
+
+            if (searchRes.ok) {
+               const searchData = await searchRes.json();
+               if (searchData.customer?.id) {
+                  customerId = searchData.customer.id;
+               }
+            }
+         }
+
+         // 4. If still no customer, try subscription ID to get payments
+         if (!customerId && formData.subscription?.asaasSubscriptionId) {
+            const subsId = formData.subscription.asaasSubscriptionId;
+            const paymentsRes = await fetch(`/api/asaas/payments?subscription=${subsId}&limit=1`);
+            const paymentsData = await paymentsRes.json();
+
+            if (paymentsData.data && paymentsData.data.length > 0) {
+               await processRefund(paymentsData.data[0].id);
+               return;
+            }
+         }
+
+         // 5. If we have customerId, get latest payment
+         if (customerId) {
+            const paymentsRes = await fetch(`/api/asaas/payments?customer=${customerId}&limit=1`);
+            const paymentsData = await paymentsRes.json();
+
+            if (paymentsData.data && paymentsData.data.length > 0) {
+               await processRefund(paymentsData.data[0].id);
+               return;
+            } else {
+               throw new Error('Nenhum pagamento encontrado para estornar.');
+            }
+         }
+
+         // 6. Last resort - admin needs to process manually
+         throw new Error('Não foi possível localizar o pagamento. Entre em contato com o suporte para solicitar o estorno manualmente.');
+
+      } catch (error: any) {
+         console.error('Refund error:', error);
+         toast.error(error.message || "Erro ao processar estorno. Tente novamente ou entre em contato com o suporte.");
+      } finally {
+         setIsProcessingRefund(false);
+      }
    };
 
    // Update autoRenew persistence immediately when toggled (if confirmed)
@@ -1320,72 +1485,113 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    };
 
    const ReceiptModal = () => {
+      // Logic for safe return is now handled by UniversalModal's internal check or we pass isOpen
       if (!receiptData) return null;
 
-      return createPortal(
-         <div className="fixed inset-0 z-[10000] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] bg-black/60 backdrop-blur-md">
-            <div className="bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden border border-[#373734] animate-fade-in-up relative">
+      const isFree = receiptData.status === 'Grátis';
+      const hasDiscount = receiptData.discountPercent && receiptData.discountPercent > 0;
 
-               {/* Background Glow */}
-               <div className="absolute top-0 right-0 w-40 h-40 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-10 bg-green-500"></div>
+      const footer = (
+         <div className="text-center">
+            <button
+               onClick={() => setReceiptData(null)}
+               className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-[#d97757]/20 mb-3"
+            >
+               Fechar
+            </button>
+            <p className="text-xs text-gray-500">
+               Você pode acessar este comprovante a qualquer momento no histórico.
+            </p>
+         </div>
+      );
 
-               <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
-                  <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                     <CheckCircle size={16} className="text-green-500" />
-                     Comprovante
-                  </h3>
-                  <button onClick={() => setReceiptData(null)} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all">
-                     <X size={16} />
-                  </button>
-               </div>
+      const getPlanIcon = () => {
+         switch (plan) {
+            case 'pro': return <img src={fogueteImg} alt="Pro" className="w-6 h-6 object-contain" />;
+            case 'family': return <img src={familiaImg} alt="Family" className="w-6 h-6 object-contain" />;
+            default: return <Star size={20} />;
+         }
+      };
 
-               <div className="p-6 text-center border-b border-[#373734]/50 relative z-10">
-                  <div className="w-14 h-14 bg-green-500/10 text-green-500 rounded-full flex items-center justify-center mx-auto mb-3 border border-green-500/20 shadow-lg shadow-green-900/20">
-                     <Check size={24} strokeWidth={3} />
+      return (
+         <UniversalModal
+            isOpen={!!receiptData}
+            onClose={() => setReceiptData(null)}
+            title={isFree ? 'Plano Promocional' : 'Comprovante de Pagamento'}
+            subtitle={`Plano ${plan === 'pro' ? 'Pro' : plan === 'family' ? 'Family' : 'Starter'}`}
+            icon={isFree ? <Sparkles size={20} /> : getPlanIcon()}
+            themeColor={isFree ? '#d97757' : '#10B981'} // Or just stick to brand
+            width="max-w-md"
+            footer={footer}
+            zIndex="z-[10000]"
+         >
+            <div className="flex flex-col gap-6 animate-fade-in">
+               {/* Payment Details Section */}
+               <ModalSection
+                  icon={<CreditCard size={16} />}
+                  title="Detalhes do Pagamento"
+                  iconClassName="text-[#d97757]"
+               >
+                  <div className="space-y-1.5 text-sm text-gray-400">
+                     <p>
+                        Valor: <span className={`font-bold ${isFree ? 'text-[#d97757]' : 'text-white'}`}>{receiptData.amount}</span>
+                        {hasDiscount && receiptData.originalAmount && (
+                           <span className="text-gray-500 line-through ml-2 text-xs">{receiptData.originalAmount}</span>
+                        )}
+                     </p>
+                     <p>Data: <span className="text-gray-300">{receiptData.date}</span></p>
+                     <p>Método: <span className="text-gray-300">{receiptData.method}</span></p>
                   </div>
-                  <h3 className="text-lg font-bold text-white mb-1">Pagamento Confirmado</h3>
-                  <p className="text-gray-400 text-xs">A transação foi processada com sucesso.</p>
-               </div>
+               </ModalSection>
 
-               <div className="p-6 space-y-4 relative z-10">
-                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
-                     <span className="text-gray-500 text-sm">Valor Pago</span>
-                     <span className="text-white font-bold text-lg tracking-tight">{receiptData.amount}</span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
-                     <span className="text-gray-500 text-sm">Data da Transação</span>
-                     <span className="text-white font-medium text-sm flex items-center gap-1.5">
-                        <Calendar size={13} className="text-gray-400" />
-                        {receiptData.date}
-                     </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2 border-b border-[#373734]/50">
-                     <span className="text-gray-500 text-sm">Método</span>
-                     <span className="text-white font-medium text-sm flex items-center gap-2">
-                        <div className="w-6 h-4 bg-white/10 rounded flex items-center justify-center">
-                           <div className="w-1.5 h-1.5 bg-red-500/80 rounded-full translate-x-0.5"></div>
-                           <div className="w-1.5 h-1.5 bg-yellow-500/80 rounded-full -translate-x-0.5"></div>
+               <ModalDivider />
+
+               {/* Coupon Section */}
+               {receiptData.couponCode && (
+                  <>
+                     <ModalSection
+                        icon={<Check size={16} />}
+                        title="Cupom Aplicado"
+                        iconClassName="text-green-400"
+                     >
+                        <div className="text-sm text-gray-400">
+                           <p className="flex items-center gap-2">
+                              Código:
+                              <code className="bg-[#d97757]/10 text-[#d97757] text-xs font-mono font-bold px-2 py-1 rounded-md border border-[#d97757]/20">
+                                 {receiptData.couponCode}
+                              </code>
+                              {hasDiscount && (
+                                 <span className="text-green-400 text-xs font-bold">-{receiptData.discountPercent}% OFF</span>
+                              )}
+                           </p>
+                           {isFree && (
+                              <p className="text-gray-500 text-xs mt-2">
+                                 Você não foi cobrado pois utilizou um cupom de 100%.
+                              </p>
+                           )}
                         </div>
-                        {receiptData.method}
-                     </span>
-                  </div>
-                  <div className="flex justify-between items-center py-2">
-                     <span className="text-gray-500 text-sm">Status</span>
-                     <span className="text-green-400 font-bold bg-green-500/10 px-2.5 py-1 rounded-md text-xs border border-green-500/20 flex items-center gap-1.5">
-                        <CheckCircle size={11} />
-                        CONFIRMADO
-                     </span>
-                  </div>
-               </div>
+                     </ModalSection>
+                     <ModalDivider />
+                  </>
+               )}
 
-               <div className="p-4 bg-[#272725] text-center border-t border-[#373734]">
-                  <button onClick={() => setReceiptData(null)} className="text-xs font-bold text-gray-400 hover:text-white transition-colors uppercase tracking-wider">
-                     Fechar Janela
-                  </button>
-               </div>
+               {/* Status Section */}
+               <ModalSection
+                  icon={<CheckCircle size={16} />}
+                  title="Status"
+                  iconClassName="text-green-400"
+               >
+                  <div className="text-sm text-gray-400">
+                     <p>
+                        Situação:
+                        <span className={`ml-2 font-bold ${isFree ? 'text-[#d97757]' : 'text-green-400'}`}>
+                           {isFree ? 'ATIVADO COM CUPOM' : 'CONFIRMADO'}
+                        </span>
+                     </p>
+                  </div>
+               </ModalSection>
             </div>
-         </div>,
-         document.body
+         </UniversalModal>
       );
    };
 
@@ -1670,7 +1876,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                            <h4 className="text-lg font-bold text-white flex items-center gap-2">
                               Resumo da Conta
                            </h4>
-                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                           <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                               <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
                                  <FileText size={24} className="text-blue-400 mb-2 group-hover:scale-110 transition-transform" />
                                  <p className="text-2xl font-bold text-white">{transactions.length}</p>
@@ -1686,11 +1892,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  <p className="text-2xl font-bold text-white">{familyGoals.length}</p>
                                  <p className="text-xs text-gray-500">Metas</p>
                               </div>
-                              <div className="flex flex-col items-center justify-center p-4 rounded-xl border border-gray-800 hover:border-gray-700 transition-colors group">
-                                 <Trophy size={24} className="text-purple-400 mb-2 group-hover:scale-110 transition-transform" />
-                                 <p className="text-2xl font-bold text-white">{unlockedBadges.filter(b => b.unlocked).length}</p>
-                                 <p className="text-xs text-gray-500">Conquistas</p>
-                              </div>
+
                            </div>
                         </div>
 
@@ -2314,11 +2516,6 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
                                              <h2 className="text-3xl font-bold text-white flex items-center gap-3">
                                                 {planStyle.label}
-                                                {status === 'active' && (
-                                                   <span className="px-2.5 py-0.5 rounded-full bg-green-500/10 border border-green-500/20 text-green-500 text-[10px] font-bold uppercase tracking-wide">
-                                                      Ativo
-                                                   </span>
-                                                )}
                                              </h2>
                                           </div>
                                        </div>
@@ -2328,6 +2525,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                              <Calendar size={16} className="text-gray-500" />
                                              <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
                                           </div>
+                                          {plan !== 'starter' && (
+                                             <div className="flex items-center gap-2 text-gray-300">
+                                                <Coins size={16} className="text-gray-500" />
+                                                <span>
+                                                   Próxima fatura: <b className="text-white">R$ {plan === 'pro' ? (cycle === 'annual' ? '399,90' : '35,90') : (cycle === 'annual' ? '749,00' : '69,90')}</b>
+                                                </span>
+                                             </div>
+                                          )}
                                           <div className="flex items-center gap-2 text-gray-300">
                                              <Coins size={16} className="text-gray-500" />
                                              <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
@@ -2338,21 +2543,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     <div className="flex flex-col justify-center gap-3 min-w-[200px]">
                                        <button
                                           onClick={onNavigateToSubscription}
-                                          className="w-full py-3.5 bg-white hover:bg-gray-100 text-black rounded-xl font-bold transition-all shadow-lg hover:-translate-y-0.5 active:translate-y-0"
+                                          className="w-full py-2.5 rounded-xl hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
                                        >
                                           {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
                                        </button>
-                                       {plan !== 'starter' && (
-                                          <p className="text-xs text-center text-gray-500">
-                                             Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '399,90' : '35,90') : (cycle === 'annual' ? '749,00' : '69,90')}
-                                          </p>
-                                       )}
                                     </div>
                                  </div>
 
                                  {/* Background Decor */}
                                  <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
                               </div>
+
+                              {/* Warning for Missing Payment Method on Paid Plans */}
+                              {plan !== 'starter' && !formData.paymentMethodDetails && status === 'active' && (
+                                 <div className="mb-6 animate-fade-in">
+                                    <div className="flex items-start gap-3">
+                                       <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+                                       <div className="text-sm">
+                                          <p className="text-gray-300 leading-relaxed">
+                                             <span className="text-red-400 font-bold">Atenção: Cartão Necessário.</span> Você está no plano <strong>{planStyle.label}</strong> sem um cartão para a próxima renovação ({nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'breve'}).
+                                             O plano será cancelado automaticamente se não for regularizado.
+                                          </p>
+                                          <button
+                                             onClick={() => setIsCardModalOpen(true)}
+                                             className="mt-2 px-3 py-1.5 -ml-3 rounded-xl hover:bg-red-500/10 text-red-500 hover:text-red-400 text-xs font-bold transition-colors flex items-center gap-2"
+                                          >
+                                             <Plus size={12} /> Adicionar Cartão Agora
+                                          </button>
+                                       </div>
+                                    </div>
+                                 </div>
+                              )}
 
                               {/* 2. Payment & Billing Details */}
                               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -2418,12 +2639,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     ) : (
                                        <>
                                           {/* Empty State */}
-                                          <div className="flex-1 border-2 border-dashed border-[#373734] rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center hover:border-gray-700 transition-colors bg-gray-900/20">
-                                             <div className="w-12 h-12 rounded-full bg-gray-800 flex items-center justify-center mb-3 text-gray-600">
-                                                <CreditCard size={20} />
+                                          <div className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center transition-colors ${plan !== 'starter' ? 'border-red-500/30 bg-red-500/5 hover:border-red-500/50' : 'border-[#373734] bg-gray-900/20 hover:border-gray-700'}`}>
+                                             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${plan !== 'starter' ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-600'}`}>
+                                                {plan !== 'starter' ? <AlertTriangle size={24} /> : <CreditCard size={20} />}
                                              </div>
-                                             <p className="text-sm text-gray-400 font-medium mb-1">Nenhum cartão vinculado</p>
-                                             <p className="text-xs text-gray-600 max-w-[180px]">Adicione um método de pagamento para ativar a renovação.</p>
+                                             <p className={`text-sm font-bold mb-1 ${plan !== 'starter' ? 'text-red-400' : 'text-gray-400'}`}>
+                                                {plan !== 'starter' ? 'Cartão Necessário' : 'Nenhum cartão vinculado'}
+                                             </p>
+                                             <p className="text-xs text-gray-500 max-w-[180px]">
+                                                {plan !== 'starter'
+                                                   ? 'Sua assinatura será cancelada se não houver um cartão para a próxima cobrança.'
+                                                   : 'Adicione um método de pagamento para ativar a renovação.'}
+                                             </p>
                                           </div>
                                           <button
                                              onClick={() => setIsCardModalOpen(true)}
@@ -2503,7 +2730,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  </div>
                               </div>
 
-                              <div className="flex justify-center pt-8">
+                              <div className="flex flex-col items-center gap-4 pt-8 border-t border-[#373734]/50 mt-6">
+                                 {/* Free Coupon Notice */}
+                                 {isFreeCouponSubscription && isRefundEligible && (
+                                    <div className="text-center bg-[#d97757]/10 border border-[#d97757]/20 rounded-xl p-4 max-w-sm">
+                                       <div className="flex items-center justify-center gap-2 text-[#d97757] mb-2">
+                                          <Sparkles size={16} />
+                                          <span className="font-bold text-sm">Plano Promocional</span>
+                                       </div>
+                                       <p className="text-xs text-gray-400 leading-relaxed">
+                                          Seu plano foi ativado com cupom de <strong className="text-[#d97757]">100% de desconto</strong>.
+                                          Não há valor a ser estornado pois não houve cobrança.
+                                       </p>
+                                       {usedCoupon && (
+                                          <div className="mt-2 inline-flex items-center gap-1.5 bg-[#d97757]/20 text-[#d97757] text-[10px] px-2 py-1 rounded-md">
+                                             <span>Cupom:</span>
+                                             <code className="font-mono font-bold">{usedCoupon.code}</code>
+                                          </div>
+                                       )}
+                                    </div>
+                                 )}
+
+                                 {/* Refund Button - Only visible in first 7 days AND has real payment */}
+                                 {isRefundEligible && hasRealPayment && !isFreeCouponSubscription && (
+                                    <div className="text-center">
+                                       <button
+                                          onClick={() => setShowRefundConfirmation(true)}
+                                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 px-4 py-2 rounded-lg border border-amber-500/20"
+                                       >
+                                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+                                             <path d="M3 3v5h5" />
+                                          </svg>
+                                          Solicitar Estorno
+                                       </button>
+                                       <p className="text-[10px] text-gray-500 mt-1.5">
+                                          Garantia de {daysUntilRefundExpires} dia{daysUntilRefundExpires !== 1 ? 's' : ''} restante{daysUntilRefundExpires !== 1 ? 's' : ''}
+                                       </p>
+                                    </div>
+                                 )}
+
+                                 {/* Expired Refund Notice - Show if past 7 days but user might want to know */}
+                                 {!isRefundEligible && hasRealPayment && plan !== 'starter' && status === 'active' && (
+                                    <p className="text-[10px] text-gray-600 text-center max-w-xs">
+                                       O prazo de 7 dias para solicitar estorno expirou.
+                                       Para dúvidas, entre em contato com o suporte.
+                                    </p>
+                                 )}
+
+                                 {/* Cancel Subscription Button */}
                                  <button
                                     onClick={() => setShowCancelSubscriptionConfirmation(true)}
                                     className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
@@ -2571,6 +2846,19 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             isDestructive={true}
             description="Você perderá o acesso aos recursos Premium ao final do ciclo atual."
          />
+
+         {/* Refund Confirmation */}
+         <ConfirmationBar
+            isOpen={showRefundConfirmation}
+            onCancel={() => setShowRefundConfirmation(false)}
+            onConfirm={handleRefund}
+            label="Solicitar Estorno do Pagamento?"
+            confirmText={isProcessingRefund ? "Processando..." : "Sim, solicitar estorno"}
+            cancelText="Voltar"
+            isDestructive={true}
+            description="O valor pago será devolvido ao seu cartão em até 7 dias úteis. Sua assinatura será revertida para o plano Starter (gratuito)."
+         />
+
          {/* Receipt Modal */}
          <ReceiptModal />
       </div>,

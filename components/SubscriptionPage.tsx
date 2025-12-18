@@ -9,7 +9,7 @@ import familiaImg from '../assets/familia.png';
 import { toLocalISODate } from '../utils/dateUtils';
 
 import NumberFlow from '@number-flow/react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { WordPullUp } from './WordPullUp';
 
 interface SubscriptionPageProps {
@@ -149,6 +149,12 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 const updatedUser = {
                     ...user,
                     subscription: newSubscription as any,
+                    paymentMethodDetails: {
+                        last4: cardData.number.replace(/\s/g, '').slice(-4),
+                        holder: cardData.holderName || user.name,
+                        expiry: `${cardData.expiryMonth}/${cardData.expiryYear.slice(-2)}`,
+                        brand: 'credit_card'
+                    }
                 };
 
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
@@ -249,7 +255,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     paymentMethodDetails: {
                         last4: cardData.number.replace(/\s/g, '').slice(-4),
                         holder: cardData.holderName || user.name,
-                        expiry: `${cardData.expiryMonth}/${cardData.expiryYear}`,
+                        expiry: `${cardData.expiryMonth}/${cardData.expiryYear.slice(-2)}`,
                         brand: 'credit_card'
                     }
                 };
@@ -347,7 +353,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                         className={containerClasses}
                                         initial={{ opacity: 0, y: 20 }}
                                         animate={{ opacity: 1, y: 0 }}
-                                        transition={{ duration: 0.4, delay: plans.indexOf(plan) * 0.1 }}
+                                        transition={{
+                                            layout: { type: "spring", stiffness: 300, damping: 30 },
+                                            opacity: { duration: 0.2 }
+                                        }}
                                     >
                                         {isPro && (
                                             <div className="absolute top-0 right-0 bg-[#d97757] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
@@ -389,17 +398,29 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                             </span>
                                             <span className="text-gray-500">/mês</span>
 
-                                            {billingCycle === 'annual' && plan.annualPrice && (
-                                                <div className="flex flex-col items-center mt-1">
-                                                    <span className="text-xs text-gray-500 block">
-                                                        cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
-                                                    </span>
-                                                    <WordPullUp
-                                                        words="12x sem juros"
-                                                        className="text-xs text-[#d97757] font-bold mt-1"
-                                                    />
-                                                </div>
-                                            )}                                    </div>
+                                            <AnimatePresence>
+                                                {billingCycle === 'annual' && plan.annualPrice && (
+                                                    <motion.div
+                                                        initial={{ opacity: 0, height: 0, scale: 0.9 }}
+                                                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
+                                                        exit={{ opacity: 0, height: 0, scale: 0.9 }}
+                                                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                                                        className="flex flex-col items-center mt-1"
+                                                    >
+                                                        <span className="text-xs text-gray-500 block">
+                                                            cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
+                                                        </span>
+                                                        <motion.span
+                                                            initial={{ scale: 0.8, opacity: 0 }}
+                                                            animate={{ scale: 1, opacity: 1 }}
+                                                            transition={{ delay: 0.1, type: "spring", stiffness: 400, damping: 15 }}
+                                                            className="text-xs text-[#d97757] font-bold mt-1 bg-[#d97757]/10 px-2 py-0.5 rounded-md"
+                                                        >
+                                                            12x sem juros
+                                                        </motion.span>
+                                                    </motion.div>
+                                                )}
+                                            </AnimatePresence>                                    </div>
 
                                         <ul className="space-y-4 mb-8 flex-1">
                                             {plan.features.map((feature, idx) => (

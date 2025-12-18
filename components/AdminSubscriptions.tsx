@@ -17,7 +17,8 @@ import {
     DollarSign,
     ExternalLink,
     Loader2,
-    Ban
+    Ban,
+    Undo2
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { User as UserType } from '../types';
@@ -76,7 +77,9 @@ export const AdminSubscriptions: React.FC = () => {
     const [userPayments, setUserPayments] = useState<AsaasPayment[]>([]);
     const [isLoadingPayments, setIsLoadingPayments] = useState(false);
     const [cancelSubscriptionId, setCancelSubscriptionId] = useState<string | null>(null);
+    const [refundPaymentId, setRefundPaymentId] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [isRefunding, setIsRefunding] = useState(false);
     const [viewMode, setViewMode] = useState<'list' | 'projection'>('list');
     const [coupons, setCoupons] = useState<any[]>([]);
 
@@ -175,6 +178,53 @@ export const AdminSubscriptions: React.FC = () => {
             setIsCancelling(false);
             setCancelSubscriptionId(null);
         }
+    };
+
+    const handleRefundPayment = async () => {
+        if (!refundPaymentId) return;
+        setIsRefunding(true);
+
+        try {
+            const response = await fetch(`/api/asaas/payment/${refundPaymentId}/refund`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    description: 'Solicitado pelo cliente (Prazo de 7 dias)'
+                })
+            });
+            const data = await response.json();
+
+            if (data.success) {
+                toast.success('Estorno realizado com sucesso.');
+                // Update local payments state
+                setUserPayments(prev => prev.map(p =>
+                    p.id === refundPaymentId ? { ...p, status: 'REFUNDED' } : p
+                ));
+            } else {
+                toast.error('Erro ao estornar: ' + (data.details || data.error || 'Erro desconhecido'));
+            }
+        } catch (error) {
+            console.error('Refund error:', error);
+            toast.error('Erro ao processar estorno.');
+        } finally {
+            setIsRefunding(false);
+            setRefundPaymentId(null);
+        }
+    };
+
+    const isEligibleForRefund = (payment: AsaasPayment) => {
+        if (payment.status !== 'CONFIRMED' && payment.status !== 'RECEIVED') return false;
+
+        // Check date (paymentDate preferred, fallback to dateCreated)
+        const dateStr = payment.paymentDate || payment.dateCreated;
+        if (!dateStr) return false;
+
+        const date = new Date(dateStr);
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - date.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        return diffDays <= 7;
     };
 
     // Filter users
@@ -928,16 +978,29 @@ export const AdminSubscriptions: React.FC = () => {
                                                             )}
                                                         </div>
 
-                                                        {payment.invoiceUrl && (
-                                                            <a
-                                                                href={payment.invoiceUrl}
-                                                                target="_blank"
-                                                                rel="noreferrer"
-                                                                className="flex items-center gap-1 text-[#d97757] hover:underline"
-                                                            >
-                                                                Fatura <ExternalLink size={10} />
-                                                            </a>
-                                                        )}
+                                                        <div className="flex items-center gap-3">
+                                                            {isEligibleForRefund(payment) && (
+                                                                <button
+                                                                    onClick={() => setRefundPaymentId(payment.id)}
+                                                                    className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors"
+                                                                    title="Estornar pagamento (dentro de 7 dias)"
+                                                                >
+                                                                    <Undo2 size={12} />
+                                                                    Estornar
+                                                                </button>
+                                                            )}
+
+                                                            {payment.invoiceUrl && (
+                                                                <a
+                                                                    href={payment.invoiceUrl}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="flex items-center gap-1 text-[#d97757] hover:underline"
+                                                                >
+                                                                    Fatura <ExternalLink size={10} />
+                                                                </a>
+                                                            )}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             ))}
@@ -952,12 +1015,19 @@ export const AdminSubscriptions: React.FC = () => {
             )}
 
             {/* Cancel Confirmation */}
+            {/* Confirmation Bar for Cancel or Refund */}
             <ConfirmationBar
-                isOpen={!!cancelSubscriptionId}
-                onCancel={() => setCancelSubscriptionId(null)}
-                onConfirm={handleCancelSubscription}
-                label="Tem certeza que deseja cancelar a assinatura?"
-                confirmText={isCancelling ? "Cancelando..." : "Sim, Cancelar Assinatura"}
+                isOpen={!!cancelSubscriptionId || !!refundPaymentId}
+                onCancel={() => {
+                    setCancelSubscriptionId(null);
+                    setRefundPaymentId(null);
+                }}
+                onConfirm={() => {
+                    if (cancelSubscriptionId) handleCancelSubscription();
+                    if (refundPaymentId) handleRefundPayment();
+                }}
+                label={refundPaymentId ? "Tem certeza que deseja estornar este pagamento?" : "Tem certeza que deseja cancelar a assinatura?"}
+                confirmText={isCancelling || isRefunding ? "Processando..." : (refundPaymentId ? "Sim, Estornar" : "Sim, Cancelar Assinatura")}
                 cancelText="Voltar"
                 isDestructive={true}
             />
