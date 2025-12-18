@@ -338,6 +338,55 @@ const upsertTransaction = async (userId, collectionName, txData, providerId) => 
     }
 };
 
+// Batch writer class for efficient Firestore operations
+class FirestoreBatchWriter {
+    constructor(userId, maxBatchSize = 450) {
+        this.userId = userId;
+        this.maxBatchSize = maxBatchSize;
+        this.operations = [];
+        this.commitCount = 0;
+    }
+
+    add(collectionName, docId, data) {
+        this.operations.push({ collectionName, docId, data: removeUndefined(data) });
+    }
+
+    async flush() {
+        if (!firebaseAdmin || this.operations.length === 0) return 0;
+
+        const db = firebaseAdmin.firestore();
+        let totalProcessed = 0;
+
+        // Process in chunks of maxBatchSize
+        for (let i = 0; i < this.operations.length; i += this.maxBatchSize) {
+            const chunk = this.operations.slice(i, i + this.maxBatchSize);
+            const batch = db.batch();
+
+            for (const op of chunk) {
+                const docRef = db.collection('users').doc(this.userId).collection(op.collectionName).doc(String(op.docId));
+                batch.set(docRef, op.data, { merge: true });
+            }
+
+            try {
+                await batch.commit();
+                totalProcessed += chunk.length;
+                this.commitCount++;
+            } catch (err) {
+                console.error(`>>> Batch commit failed for chunk ${Math.floor(i / this.maxBatchSize) + 1}:`, err.message);
+                // Continue with next chunk instead of failing completely
+                // Individual items will be retried on next sync
+            }
+        }
+
+        this.operations = [];
+        return totalProcessed;
+    }
+
+    get pendingCount() {
+        return this.operations.length;
+    }
+}
+
 // Helper: Cleanup projected installments that match a real transaction
 const cleanupProjectedInstallments = async (userId, txData) => {
     if (!firebaseAdmin || !txData.cardId || !txData.installmentNumber || txData.isProjected) return;
@@ -519,6 +568,9 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     }
 
     let newTransactionsCount = 0;
+
+    // Use batch writer for efficient Firestore operations
+    const batchWriter = new FirestoreBatchWriter(userId);
 
     for (let i = 0; i < accounts.length; i++) {
         const account = accounts[i];
@@ -952,10 +1004,10 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     await cleanupProjectedInstallments(userId, txData);
                 }
 
-                await upsertTransaction(userId, 'creditCardTransactions', txData, tx.id);
-                console.log(`>>>   Saved credit card tx: ${tx.id} - ${tx.description} - R$${amount}`);
+                // Use batch writer instead of individual upserts
+                batchWriter.add('creditCardTransactions', tx.id, txData);
 
-                // Generate Future Installments
+                // Generate Future Installments (these will use regular upsert since they're less frequent)
                 if (meta.totalInstallments && meta.totalInstallments > 1) {
                     await generateProjectedInstallments(userId, tx, account, billsMap, closingDay, accountDisplayName);
                 }
@@ -976,8 +1028,8 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     pluggyRaw: tx
                 };
 
-                await upsertTransaction(userId, 'transactions', txData, tx.id);
-                console.log(`>>>   Saved bank tx: ${tx.id} - ${tx.description} - R$${amount}`);
+                // Use batch writer instead of individual upserts
+                batchWriter.add('transactions', tx.id, txData);
             }
         }
         console.log(`>>> Finished processing transactions for account ${account.id}`);
@@ -1005,6 +1057,19 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     .doc(account.id).update({ balance: calculatedBalance });
             }
         }
+
+        // Flush batch after each account to prevent memory buildup
+        if (batchWriter.pendingCount >= 200) {
+            console.log(`>>> Flushing batch with ${batchWriter.pendingCount} pending operations...`);
+            await batchWriter.flush();
+        }
+    }
+
+    // Final flush of any remaining operations
+    if (batchWriter.pendingCount > 0) {
+        console.log(`>>> Final batch flush with ${batchWriter.pendingCount} pending operations...`);
+        const flushed = await batchWriter.flush();
+        console.log(`>>> Flushed ${flushed} transactions in ${batchWriter.commitCount} batch commits`);
     }
 
     console.log(`>>> Server-Side Sync Completed for ${itemId}. Total transactions processed: ${newTransactionsCount}`);
@@ -1862,6 +1927,15 @@ const pollAndSync = async (apiKey, itemId, userId) => {
 // Helper: Check and Consume Credit (Transactional)
 const consumeDailyCredit = async (transaction, userRef, userDoc) => {
     const userData = userDoc.data();
+
+    // Check if user is admin (check both root and profile level)
+    const isAdmin = userData.isAdmin === true || userData.profile?.isAdmin === true;
+
+    // Admins have unlimited connection credits
+    if (isAdmin) {
+        console.log('>>> Admin user detected - unlimited credits');
+        return { newCount: 0, remaining: Infinity };
+    }
 
     // Determine User Plan (mimic frontend/database.ts logic)
     const subscription = userData.subscription || userData.profile?.subscription;
