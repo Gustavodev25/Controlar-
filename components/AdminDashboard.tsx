@@ -149,7 +149,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       if (plan === 'family') {
         price = isAnnual ? (749.00 / 12) : 69.90;
       } else if (plan === 'pro') {
-        price = isAnnual ? (399.00 / 12) : 34.90;
+        price = isAnnual ? (399.90 / 12) : 35.90;
       } else {
         price = 0;
       }

@@ -37,6 +37,9 @@ interface StatsCardsProps {
     cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
     setCardInvoiceTypes?: (types: Record<string, 'current' | 'next' | 'used_total'>) => void;
   };
+  cardInvoiceType?: Record<string, 'current' | 'next' | 'used_total'>;
+  setCardInvoiceType?: (types: Record<string, 'current' | 'next' | 'used_total'>) => void;
+
   isProMode?: boolean;
   onActivateProMode?: () => void;
   userPlan?: 'starter' | 'pro' | 'family';
@@ -57,6 +60,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   toggles,
   creditCardTransactions = [],
   dashboardDate,
+  cardInvoiceType: propCardInvoiceType, // Alias to avoid conflict if both passed
+  setCardInvoiceType: propSetCardInvoiceType,
+
   isProMode = true,
   onActivateProMode,
   userPlan = 'starter',
@@ -64,6 +70,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   hideCards = false,
   labels
 }) => {
+  // Use prop if available, otherwise toggle fallback
+
+
+
+
+
+
 
   // Use enabledCreditCardIds from toggles (Synced with App.tsx)
   const cardsIncludedInExpenses = useMemo(() => {
@@ -140,8 +153,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     return {};
   });
 
-  const cardInvoiceType = toggles?.cardInvoiceTypes ?? localCardInvoiceType;
-  const setCardInvoiceType = toggles?.setCardInvoiceTypes ?? setLocalCardInvoiceType;
+  const cardInvoiceType = propCardInvoiceType || toggles?.cardInvoiceTypes || localCardInvoiceType;
+  const setCardInvoiceType = propSetCardInvoiceType || toggles?.setCardInvoiceTypes || setLocalCardInvoiceType;
 
   useEffect(() => {
     if (!toggles?.cardInvoiceTypes && typeof window !== 'undefined') {
@@ -227,24 +240,43 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   const getBillAmounts = useCallback((card: ConnectedAccount) => {
     const bills = card.bills || [];
-    if (!bills.length) {
-      return { currentBill: null, nextBill: null, currentAmount: null, nextAmount: null };
+
+    // 1. Prioritize the pre-calculated currentBill from the object (most reliable from backend)
+    // We cast it to ProviderBill-like shape to satisfy local types if needed, or just use it.
+    // However, card.currentBill lacks 'id' compared to ProviderBill.
+    let currentBill: any = card.currentBill || null;
+
+    // 2. Fallback: Search in bills array
+    if (!currentBill && bills.length > 0) {
+      const today = new Date();
+      const sortedBills = [...bills].sort((a, b) =>
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
+
+      // Prioriza fatura OPEN; senão, a próxima com dueDate futuro; fallback última conhecida
+      const openBill = sortedBills.find(b => b.state === 'OPEN');
+      const futureBill = sortedBills.find(b => new Date(b.dueDate) >= today);
+      currentBill = openBill || futureBill || sortedBills[sortedBills.length - 1] || null;
     }
 
-    const today = new Date();
-    const sortedBills = [...bills].sort((a, b) =>
-      new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
+    // 3. Find Next Bill relative to Current Bill
+    let nextBill = null;
+    if (bills.length > 0 && currentBill) {
+      const sortedBills = [...bills].sort((a, b) =>
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
 
-    // Prioriza fatura OPEN; senão, a próxima com dueDate futuro; fallback última conhecida
-    const openBill = sortedBills.find(b => b.state === 'OPEN');
-    const futureBill = sortedBills.find(b => new Date(b.dueDate) >= today);
-    const currentBill = openBill || futureBill || sortedBills[sortedBills.length - 1] || null;
+      // Attempt to find index of currentBill in the full list
+      // Match by ID (if available) or Due Date
+      const currentIndex = sortedBills.findIndex(b =>
+        (b.id && currentBill.id && b.id === currentBill.id) ||
+        (b.dueDate === currentBill.dueDate)
+      );
 
-    const currentBillIndex = currentBill ? sortedBills.indexOf(currentBill) : -1;
-    const nextBill = currentBillIndex >= 0 && currentBillIndex < sortedBills.length - 1
-      ? sortedBills[currentBillIndex + 1]
-      : null;
+      if (currentIndex >= 0 && currentIndex < sortedBills.length - 1) {
+        nextBill = sortedBills[currentIndex + 1];
+      }
+    }
 
     const currentAmount = currentBill ? Math.abs(currentBill.totalAmount || 0) : null;
     const nextAmount = nextBill ? Math.abs(nextBill.totalAmount || 0) : null;
@@ -279,25 +311,38 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   const getInvoiceByMode = useCallback((card: ConnectedAccount, transactionsForCard: Transaction[]) => {
     const bills = card.bills || [];
-    const today = new Date();
 
-    const sortedBills = [...bills].sort((a, b) =>
-      new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
-    );
+    // Logic extraction for current bill (consistent with getBillAmounts)
+    let currentBill: any = card.currentBill || null;
+    if (!currentBill && bills.length > 0) {
+      const today = new Date();
+      const sortedBills = [...bills].sort((a, b) =>
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
+      currentBill = sortedBills.find(b => {
+        const dueDate = new Date(b.dueDate);
+        return dueDate >= today || b.state === 'OPEN';
+      }) || sortedBills.find(b => b.state === 'OPEN');
+    }
 
-    const currentBill = sortedBills.find(b => {
-      const dueDate = new Date(b.dueDate);
-      return dueDate >= today || b.state === 'OPEN';
-    }) || sortedBills.find(b => b.state === 'OPEN');
-
-    const currentBillIndex = currentBill ? sortedBills.indexOf(currentBill) : -1;
-    const nextBill = currentBillIndex >= 0 && currentBillIndex < sortedBills.length - 1
-      ? sortedBills[currentBillIndex + 1]
-      : null;
+    let nextBill = null;
+    if (bills.length > 0 && currentBill) {
+      const sortedBills = [...bills].sort((a, b) =>
+        new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime()
+      );
+      const idx = sortedBills.findIndex(b =>
+        (b.id && currentBill.id && b.id === currentBill.id) ||
+        (b.dueDate === currentBill.dueDate)
+      );
+      if (idx >= 0 && idx < sortedBills.length - 1) {
+        nextBill = sortedBills[idx + 1];
+      }
+    }
 
     if (invoiceMode === 'due_current' && currentBill) {
       const amount = Math.abs(currentBill.totalAmount || 0);
-      if (amount > 0) return amount;
+      return amount; // Trust the bill amount, even if 0, unless we want to fallback? Usually bill amount is authoritative.
+      // If amount is 0, maybe check transactions? But if a bill exists, 0 means 0 due.
     }
 
     if (invoiceMode === 'due_next' && nextBill) {
@@ -305,7 +350,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       if (amount > 0) return amount;
     }
 
-    const openBill = sortedBills.find(b => b.state === 'OPEN');
+    // Fallback if no bill found or mode mismatch (though due_current should have been caught)
+    const openBill = bills.find(b => b.state === 'OPEN');
     if (openBill && Math.abs(openBill.totalAmount || 0) > 0) {
       return Math.abs(openBill.totalAmount);
     }
@@ -441,21 +487,63 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         ? nextAmount
         : (cardMonthSums.get(nextMonthKey || '') || 0));
 
-      let cardLimit = card.creditLimit || 0;
+      // Calculate used limit correctly from Pluggy data:
+      // Priority 1: usedCreditLimit (direct from Pluggy)
+      // Priority 2: creditLimit - availableCreditLimit (calculated)
+      // Priority 3: balance (for Open Finance, balance IS the used limit)
+      // Priority 4: invoice value as fallback
+      let usedTotal = 0;
+
+      // First, try to get creditLimit and availableCreditLimit from the card
+      const hasValidCreditLimit = card.creditLimit !== undefined && card.creditLimit !== null && card.creditLimit > 0;
+      const hasValidAvailableLimit = card.availableCreditLimit !== undefined && card.availableCreditLimit !== null;
+      const hasValidUsedLimit = card.usedCreditLimit !== undefined && card.usedCreditLimit !== null && card.usedCreditLimit >= 0;
+
+      if (hasValidUsedLimit) {
+        // Priority 1: Direct usedCreditLimit from Pluggy API
+        usedTotal = card.usedCreditLimit;
+      } else if (hasValidCreditLimit && hasValidAvailableLimit) {
+        // Priority 2: Calculate used = creditLimit - availableCreditLimit
+        usedTotal = Math.max(0, card.creditLimit - card.availableCreditLimit);
+      } else if (card.balance !== undefined && card.balance !== null && Math.abs(card.balance) > 0) {
+        // Priority 3: Use balance (for Open Finance connectors, balance = used limit)
+        usedTotal = Math.abs(card.balance);
+      } else {
+        // Priority 4: Use invoice value as last resort
+        usedTotal = currentInvoiceValue;
+      }
+
+      // Use manual limit if set, otherwise fall back to API limit
+      let cardLimit = card.manualCreditLimit || card.creditLimit || 0;
       let cardAvailable = card.availableCreditLimit || 0;
 
-      if (cardLimit === 0 && creditLimit > 0) {
-        const totalBalance = creditAccounts.reduce((sum, c) => sum + Math.abs(c.balance || 0), 0);
-        const cardProportion = totalBalance > 0 ? Math.abs(card.balance || 0) / totalBalance : 1 / creditAccounts.length;
-        cardLimit = creditLimit * cardProportion;
+      // Improve Limit Calculation if missing
+      if (cardLimit === 0) {
+        // Check if we have availableCreditLimit - can estimate limit
+        if (hasValidAvailableLimit && usedTotal > 0) {
+          // Estimate: limit = available + used
+          cardLimit = cardAvailable + usedTotal;
+        } else if (creditLimit > 0 && creditAccounts.length > 1) {
+          // Fallback 1: Proportional distribution of total limit (Only if multiple cards)
+          const totalBalance = creditAccounts.reduce((sum, c) => sum + Math.abs(c.balance || 0), 0);
+          const cardProportion = totalBalance > 0 ? Math.abs(card.balance || 0) / totalBalance : 1 / creditAccounts.length;
+          cardLimit = creditLimit * cardProportion;
+        } else if (creditLimit > 0 && creditAccounts.length === 1) {
+          cardLimit = creditLimit;
+        }
+      }
+
+      // If we still don't have limit but have available, try to estimate
+      if (cardLimit === 0 && cardAvailable > 0) {
+        cardLimit = cardAvailable + usedTotal;
       }
 
       if (cardLimit > 0) {
         // Use API available limit if present, otherwise estimate
-        if (card.availableCreditLimit !== undefined && card.availableCreditLimit !== null) {
+        if (hasValidAvailableLimit) {
           cardAvailable = card.availableCreditLimit;
         } else {
-          cardAvailable = Math.max(0, cardLimit - invoiceValue);
+          cardAvailable = Math.max(0, cardLimit - usedTotal);
         }
       }
 
@@ -482,8 +570,6 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               null;
         return { monthKey: key, amount, dueDate };
       });
-
-      const usedTotal = resolveConnectedInvoice(card) || 0;
 
       return {
         cardId: card.id,
@@ -1020,35 +1106,39 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
                                         {/* Modes - Only visible if enabled */}
                                         {isEnabled && (
-                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
-                                            <div
-                                              onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
-                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                            >
-                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                Fatura Atual
-                                              </span>
-                                              <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
-                                                {formatCurrency(currentVal)}
-                                              </span>
+                                          <>
+                                            <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
+                                              <div
+                                                onClick={(e) => { e.stopPropagation(); setMode('current'); }}
+                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
+                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                              >
+                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                  Fatura Atual
+                                                </span>
+                                                <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
+                                                  {formatCurrency(currentVal)}
+                                                </span>
+                                              </div>
+
+                                              <div
+                                                onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
+                                                className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
+                                                  ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                  : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                              >
+                                                <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                  Total Usado
+                                                </span>
+                                                <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                  {formatCurrency(usedVal)}
+                                                </span>
+                                              </div>
                                             </div>
 
-                                            <div
-                                              onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
-                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                            >
-                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                Total Usado
-                                              </span>
-                                              <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                {formatCurrency(usedVal)}
-                                              </span>
-                                            </div>
-                                          </div>
+
+                                          </>
                                         )}
                                       </div>
                                     );
@@ -1119,7 +1209,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                         {isCurrent && (
                           <div className="flex justify-between items-center text-xs">
                             <span className="text-emerald-400 font-medium">
-                              Disp: {formatCurrency(cardInvoice.available || 0)}
+                              Limite: {formatCurrency(cardInvoice.limit || 0)}
                             </span>
                             {/* Dot indicators */}
                             {creditAccounts.length > 1 && (
@@ -1137,7 +1227,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               </div>
                             )}
                             <span className="text-gray-500">
-                              Usado: {formatCurrency((cardInvoice.limit || 0) - (cardInvoice.available || 0))}
+                              Usado: {formatCurrency((cardInvoice.limit && cardInvoice.limit > 0) ? (cardInvoice.limit - (cardInvoice.available || 0)) : (cardInvoice.usedTotal || 0))}
                             </span>
                           </div>
                         )}

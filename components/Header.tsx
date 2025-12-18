@@ -10,8 +10,10 @@ import {
   RotateCcw,
   TrendingUp,
   Lightbulb,
-  X
+  X,
+  XCircle
 } from './Icons';
+import { toast } from 'sonner';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownLabel } from './Dropdown';
 import { CustomSelect, CustomMonthPicker } from './UIComponents';
 import { NotificationCenter } from './NotificationCenter';
@@ -361,6 +363,33 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Compact Sync Status - only show when user has connected accounts */}
           <div className="h-8 w-px bg-gray-800 mx-1 lg:mx-2 hidden sm:block"></div>
+
+          {/* Admin: Cancel All Syncs Button */}
+          {isAdminMode && userId && (
+            <button
+              onClick={async () => {
+                try {
+                  const response = await fetch('/api/pluggy/cancel-all-syncs', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId })
+                  });
+                  const data = await response.json();
+                  if (data.success) {
+                    toast.success('Sincronizações canceladas!');
+                  } else {
+                    toast.error(data.error || 'Erro ao cancelar');
+                  }
+                } catch (e) {
+                  toast.error('Erro de conexão');
+                }
+              }}
+              className="p-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 hover:text-red-300 rounded-lg transition-all border border-red-500/20 hover:border-red-500/40"
+              title="Cancelar todas as sincronizações"
+            >
+              <XCircle size={18} />
+            </button>
+          )}
 
           {/* Notification Center */}
           <NotificationCenter

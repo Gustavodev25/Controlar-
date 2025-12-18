@@ -309,48 +309,22 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 throw new Error(data.error || 'Erro ao sincronizar dados do Pluggy.');
             }
 
-            const accountsRaw = data.accounts || [];
-            const syncedAccounts: ConnectedAccount[] = [];
-
-            // We just map the accounts for UI update. The Server ALREADY saved everything (accounts + txs).
-            for (const entry of accountsRaw) {
-                if (!entry?.account) continue;
-                // Helper to map robustly
-                const bills = mapBills(entry.bills || []); // likely empty from server now, but that's fine
-                const account = normalizeAccount(entry.account, bills);
-                syncedAccounts.push(account);
-            }
-
-            // Build summary message with account types
-            const summary = data.summary;
-            let summaryParts = [`${syncedAccounts.length} contas processadas`];
-            if (summary) {
-                const parts = [];
-                if (summary.checking > 0) parts.push(`${summary.checking} Conta${summary.checking > 1 ? 's' : ''} Corrente${summary.checking > 1 ? 's' : ''}`);
-                if (summary.savings > 0) parts.push(`${summary.savings} Poupança${summary.savings > 1 ? 's' : ''}`);
-                if (summary.credit > 0) parts.push(`${summary.credit} Cartão${summary.credit > 1 ? 'ões' : ''}`);
-                if (parts.length > 0) {
-                    summaryParts = [`Sincronização concluída! ${parts.join(', ')}`];
-                }
-            }
-
+            // The server now returns immediately with "Processing..."
+            // We don't wait for accounts anymore.
             setSyncStatus('success');
-            const summaryMessage = summaryParts.join('. ');
-            setSyncMessage(summaryMessage);
+            setSyncMessage('Conexão iniciada! Seus dados aparecerão em breve.');
 
-            // Show completion progress
             saveSyncProgress({
-                step: summaryMessage,
+                step: 'Processando em segundo plano...',
                 current: 100,
                 total: 100,
                 isComplete: true,
                 startedAt: Date.now()
             });
 
-            console.log('[BankConnectModal] Sync complete (Server-Side). Accounts:', syncedAccounts.length);
-            setTimeout(() => clearSyncProgress(), 5000);
+            setTimeout(() => clearSyncProgress(), 3000);
 
-            return syncedAccounts;
+            return []; // No immediate accounts
         },
         [normalizeAccount, userId]
     );
@@ -557,32 +531,23 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             return;
         }
 
-        // Consume credit for BOTH new connections AND re-syncs
-        // Every Pluggy operation consumes 1 daily credit
-        try {
-            const operationType = isNewConnection ? 'NEW connection' : 're-sync';
-            console.log(`[BankConnectModal] Consuming daily credit for ${operationType}...`);
-            await dbService.incrementDailyConnectionCredits(userId);
-            console.log('[BankConnectModal] Daily credit consumed successfully. Credits used today:', creditsUsedToday + 1);
-        } catch (creditErr) {
-            console.error('[BankConnectModal] Failed to consume credit:', creditErr);
-            // We do not block the flow here, but we log it.
-        }
+        // CONSUME CREDIT (Moved to Backend)
+        // The /sync route now handles credit deduction atomically.
+        // We just initiate the sync here.
 
         try {
-            setSyncStatus('syncing');
-            setSyncMessage('Conexao autenticada. Sincronizando transacoes...');
+            setSyncStatus('success'); // Show success immediately for the modal
+            setSyncMessage('Conexão recebida. Processando em segundo plano...');
 
-            const synced = await runFullSync(data.item?.id);
+            await runFullSync(data.item?.id);
             await fetchExistingItems();
 
-            console.log('[BankConnectModal] Calling onSuccess with synced data:', synced);
-            // Note: handleBankConnected in ConnectedAccounts no longer needs to increment credits
-            if (onSuccess) onSuccess(synced);
+            // We don't have accounts yet, but we notify success so parent can refresh/poll
+            if (onSuccess) onSuccess([]);
 
             setTimeout(() => {
                 onClose();
-            }, 1500);
+            }, 2000);
         } catch (err: any) {
             console.error('Error syncing after connect:', err);
             setError(err?.message || 'Erro ao sincronizar transacoes.');
@@ -966,6 +931,8 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 <PluggyConnect
                     connectToken={connectToken}
                     includeSandbox={false}
+                    products={['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS', 'IDENTITY', 'INVESTMENTS', 'PAYMENT_DATA']}
+                    updateItem={forceSyncItemId || undefined}
                     onSuccess={handleSuccess}
                     onError={handleError}
                     onClose={() => setShowPluggyWidget(false)}

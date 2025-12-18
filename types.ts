@@ -276,6 +276,8 @@ export interface ConnectedAccount {
   // Credit card specific
   creditLimit?: number;
   availableCreditLimit?: number;
+  usedCreditLimit?: number;
+  manualCreditLimit?: number; // User-defined limit when API doesn't provide it
   brand?: string;
   balanceCloseDate?: string;
   balanceDueDate?: string;
@@ -285,6 +287,15 @@ export interface ConnectedAccount {
   bills?: ProviderBill[];
   connectionMode?: 'AUTO' | 'MANUAL';
   initialBalance?: number;
+
+  // Current bill info (for display)
+  currentBill?: {
+    dueDate?: string;
+    totalAmount?: number;
+    state?: string;
+    paidAmount?: number;
+    minimumPayment?: number;
+  };
   // Bank account specific
   accountNumber?: string;
   bankNumber?: string;

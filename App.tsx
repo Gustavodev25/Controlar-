@@ -2544,6 +2544,8 @@ const App: React.FC = () => {
     }
   };
 
+
+
   const handleUpdateTransaction = async (transaction: Transaction) => {
     if (!userId) return;
     try {
@@ -3090,6 +3092,7 @@ const App: React.FC = () => {
                         cardInvoiceTypes: cardInvoiceTypes,
                         setCardInvoiceTypes: setCardInvoiceTypes
                       }}
+
                       isProMode={isProMode}
                       onActivateProMode={() => setIsProMode(true)}
                       userPlan={effectivePlan}

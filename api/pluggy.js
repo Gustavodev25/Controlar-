@@ -338,6 +338,54 @@ const upsertTransaction = async (userId, collectionName, txData, providerId) => 
     }
 };
 
+// Helper: Cleanup projected installments that match a real transaction
+const cleanupProjectedInstallments = async (userId, txData) => {
+    if (!firebaseAdmin || !txData.cardId || !txData.installmentNumber || txData.isProjected) return;
+
+    try {
+        const db = firebaseAdmin.firestore();
+        const coll = db.collection('users').doc(userId).collection('creditCardTransactions');
+
+        // Query for potentially conflicting projected transactions
+        const snapshot = await coll
+            .where('cardId', '==', txData.cardId)
+            .where('installmentNumber', '==', txData.installmentNumber)
+            .where('totalInstallments', '==', txData.totalInstallments)
+            .where('isProjected', '==', true)
+            .get();
+
+        if (snapshot.empty) return;
+
+        const batch = db.batch();
+        let deletedCount = 0;
+
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            // Match amount (allow small diff)
+            const amountDiff = Math.abs((data.amount || 0) - (txData.amount || 0));
+
+            // Match description (normalize)
+            // Remove "01/10" pattern if present to match base description
+            const normalize = (s) => (s || '').toLowerCase().replace(/\s*\d+\/\d+/, '').trim();
+            const desc1 = normalize(data.description);
+            const desc2 = normalize(txData.description);
+            const descMatch = desc1 === desc2 || desc1.includes(desc2) || desc2.includes(desc1);
+
+            if (amountDiff < 0.1 && descMatch) {
+                console.log(`>>> Cleanup: Deleting projected duplicate ${doc.id} for real tx ${txData.description} (${txData.installmentNumber}/${txData.totalInstallments})`);
+                batch.delete(doc.ref);
+                deletedCount++;
+            }
+        });
+
+        if (deletedCount > 0) {
+            await batch.commit();
+        }
+    } catch (e) {
+        console.warn('>>> Error cleaning up projected installments:', e.message);
+    }
+};
+
 const deleteTransactions = async (userId, providerIds) => {
     if (!firebaseAdmin || !providerIds.length) return;
     const db = firebaseAdmin.firestore();
@@ -393,14 +441,18 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     console.log(`>>> Starting Server-Side Sync for Item ${itemId} (User: ${userId}) | Mode: ${fromWebhook ? 'Webhook' : 'Full'}`);
     await updateSyncStatus(userId, 'in_progress', 'Sincronizando contas e transações...');
 
-    // 0. Fetch Item details to get connector (institution) name
+    // 0. Fetch Item details to get connector (institution) name and sync dates
     let institutionName = 'Banco';
     let connectorImageUrl = null;
+    let itemCreatedAt = null;
+    let itemLastUpdatedAt = null;
     try {
         const itemData = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
         institutionName = itemData.connector?.name || 'Banco';
         connectorImageUrl = itemData.connector?.imageUrl || null;
-        console.log(`>>> Item ${itemId} institution: ${institutionName}`);
+        itemCreatedAt = itemData.createdAt || null;
+        itemLastUpdatedAt = itemData.lastUpdatedAt || itemData.updatedAt || null;
+        console.log(`>>> Item ${itemId} institution: ${institutionName}, createdAt: ${itemCreatedAt}, lastUpdatedAt: ${itemLastUpdatedAt}`);
     } catch (e) {
         console.warn('>>> Could not fetch item details for institution name:', e.message);
     }
@@ -445,26 +497,25 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
 
     const today = new Date();
     let from, to;
+    const toDate = new Date(today);
+    toDate.setMonth(toDate.getMonth() + 2);
+    toDate.setDate(0);
+    to = toDate.toISOString().split('T')[0];
 
-    if (fromWebhook && !fullSync) {
-        // Webhook mode: Fetch only last 7 days (new transactions only)
-        // The upsert logic will handle deduplication by providerId
-        const fromDate = new Date(today);
-        fromDate.setDate(fromDate.getDate() - 7);
-        from = fromDate.toISOString().split('T')[0];
-        to = today.toISOString().split('T')[0];
-        console.log(`>>> Webhook optimized fetch: ${from} to ${to} (7 days)`);
-    } else {
-        // Full sync mode: Fetch 12 months back + 2 months forward
+    if (fullSync) {
+        // Full sync mode (first connection): Fetch 12 months back
         const fromDate = new Date(today);
         fromDate.setMonth(fromDate.getMonth() - 12);
         fromDate.setDate(1);
-        const toDate = new Date(today);
-        toDate.setMonth(toDate.getMonth() + 2);
-        toDate.setDate(0);
         from = fromDate.toISOString().split('T')[0];
-        to = toDate.toISOString().split('T')[0];
-        console.log(`>>> Full sync fetch: ${from} to ${to} (12 months)`);
+        console.log(`>>> Full sync fetch: ${from} to ${to} (12 months - first connection)`);
+    } else {
+        // Incremental sync: will be optimized per account below
+        // Set a safe default of 7 days, but this will be overridden
+        const fromDate = new Date(today);
+        fromDate.setDate(fromDate.getDate() - 7);
+        from = fromDate.toISOString().split('T')[0];
+        console.log(`>>> Incremental sync mode: default ${from} to ${to} (will optimize per account)`);
     }
 
     let newTransactionsCount = 0;
@@ -479,12 +530,23 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
 
         const type = (account.type || '').toUpperCase();
         const subtype = (account.subtype || '').toUpperCase();
-        const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT_CARD');
+
+        // Extended Credit Detection
+        const hasCreditData = account.creditData && (account.creditData.creditLimit > 0 || account.creditData.brand);
+        const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT') || subtype.includes('CARD') || hasCreditData;
+
         const isSavings = subtype.includes('SAVINGS') || type.includes('SAVINGS');
         const isChecking = subtype.includes('CHECKING') || type.includes('CHECKING') || type === 'BANK';
 
         // Log account classification
-        console.log(`>>> Processing account ${account.id}: type=${type}, subtype=${subtype}, isCredit=${isCredit}, isSavings=${isSavings}, isChecking=${isChecking}`);
+        console.log(`>>> Processing account ${account.id}: type=${type}, subtype=${subtype}, isCredit=${isCredit}, isSavings=${isSavings}, isChecking=${isChecking}, balance=${account.balance}`);
+        if (isCredit) {
+            console.log(`>>> Credit card data for ${account.id}: creditLimit=${account.creditData?.creditLimit}, availableLimit=${account.creditData?.availableCreditLimit}, usedLimit=${account.creditData?.usedCreditLimit}, balance=${account.creditData?.balance}, brand=${account.creditData?.brand}`);
+            // Log disaggregatedCreditLimits if present
+            if (Array.isArray(account.disaggregatedCreditLimits) && account.disaggregatedCreditLimits.length > 0) {
+                console.log(`>>> Disaggregated Credit Limits for ${account.id}:`, JSON.stringify(account.disaggregatedCreditLimits, null, 2));
+            }
+        }
 
         // Fetch Bills (Credit Card Only) - Moved up to populate account balance correctly
         let billsMap = new Map();
@@ -498,35 +560,105 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 console.log(`>>> Bills fetched for ${account.id}:`, bills.length, 'bills');
                 bills.forEach(b => {
                     billsMap.set(b.id, b);
-                    console.log(`>>>   Bill: id=${b.id}, dueDate=${b.dueDate}, totalAmount=${b.totalAmount}, state=${b.state}, status=${b.status}`);
+                    console.log(`>>>   Bill: id=${b.id}, dueDate=${b.dueDate}, totalAmount=${b.totalAmount}, amount=${b.amount}, balance=${b.balance}, state=${b.state}, status=${b.status}`);
+                    // Debug: log all bill fields
+                    if (bills.length <= 3) {
+                        console.log(`>>>   Bill full data:`, JSON.stringify(b, null, 2));
+                    }
                 });
 
-                // Find the current active invoice (Open, Closed or Overdue) to show as balance
-                // Sort by due date descending to get the latest relevant one
+                // Find the current active invoice to show as balance
+                // Priority: OPEN (current) -> OVERDUE (past due) -> CLOSED (awaiting payment)
                 // Check both 'state' and 'status' fields (Pluggy API may use either)
-                // Also normalize to uppercase for comparison
-                const activeBill = bills
-                    .sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))
-                    .find(b => {
-                        const state = (b.state || b.status || '').toUpperCase();
-                        return ['OPEN', 'OVERDUE', 'CLOSED'].includes(state);
-                    });
+                const normalizeState = (b) => (b.state || b.status || '').toUpperCase();
+
+                // Sort bills by priority and date
+                const sortedBills = [...bills].sort((a, b) => {
+                    const stateA = normalizeState(a);
+                    const stateB = normalizeState(b);
+
+                    // Priority order: OPEN > OVERDUE > CLOSED > others
+                    const priority = { 'OPEN': 0, 'OVERDUE': 1, 'CLOSED': 2 };
+                    const prioA = priority[stateA] ?? 99;
+                    const prioB = priority[stateB] ?? 99;
+
+                    if (prioA !== prioB) return prioA - prioB;
+
+                    // Same priority, sort by due date (most recent first)
+                    return new Date(b.dueDate) - new Date(a.dueDate);
+                });
+
+                // Find the best bill: prioritize OPEN, then OVERDUE, then CLOSED
+                let activeBill = sortedBills.find(b => {
+                    const state = normalizeState(b);
+                    return ['OPEN', 'OVERDUE', 'CLOSED'].includes(state);
+                });
+
+                // If no bill with expected states, use the most recent one
+                if (!activeBill && bills.length > 0) {
+                    activeBill = sortedBills[0];
+                    console.log(`>>> No active bill found, using most recent: ${activeBill?.dueDate} (${normalizeState(activeBill)})`);
+                }
 
                 if (activeBill) {
-                    // Use totalAmount (total invoice value) or balance (remaining to pay)
-                    // Usually for 'current spending', totalAmount of the OPEN bill is the current consumption.
-                    currentInvoiceBalance = activeBill.totalAmount ?? activeBill.balance ?? 0;
-                    console.log(`>>> Found active bill for ${account.id}: ${activeBill.dueDate} - R$${currentInvoiceBalance} (${activeBill.state || activeBill.status})`);
-                } else if (bills.length > 0) {
-                    // Fallback: If no active bill with expected states, use the most recent bill
-                    const mostRecentBill = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate))[0];
-                    if (mostRecentBill) {
-                        currentInvoiceBalance = mostRecentBill.totalAmount ?? mostRecentBill.balance ?? 0;
-                        console.log(`>>> Using most recent bill for ${account.id}: ${mostRecentBill.dueDate} - R$${currentInvoiceBalance} (${mostRecentBill.state || mostRecentBill.status})`);
+                    // Try multiple fields for the invoice amount
+                    // Pluggy may use different field names depending on the bank
+                    const billAmount = activeBill.totalAmount
+                        ?? activeBill.amount
+                        ?? activeBill.balance
+                        ?? activeBill.amountDue
+                        ?? activeBill.totalBalance
+                        ?? null;
+
+                    // Only use bill amount if it's a valid positive number
+                    if (billAmount !== null && billAmount > 0) {
+                        currentInvoiceBalance = billAmount;
                     }
+
+                    console.log(`>>> Found active bill for ${account.id}: dueDate=${activeBill.dueDate}, totalAmount=${activeBill.totalAmount}, amount=${activeBill.amount}, balance=${activeBill.balance}, resolved=${currentInvoiceBalance} (${normalizeState(activeBill)})`);
+
+                    // Store bill details for frontend display
+                    account._currentBill = {
+                        id: activeBill.id,
+                        dueDate: activeBill.dueDate,
+                        totalAmount: billAmount || activeBill.totalAmount,
+                        state: normalizeState(activeBill),
+                        paidAmount: activeBill.paidAmount || 0,
+                        minimumPayment: activeBill.minimumPaymentAmount
+                    };
+                } else {
+                    console.log(`>>> No bills found for credit card ${account.id}`);
                 }
             } catch (e) {
                 console.warn(`>>> Error fetching bills for ${account.id}:`, e.message);
+            }
+        }
+
+        // For credit cards without bills, try to use creditData balance
+        if (isCredit && currentInvoiceBalance === null) {
+            // Try different ways to get the card balance
+            let creditBalance = null;
+
+            // Option 1: Direct balance from creditData
+            if (account.creditData?.balance !== null && account.creditData?.balance !== undefined) {
+                creditBalance = account.creditData.balance;
+            }
+            // Option 2: Used credit limit
+            else if (account.creditData?.usedCreditLimit !== null && account.creditData?.usedCreditLimit !== undefined) {
+                creditBalance = account.creditData.usedCreditLimit;
+            }
+            // Option 3: Calculate from creditLimit - availableCreditLimit
+            else if (account.creditData?.creditLimit && account.creditData?.availableCreditLimit !== undefined) {
+                creditBalance = account.creditData.creditLimit - account.creditData.availableCreditLimit;
+            }
+            // Option 4: Account balance
+            else if (account.balance !== null && account.balance !== undefined) {
+                creditBalance = account.balance;
+            }
+
+            if (creditBalance !== null && creditBalance !== 0) {
+                currentInvoiceBalance = Math.abs(creditBalance);
+                console.log(`>>> Using calculated credit balance for ${account.id}: R$${currentInvoiceBalance}`);
             }
         }
 
@@ -598,16 +730,80 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
             connectionMode: 'AUTO',
             institution: institutionName,
             connectorImageUrl: connectorImageUrl,
-            // Credit card specific data
-            ...(isCredit && account.creditData ? {
-                creditLimit: account.creditData.creditLimit,
-                availableCreditLimit: account.creditData.availableCreditLimit,
-                balanceCloseDate: account.creditData.balanceCloseDate,
-                balanceDueDate: account.creditData.balanceDueDate,
-                brand: account.creditData.brand,
-                closingDay: account.creditData.balanceCloseDate
-                    ? parseInt(account.creditData.balanceCloseDate.split('T')[0].split('-')[2], 10)
-                    : null
+            // Credit card specific data with Fallback to Disaggregated Limits
+            ...(isCredit ? (() => {
+                let creditLimit = account.creditData?.creditLimit || 0;
+                let availableCreditLimit = account.creditData?.availableCreditLimit ?? null;
+                let usedCreditLimit = account.creditData?.usedCreditLimit ?? null;
+
+                // Log raw credit data for debugging
+                console.log(`>>> [Credit Data Raw] Account ${account.id}: creditLimit=${creditLimit}, availableCreditLimit=${availableCreditLimit}, usedCreditLimit=${usedCreditLimit}`);
+
+                // Check disaggregatedCreditLimits - use this as primary source if available
+                // This is more reliable for Open Finance connectors
+                if (Array.isArray(account.disaggregatedCreditLimits) && account.disaggregatedCreditLimits.length > 0) {
+                    // Try to find the TOTAL limit first
+                    const totalLimit = account.disaggregatedCreditLimits.find(l => l.creditLineLimitType === 'LIMITE_CREDITO_TOTAL');
+
+                    if (totalLimit) {
+                        // Use disaggregated data if it has better values
+                        if (!creditLimit || creditLimit === 0 || totalLimit.limitAmount > creditLimit) {
+                            creditLimit = totalLimit.limitAmount || 0;
+                            availableCreditLimit = totalLimit.availableAmount ?? null;
+                            usedCreditLimit = totalLimit.usedAmount ?? null;
+                            console.log(`>>> [Credit Data] Using Disaggregated TOTAL for ${account.id}: limit=${creditLimit}, available=${availableCreditLimit}, used=${usedCreditLimit}`);
+                        }
+                    } else {
+                        // If no total type, find the largest limit as heuristic
+                        const maxLimit = account.disaggregatedCreditLimits.reduce((max, curr) =>
+                            (curr.limitAmount > (max?.limitAmount || 0)) ? curr : max
+                            , null);
+
+                        if (maxLimit && (!creditLimit || creditLimit === 0 || maxLimit.limitAmount > creditLimit)) {
+                            creditLimit = maxLimit.limitAmount || 0;
+                            availableCreditLimit = maxLimit.availableAmount ?? null;
+                            usedCreditLimit = maxLimit.usedAmount ?? null;
+                            console.log(`>>> [Credit Data] Using Disaggregated MAX for ${account.id}: limit=${creditLimit}, available=${availableCreditLimit}, used=${usedCreditLimit}`);
+                        }
+                    }
+                }
+
+                // Calculate availableCreditLimit if still missing but we have limit and used
+                if (availableCreditLimit === null && creditLimit > 0 && usedCreditLimit !== null) {
+                    availableCreditLimit = Math.max(0, creditLimit - usedCreditLimit);
+                    console.log(`>>> [Credit Data] Calculated availableCreditLimit for ${account.id}: ${availableCreditLimit}`);
+                }
+
+                // Calculate usedCreditLimit if still missing but we have limit and available
+                if (usedCreditLimit === null && creditLimit > 0 && availableCreditLimit !== null) {
+                    usedCreditLimit = Math.max(0, creditLimit - availableCreditLimit);
+                    console.log(`>>> [Credit Data] Calculated usedCreditLimit for ${account.id}: ${usedCreditLimit}`);
+                }
+
+                // Final logging
+                console.log(`>>> [Credit Data Final] Account ${account.id}: creditLimit=${creditLimit}, availableCreditLimit=${availableCreditLimit}, usedCreditLimit=${usedCreditLimit}`);
+
+                return {
+                    creditLimit: creditLimit || null,
+                    availableCreditLimit: availableCreditLimit,
+                    usedCreditLimit: usedCreditLimit,
+                    balanceCloseDate: account.creditData?.balanceCloseDate,
+                    balanceDueDate: account.creditData?.balanceDueDate,
+                    brand: account.creditData?.brand,
+                    closingDay: account.creditData?.balanceCloseDate
+                        ? parseInt(account.creditData.balanceCloseDate.split('T')[0].split('-')[2], 10)
+                        : null
+                };
+            })() : {}),
+            // Current bill info for credit cards (for frontend display)
+            ...(isCredit && account._currentBill ? {
+                currentBill: {
+                    dueDate: account._currentBill.dueDate,
+                    totalAmount: account._currentBill.totalAmount,
+                    state: account._currentBill.state,
+                    paidAmount: account._currentBill.paidAmount,
+                    minimumPayment: account._currentBill.minimumPayment
+                }
             } : {}),
             // Bank account specific data
             ...(account.bankData ? {
@@ -618,38 +814,55 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
             } : {})
         };
 
-        console.log(`>>> Saving account: ${accountData.name} (${accountTypeName}) - Balance: ${accountData.balance}`);
+        console.log(`>>> Saving account: ${accountData.name} (${accountTypeName}) - Balance: ${accountData.balance}${isCredit ? ` (from bill: ${account._currentBill?.state || 'no bill'})` : ''}`);
 
         // Correct collection: accounts
         await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts')
             .doc(account.id).set(removeUndefined(accountData), { merge: true });
 
         // Determine optimal 'from' date for transactions
-        let fromStr = from; // Default to the range calculated above (7 days or 12 months)
-        let dateMsg = fullSync ? "últimos 12 meses" : "últimos 7 dias";
+        let fromStr = from;
+        let dateMsg = fullSync ? "últimos 12 meses" : "novos lançamentos";
 
         if (!fullSync) {
             try {
-                // Find latest transaction for this item to avoid re-reading everything
-                const txQuery = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions')
+                // Use Firestore index: transactions(providerItemId, date, __name__)
+                // For credit cards, check creditCardTransactions collection
+                const db = firebaseAdmin.firestore();
+                const collectionName = isCredit ? 'creditCardTransactions' : 'transactions';
+
+                const lastTxQuery = db.collection('users').doc(userId).collection(collectionName)
                     .where('providerItemId', '==', itemId)
                     .orderBy('date', 'desc')
                     .limit(1);
 
-                const txSnap = await txQuery.get();
-                if (!txSnap.empty) {
-                    const lastTxDate = txSnap.docs[0].data().date;
+                const lastTxSnap = await lastTxQuery.get();
+
+                if (!lastTxSnap.empty) {
+                    const lastTxDate = lastTxSnap.docs[0].data().date;
                     if (lastTxDate) {
-                        const lastDate = new Date(lastTxDate);
-                        // Smart Sync: Only fetch from 2 days before the last transaction
-                        lastDate.setDate(lastDate.getDate() - 2);
-                        fromStr = lastDate.toISOString().split('T')[0];
-                        dateMsg = `após ${new Date(fromStr).toLocaleDateString('pt-BR')}`;
-                        console.log(`>>> Incremental Sync: Fetching from ${fromStr}`);
+                        fromStr = lastTxDate.split('T')[0];
+                        dateMsg = `desde ${new Date(fromStr).toLocaleDateString('pt-BR')}`;
+                        console.log(`>>> Incremental Sync: Fetching from ${fromStr} (last transaction date from ${collectionName})`);
                     }
+                } else {
+                    // No transactions yet for this account - do full sync to get history
+                    // This is critical for credit cards that need transaction history
+                    const fromDate = new Date();
+                    fromDate.setMonth(fromDate.getMonth() - 12);
+                    fromDate.setDate(1);
+                    fromStr = fromDate.toISOString().split('T')[0];
+                    dateMsg = `últimos 12 meses (primeira sync)`;
+                    console.log(`>>> First sync for account ${account.id}: Fetching full 12-month history from ${fromStr}`);
                 }
             } catch (e) {
-                console.warn('>>> Could not optimize sync date, using default:', e.message);
+                console.warn('>>> Could not query last transaction, using default:', e.message);
+                // On error, default to full 12 month sync
+                const fromDate = new Date();
+                fromDate.setMonth(fromDate.getMonth() - 12);
+                fromDate.setDate(1);
+                fromStr = fromDate.toISOString().split('T')[0];
+                dateMsg = `últimos 12 meses`;
             }
         } else {
             console.log(`>>> Full Sync Enforced: Fetching from ${fromStr}`);
@@ -734,6 +947,11 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     isProjected: false
                 };
 
+                // Prevent Duplicates: Remove projected version if this is the real one
+                if (txData.installmentNumber > 0) {
+                    await cleanupProjectedInstallments(userId, txData);
+                }
+
                 await upsertTransaction(userId, 'creditCardTransactions', txData, tx.id);
                 console.log(`>>>   Saved credit card tx: ${tx.id} - ${tx.description} - R$${amount}`);
 
@@ -763,6 +981,30 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
             }
         }
         console.log(`>>> Finished processing transactions for account ${account.id}`);
+
+        // For credit cards without bills, calculate balance from current month transactions
+        if (isCredit && currentInvoiceBalance === null && transactions.length > 0) {
+            const now = new Date();
+            const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+            let calculatedBalance = 0;
+            for (const tx of transactions) {
+                const txDate = (tx.date || '').split('T')[0];
+                const txMonth = txDate.slice(0, 7);
+                // Sum transactions from current and previous month (typical billing cycle)
+                if (txMonth >= currentMonth || txMonth === `${now.getFullYear()}-${String(now.getMonth()).padStart(2, '0')}`) {
+                    const amount = Math.abs(Number(tx.amount || 0));
+                    calculatedBalance += amount;
+                }
+            }
+
+            if (calculatedBalance > 0) {
+                console.log(`>>> Calculated balance for credit card ${account.id} from transactions: R$${calculatedBalance.toFixed(2)}`);
+                // Update the account with calculated balance
+                await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts')
+                    .doc(account.id).update({ balance: calculatedBalance });
+            }
+        }
     }
 
     console.log(`>>> Server-Side Sync Completed for ${itemId}. Total transactions processed: ${newTransactionsCount}`);
@@ -1617,42 +1859,94 @@ const pollAndSync = async (apiKey, itemId, userId) => {
     await updateSyncStatus(userId, 'error', 'Tempo limite excedido na atualização do banco.');
 };
 
-// Trigger Sync (Manual) - Now with background polling fallback
-router.post('/trigger-sync', async (req, res) => {
-    const { itemId, userId } = req.body;
-    if (!itemId) return res.status(400).json({ error: 'itemId required' });
+// Helper: Check and Consume Credit (Transactional)
+const consumeDailyCredit = async (transaction, userRef, userDoc) => {
+    const userData = userDoc.data();
 
-    // Update status immediately so UI reacts
-    if (userId) {
-        await updateSyncStatus(userId, 'pending', 'Solicitando atualização ao banco...');
+    // Determine User Plan (mimic frontend/database.ts logic)
+    const subscription = userData.subscription || userData.profile?.subscription;
+    const userPlan = subscription?.plan || 'starter';
+
+    // Define Limits
+    // Starter: 0 credits (cannot sync/connect)
+    // Pro/Others: 3 credits
+    const MAX_CREDITS = (userPlan === 'starter') ? 0 : 3;
+
+    // Check Daily Credits
+    const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
+
+    let currentUsage = 0;
+    let newCredits;
+
+    if (credits.date !== today) {
+        // Reset for new day
+        currentUsage = 0;
+        newCredits = { date: today, count: 1 };
+    } else {
+        currentUsage = credits.count;
+        newCredits = { ...credits, count: currentUsage + 1 };
     }
 
+    if (userPlan === 'starter') {
+        throw new Error('Plano Gratuito não permite conexões automáticas. Faça upgrade para sincronizar.');
+    }
+
+    if (currentUsage >= MAX_CREDITS) {
+        throw new Error(`Limite diário de ${MAX_CREDITS} sincronizações atingido. Tente novamente amanhã.`);
+    }
+
+    // Update User Doc with new credit count
+    // NOTE: This field is stored at root level as per database.ts
+    transaction.set(userRef, { dailyConnectionCredits: newCredits }, { merge: true });
+
+    return { newCount: newCredits.count, remaining: MAX_CREDITS - newCredits.count };
+};
+
+// Trigger Sync (Manual) - Secure & Async
+router.post('/trigger-sync', async (req, res) => {
+    const { itemId, userId } = req.body;
+    if (!itemId || !userId) return res.status(400).json({ error: 'itemId and userId required' });
+
+    const db = firebaseAdmin.firestore();
+    const userRef = db.collection('users').doc(userId);
+
     try {
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) throw new Error('User not found');
+
+            // 1. Atomic Credit Deduction
+            await consumeDailyCredit(transaction, userRef, userDoc);
+        });
+
+        // 2. Initiate Background Sync
+        await updateSyncStatus(userId, 'pending', 'Solicitando atualização ao banco...');
+
         const apiKey = await getPluggyApiKey();
 
-        // 1. Tell Pluggy to update
+        // Trigger Pluggy update
         await pluggyRequest('PATCH', `/items/${itemId}`, apiKey, {});
 
-        // 2. Start background polling (Fire and Forget)
-        // We don't await this, so the UI gets a response fast, but the server keeps working.
+        // Start polling/handling in background
         pollAndSync(apiKey, itemId, userId).catch(err => {
             console.error(`Background polling failed for ${itemId}:`, err);
         });
 
-        res.json({ success: true, message: 'Sync process started.' });
+        res.json({ success: true, message: 'Processo de sincronização iniciado (Secure).' });
+
     } catch (e) {
-        if (userId) {
-            await updateSyncStatus(userId, 'error', 'Falha ao solicitar atualização.');
-        }
-        res.status(500).json({ error: 'Failed to trigger sync', details: e.message });
+        console.error('Trigger Sync Error:', e.message);
+        const status = e.message.includes('Limite') || e.message.includes('Plano') ? 403 : 500;
+        res.status(status).json({ error: e.message || 'Falha ao iniciar sincronização.' });
     }
 });
 
-// Modern Sync (Replaces 'Legacy' with robust server-side sync)
+// Modern Sync (Secure & Async)
 router.post('/sync', async (req, res) => {
     const { itemId, userId } = req.body;
 
-    console.log(`>>> Sync endpoint called: itemId=${itemId}, userId=${userId}`);
+    console.log(`>>> Secure Sync called: itemId=${itemId}, userId=${userId}`);
 
     if (!userId) {
         return res.status(400).json({ error: 'UserId é obrigatório para sincronização.' });
@@ -1662,93 +1956,54 @@ router.post('/sync', async (req, res) => {
         return res.status(400).json({ error: 'ItemId é obrigatório para sincronização.' });
     }
 
+    const db = firebaseAdmin.firestore();
+    const userRef = db.collection('users').doc(userId);
+
     try {
-        const apiKey = await getPluggyApiKey();
-        console.log('>>> API Key obtained for sync');
+        // 1. Atomic Transaction: Deduct Credit & register intent
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) throw new Error('Usuário não encontrado.');
 
-        // 1. Perform Server-Side Sync (Robust, saves to Firestore)
-        // Force fullSync to ensure we get 12 months of history as requested
-        await syncItem(apiKey, itemId, userId, { fullSync: true });
-
-        // 2. Fetch the synced accounts from DB to return to frontend
-        // This maintains compatibility with BankConnectModal which expects a list of accounts
-        const db = firebaseAdmin.firestore();
-        const accountsSnap = await db.collection('users').doc(userId).collection('accounts')
-            .where('itemId', '==', itemId).get();
-
-        const accounts = [];
-        let checkingCount = 0, savingsCount = 0, creditCount = 0;
-
-        accountsSnap.forEach(doc => {
-            const data = doc.data();
-
-            // Count by type
-            if (data.isCredit) creditCount++;
-            else if (data.isSavings) savingsCount++;
-            else if (data.isChecking) checkingCount++;
-
-            accounts.push({
-                account: {
-                    id: data.id,
-                    itemId: data.itemId,
-                    name: data.name,
-                    marketingName: data.name,
-                    type: data.type,
-                    subtype: data.subtype,
-                    accountTypeName: data.accountTypeName, // 'Conta Corrente', 'Poupança', 'Cartão de Crédito'
-                    isCredit: data.isCredit,
-                    isSavings: data.isSavings,
-                    isChecking: data.isChecking,
-                    balance: data.balance,
-                    currencyCode: data.currency,
-                    creditData: {
-                        brand: data.brand,
-                        creditLimit: data.creditLimit,
-                        availableCreditLimit: data.availableCreditLimit,
-                        balanceCloseDate: data.balanceCloseDate,
-                        balanceDueDate: data.balanceDueDate
-                    },
-                    bankData: {
-                        bankNumber: data.bankNumber,
-                        branchNumber: data.branchNumber,
-                        accountNumber: data.accountNumber,
-                        transferNumber: data.transferNumber
-                    },
-                    connector: {
-                        name: data.institution,
-                        imageUrl: data.connectorImageUrl
-                    }
-                },
-                transactions: [], // We don't return 1000s of txs to frontend anymore, it's in DB.
-                bills: []
-            });
+            // Deduct Credit securely
+            await consumeDailyCredit(transaction, userRef, userDoc);
         });
 
-        console.log(`>>> Sync complete! Accounts: ${accounts.length} (Corrente: ${checkingCount}, Poupança: ${savingsCount}, Cartão: ${creditCount})`);
+        console.log(`>>> Credit deducted for User ${userId}. Starting background sync...`);
 
+        // 2. Immediate Response to Frontend (Async)
         res.json({
             success: true,
-            accounts,
-            summary: {
-                total: accounts.length,
-                checking: checkingCount,
-                savings: savingsCount,
-                credit: creditCount
-            }
+            message: 'Processando conexão...',
+            // Send empty accounts list as they will be fetched via listener
+            accounts: [],
+            summary: { total: 0, checking: 0, savings: 0, credit: 0 }
         });
 
+        // 3. Background Processing
+        (async () => {
+            try {
+                const apiKey = await getPluggyApiKey();
+
+                // Update status to feedback to user
+                await updateSyncStatus(userId, 'in_progress', 'Conexão segura estabelecida. Buscando dados...');
+
+                // Perform the heavy sync
+                await syncItem(apiKey, itemId, userId, { fullSync: true });
+
+            } catch (bgError) {
+                console.error(`>>> Background Sync Failed for ${itemId}:`, bgError);
+                await updateSyncStatus(userId, 'error', 'Erro ao processar dados do banco.');
+            }
+        })();
+
     } catch (e) {
-        console.error('>>> Sync failed:', e.message);
-        console.error('>>> Sync error details:', e.response?.data || e);
+        console.error('>>> Sync Transaction Failed:', e.message);
 
-        let userMessage = 'Falha na sincronização.';
-        if (e.message.includes('Credenciais')) {
-            userMessage = e.message;
-        } else if (e.message.includes('conexão') || e.message.includes('connect')) {
-            userMessage = 'Erro de conexão com o Pluggy. Tente novamente.';
-        }
+        let userMessage = e.message;
+        const status = e.message.includes('Limite') || e.message.includes('Plano') ? 403 : 500;
 
-        res.status(500).json({ error: userMessage, details: e.message });
+        res.status(status).json({ error: userMessage });
     }
 });
 
@@ -1946,6 +2201,148 @@ router.delete('/item/:itemId', async (req, res) => {
         res.json({ success: true });
     } catch (e) {
         res.status(500).json({ error: 'Error deleting item' });
+    }
+});
+
+// Cleanup Duplicates Route (Manual Trigger)
+router.post('/cleanup-duplicates', async (req, res) => {
+    const { userId } = req.body;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    if (!firebaseAdmin) return res.status(500).json({ error: 'Firebase not initialized' });
+    const db = firebaseAdmin.firestore();
+
+    try {
+        let deletedCount = 0;
+        let processedCount = 0;
+
+        // 1. Cleanup Credit Card Transactions
+        // Strategy: Group by (cardId + amount + date) OR (providerId)
+        // Priority: Real > Projected
+        const ccRef = db.collection('users').doc(userId).collection('creditCardTransactions');
+        const ccSnap = await ccRef.get();
+        const ccDocs = ccSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+        const ccMap = new Map(); // Key -> [docs]
+
+        for (const doc of ccDocs) {
+            processedCount++;
+            // Create a unique key for "sameness"
+            // Use strict providerId if available (but watch out for installments being different IDs)
+            // Or use fuzzy key: cardId_amount_date_description
+
+            // Cleanup Type A: Exact same providerId (shouldn't happen with set/merge but good to check)
+            if (doc.providerId && !doc.isProjected) {
+                const key = `PID:${doc.providerId}`;
+                if (!ccMap.has(key)) ccMap.set(key, []);
+                ccMap.get(key).push(doc);
+            }
+
+            // Cleanup Type B: Projected vs Real
+            // Key: cardId_installmentNumber_totalInstallments
+            if (doc.installmentNumber && doc.totalInstallments) {
+                const key = `INST:${doc.cardId}_${doc.installmentNumber}_${doc.totalInstallments}`;
+                if (!ccMap.has(key)) ccMap.set(key, []);
+                ccMap.get(key).push(doc);
+            }
+        }
+
+        const batch = db.batch();
+        let batchCount = 0;
+
+        for (const [key, docs] of ccMap.entries()) {
+            if (docs.length > 1) {
+                // We have potential duplicates
+                // Sort: Real (isProjected: false) comes first
+                docs.sort((a, b) => (a.isProjected === b.isProjected) ? 0 : a.isProjected ? 1 : -1);
+
+                // If we have a Real transaction, keep it and delete ALL Projected ones that match
+                const keeper = docs[0];
+
+                // If the first is Projected, and we have multiple, just keep one? 
+                // No, only delete if we have mixed types or strict duplicates.
+
+                if (!keeper.isProjected) {
+                    for (let i = 1; i < docs.length; i++) {
+                        const candidate = docs[i];
+                        // Verify it's effectively the same transaction
+                        // (Amount fuzzy check)
+                        const amountDiff = Math.abs((keeper.amount || 0) - (candidate.amount || 0));
+                        if (amountDiff < 0.1) {
+                            // Delete candidate
+                            batch.delete(ccRef.doc(candidate.id));
+                            deletedCount++;
+                            batchCount++;
+                        }
+                    }
+                } else {
+                    // All are projected. Keep latest syncedAt?
+                    // Dedupe strict duplicates
+                }
+            }
+        }
+
+        // 2. Simple ProviderID Deduplication for standard transactions
+        const txRef = db.collection('users').doc(userId).collection('transactions');
+        const txSnap = await txRef.get();
+        const txMap = new Map();
+
+        txSnap.docs.forEach(doc => {
+            const data = doc.data();
+            if (data.providerId) {
+                if (!txMap.has(data.providerId)) txMap.set(data.providerId, []);
+                txMap.get(data.providerId).push(doc);
+            }
+        });
+
+        for (const [pid, docs] of txMap.entries()) {
+            if (docs.length > 1) {
+                // Keep the one with most recent connection/import? Or just random.
+                // Keep first, delete others.
+                for (let i = 1; i < docs.length; i++) {
+                    batch.delete(docs[i].ref);
+                    deletedCount++;
+                    batchCount++;
+                }
+            }
+        }
+
+        if (batchCount > 0) await batch.commit();
+
+        res.json({ success: true, deleted: deletedCount, processed: processedCount });
+
+    } catch (e) {
+        console.error('Cleanup Error:', e);
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// Cancel All Syncs (Admin Only)
+router.post('/cancel-all-syncs', async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'userId é obrigatório' });
+    }
+
+    try {
+        const db = firebaseAdmin.firestore();
+
+        // Reset sync status to idle
+        await db.collection('users').doc(userId)
+            .collection('sync_status').doc('pluggy')
+            .set({
+                state: 'idle',
+                message: 'Sincronização cancelada pelo administrador.',
+                lastUpdated: new Date().toISOString()
+            }, { merge: true });
+
+        console.log(`>>> Admin cancelled all syncs for user ${userId}`);
+        res.json({ success: true, message: 'Todas as sincronizações foram canceladas.' });
+
+    } catch (e) {
+        console.error('Cancel Sync Error:', e);
+        res.status(500).json({ error: e.message });
     }
 });
 

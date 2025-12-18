@@ -21,7 +21,8 @@ import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 import NumberFlow from '@number-flow/react';
-import { deleteUserAccount } from '../services/database';
+import { deleteUserAccount, getCouponById } from '../services/database';
+import { Coupon } from '../types';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
 
@@ -1115,25 +1116,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       };
    }, [isOpen]);
 
-   // Dynamic Billing History
+   // Coupon state for billing history
+   const [usedCoupon, setUsedCoupon] = useState<Coupon | null>(null);
+
+   // Load coupon when subscription changes
+   useEffect(() => {
+      const loadCoupon = async () => {
+         if (user.subscription?.couponUsed) {
+            const coupon = await getCouponById(user.subscription.couponUsed);
+            setUsedCoupon(coupon);
+         } else {
+            setUsedCoupon(null);
+         }
+      };
+      loadCoupon();
+   }, [user.subscription?.couponUsed]);
+
+   // Dynamic Billing History with Coupon Support
    const billingHistory = useMemo(() => {
       if (!user.subscription || user.subscription.plan === 'starter') return [];
 
-      const history = [];
+      const history: { id: string; date: string; amount: string; status: string; method: string }[] = [];
       const startDateStr = user.subscription.startDate || new Date().toISOString();
       const start = new Date(startDateStr);
       const now = new Date();
       const cycle = user.subscription.billingCycle || 'monthly';
 
-      // Pricing Logic
-      let amount = 0;
+      // Pricing Logic - CORRECTED PRICES
+      let baseAmount = 0;
       if (user.subscription.plan === 'pro') {
-         amount = cycle === 'annual' ? 199.90 : 19.90;
+         baseAmount = cycle === 'annual' ? 399.90 : 35.90;
       } else if (user.subscription.plan === 'family') {
-         amount = cycle === 'annual' ? 599.90 : 59.90;
+         baseAmount = cycle === 'annual' ? 749.00 : 69.90;
       }
 
-      const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(amount);
       const cardLast4 = user.paymentMethodDetails?.last4 || '****';
       let method = `Cartão ••${cardLast4}`;
       if (cycle === 'annual' && user.subscription.installments && user.subscription.installments > 1) {
@@ -1141,8 +1157,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
 
       const current = new Date(start);
+      let monthIndex = 1; // For progressive coupon calculation
+
       // Iterate from start date until now
       while (current <= now) {
+         // Calculate amount with coupon discount
+         let finalAmount = baseAmount;
+
+         if (usedCoupon) {
+            if (usedCoupon.type === 'progressive') {
+               // Progressive coupon: different discount per month
+               const rule = usedCoupon.progressiveDiscounts?.find(d => d.month === monthIndex);
+               const discountPercent = rule?.discount || 0;
+               finalAmount = Math.max(0, baseAmount * (1 - discountPercent / 100));
+            } else if (usedCoupon.type === 'percentage') {
+               finalAmount = Math.max(0, baseAmount * (1 - usedCoupon.value / 100));
+            } else if (usedCoupon.type === 'fixed') {
+               finalAmount = Math.max(0, baseAmount - usedCoupon.value);
+            }
+         }
+
+         const formattedAmount = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(finalAmount);
+
          history.push({
             id: current.toISOString(),
             date: current.toLocaleDateString('pt-BR'),
@@ -1157,13 +1193,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          } else {
             current.setMonth(current.getMonth() + 1);
          }
+         monthIndex++;
       }
 
-      // If user canceled, maybe show unpaid? But request is just for "real history".
-      // We'll assume all past dates valid for active/canceled subscriptions were paid.
-
       return history.reverse(); // Newest first
-   }, [user.subscription, user.paymentMethodDetails]);
+   }, [user.subscription, user.paymentMethodDetails, usedCoupon]);
 
    if (!isVisible) return null;
 
@@ -2310,7 +2344,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                        </button>
                                        {plan !== 'starter' && (
                                           <p className="text-xs text-center text-gray-500">
-                                             Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '199,90' : '19,90') : (cycle === 'annual' ? '599,90' : '59,90')}
+                                             Próxima fatura: R$ {plan === 'pro' ? (cycle === 'annual' ? '399,90' : '35,90') : (cycle === 'annual' ? '749,00' : '69,90')}
                                           </p>
                                        )}
                                     </div>

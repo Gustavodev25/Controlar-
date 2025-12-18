@@ -275,12 +275,42 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   }, [userId, onRefresh]);
 
-  // Poll for connection statuses
+  // Real-time Sync Status Listener (Firestore)
   useEffect(() => {
-    fetchItemStatuses();
-    const interval = setInterval(fetchItemStatuses, 10000);
-    return () => clearInterval(interval);
-  }, [fetchItemStatuses]);
+    if (!userId) return;
+
+    // Listen to Global Sync Status
+    const unsubscribe = dbService.listenToSyncStatus(userId, (status) => {
+      setGlobalSyncStatus(status);
+
+      // Handle Toast Notifications driven by Backend Status
+      if (status && activeToastId.current) {
+        const { state, message } = status;
+
+        if (state === 'success') {
+          sonnerToast.success(message || "Sincronização concluída!", { id: activeToastId.current });
+          activeToastId.current = null;
+          if (onRefresh) onRefresh();
+        } else if (state === 'error') {
+          sonnerToast.error(message || "Erro na sincronização.", { id: activeToastId.current });
+          activeToastId.current = null;
+        } else if (state === 'in_progress') {
+          // Should we update the loading toast text?
+          if (message) {
+            sonnerToast.loading(message, { id: activeToastId.current });
+          }
+        }
+      }
+    });
+
+    // Also fetch items initially and periodically (less frequent, e.g. 30s) just to keep balance fresh
+    // But for status updates, rely on the listener above.
+    fetchItemStatuses(); // Initial fetch
+
+    return () => {
+      unsubscribe();
+    };
+  }, [userId, onRefresh]);
 
   // Global Timer Display Logic
   const globalTimerDisplay = useMemo(() => {
@@ -350,20 +380,22 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return { icon: <Wallet size={18} />, bgClass: 'bg-[#d97757]/10 text-[#d97757]' };
   };
 
-  const handleManualSync = async (itemId: string) => {
+  const handleManualSync = async (itemId: string, force = false) => {
     if (!userId || isSyncingItem[itemId]) return;
 
-    // Check if already synced today
-    const itemTimer = timers[itemId];
-    if (itemTimer?.syncedToday) {
-      toast.error(`Este banco já foi sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`);
-      return;
-    }
+    if (!force) {
+      // Check if already synced today
+      const itemTimer = timers[itemId];
+      if (itemTimer?.syncedToday) {
+        toast.error(`Este banco já foi sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`);
+        return;
+      }
 
-    // Check if user has credits available
-    if (!hasCredit) {
-      toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários. Aguarde até meia-noite.`);
-      return;
+      // Check if user has credits available
+      if (!hasCredit) {
+        toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários. Aguarde até meia-noite.`);
+        return;
+      }
     }
 
     setIsSyncingItem(prev => ({ ...prev, [itemId]: true }));
@@ -374,10 +406,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         body: JSON.stringify({ itemId, userId })
       });
       const data = await response.json();
+
       if (data.success) {
         toast.info("Sincronização iniciada com sucesso!");
-        // Consume 1 credit for manual sync
-        await dbService.incrementDailyConnectionCredits(userId);
         fetchItemStatuses();
       } else {
         toast.error(data.error || "Erro ao iniciar sincronização.");
@@ -387,6 +418,29 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       toast.error("Erro ao sincronizar.");
     } finally {
       setIsSyncingItem(prev => ({ ...prev, [itemId]: false }));
+    }
+  };
+
+  const handleCleanupDuplicates = async () => {
+    if (!userId) return;
+    const toastId = toast.loading('Removendo duplicatas...');
+    try {
+      const response = await fetch('/api/pluggy/cleanup-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      });
+      const data = await response.json();
+      toast.dismiss(toastId);
+      if (data.success) {
+        toast.success(`Limpeza concluída! ${data.deleted} duplicatas removidas.`);
+        onRefresh?.();
+      } else {
+        toast.error('Erro ao limpar duplicatas.');
+      }
+    } catch (e) {
+      toast.dismiss(toastId);
+      toast.error('Erro de conexão.');
     }
   };
 
@@ -504,13 +558,12 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                 setShowBankModal(true);
               }}
               disabled={(!hasCredit || !isCreditsLoaded) && userPlan !== 'starter'}
-              className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm ${
-                hasCredit && isCreditsLoaded
-                  ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
-                  : userPlan === 'starter'
-                    ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
-                    : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-              }`}
+              className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm ${hasCredit && isCreditsLoaded
+                ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
+                : userPlan === 'starter'
+                  ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                }`}
             >
               {userPlan === 'starter' ? <Lock size={18} /> : <Plus size={18} />}
               <span className="hidden sm:inline">
@@ -583,6 +636,19 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                         <h4 className="text-base font-bold text-white leading-tight truncate">
                           {institutionName}
                         </h4>
+                        {itemId && (itemStatus?.lastUpdatedAt || lastSynced[itemId]) && (
+                          <p className="text-[10px] text-gray-500 mt-0.5">
+                            Última sync: {(() => {
+                              const syncDate = new Date(itemStatus?.lastUpdatedAt || lastSynced[itemId]);
+                              const now = new Date();
+                              const isToday = syncDate.toDateString() === now.toDateString();
+                              if (isToday) {
+                                return `Hoje às ${syncDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+                              }
+                              return syncDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                            })()}
+                          </p>
+                        )}
                       </div>
                     </div>
 
@@ -614,20 +680,19 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                           <button
                             onClick={() => handleManualSync(itemId)}
                             disabled={!hasCredit || isDeleting !== null || isUpdating || timer?.syncedToday}
-                            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${
-                              isUpdating
-                                ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
-                                : (!hasCredit || isDeleting !== null || timer?.syncedToday)
-                                  ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
-                                  : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
-                            }`}
+                            className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${isUpdating
+                              ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
+                              : (!hasCredit || isDeleting !== null || timer?.syncedToday)
+                                ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
+                                : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
+                              }`}
                           >
                             <RotateCcw size={14} className={isUpdating ? "animate-spin" : ""} />
                             <span className="hidden sm:inline">
                               {isUpdating
                                 ? (globalSyncStatus?.state === 'in_progress' && globalSyncStatus?.message
-                                    ? globalSyncStatus.message
-                                    : "Puxando dados...")
+                                  ? globalSyncStatus.message
+                                  : "Puxando dados...")
                                 : timer?.syncedToday
                                   ? `${timer.auto.h}h ${timer.auto.m}m`
                                   : 'Sincronizar'}
@@ -635,6 +700,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                           </button>
                         </TooltipIcon>
                       )}
+
+
                       <TooltipIcon content="Desconectar Instituição">
                         <button
                           onClick={() => setDeleteData({ accounts: institutionAccounts, institutionName })}
@@ -661,6 +728,37 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     >
                       {paginatedInstitutionAccounts.map((acc) => {
                         const isManual = acc.connectionMode === 'MANUAL';
+                        const isCard = isCardFromInstitution(acc);
+                        const bill = acc.currentBill;
+
+                        // Format bill due date
+                        const formatBillDate = (dateStr?: string) => {
+                          if (!dateStr) return null;
+                          try {
+                            const date = new Date(dateStr + 'T12:00:00');
+                            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+                          } catch {
+                            return null;
+                          }
+                        };
+
+                        // Get bill state label and color
+                        const getBillStateInfo = (state?: string) => {
+                          switch (state?.toUpperCase()) {
+                            case 'OPEN':
+                              return { label: 'Aberta', color: 'text-blue-400', bg: 'bg-blue-500/10' };
+                            case 'CLOSED':
+                              return { label: 'Fechada', color: 'text-amber-400', bg: 'bg-amber-500/10' };
+                            case 'OVERDUE':
+                              return { label: 'Vencida', color: 'text-red-400', bg: 'bg-red-500/10' };
+                            default:
+                              return null;
+                          }
+                        };
+
+                        const billDate = formatBillDate(bill?.dueDate);
+                        const billStateInfo = getBillStateInfo(bill?.state);
+
                         return (
                           <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
                             <div className="p-4">
@@ -686,9 +784,28 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                 </div>
 
                                 <div className="text-right flex-shrink-0 flex flex-col items-end">
-                                  <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
+                                  <p className={`text-base font-mono font-bold whitespace-nowrap ${isCard ? "text-amber-400" : acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
                                     {formatCurrency(acc.balance, acc.currency)}
                                   </p>
+                                  {/* Show bill info for credit cards */}
+                                  {isCard && bill && (billDate || billStateInfo) && (
+                                    <div className="flex items-center gap-1.5 mt-0.5">
+                                      {billStateInfo && (
+                                        <span className={`text-[9px] font-medium ${billStateInfo.color}`}>
+                                          {billStateInfo.label}
+                                        </span>
+                                      )}
+                                      {billDate && (
+                                        <span className="text-xs text-white/40 block mt-0.5">
+                                          Venc. {
+                                            bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())
+                                              ? new Date(bill.dueDate).toLocaleDateString()
+                                              : 'N/A'
+                                          }
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               </div>
                             </div>

@@ -1208,13 +1208,9 @@ export const addConnectedAccount = async (userId: string, account: ConnectedAcco
   await setDoc(docRef, cleanAccount, { merge: true });
 };
 
-export const updateConnectedAccount = async (userId: string, account: ConnectedAccount) => {
+export const updateConnectedAccount = async (userId: string, accountId: string, data: Partial<ConnectedAccount>) => {
   if (!db) return;
-  const accountRef = doc(db, "users", userId, "accounts", account.id);
-  // We filter out undefined values to avoid errors and only update changed fields
-  // However, typically we pass the whole object. Let's just use updateDoc or setDoc with merge.
-  // For safety, let's use updateDoc or setDoc with merge.
-  const { id, ...data } = account;
+  const accountRef = doc(db, "users", userId, "accounts", accountId);
   const cleanData = removeUndefined(data);
   await setDoc(accountRef, cleanData, { merge: true });
 };
@@ -1433,6 +1429,7 @@ export const deleteConnectedAccount = async (userId: string, accountId: string) 
   const accountRef = doc(db, "users", userId, "accounts", accountId);
   await deleteDoc(accountRef);
 };
+
 
 export const deleteAllConnectedAccounts = async (userId: string) => {
   if (!db) return;
