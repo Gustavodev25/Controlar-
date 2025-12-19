@@ -1430,6 +1430,68 @@ export const deleteConnectedAccount = async (userId: string, accountId: string) 
   await deleteDoc(accountRef);
 };
 
+export const deleteAllTransactionsForAccount = async (userId: string, accountId: string) => {
+  if (!db) return;
+  try {
+    const txRef = collection(db, "users", userId, "transactions");
+    const q = query(txRef, where("accountId", "==", accountId));
+    const snapshot = await getDocs(q);
+
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      batch.delete(docSnapshot.ref);
+      operationCount++;
+
+      if (operationCount >= batchSize) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
+      }
+    }
+
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error deleting account transactions:", error);
+    throw error;
+  }
+};
+
+export const deleteAllCreditCardTransactionsForAccount = async (userId: string, accountId: string) => {
+  if (!db) return;
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    const q = query(txRef, where("cardId", "==", accountId));
+    const snapshot = await getDocs(q);
+
+    const batchSize = 450;
+    let batch = writeBatch(db);
+    let operationCount = 0;
+
+    for (const docSnapshot of snapshot.docs) {
+      batch.delete(docSnapshot.ref);
+      operationCount++;
+
+      if (operationCount >= batchSize) {
+        await batch.commit();
+        batch = writeBatch(db);
+        operationCount = 0;
+      }
+    }
+
+    if (operationCount > 0) {
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error("Error deleting account credit card transactions:", error);
+    throw error;
+  }
+};
+
 
 export const deleteAllConnectedAccounts = async (userId: string) => {
   if (!db) return;
@@ -2038,6 +2100,82 @@ export const listenToSyncStatus = (userId: string, callback: (status: SyncStatus
     }
   });
 };
+
+// --- Sync Jobs (for tracking individual sync operations) ---
+export interface SyncJob {
+  id: string;
+  itemId: string;
+  userId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'retrying';
+  creditTransactionId?: string;
+  creditRefunded?: boolean;
+  progress?: {
+    step: string;
+    current: number;
+    total: number;
+  };
+  message?: string;
+  lastError?: string;
+  attempts?: number;
+  createdAt?: any;
+  updatedAt?: any;
+  completedAt?: any;
+  failedAt?: any;
+}
+
+/**
+ * Listen to active sync jobs for a user
+ * Returns jobs that are pending, processing, retrying, or recently failed
+ */
+export const listenToSyncJobs = (userId: string, callback: (jobs: SyncJob[]) => void) => {
+  if (!db) return () => { };
+
+  const jobsRef = collection(db, "users", userId, "sync_jobs");
+  // Query for active jobs (not completed)
+  const q = query(
+    jobsRef,
+    where('status', 'in', ['pending', 'processing', 'retrying', 'failed']),
+    orderBy('createdAt', 'desc'),
+    limit(10)
+  );
+
+  return onSnapshot(q, (snapshot) => {
+    const jobs: SyncJob[] = [];
+    snapshot.forEach((doc) => {
+      jobs.push({ id: doc.id, ...doc.data() } as SyncJob);
+    });
+    callback(jobs);
+  }, (error) => {
+    console.error('Error listening to sync jobs:', error);
+    callback([]);
+  });
+};
+
+/**
+ * Get sync job by itemId
+ */
+export const getSyncJobByItemId = async (userId: string, itemId: string): Promise<SyncJob | null> => {
+  if (!db) return null;
+  try {
+    const jobsRef = collection(db, "users", userId, "sync_jobs");
+    const q = query(
+      jobsRef,
+      where('itemId', '==', itemId),
+      where('status', 'in', ['pending', 'processing', 'retrying']),
+      limit(1)
+    );
+    const snapshot = await getDocs(q);
+    if (!snapshot.empty) {
+      const doc = snapshot.docs[0];
+      return { id: doc.id, ...doc.data() } as SyncJob;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting sync job:', error);
+    return null;
+  }
+};
+
 // --- System Settings ---
 export const getSystemSettings = async (): Promise<import("../types").SystemSettings> => {
   if (!db) return {};

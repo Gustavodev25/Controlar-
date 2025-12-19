@@ -683,10 +683,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     return stats.totalIncome;
   }, [stats.totalIncome, toggles?.includeChecking, displayedCheckingBalance]);
 
-  // Calculate adjusted Total Expense: add selected credit card invoice when enabled
+  // Calculate adjusted Total Expense: Remove the static CC expense from App.tsx and add the dynamic one selected here
   const adjustedTotalExpense = useMemo(() => {
-    return stats.totalExpense + selectedCardInvoiceTotal;
-  }, [stats.totalExpense, selectedCardInvoiceTotal]);
+    // Subtract the CC expense that App.tsx already added, so we don't double count
+    const baseExpense = stats.totalExpense - (stats.creditCardSpending || 0);
+    return baseExpense + selectedCardInvoiceTotal;
+  }, [stats.totalExpense, stats.creditCardSpending, selectedCardInvoiceTotal]);
 
   // Calculate adjusted Total Balance: simply Income - Expenses
   const adjustedTotalBalance = useMemo(() => {

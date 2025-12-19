@@ -12,7 +12,7 @@ interface BankConnectModalProps {
     isOpen: boolean;
     onClose: () => void;
     userId: string | null;
-    onSuccess?: (accounts: ConnectedAccount[]) => void;
+    onSuccess?: (accounts: ConnectedAccount[], syncJobId?: string) => void;
     forceSyncItemId?: string | null;
     // Credit system props
     dailyCredits?: { date: string; count: number };
@@ -536,29 +536,39 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             return;
         }
 
-        // CONSUME CREDIT (Moved to Backend)
-        // The /sync route now handles credit deduction atomically.
-        // We just initiate the sync here.
-
+        // Start sync in background and close modal immediately
+        // Progress will be shown in ConnectedAccounts via sync jobs
         try {
-            setSyncStatus('success'); // Show success immediately for the modal
-            setSyncMessage('Conexão recebida. Processando em segundo plano...');
+            // Call sync API - it will create a sync job and process in background
+            const response = await fetch(`${API_BASE}/pluggy/sync`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ itemId: data.item?.id, userId })
+            });
 
-            await runFullSync(data.item?.id);
-            await fetchExistingItems();
+            const result = await response.json();
 
-            // We don't have accounts yet, but we notify success so parent can refresh/poll
-            if (onSuccess) onSuccess([]);
+            if (!response.ok) {
+                throw new Error(result.error || 'Erro ao iniciar sincronização');
+            }
 
-            setTimeout(() => {
-                onClose();
-            }, 2000);
+            console.log('[BankConnectModal] Sync started, syncJobId:', result.syncJobId);
+
+            // Notify parent with syncJobId for tracking progress
+            if (onSuccess) {
+                onSuccess([], result.syncJobId);
+            }
+
+            // Close modal immediately - progress will show in ConnectedAccounts
+            onClose();
+
         } catch (err: any) {
-            console.error('Error syncing after connect:', err);
-            setError(err?.message || 'Erro ao sincronizar transacoes.');
+            console.error('Error starting sync:', err);
+            setError(err?.message || 'Erro ao sincronizar.');
             setSyncStatus('error');
+            setSyncMessage(err?.message || 'Erro ao iniciar sincronização.');
         }
-    }, [fetchExistingItems, onClose, onSuccess, runFullSync, userId, creditsUsedToday, isNewConnection]);
+    }, [onClose, onSuccess, userId]);
 
 
 

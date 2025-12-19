@@ -324,6 +324,170 @@ const addSystemNotification = async (userId, title, message, type = 'system') =>
     }
 };
 
+// --- Sync Job & Credit Refund System ---
+
+/**
+ * Creates a tracked sync job for monitoring and potential credit refund
+ */
+const createSyncJob = async (userId, itemId, creditTransactionId) => {
+    if (!firebaseAdmin || !userId) return null;
+    try {
+        const db = firebaseAdmin.firestore();
+        const jobRef = db.collection('users').doc(userId)
+            .collection('sync_jobs').doc();
+
+        await jobRef.set({
+            itemId,
+            userId,
+            creditTransactionId,
+            status: 'pending',
+            attempts: 0,
+            progress: { step: 'Iniciando...', current: 0, total: 100 },
+            message: 'Conexão iniciada',
+            lastError: null,
+            creditRefunded: false,
+            createdAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+            updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log(`>>> Created sync job ${jobRef.id} for item ${itemId}`);
+        return jobRef.id;
+    } catch (e) {
+        console.error('>>> Error creating sync job:', e.message);
+        return null;
+    }
+};
+
+/**
+ * Updates sync job status and progress
+ */
+const updateSyncJob = async (userId, syncJobId, updates) => {
+    if (!firebaseAdmin || !userId || !syncJobId) return;
+    try {
+        const db = firebaseAdmin.firestore();
+        await db.collection('users').doc(userId)
+            .collection('sync_jobs').doc(syncJobId)
+            .update({
+                ...updates,
+                updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+            });
+    } catch (e) {
+        console.error('>>> Error updating sync job:', e.message);
+    }
+};
+
+/**
+ * Refunds a daily credit to the user when sync fails
+ */
+const refundCredit = async (userId, creditTransactionId, reason) => {
+    if (!firebaseAdmin || !userId) return false;
+
+    // Skip refund for admin users (they have unlimited credits)
+    if (creditTransactionId === 'admin_unlimited') {
+        console.log('>>> Skipping refund for admin user');
+        return true;
+    }
+
+    const db = firebaseAdmin.firestore();
+    const userRef = db.collection('users').doc(userId);
+
+    try {
+        await db.runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) return;
+
+            const userData = userDoc.data();
+            const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
+            const today = new Date().toLocaleDateString('en-CA');
+
+            // Only refund if it's the same day and count > 0
+            if (credits.date === today && credits.count > 0) {
+                transaction.update(userRef, {
+                    dailyConnectionCredits: {
+                        date: today,
+                        count: credits.count - 1
+                    }
+                });
+                console.log(`>>> Credit refunded for user ${userId}. Reason: ${reason}. New count: ${credits.count - 1}`);
+            } else {
+                console.log(`>>> Cannot refund credit for user ${userId}. Date mismatch or count is 0.`);
+            }
+        });
+
+        return true;
+    } catch (e) {
+        console.error('>>> Error refunding credit:', e.message);
+        return false;
+    }
+};
+
+/**
+ * Processes sync with automatic credit refund on failure
+ */
+const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactionId) => {
+    try {
+        // Update job to processing
+        await updateSyncJob(userId, syncJobId, {
+            status: 'processing',
+            progress: { step: 'Conectando ao banco...', current: 10, total: 100 },
+            message: 'Estabelecendo conexão segura'
+        });
+
+        const apiKey = await getPluggyApiKey();
+
+        await updateSyncStatus(userId, 'in_progress', 'Conexão segura estabelecida. Buscando dados...');
+        await updateSyncJob(userId, syncJobId, {
+            progress: { step: 'Buscando contas...', current: 30, total: 100 },
+            message: 'Buscando contas e transações'
+        });
+
+        // Perform the sync
+        const syncResult = await syncItem(apiKey, itemId, userId, { fullSync: true, syncJobId });
+
+        // Mark as completed
+        await updateSyncJob(userId, syncJobId, {
+            status: 'completed',
+            progress: { step: 'Concluído', current: 100, total: 100 },
+            message: 'Sincronização concluída com sucesso',
+            completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
+
+        console.log(`>>> Sync completed successfully for item ${itemId}`);
+
+    } catch (error) {
+        console.error(`>>> Background Sync Failed for ${itemId}:`, error.message);
+
+        // Refund the credit
+        const refunded = await refundCredit(userId, creditTransactionId, error.message);
+
+        // Update sync status with refund info
+        const errorMessage = refunded
+            ? 'Erro na sincronização. Seu crédito foi reembolsado automaticamente.'
+            : 'Erro na sincronização.';
+
+        await updateSyncStatus(userId, 'error', errorMessage);
+
+        // Update job as failed
+        await updateSyncJob(userId, syncJobId, {
+            status: 'failed',
+            lastError: error.message,
+            creditRefunded: refunded,
+            message: errorMessage,
+            failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
+
+        // Notify user
+        await addSystemNotification(
+            userId,
+            'Sincronização Falhou',
+            refunded
+                ? 'Houve um erro na sincronização. Seu crédito foi reembolsado automaticamente.'
+                : 'Houve um erro na sincronização. Por favor, tente novamente.',
+            'alert'
+        );
+    }
+};
+
 const upsertTransaction = async (userId, collectionName, txData, providerId) => {
     if (!firebaseAdmin) return;
     const db = firebaseAdmin.firestore();
@@ -485,7 +649,10 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         return;
     }
 
-    const { fromWebhook = false, accountId: webhookAccountId, transactionsLink, fullSync = false } = options;
+    const { fromWebhook = false, accountId: webhookAccountId, transactionsLink, fullSync = false, syncJobId } = options;
+
+    // Track errors during sync for partial failure reporting
+    const syncErrors = [];
 
     console.log(`>>> Starting Server-Side Sync for Item ${itemId} (User: ${userId}) | Mode: ${fromWebhook ? 'Webhook' : 'Full'}`);
     await updateSyncStatus(userId, 'in_progress', 'Sincronizando contas e transações...');
@@ -940,6 +1107,13 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         } catch (e) {
             console.error(`>>> Error fetching transactions for ${account.id}:`, e.message);
             console.error(`>>> Error details:`, e.response?.data || e);
+            // Track error for partial failure reporting
+            syncErrors.push({
+                accountId: account.id,
+                accountName: account.marketingName || account.name || 'Unknown',
+                type: 'transaction_fetch',
+                error: e.message
+            });
             continue;
         }
 
@@ -1073,13 +1247,31 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     }
 
     console.log(`>>> Server-Side Sync Completed for ${itemId}. Total transactions processed: ${newTransactionsCount}`);
-    await updateSyncStatus(userId, 'success', 'Sincronização concluída com sucesso!');
 
-    // Send System Notification
-    // Simplified message as requested by user
-    const msg = 'Sincronização concluída. Seus dados estão atualizados.';
+    // Report success or partial success based on accumulated errors
+    if (syncErrors.length > 0) {
+        const errorSummary = syncErrors.map(e => `${e.accountName}: ${e.error}`).join('; ');
+        console.warn(`>>> Sync completed with ${syncErrors.length} errors: ${errorSummary}`);
 
-    await addSystemNotification(userId, 'Open Finance Atualizado', msg, 'update');
+        await updateSyncStatus(userId, 'success', `Sincronização concluída com ${syncErrors.length} aviso(s).`, {
+            errors: syncErrors,
+            partial: true,
+            transactionsProcessed: newTransactionsCount
+        });
+
+        await addSystemNotification(
+            userId,
+            'Sincronização Parcial',
+            `Seus dados foram atualizados, mas ${syncErrors.length} conta(s) tiveram problemas: ${syncErrors.map(e => e.accountName).join(', ')}.`,
+            'warning'
+        );
+    } else {
+        await updateSyncStatus(userId, 'success', 'Sincronização concluída com sucesso!');
+
+        // Send System Notification
+        const msg = 'Sincronização concluída. Seus dados estão atualizados.';
+        await addSystemNotification(userId, 'Open Finance Atualizado', msg, 'update');
+    }
 };
 
 
@@ -1182,16 +1374,16 @@ router.get('/db-accounts/:userId', async (req, res) => {
 const WEBHOOK_JOBS_COLLECTION = 'pluggy_webhook_jobs';
 const WEBHOOK_JOB_TTL_MS = 24 * 60 * 60 * 1000; // 24h (configure Firestore TTL on `expiresAt` for auto-cleanup)
 const WEBHOOK_JOB_LEASE_MS = 10 * 60 * 1000; // 10 minutes
-const WEBHOOK_JOB_MAX_ATTEMPTS = 8;
-const WEBHOOK_JOB_BACKOFF_BASE_MS = 30 * 1000;
-const WEBHOOK_JOB_BACKOFF_MAX_MS = 10 * 60 * 1000;
+const WEBHOOK_JOB_MAX_ATTEMPTS = 3; // 3 attempts with exponential backoff
+const WEBHOOK_RETRY_DELAYS = [5000, 15000, 45000]; // 5s, 15s, 45s - exponential backoff
 
 const ENABLE_INLINE_WEBHOOK_PROCESSING = String(process.env.PLUGGY_WEBHOOK_INLINE_PROCESSING || '')
     .toLowerCase() === 'true';
 
+// Get retry delay based on attempt number (0-indexed)
 const computeWebhookJobBackoffMs = (attempts) => {
-    const exp = Math.max(Number(attempts || 1) - 1, 0);
-    return Math.min(WEBHOOK_JOB_BACKOFF_MAX_MS, WEBHOOK_JOB_BACKOFF_BASE_MS * (2 ** exp));
+    const attemptIndex = Math.max(0, Math.min(Number(attempts || 0), WEBHOOK_RETRY_DELAYS.length - 1));
+    return WEBHOOK_RETRY_DELAYS[attemptIndex] || WEBHOOK_RETRY_DELAYS[WEBHOOK_RETRY_DELAYS.length - 1];
 };
 
 const enqueueWebhookJob = async (eventId, event) => {
@@ -1599,151 +1791,197 @@ router.post('/webhook', async (req, res) => {
     res.status(200).json({ received: true, eventId, queued: true });
 
     if (ENABLE_INLINE_WEBHOOK_PROCESSING) {
-        // Best-effort inline processing (local/dev only). Production should use /webhook-worker.
-        setImmediate(async () => {
-            try {
-                if (jobRef) {
-                    await jobRef.set({
-                        status: 'processing',
-                        leasedUntil: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_LEASE_MS),
-                        availableAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_LEASE_MS),
-                        startedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
-                        updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                }
-                const { event: eventType, itemId, clientUserId, data } = event;
-
-                // Find user
-                let userId = clientUserId;
-                if (!userId && itemId) {
-                    console.warn(`>>> Webhook missing clientUserId for item ${itemId}. Looking up...`);
-                    userId = await findUserByItemId(itemId);
-                }
-
-                if (!userId) {
-                    console.error(`>>> Could not find user for webhook event. itemId: ${itemId}`);
-                    return;
-                }
-
-                const apiKey = await getPluggyApiKey();
-
-                // Handle different event types according to Pluggy docs
-                switch (eventType) {
-                    case 'item/created':
-                    case 'item/updated': {
-                        // For item events, first fetch the updated item status
-                        const itemData = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
-                        console.log(`>>> Item ${itemId} status: ${itemData.status} (${itemData.statusDetail || 'N/A'})`);
-
-                        // Check if user action is required
-                        if (itemData.status === 'WAITING_USER_INPUT') {
-                            await updateSyncStatus(userId, 'error', 'Ação necessária: Verifique suas credenciais bancárias.');
-                            await addSystemNotification(userId, 'Ação Necessária', 'Seu banco requer confirmação. Acesse Contas Conectadas para atualizar.', 'alert');
-                            return;
-                        }
-
-                        if (itemData.status === 'LOGIN_ERROR') {
-                            await updateSyncStatus(userId, 'error', 'Erro de login no banco. Atualize suas credenciais.');
-                            await addSystemNotification(userId, 'Erro de Login', 'Não foi possível conectar ao seu banco. Verifique suas credenciais.', 'alert');
-                            return;
-                        }
-
-                        if (itemData.status === 'OUTDATED') {
-                            await updateSyncStatus(userId, 'pending', 'Dados desatualizados. Aguardando sincronização...');
-                            return;
-                        }
-
-                        // If status is UPDATED, sync transactions
-                        if (itemData.status === 'UPDATED') {
-                            await updateSyncStatus(userId, 'in_progress', 'Processando atualização...');
-                            await syncItem(apiKey, itemId, userId, { fromWebhook: true });
-                        }
-                        break;
-                    }
-
-                    case 'transactions/created': {
-                        // Use createdTransactionsLink to fetch new transactions
-                        const link = data?.createdTransactionsLink;
-                        if (link) {
-                            await updateSyncStatus(userId, 'in_progress', 'Processando novas transações...');
-                            const transactions = await fetchTransactionsFromLink(apiKey, link);
-                            const count = await processAndSaveTransactions(userId, transactions);
-                            await updateSyncStatus(userId, 'success', `${count} transações sincronizadas.`);
-                            console.log(`>>> Processed ${count} new transactions for user ${userId}`);
-                        } else {
-                            // Fallback: use optimized syncItem
-                            await updateSyncStatus(userId, 'in_progress', 'Processando transações...');
-                            await syncItem(apiKey, itemId, userId, {
-                                fromWebhook: true,
-                                accountId: data?.accountId
-                            });
-                        }
-                        break;
-                    }
-
-                    case 'transactions/updated': {
-                        // Fetch updated transactions by IDs
-                        const ids = data?.ids || [];
-                        if (ids.length > 0) {
-                            await updateSyncStatus(userId, 'in_progress', 'Atualizando transações...');
-                            const transactions = await fetchTransactionsByIds(apiKey, ids);
-                            const count = await processAndSaveTransactions(userId, transactions);
-                            await updateSyncStatus(userId, 'success', `${count} transações atualizadas.`);
-                            console.log(`>>> Updated ${count} transactions for user ${userId}`);
-                        }
-                        break;
-                    }
-
-                    case 'transactions/deleted': {
-                        const ids = data?.ids || [];
-                        if (ids.length > 0) {
-                            await updateSyncStatus(userId, 'in_progress', 'Removendo transações...');
-                            await deleteTransactions(userId, ids);
-                            console.log(`>>> Deleted ${ids.length} transactions for user ${userId}`);
-                        }
-                        break;
-                    }
-
-                    case 'item/error': {
-                        await updateSyncStatus(userId, 'error', 'Erro na conexão com o banco.');
-                        await addSystemNotification(userId, 'Erro Open Finance', 'Houve um problema ao conectar com seu banco.', 'alert');
-                        break;
-                    }
-
-                    case 'item/deleted': {
-                        console.log(`>>> Item ${itemId} deleted for user ${userId}`);
-                        // Optionally clean up local data
-                        break;
-                    }
-
-                    default:
-                        console.log(`>>> Unknown webhook event type: ${eventType}`);
-                }
-
-                if (jobRef) {
-                    await jobRef.set({
-                        status: 'done',
-                        completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
-                        availableAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_TTL_MS),
-                        expiresAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_TTL_MS),
-                        updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                }
-            } catch (e) {
-                console.error('>>> Webhook Processing Error:', e.message);
-                if (jobRef) {
-                    await jobRef.set({
-                        status: 'error',
-                        error: e.message,
-                        availableAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_BACKOFF_BASE_MS),
-                        expiresAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_TTL_MS),
-                        updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-                }
-            }
-        });
+        // Inline processing with automatic retry (5s, 15s, 45s backoff)
+        processWebhookWithRetry(event, jobRef, 0);
     }
 });
+
+/**
+ * Process webhook with automatic retry using exponential backoff (5s, 15s, 45s)
+ * @param {Object} event - The webhook event
+ * @param {Object} jobRef - Firestore job reference
+ * @param {number} attempt - Current attempt number (0-indexed)
+ */
+const processWebhookWithRetry = async (event, jobRef, attempt) => {
+    const { event: eventType, itemId, clientUserId, data } = event;
+    const eventId = getWebhookEventId(event);
+
+    console.log(`>>> Webhook processing attempt ${attempt + 1}/${WEBHOOK_JOB_MAX_ATTEMPTS} for ${eventId}`);
+
+    try {
+        // Update job status to processing
+        if (jobRef) {
+            await jobRef.set({
+                status: 'processing',
+                attempt: attempt + 1,
+                leasedUntil: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_LEASE_MS),
+                startedAt: attempt === 0 ? firebaseAdmin.firestore.FieldValue.serverTimestamp() : undefined,
+                updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
+        // Find user
+        let userId = clientUserId;
+        if (!userId && itemId) {
+            console.warn(`>>> Webhook missing clientUserId for item ${itemId}. Looking up...`);
+            userId = await findUserByItemId(itemId);
+        }
+
+        if (!userId) {
+            throw new Error(`Could not find user for webhook event. itemId: ${itemId}`);
+        }
+
+        const apiKey = await getPluggyApiKey();
+
+        // Handle different event types according to Pluggy docs
+        switch (eventType) {
+            case 'item/created':
+            case 'item/updated': {
+                const itemData = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+                console.log(`>>> Item ${itemId} status: ${itemData.status} (${itemData.statusDetail || 'N/A'})`);
+
+                if (itemData.status === 'WAITING_USER_INPUT') {
+                    await updateSyncStatus(userId, 'error', 'Ação necessária: Verifique suas credenciais bancárias.');
+                    await addSystemNotification(userId, 'Ação Necessária', 'Seu banco requer confirmação. Acesse Contas Conectadas para atualizar.', 'alert');
+                    break;
+                }
+
+                if (itemData.status === 'LOGIN_ERROR') {
+                    await updateSyncStatus(userId, 'error', 'Erro de login no banco. Atualize suas credenciais.');
+                    await addSystemNotification(userId, 'Erro de Login', 'Não foi possível conectar ao seu banco. Verifique suas credenciais.', 'alert');
+                    break;
+                }
+
+                if (itemData.status === 'OUTDATED') {
+                    await updateSyncStatus(userId, 'pending', 'Dados desatualizados. Aguardando sincronização...');
+                    break;
+                }
+
+                if (itemData.status === 'UPDATED') {
+                    await updateSyncStatus(userId, 'in_progress', 'Processando atualização...');
+                    await syncItem(apiKey, itemId, userId, { fromWebhook: true });
+                }
+                break;
+            }
+
+            case 'transactions/created': {
+                const link = data?.createdTransactionsLink;
+                if (link) {
+                    await updateSyncStatus(userId, 'in_progress', 'Processando novas transações...');
+                    const transactions = await fetchTransactionsFromLink(apiKey, link);
+                    const count = await processAndSaveTransactions(userId, transactions);
+                    await updateSyncStatus(userId, 'success', `${count} transações sincronizadas.`);
+                    console.log(`>>> Processed ${count} new transactions for user ${userId}`);
+                } else {
+                    await updateSyncStatus(userId, 'in_progress', 'Processando transações...');
+                    await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: data?.accountId });
+                }
+                break;
+            }
+
+            case 'transactions/updated': {
+                const ids = data?.ids || [];
+                if (ids.length > 0) {
+                    await updateSyncStatus(userId, 'in_progress', 'Atualizando transações...');
+                    const transactions = await fetchTransactionsByIds(apiKey, ids);
+                    const count = await processAndSaveTransactions(userId, transactions);
+                    await updateSyncStatus(userId, 'success', `${count} transações atualizadas.`);
+                    console.log(`>>> Updated ${count} transactions for user ${userId}`);
+                }
+                break;
+            }
+
+            case 'transactions/deleted': {
+                const ids = data?.ids || [];
+                if (ids.length > 0) {
+                    await updateSyncStatus(userId, 'in_progress', 'Removendo transações...');
+                    await deleteTransactions(userId, ids);
+                    console.log(`>>> Deleted ${ids.length} transactions for user ${userId}`);
+                }
+                break;
+            }
+
+            case 'item/error': {
+                await updateSyncStatus(userId, 'error', 'Erro na conexão com o banco.');
+                await addSystemNotification(userId, 'Erro Open Finance', 'Houve um problema ao conectar com seu banco.', 'alert');
+                break;
+            }
+
+            case 'item/deleted': {
+                console.log(`>>> Item ${itemId} deleted for user ${userId}`);
+                break;
+            }
+
+            default:
+                console.log(`>>> Unknown webhook event type: ${eventType}`);
+        }
+
+        // Mark job as done
+        if (jobRef) {
+            await jobRef.set({
+                status: 'done',
+                completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                expiresAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_TTL_MS),
+                updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+            }, { merge: true });
+        }
+
+        console.log(`>>> Webhook ${eventId} processed successfully on attempt ${attempt + 1}`);
+
+    } catch (error) {
+        console.error(`>>> Webhook Processing Error (attempt ${attempt + 1}):`, error.message);
+
+        const nextAttempt = attempt + 1;
+
+        if (nextAttempt < WEBHOOK_JOB_MAX_ATTEMPTS) {
+            // Schedule retry with exponential backoff
+            const retryDelay = computeWebhookJobBackoffMs(attempt);
+            console.log(`>>> Scheduling webhook retry in ${retryDelay}ms (attempt ${nextAttempt + 1}/${WEBHOOK_JOB_MAX_ATTEMPTS})`);
+
+            if (jobRef) {
+                await jobRef.set({
+                    status: 'retrying',
+                    attempt: nextAttempt,
+                    lastError: error.message,
+                    nextRetryAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + retryDelay),
+                    updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+
+            // Schedule next retry
+            setTimeout(() => {
+                processWebhookWithRetry(event, jobRef, nextAttempt);
+            }, retryDelay);
+
+        } else {
+            // Max retries exceeded - mark as failed and notify user
+            console.error(`>>> Webhook ${eventId} failed after ${WEBHOOK_JOB_MAX_ATTEMPTS} attempts`);
+
+            if (jobRef) {
+                await jobRef.set({
+                    status: 'failed',
+                    attempts: nextAttempt,
+                    lastError: error.message,
+                    failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp(),
+                    expiresAt: firebaseAdmin.firestore.Timestamp.fromMillis(Date.now() + WEBHOOK_JOB_TTL_MS),
+                    updatedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                }, { merge: true });
+            }
+
+            // Try to notify user of failure
+            const userId = clientUserId || (itemId ? await findUserByItemId(itemId).catch(() => null) : null);
+            if (userId) {
+                await updateSyncStatus(userId, 'error', 'Falha na sincronização automática. Tente manualmente.');
+                await addSystemNotification(
+                    userId,
+                    'Sincronização Falhou',
+                    'A sincronização automática falhou após várias tentativas. Por favor, tente sincronizar manualmente.',
+                    'alert'
+                );
+            }
+        }
+    }
+};
 
 // Worker - Process queued webhook jobs (trigger this via Vercel Cron)
 router.get('/webhook-worker', async (req, res) => {
@@ -1924,8 +2162,115 @@ const pollAndSync = async (apiKey, itemId, userId) => {
     await updateSyncStatus(userId, 'error', 'Tempo limite excedido na atualização do banco.');
 };
 
+/**
+ * Poll and Sync with automatic credit refund on failure
+ * Used by /trigger-sync endpoint
+ */
+const pollAndSyncWithRefund = async (apiKey, itemId, userId, syncJobId, creditTransactionId) => {
+    const POLL_INTERVAL_MS = 3000;
+    const MAX_ATTEMPTS = 40; // ~2 minutes timeout
+
+    console.log(`>>> Starting Polling with Refund for Item ${itemId} (User: ${userId})`);
+
+    await updateSyncJob(userId, syncJobId, {
+        status: 'processing',
+        progress: { step: 'Aguardando banco...', current: 20, total: 100 },
+        message: 'Aguardando resposta do banco'
+    });
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+        try {
+            await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
+
+            const item = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
+            const status = item.status;
+
+            console.log(`>>> Poll #${i + 1} Item ${itemId}: ${status}`);
+
+            // Update progress
+            const progress = Math.min(20 + Math.floor((i / MAX_ATTEMPTS) * 50), 70);
+            await updateSyncJob(userId, syncJobId, {
+                progress: { step: `Aguardando banco... (${i + 1}/${MAX_ATTEMPTS})`, current: progress, total: 100 }
+            });
+
+            if (status === 'UPDATED') {
+                await updateSyncStatus(userId, 'in_progress', 'Banco atualizado. Buscando transações...');
+                await updateSyncJob(userId, syncJobId, {
+                    progress: { step: 'Sincronizando transações...', current: 75, total: 100 },
+                    message: 'Banco atualizado, sincronizando dados'
+                });
+
+                // Run the sync
+                await syncItem(apiKey, itemId, userId, { fromWebhook: false, fullSync: false, syncJobId });
+
+                // Mark as completed
+                await updateSyncJob(userId, syncJobId, {
+                    status: 'completed',
+                    progress: { step: 'Concluído', current: 100, total: 100 },
+                    message: 'Sincronização concluída com sucesso',
+                    completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                });
+                return;
+            }
+
+            if (status === 'LOGIN_ERROR') {
+                const refunded = await refundCredit(userId, creditTransactionId, 'LOGIN_ERROR');
+                await updateSyncStatus(userId, 'error', refunded
+                    ? 'Erro de login. Crédito reembolsado.'
+                    : 'Erro: Credenciais bancárias inválidas.');
+                await updateSyncJob(userId, syncJobId, {
+                    status: 'failed',
+                    lastError: 'LOGIN_ERROR',
+                    creditRefunded: refunded,
+                    message: 'Erro de login no banco',
+                    failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                });
+                return;
+            }
+
+            if (status === 'WAITING_USER_INPUT') {
+                const refunded = await refundCredit(userId, creditTransactionId, 'WAITING_USER_INPUT');
+                await updateSyncStatus(userId, 'error', refunded
+                    ? 'Ação necessária no banco (MFA). Crédito reembolsado.'
+                    : 'Erro: Ação necessária no banco (MFA).');
+                await updateSyncJob(userId, syncJobId, {
+                    status: 'failed',
+                    lastError: 'WAITING_USER_INPUT',
+                    creditRefunded: refunded,
+                    message: 'Requer autenticação adicional',
+                    failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                });
+                return;
+            }
+
+            // If still UPDATING, continue loop
+        } catch (e) {
+            console.error(`>>> Polling error for ${itemId}:`, e.message);
+        }
+    }
+
+    // Timeout - refund credit
+    const refunded = await refundCredit(userId, creditTransactionId, 'TIMEOUT');
+    await updateSyncStatus(userId, 'error', refunded
+        ? 'Tempo limite excedido. Crédito reembolsado.'
+        : 'Tempo limite excedido na atualização do banco.');
+    await updateSyncJob(userId, syncJobId, {
+        status: 'failed',
+        lastError: 'TIMEOUT',
+        creditRefunded: refunded,
+        message: 'Tempo limite excedido',
+        failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+    });
+    await addSystemNotification(userId, 'Sincronização Expirou',
+        refunded
+            ? 'O banco demorou muito para responder. Seu crédito foi reembolsado.'
+            : 'O banco demorou muito para responder. Tente novamente mais tarde.',
+        'alert');
+};
+
 // Helper: Check and Consume Credit (Transactional)
-const consumeDailyCredit = async (transaction, userRef, userDoc) => {
+// Returns creditTransactionId for potential refund on failure
+const consumeDailyCredit = async (transaction, userRef, userDoc, userId) => {
     const userData = userDoc.data();
 
     // Check if user is admin (check both root and profile level)
@@ -1934,7 +2279,7 @@ const consumeDailyCredit = async (transaction, userRef, userDoc) => {
     // Admins have unlimited connection credits
     if (isAdmin) {
         console.log('>>> Admin user detected - unlimited credits');
-        return { newCount: 0, remaining: Infinity };
+        return { newCount: 0, remaining: Infinity, creditTransactionId: 'admin_unlimited' };
     }
 
     // Determine User Plan (mimic frontend/database.ts logic)
@@ -1970,31 +2315,39 @@ const consumeDailyCredit = async (transaction, userRef, userDoc) => {
         throw new Error(`Limite diário de ${MAX_CREDITS} sincronizações atingido. Tente novamente amanhã.`);
     }
 
+    // Generate unique credit transaction ID for potential refund
+    const creditTransactionId = `credit_${userId}_${Date.now()}`;
+
     // Update User Doc with new credit count
     // NOTE: This field is stored at root level as per database.ts
     transaction.set(userRef, { dailyConnectionCredits: newCredits }, { merge: true });
 
-    return { newCount: newCredits.count, remaining: MAX_CREDITS - newCredits.count };
+    return { newCount: newCredits.count, remaining: MAX_CREDITS - newCredits.count, creditTransactionId };
 };
 
-// Trigger Sync (Manual) - Secure & Async
+// Trigger Sync (Manual) - Secure & Async with Credit Refund
 router.post('/trigger-sync', async (req, res) => {
     const { itemId, userId } = req.body;
     if (!itemId || !userId) return res.status(400).json({ error: 'itemId and userId required' });
 
     const db = firebaseAdmin.firestore();
     const userRef = db.collection('users').doc(userId);
+    let creditTransactionId = null;
+    let syncJobId = null;
 
     try {
-        await db.runTransaction(async (transaction) => {
+        // 1. Atomic Credit Deduction with transaction ID for potential refund
+        const creditResult = await db.runTransaction(async (transaction) => {
             const userDoc = await transaction.get(userRef);
             if (!userDoc.exists) throw new Error('User not found');
-
-            // 1. Atomic Credit Deduction
-            await consumeDailyCredit(transaction, userRef, userDoc);
+            return await consumeDailyCredit(transaction, userRef, userDoc, userId);
         });
+        creditTransactionId = creditResult.creditTransactionId;
 
-        // 2. Initiate Background Sync
+        // 2. Create sync job for tracking
+        syncJobId = await createSyncJob(userId, itemId, creditTransactionId);
+
+        // 3. Initiate Background Sync
         await updateSyncStatus(userId, 'pending', 'Solicitando atualização ao banco...');
 
         const apiKey = await getPluggyApiKey();
@@ -2002,12 +2355,17 @@ router.post('/trigger-sync', async (req, res) => {
         // Trigger Pluggy update
         await pluggyRequest('PATCH', `/items/${itemId}`, apiKey, {});
 
-        // Start polling/handling in background
-        pollAndSync(apiKey, itemId, userId).catch(err => {
-            console.error(`Background polling failed for ${itemId}:`, err);
+        // 4. Respond immediately with syncJobId for tracking
+        res.json({
+            success: true,
+            message: 'Processo de sincronização iniciado.',
+            syncJobId
         });
 
-        res.json({ success: true, message: 'Processo de sincronização iniciado (Secure).' });
+        // 5. Start polling/handling in background with refund on failure
+        pollAndSyncWithRefund(apiKey, itemId, userId, syncJobId, creditTransactionId).catch(err => {
+            console.error(`Background polling failed for ${itemId}:`, err);
+        });
 
     } catch (e) {
         console.error('Trigger Sync Error:', e.message);
@@ -2016,7 +2374,7 @@ router.post('/trigger-sync', async (req, res) => {
     }
 });
 
-// Modern Sync (Secure & Async)
+// Modern Sync (Secure & Async) with Credit Refund on Failure
 router.post('/sync', async (req, res) => {
     const { itemId, userId } = req.body;
 
@@ -2032,44 +2390,34 @@ router.post('/sync', async (req, res) => {
 
     const db = firebaseAdmin.firestore();
     const userRef = db.collection('users').doc(userId);
+    let creditTransactionId = null;
+    let syncJobId = null;
 
     try {
-        // 1. Atomic Transaction: Deduct Credit & register intent
-        await db.runTransaction(async (transaction) => {
+        // 1. Atomic Transaction: Deduct Credit & get transaction ID for potential refund
+        const creditResult = await db.runTransaction(async (transaction) => {
             const userDoc = await transaction.get(userRef);
             if (!userDoc.exists) throw new Error('Usuário não encontrado.');
-
-            // Deduct Credit securely
-            await consumeDailyCredit(transaction, userRef, userDoc);
+            return await consumeDailyCredit(transaction, userRef, userDoc, userId);
         });
+        creditTransactionId = creditResult.creditTransactionId;
 
-        console.log(`>>> Credit deducted for User ${userId}. Starting background sync...`);
+        console.log(`>>> Credit deducted for User ${userId}. Transaction ID: ${creditTransactionId}`);
 
-        // 2. Immediate Response to Frontend (Async)
+        // 2. Create tracked sync job
+        syncJobId = await createSyncJob(userId, itemId, creditTransactionId);
+
+        // 3. Immediate Response to Frontend with syncJobId for tracking
         res.json({
             success: true,
             message: 'Processando conexão...',
-            // Send empty accounts list as they will be fetched via listener
+            syncJobId,
             accounts: [],
             summary: { total: 0, checking: 0, savings: 0, credit: 0 }
         });
 
-        // 3. Background Processing
-        (async () => {
-            try {
-                const apiKey = await getPluggyApiKey();
-
-                // Update status to feedback to user
-                await updateSyncStatus(userId, 'in_progress', 'Conexão segura estabelecida. Buscando dados...');
-
-                // Perform the heavy sync
-                await syncItem(apiKey, itemId, userId, { fullSync: true });
-
-            } catch (bgError) {
-                console.error(`>>> Background Sync Failed for ${itemId}:`, bgError);
-                await updateSyncStatus(userId, 'error', 'Erro ao processar dados do banco.');
-            }
-        })();
+        // 4. Background Processing with automatic refund on failure
+        processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId);
 
     } catch (e) {
         console.error('>>> Sync Transaction Failed:', e.message);

@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, Check, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info } from "./Icons";
 import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
@@ -9,7 +9,7 @@ import { EmptyState } from "./EmptyState";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
 import { TooltipIcon } from "./UIComponents";
-import { ConfirmationBar } from './ConfirmationBar';
+import { UniversalModal } from "./UniversalModal";
 import { BankConnectModal } from "./BankConnectModal";
 import Lottie from "lottie-react";
 import linkAnimation from "../assets/link.json";
@@ -107,6 +107,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [itemStatuses, setItemStatuses] = useState<Record<string, ItemSyncStatus>>({});
   const [isSyncingItem, setIsSyncingItem] = useState<Record<string, boolean>>({});
   const [globalSyncStatus, setGlobalSyncStatus] = useState<GlobalSyncStatus | null>(null);
+  const [syncJobs, setSyncJobs] = useState<Record<string, dbService.SyncJob>>({});
 
   const accountsPerPage = 3;
   const toast = useToasts();
@@ -225,15 +226,18 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     connectButtonTooltip = `Limite de ${MAX_CREDITS_PER_DAY} conexões diárias atingido. Aguarde até meia-noite.`;
   }
 
-  const handleBankConnected = async (newAccounts: ConnectedAccount[]) => {
+  const handleBankConnected = async (newAccounts: ConnectedAccount[], syncJobId?: string) => {
+    // Connection started - show initial feedback
+    // Progress will be shown via sync jobs listener
     if (forceSyncItemId) {
-      toast.success("Sincronização concluída.");
+      sonnerToast.info("Sincronização iniciada! Acompanhe o progresso abaixo.", { duration: 3000 });
     } else {
-      toast.success(`${newAccounts.length} conta(s) conectada(s) com sucesso!`);
+      sonnerToast.info("Conexão iniciada! Seus dados aparecerão em breve.", { duration: 3000 });
     }
-    // Note: Credits are now updated immediately in BankConnectModal.tsx upon success.
-    // We no longer need to call incrementDailyConnectionCredits here.
 
+    console.log('[ConnectedAccounts] Bank connected, syncJobId:', syncJobId);
+
+    // Refresh to show the new connection (if any)
     if (onRefresh) onRefresh();
   };
 
@@ -312,6 +316,48 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
     return () => {
       unsubscribe();
+    };
+  }, [userId, onRefresh]);
+
+  // Listen to Sync Jobs for real-time progress tracking
+  useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribeJobs = dbService.listenToSyncJobs(userId, (jobs) => {
+      // Map jobs by itemId for easy lookup
+      const jobMap: Record<string, dbService.SyncJob> = {};
+      jobs.forEach((job) => {
+        // Only keep the most recent job per itemId
+        if (!jobMap[job.itemId] ||
+            (job.createdAt && jobMap[job.itemId].createdAt &&
+             job.createdAt > jobMap[job.itemId].createdAt)) {
+          jobMap[job.itemId] = job;
+        }
+      });
+      setSyncJobs(jobMap);
+
+      // Show toast notifications for job status changes
+      jobs.forEach((job) => {
+        if (job.status === 'completed') {
+          sonnerToast.success('Sincronização concluída!', {
+            id: `sync-job-${job.id}`,
+            duration: 3000
+          });
+          if (onRefresh) onRefresh();
+        } else if (job.status === 'failed') {
+          const message = job.creditRefunded
+            ? 'Sincronização falhou. Crédito reembolsado.'
+            : 'Sincronização falhou.';
+          sonnerToast.error(message, {
+            id: `sync-job-${job.id}`,
+            duration: 5000
+          });
+        }
+      });
+    });
+
+    return () => {
+      unsubscribeJobs();
     };
   }, [userId, onRefresh]);
 
@@ -447,12 +493,19 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
+  const [deleteIncludeTransactions, setDeleteIncludeTransactions] = useState(false); // New state for checkbox
+
   const handleDeleteInstitution = async () => {
     if (!userId || !deleteData) return;
     const { accounts: institutionAccounts, institutionName } = deleteData;
     setIsDeleting(institutionName);
     try {
       for (const acc of institutionAccounts) {
+        // If checkbox is checked, delete related transactions first
+        if (deleteIncludeTransactions) {
+          await dbService.deleteAllTransactionsForAccount(userId, acc.id);
+          await dbService.deleteAllCreditCardTransactionsForAccount(userId, acc.id);
+        }
         await dbService.deleteConnectedAccount(userId, acc.id);
       }
       toast.success(`${institutionAccounts.length} conta(s) removida(s) com sucesso!`);
@@ -463,6 +516,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     } finally {
       setIsDeleting(null);
       setDeleteData(null);
+      setDeleteIncludeTransactions(false); // Reset checkbox
     }
   };
 
@@ -615,7 +669,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
             const timer = itemId ? timers[itemId] : null;
             const itemStatus = itemId ? itemStatuses[itemId] : null;
-            const isUpdating = itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true;
+            const syncJob = itemId ? syncJobs[itemId] : null;
+
+            // Determine sync state from multiple sources
+            const isJobProcessing = syncJob?.status === 'processing' || syncJob?.status === 'pending';
+            const isJobRetrying = syncJob?.status === 'retrying';
+            const isJobFailed = syncJob?.status === 'failed';
+            const wasRefunded = syncJob?.creditRefunded;
+
+            const isUpdating = itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true || isJobProcessing;
             const isLoginError = itemStatus?.status === 'LOGIN_ERROR';
             const isWait = itemStatus?.status === 'WAITING_USER_INPUT';
 
@@ -658,8 +720,38 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
+                      {/* Sync Job Progress Indicator */}
+                      {syncJob && (isJobProcessing || isJobRetrying) && (
+                        <div className="mr-2">
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#d97757]/10 border border-[#d97757]/30">
+                            <Loader2 size={12} className="text-[#d97757] animate-spin" />
+                            <span className="text-[10px] text-[#d97757] font-bold uppercase">
+                              {isJobRetrying
+                                ? `Tentando... (${syncJob.attempts || 1}/3)`
+                                : syncJob.progress?.step || 'Sincronizando...'}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Sync Job Failed Indicator */}
+                      {syncJob && isJobFailed && (
+                        <div className="mr-2 flex items-center gap-2">
+                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20">
+                            <AlertCircle size={12} className="text-red-400" />
+                            <span className="text-[10px] text-red-400 font-bold uppercase">Falhou</span>
+                          </div>
+                          {wasRefunded && (
+                            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                              <CheckCircle size={10} className="text-emerald-400" />
+                              <span className="text-[10px] text-emerald-400 font-medium">Reembolsado</span>
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Status badges for errors only */}
-                      {itemId && (isLoginError || isWait) && (
+                      {itemId && (isLoginError || isWait) && !isJobFailed && (
                         <div className="mr-2">
                           {isLoginError ? (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20">
@@ -856,18 +948,98 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
       )}
 
-      {/* Confirmation Bar */}
-      <ConfirmationBar
+      {/* Delete Confirmation Modal */}
+      <UniversalModal
         isOpen={!!deleteData}
-        onCancel={() => setDeleteData(null)}
-        onConfirm={() => {
-          handleDeleteInstitution();
-        }}
-        label="Desconectar Conta?"
-        confirmText="Sim, excluir"
-        cancelText="Cancelar"
-        isDestructive={true}
-      />
+        onClose={() => setDeleteData(null)}
+        title="Desconectar Instituição"
+        subtitle="Esta ação removerá todas as contas vinculadas a esta instituição."
+        icon={<Trash2 size={24} />}
+        themeColor="#ef4444" // Red for destructive action
+        width="max-w-md"
+        footer={
+          <div className="flex justify-end gap-3">
+            <button
+              onClick={() => setDeleteData(null)}
+              className="px-4 py-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition-colors font-medium text-sm"
+              disabled={isDeleting !== null}
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleDeleteInstitution}
+              className="px-4 py-2 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold text-sm shadow-lg shadow-red-500/20 transition-all flex items-center gap-2"
+              disabled={isDeleting !== null}
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 size={16} className="animate-spin" />
+                  <span>Removendo...</span>
+                </>
+              ) : (
+                <>
+                  <Trash2 size={16} />
+                  <span>Sim, desconectar</span>
+                </>
+              )}
+            </button>
+          </div>
+        }
+      >
+        <div className="space-y-4">
+          <div className="bg-red-500/10 border border-red-500/20 rounded-xl p-4 flex gap-3 text-red-200">
+            <AlertCircle size={20} className="shrink-0 text-red-400" />
+            <div className="text-sm">
+              <p className="font-bold text-red-400 mb-1">Atenção: Ação Irreversível</p>
+              <p className="opacity-80">
+                Ao desconectar <strong>{deleteData?.institutionName}</strong>, as contas deixarão de ser sincronizadas.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-400 uppercase tracking-wider">Contas afetadas:</p>
+            <div className="bg-gray-900/50 rounded-xl border border-gray-800 p-1 max-h-[150px] overflow-y-auto custom-scrollbar">
+              {deleteData?.accounts.map((acc) => (
+                <div key={acc.id} className="flex items-center gap-3 p-2.5 rounded-lg hover:bg-gray-800/50 transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-gray-800 flex items-center justify-center text-gray-400">
+                    {isCardFromInstitution(acc) ? <CreditCard size={14} /> : <Wallet size={14} />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-gray-300 truncate">{acc.name}</p>
+                    <p className="text-xs text-gray-500 truncate">
+                      {acc.accountNumber ? `Conta: ${acc.accountNumber}` : translateAccountType(acc.type, acc.subtype)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <span className={`text-xs font-mono font-medium ${acc.balance < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                      {formatCurrency(acc.balance, acc.currency)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Option to delete transactions */}
+          <div className="pt-2">
+            <div
+              className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer group ${deleteIncludeTransactions ? 'bg-red-500/10 border-red-500/40' : 'bg-red-500/5 border-red-500/10 hover:bg-red-500/10 hover:border-red-500/20'}`}
+              onClick={() => setDeleteIncludeTransactions(!deleteIncludeTransactions)}
+            >
+              <div className={`w-5 h-5 mt-0.5 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 ${deleteIncludeTransactions ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                <Check size={12} strokeWidth={4} />
+              </div>
+              <div className="text-sm">
+                <span className="font-bold text-white group-hover:text-red-100 transition-colors">Apagar todas as transações</span>
+                <p className="text-gray-400 text-xs mt-0.5 group-hover:text-gray-300">
+                  Se marcado, todo o histórico de transações (receitas, despesas, cartões) vinculado a estas contas será excluído permanentemente.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </UniversalModal>
 
       <BankConnectModal
         isOpen={showBankModal}
@@ -884,6 +1056,6 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         isAdmin={isAdmin}
       />
 
-    </div>
+    </div >
   );
 };
