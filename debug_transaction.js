@@ -29,7 +29,7 @@ const run = async () => {
             customerId,
             planId: 'pro',
             billingCycle: 'monthly',
-            value: 34.90,
+            value: 35.90,
             creditCard: {
                 holderName: 'TEST HOLDER',
                 number: '4111111111111111', // Generic fake visa

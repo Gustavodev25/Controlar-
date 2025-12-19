@@ -227,8 +227,8 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                             if (currentStep.targetId === 'open-finance-connect-btn') {
                                 return {
                                     top: rect.bottom + 20,
-                                    // Align right edge of tooltip (width ~350) with right edge of button
-                                    left: rect.right - 350,
+                                    // Center the tooltip relative to the button
+                                    left: rect.left + (rect.width / 2) - 175,
                                     maxWidth: '350px'
                                 };
                             }
@@ -271,7 +271,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                             {/* Special Tail for Connect Button (Top Center relative to button which is on right side of modal) */}
                             {!isMobile && currentStep.targetId === 'open-finance-connect-btn' && (
                                 <div
-                                    className="absolute -top-2 right-24 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
+                                    className="absolute -top-2 left-1/2 -ml-2 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
                                 />
                             )}
 
@@ -325,7 +325,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
             {/* Skip Button */}
             <button
                 onClick={onClose}
-                className="fixed top-6 right-6 text-white/50 hover:text-white pointer-events-auto z-[10000] flex items-center gap-2 text-sm font-medium transition-colors"
+                className="fixed top-24 right-6 text-white/50 hover:text-white pointer-events-auto z-[10000] flex items-center gap-2 text-sm font-medium transition-colors"
             >
                 Pular Tutorial <X size={16} />
             </button>

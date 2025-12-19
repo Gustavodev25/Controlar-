@@ -358,8 +358,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           return;
         }
 
+        // Set flag immediately before auth call to handle race condition with App.tsx listener
+        localStorage.setItem('is_new_signup', 'true');
+
+
         const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
         if (userCredential.user) {
+          // Flag already set
           await updateProfile(userCredential.user, { displayName: formData.name });
           await updateUserProfile(userCredential.user.uid, {
             name: formData.name,
@@ -380,6 +385,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           });
           if (onLogin) onLogin(userCredential.user);
         }
+
       }
     } catch (err: any) {
       console.error("Erro de autenticação:", err);
@@ -392,6 +398,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
         msg = "A senha deve ter pelo menos 6 caracteres.";
       }
       toast.error(msg);
+      localStorage.removeItem('is_new_signup');
       setIsLoading(false);
     }
   };
@@ -414,6 +421,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           avatarUrl: user.photoURL || undefined,
           isAdmin: false
         });
+        localStorage.setItem('is_new_signup', 'true');
       } else {
         await updateUserProfile(user.uid, {
           email: user.email || existingProfile.email,
@@ -542,7 +550,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                       type="text"
                       maxLength={1}
                       value={digit}
-                      ref={el => inputRefs.current[index] = el}
+                      ref={el => { inputRefs.current[index] = el; }}
                       onChange={(e) => handleOtpChange(e.target.value, index)}
                       onKeyDown={(e) => handleKeyDown(e, index)}
                       className="w-12 h-14 text-center text-xl font-bold rounded-xl bg-gray-900 border border-gray-800 text-white focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757] outline-none transition-all"
@@ -664,7 +672,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                                 type="text"
                                 maxLength={1}
                                 value={digit}
-                                ref={el => inputRefs.current[index] = el}
+                                ref={el => { inputRefs.current[index] = el; }}
                                 onChange={(e) => handleOtpChange(e.target.value, index)}
                                 onKeyDown={(e) => handleKeyDown(e, index)}
                                 className="w-12 h-14 text-center text-xl font-bold rounded-xl bg-gray-900 border border-gray-800 text-white focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757] outline-none transition-all"

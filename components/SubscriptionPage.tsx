@@ -44,7 +44,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
         {
             id: 'pro',
             name: 'Pro',
-            price: 34.90,
+            price: 35.90,
             annualPrice: 399.00,
             image: fogueteImg,
             description: 'Todos os recursos avançados.',
@@ -335,7 +335,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                 const isPro = plan.popular;
 
                                 const containerClasses = isPro
-                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10 flex-1 basis-0"
+                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10 flex-1 basis-0"
                                     : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors flex-1 basis-0";
 
                                 return (

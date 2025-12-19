@@ -290,7 +290,7 @@ export const AdminSubscriptions: React.FC = () => {
             if (sub.plan === 'family') {
                 price = isAnnual ? (749.00 / 12) : 69.90;
             } else if (sub.plan === 'pro') {
-                price = isAnnual ? (399.00 / 12) : 34.90;
+                price = isAnnual ? (399.00 / 12) : 35.90;
             }
 
             // Apply Coupons
@@ -402,7 +402,7 @@ export const AdminSubscriptions: React.FC = () => {
 
         const planPrice = sub.plan === 'family'
             ? (sub.billingCycle === 'annual' ? 749.00 / 12 : 69.90)
-            : (sub.plan === 'pro' ? (sub.billingCycle === 'annual' ? 399.00 / 12 : 34.90) : 0);
+            : (sub.plan === 'pro' ? (sub.billingCycle === 'annual' ? 399.00 / 12 : 35.90) : 0);
 
         let startDate = sub.startDate ? new Date(sub.startDate) : null;
 

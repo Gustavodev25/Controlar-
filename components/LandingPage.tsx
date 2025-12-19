@@ -567,8 +567,8 @@ const PricingSection = ({ onStart }: { onStart: () => void }) => {
         </div>
 
         {/* Pro */}
-        <div className="bg-[#363735] border border-[#f17853] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#f17853]/10 lg:transform lg:-translate-y-4 flex-1 basis-0 w-full">
-          <div className="absolute top-0 right-0 bg-[#f17853] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-2xl">
+        <div className="bg-[#363735] border border-[#f17853] rounded-3xl p-8 flex flex-col relative shadow-2xl shadow-[#f17853]/10 flex-1 basis-0 w-full">
+          <div className="absolute top-0 right-0 bg-[#f17853] text-white text-xs font-bold px-3 py-1 rounded-bl-xl rounded-tr-3xl">
             MAIS POPULAR
           </div>
           <div className="flex justify-center mb-4">

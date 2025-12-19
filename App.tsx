@@ -40,6 +40,7 @@ import { BankConnectModal } from './components/BankConnectModal';
 import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
+import { PostSignupModal } from './components/PostSignupModal';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
@@ -377,6 +378,13 @@ const App: React.FC = () => {
       };
       setCurrentUser(updatedUser);
       await dbService.updateUserProfile(userId, updatedUser);
+
+      // Successfully upgraded: Enable Auto Mode immediately
+      if (planId === 'pro' || planId === 'family') {
+        setIsProMode(true);
+        // Also force-save to local storage so it persists right away
+        localStorage.setItem('finances_pro_mode', 'true');
+      }
     }
   });
 
@@ -474,11 +482,19 @@ const App: React.FC = () => {
     if (!currentUser) return;
 
     const plan = currentUser.subscription?.plan || 'starter';
+    const isProOrFamily = plan === 'pro' || plan === 'family';
 
     // Only force downgrade if explicitly on starter plan.
-    // If subscription is undefined (loading/error), preserve current mode to prevent Pro users from being kicked to Manual on reload.
     if (plan === 'starter' && isProMode) {
       setIsProMode(false);
+    }
+    // Auto-enable Pro Mode for Pro/Family users if they haven't explicitly set a preference
+    else if (isProOrFamily && !isProMode) {
+      // Check if user has explicitly turned it off before. If never set (null), default to TRUE for Pro.
+      const saved = localStorage.getItem('finances_pro_mode');
+      if (saved === null) {
+        setIsProMode(true);
+      }
     }
   }, [currentUser, isProMode]);
 
@@ -606,32 +622,56 @@ const App: React.FC = () => {
   // Pro Onboarding State
   const [isProOnboardingOpen, setIsProOnboardingOpen] = useState(false);
   const [isBankConnectModalOpen, setIsBankConnectModalOpen] = useState(false);
+  const [isPostSignupModalOpen, setIsPostSignupModalOpen] = useState(false);
 
   useEffect(() => {
-    // Logic to Trigger Pro Tutorial for new AND existing users
+    // Check for new signup flag whenever user is set
+    // We don't strictly need to wait for isLoadingData to be false to flip the switch
+    if (currentUser) {
+      const isNewSignup = localStorage.getItem('is_new_signup') === 'true';
+      if (isNewSignup) {
+        setIsPostSignupModalOpen(true);
+        localStorage.removeItem('is_new_signup');
+      }
+    }
+  }, [currentUser]);
+
+  const handlePostSignupPlan = (plan: 'free' | 'pro') => {
+    setIsPostSignupModalOpen(false);
+    if (plan === 'pro') {
+      setActiveTab('subscription');
+    }
+    // If free, just close (already done)
+  };
+  // Logic to Trigger Pro Tutorial for new AND existing users
+  useEffect(() => {
     if (isLoadingData || !currentUser) return;
 
     const checkAndShowTutorial = () => {
       // Logic to Trigger Pro Tutorial
       const isProOrFamily = effectivePlan === 'pro' || effectivePlan === 'family' || currentUser?.isAdmin;
 
-      // If user has already completed it (saved in DB), NEVER show despite local storage
+      // If user has already completed it (saved in DB), NEVER show.
       if (currentUser?.hasSeenProTutorial) return;
 
       const justUpgraded = localStorage.getItem('show_pro_tutorial') === 'true';
-      // We still check local storage to avoid spamming if they close it without finishing
-      // But we will primarily rely on the DB flag for "never show again" logic
-      const hasSeenLocally = localStorage.getItem('finances_seen_pro_tutorial_v5');
+
+      // Check session storage to avoid spamming on every refresh IF the user hasn't completed it yet
+      // This resets when the browser/tab is closed
+      const seenInThisSession = sessionStorage.getItem('pro_tutorial_session_seen');
 
       if (isProOrFamily) {
-        // Show if: 1. Just upgraded (explicit trigger) OR 2. Hasn't seen locally AND hasn't finished in DB
-        if (justUpgraded || !hasSeenLocally) {
+        if (justUpgraded || !seenInThisSession) {
           console.log('[App] Triggering Pro Onboarding Tutorial...');
           setTimeout(() => setIsProOnboardingOpen(true), 1000);
 
-          // Mark locally seen so it doesn't spam on refresh if they don't finish
-          localStorage.setItem('finances_seen_pro_tutorial_v5', 'true');
-          localStorage.removeItem('show_pro_tutorial');
+          // Mark seen in session
+          sessionStorage.setItem('pro_tutorial_session_seen', 'true');
+
+          // Clear the upgrade trigger if present
+          if (justUpgraded) {
+            localStorage.removeItem('show_pro_tutorial');
+          }
         }
       }
     };
@@ -3465,6 +3505,16 @@ const App: React.FC = () => {
           setIsBankConnectModalOpen(false);
         }}
       />
+
+      {/* Post Signup Plan Selection Modal */}
+      {currentUser && (
+        <PostSignupModal
+          isOpen={isPostSignupModalOpen}
+          onClose={() => setIsPostSignupModalOpen(false)}
+          onSelectPlan={handlePostSignupPlan}
+          userName={currentUser.name}
+        />
+      )}
 
       {/* Promo Popup from Admin */}
       <PromoPopup

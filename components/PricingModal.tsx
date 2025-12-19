@@ -40,7 +40,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
     {
       id: 'pro',
       name: 'Pro',
-      price: 34.90,
+      price: 35.90,
       annualPrice: 399.00,
       description: 'Todos os recursos avançados agora acessíveis.',
       features: [
