@@ -3103,255 +3103,223 @@ const App: React.FC = () => {
             <AdminControl />
           ) : (
             /* Normal Dashboard Content */
-            activeMemberId === 'FAMILY_OVERVIEW' ? (
-              <FamilyOverview
-                stats={stats}
-                goals={familyGoals}
-                isLoading={isLoadingData}
-                accountBalances={accountBalances}
-                creditCardTransactions={creditCardTransactions}
-                dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                toggles={{
-                  includeChecking: includeCheckingInStats,
-                  setIncludeChecking: setIncludeCheckingInStats,
-                  includeCredit: includeCreditCardInStats,
-                  setIncludeCredit: setIncludeCreditCardInStats,
-                  creditCardUseTotalLimit: creditCardUseTotalLimit,
-                  setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                  creditCardUseFullLimit: creditCardUseFullLimit,
-                  setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                  includeOpenFinance: includeOpenFinanceInStats,
-                  setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                  enabledCreditCardIds: enabledCreditCardIds,
-                  setEnabledCreditCardIds: setEnabledCreditCardIds
-                }}
-                isProMode={isProMode}
-                onActivateProMode={() => setIsProMode(true)}
-                userPlan={effectivePlan}
-                onUpgradeClick={() => setActiveTab('subscription')}
-                onAddGoal={handleAddGoal}
-                onUpdateGoal={handleUpdateGoal}
-                onDeleteGoal={handleDeleteGoal}
-                onAddTransaction={handleAddTransaction}
-              />
-            ) : (
-              <>
-                {activeTab === 'dashboard' && (
-                  <>
-                    {/* Only show Salary Manager in Monthly mode where it makes sense */}
-                    {filterMode === 'month' && !dashboardCategory && (
-                      <SalaryManager
-                        baseSalary={currentUser.baseSalary || 0}
-                        currentIncome={stats.totalIncome}
-                        estimatedSalary={stats.totalIncome}
-                        paymentDay={currentUser.salaryPaymentDay}
-                        advanceValue={currentUser.salaryAdvanceValue}
-                        advancePercent={currentUser.salaryAdvancePercent}
-                        advanceDay={currentUser.salaryAdvanceDay}
-                        onUpdateSalary={handleUpdateSalary}
-                        onAddExtra={handleAddExtraIncome}
-                        salaryExemptFromDiscounts={currentUser.salaryExemptFromDiscounts}
-                        onEditClick={() => {
-                          setSettingsInitialTab('finance');
-                          setIsSettingsOpen(true);
-                        }}
-                        isSalaryLaunched={(() => {
-                          const today = new Date();
-                          const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
-                          return memberFilteredTransactions.some(t =>
-                            t.description === "Salário Mensal" &&
-                            t.date.startsWith(currentMonth) &&
-                            !t.ignored
-                          );
-                        })()}
-                        isProMode={isProMode}
-                        onToggleProMode={(val) => {
-                          // Validação extra: Usuários Starter não podem ativar modo AUTO
-                          const userPlan = currentUser?.subscription?.plan || 'starter';
-                          if (userPlan === 'starter' && val) {
-                            // Ignorar tentativa de ativar Auto para Starter
-                            return;
-                          }
-                          if (val) {
-                            setShowGlobalModeModal('AUTO');
-                          } else {
-                            setShowGlobalModeModal('MANUAL');
-                          }
-                        }}
-                        userPlan={effectivePlan}
-                        onUpgradeClick={() => setActiveTab('subscription')}
-                        includeOpenFinance={includeOpenFinanceInStats}
-                        onToggleOpenFinance={setIncludeOpenFinanceInStats}
-                        viewFilter={viewFilter}
-                        onViewFilterChange={setViewFilter}
-                      />
-                    )}
-                    <StatsCards
-                      stats={stats}
-                      isLoading={isLoadingData}
-                      accountBalances={accountBalances}
-                      creditCardTransactions={creditCardTransactions}
-                      dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
-                      toggles={{
-                        includeChecking: includeCheckingInStats,
-                        setIncludeChecking: setIncludeCheckingInStats,
-                        includeCredit: includeCreditCardInStats,
-                        setIncludeCredit: setIncludeCreditCardInStats,
-                        creditCardUseTotalLimit: creditCardUseTotalLimit,
-                        setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
-                        creditCardUseFullLimit: creditCardUseFullLimit,
-                        setCreditCardUseFullLimit: setCreditCardUseFullLimit,
-                        includeOpenFinance: includeOpenFinanceInStats,
-                        setIncludeOpenFinance: setIncludeOpenFinanceInStats,
-                        enabledCreditCardIds: enabledCreditCardIds,
-                        setEnabledCreditCardIds: setEnabledCreditCardIds,
-                        cardInvoiceTypes: cardInvoiceTypes,
-                        setCardInvoiceTypes: setCardInvoiceTypes
-                      }}
-
-                      isProMode={isProMode}
-                      onActivateProMode={() => setIsProMode(true)}
-                      userPlan={effectivePlan}
-                      onUpgradeClick={() => setActiveTab('subscription')}
-                    />                    <div className="animate-fade-in space-y-6">
-                      <DashboardCharts
-                        transactions={filteredDashboardTransactions}
-                        reminders={filteredReminders}
-                        stats={stats}
-                        dashboardDate={dashboardDate}
-                        filterMode={filterMode}
-                      />
-                      {filterMode === 'month' && (
-                        <FinanceCalendar
-                          month={dashboardDate}
-                          transactions={filteredCalendarTransactions}
-                          reminders={filteredReminders}
-                          isLoading={isLoadingData}
-                        />
-                      )}
-                    </div>
-                  </>
-                )}
-
-                {activeTab === 'table' && (
-                  <div className="h-[calc(100vh-140px)] animate-fade-in">
-                    <ExcelTable
-                      transactions={checkingTransactions}
-                      onDelete={handleDeleteTransaction}
-                      onUpdate={handleUpdateTransaction}
-                      isManualMode={!isProMode}
-                      onAdd={handleAddTransaction}
-                      accounts={accountBalances.checkingAccounts}
-                    />
-                  </div>
-                )}
-
-                {activeTab === 'credit_cards' && (
-                  <div className="h-[calc(100vh-140px)] animate-fade-in">
-                    <CreditCardTable
-                      transactions={creditCardTransactions}
-                      onDelete={handleDeleteTransaction}
-                      onUpdate={handleUpdateTransaction}
-                      creditCardAccounts={accountBalances?.credit?.accounts}
-                      userId={userId || undefined}
-                      onSync={handleSyncOpenFinance}
-                      isSyncing={isSyncingCards}
-                      isManualMode={!isProMode}
-                      onAdd={handleAddTransaction}
-                    />
-                  </div>
-                )}
-
-                {activeTab === 'reminders' && (
-                  <Reminders
-                    reminders={filteredReminders}
-                    onAddReminder={handleAddReminder}
-                    onDeleteReminder={handleDeleteReminder}
-                    onPayReminder={handlePayReminder}
-                    onUpdateReminder={handleUpdateReminder}
-                    isProMode={isProMode}
-                    userPlan={effectivePlan}
-                    onUpgrade={() => setActiveTab('subscription')}
-                  />
-                )}
-
-                {activeTab === 'subscriptions' && (
-                  <Subscriptions
-                    subscriptions={subscriptions}
-                    transactions={memberFilteredTransactions}
-                    onAddSubscription={handleAddSubscription}
-                    onUpdateSubscription={handleUpdateSubscription}
-                    onDeleteSubscription={handleDeleteSubscription}
-                    currentDate={filterMode === 'month' ? dashboardDate : undefined}
-                    isProMode={isProMode}
-                    userPlan={effectivePlan}
-                    onUpgrade={() => setActiveTab('subscription')}
-                  />
-                )}
-
-                {activeTab === 'investments' && (
-                  <div className="h-[calc(100vh-280px)] animate-fade-in">
-                    <Investments
-                      investments={memberInvestments}
-                      connectedSavingsAccounts={connectedSavingsAccounts}
-                      transactions={savingsTransactions}
-                      onAdd={handleAddInvestment}
-                      onUpdate={handleUpdateInvestment}
-                      onDelete={handleDeleteInvestment}
-                      onAddTransaction={handleAddTransaction}
-                      userPlan={effectivePlan}
-                    />
-                  </div>
-                )}
-
-                {activeTab === 'fire' && (
-                  <div className="flex-1 space-y-6 animate-fade-in">
-                    <FireCalculator
-                      netWorth={totalMemberInvestments}
-                      averageMonthlySavings={averageMonthlySavings}
-                      averageMonthlyExpense={averageMonthlyExpense}
-                      userPlan={effectivePlan}
-                      onUpgradeClick={() => {
-                        setSettingsInitialTab('plan');
+            /* Normal Dashboard Content */
+            <>
+              {activeTab === 'dashboard' && (
+                <>
+                  {/* Only show Salary Manager in Monthly mode where it makes sense */}
+                  {filterMode === 'month' && !dashboardCategory && (
+                    <SalaryManager
+                      baseSalary={currentUser.baseSalary || 0}
+                      currentIncome={stats.totalIncome}
+                      estimatedSalary={stats.totalIncome}
+                      paymentDay={currentUser.salaryPaymentDay}
+                      advanceValue={currentUser.salaryAdvanceValue}
+                      advancePercent={currentUser.salaryAdvancePercent}
+                      advanceDay={currentUser.salaryAdvanceDay}
+                      onUpdateSalary={handleUpdateSalary}
+                      onAddExtra={handleAddExtraIncome}
+                      salaryExemptFromDiscounts={currentUser.salaryExemptFromDiscounts}
+                      onEditClick={() => {
+                        setSettingsInitialTab('finance');
                         setIsSettingsOpen(true);
                       }}
-                    />
-                  </div>
-                )}
-
-
-                {activeTab === 'connections' && (
-                  <div className="flex-1 space-y-6 animate-fade-in">
-                    <ConnectedAccounts
-                      accounts={enrichedConnectedAccounts}
-                      lastSynced={lastSyncMap}
-                      userId={userId}
+                      isSalaryLaunched={(() => {
+                        const today = new Date();
+                        const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+                        return memberFilteredTransactions.some(t =>
+                          t.description === "Salário Mensal" &&
+                          t.date.startsWith(currentMonth) &&
+                          !t.ignored
+                        );
+                      })()}
                       isProMode={isProMode}
-                      isAdmin={currentUser?.isAdmin}
-                      onDebugSync={handleDebugSync}
+                      onToggleProMode={(val) => {
+                        // Validação extra: Usuários Starter não podem ativar modo AUTO
+                        const userPlan = currentUser?.subscription?.plan || 'starter';
+                        if (userPlan === 'starter' && val) {
+                          // Ignorar tentativa de ativar Auto para Starter
+                          return;
+                        }
+                        if (val) {
+                          setShowGlobalModeModal('AUTO');
+                        } else {
+                          setShowGlobalModeModal('MANUAL');
+                        }
+                      }}
                       userPlan={effectivePlan}
-                      onUpgrade={() => setActiveTab('subscription')}
-                      dailyCredits={currentUser?.dailyConnectionCredits}
+                      onUpgradeClick={() => setActiveTab('subscription')}
+                      includeOpenFinance={includeOpenFinanceInStats}
+                      onToggleOpenFinance={setIncludeOpenFinanceInStats}
+                      viewFilter={viewFilter}
+                      onViewFilterChange={setViewFilter}
                     />
-                  </div>
-                )}
+                  )}
+                  <StatsCards
+                    stats={stats}
+                    isLoading={isLoadingData}
+                    accountBalances={accountBalances}
+                    creditCardTransactions={creditCardTransactions}
+                    dashboardDate={filterMode === 'month' ? dashboardDate : undefined}
+                    toggles={{
+                      includeChecking: includeCheckingInStats,
+                      setIncludeChecking: setIncludeCheckingInStats,
+                      includeCredit: includeCreditCardInStats,
+                      setIncludeCredit: setIncludeCreditCardInStats,
+                      creditCardUseTotalLimit: creditCardUseTotalLimit,
+                      setCreditCardUseTotalLimit: setCreditCardUseTotalLimit,
+                      creditCardUseFullLimit: creditCardUseFullLimit,
+                      setCreditCardUseFullLimit: setCreditCardUseFullLimit,
+                      includeOpenFinance: includeOpenFinanceInStats,
+                      setIncludeOpenFinance: setIncludeOpenFinanceInStats,
+                      enabledCreditCardIds: enabledCreditCardIds,
+                      setEnabledCreditCardIds: setEnabledCreditCardIds,
+                      cardInvoiceTypes: cardInvoiceTypes,
+                      setCardInvoiceTypes: setCardInvoiceTypes
+                    }}
 
-                {activeTab === 'budgets' && userId && (
-                  <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
-
-
-                    <Budgets
-                      userId={userId}
-                      transactions={transactions}
-                      members={members}
-                      activeMemberId={activeMemberId}
-                      budgets={budgets}
-                      userPlan={effectivePlan}
+                    isProMode={isProMode}
+                    onActivateProMode={() => setIsProMode(true)}
+                    userPlan={effectivePlan}
+                    onUpgradeClick={() => setActiveTab('subscription')}
+                  />                    <div className="animate-fade-in space-y-6">
+                    <DashboardCharts
+                      transactions={filteredDashboardTransactions}
+                      reminders={filteredReminders}
+                      stats={stats}
+                      dashboardDate={dashboardDate}
+                      filterMode={filterMode}
                     />
+                    {filterMode === 'month' && (
+                      <FinanceCalendar
+                        month={dashboardDate}
+                        transactions={filteredCalendarTransactions}
+                        reminders={filteredReminders}
+                        isLoading={isLoadingData}
+                      />
+                    )}
                   </div>
-                )}
-              </>
-            )
+                </>
+              )}
+
+              {activeTab === 'table' && (
+                <div className="h-[calc(100vh-140px)] animate-fade-in">
+                  <ExcelTable
+                    transactions={checkingTransactions}
+                    onDelete={handleDeleteTransaction}
+                    onUpdate={handleUpdateTransaction}
+                    isManualMode={!isProMode}
+                    onAdd={handleAddTransaction}
+                    accounts={accountBalances.checkingAccounts}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'credit_cards' && (
+                <div className="h-[calc(100vh-140px)] animate-fade-in">
+                  <CreditCardTable
+                    transactions={creditCardTransactions}
+                    onDelete={handleDeleteTransaction}
+                    onUpdate={handleUpdateTransaction}
+                    creditCardAccounts={accountBalances?.credit?.accounts}
+                    userId={userId || undefined}
+                    onSync={handleSyncOpenFinance}
+                    isSyncing={isSyncingCards}
+                    isManualMode={!isProMode}
+                    onAdd={handleAddTransaction}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'reminders' && (
+                <Reminders
+                  reminders={filteredReminders}
+                  onAddReminder={handleAddReminder}
+                  onDeleteReminder={handleDeleteReminder}
+                  onPayReminder={handlePayReminder}
+                  onUpdateReminder={handleUpdateReminder}
+                  isProMode={isProMode}
+                  userPlan={effectivePlan}
+                  onUpgrade={() => setActiveTab('subscription')}
+                />
+              )}
+
+              {activeTab === 'subscriptions' && (
+                <Subscriptions
+                  subscriptions={subscriptions}
+                  transactions={memberFilteredTransactions}
+                  onAddSubscription={handleAddSubscription}
+                  onUpdateSubscription={handleUpdateSubscription}
+                  onDeleteSubscription={handleDeleteSubscription}
+                  currentDate={filterMode === 'month' ? dashboardDate : undefined}
+                  isProMode={isProMode}
+                  userPlan={effectivePlan}
+                  onUpgrade={() => setActiveTab('subscription')}
+                />
+              )}
+
+              {activeTab === 'investments' && (
+                <div className="h-[calc(100vh-280px)] animate-fade-in">
+                  <Investments
+                    investments={memberInvestments}
+                    connectedSavingsAccounts={connectedSavingsAccounts}
+                    transactions={savingsTransactions}
+                    onAdd={handleAddInvestment}
+                    onUpdate={handleUpdateInvestment}
+                    onDelete={handleDeleteInvestment}
+                    onAddTransaction={handleAddTransaction}
+                    userPlan={effectivePlan}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'fire' && (
+                <div className="flex-1 space-y-6 animate-fade-in">
+                  <FireCalculator
+                    netWorth={totalMemberInvestments}
+                    averageMonthlySavings={averageMonthlySavings}
+                    averageMonthlyExpense={averageMonthlyExpense}
+                    userPlan={effectivePlan}
+                    onUpgradeClick={() => {
+                      setSettingsInitialTab('plan');
+                      setIsSettingsOpen(true);
+                    }}
+                  />
+                </div>
+              )}
+
+
+              {activeTab === 'connections' && (
+                <div className="flex-1 space-y-6 animate-fade-in">
+                  <ConnectedAccounts
+                    accounts={enrichedConnectedAccounts}
+                    lastSynced={lastSyncMap}
+                    userId={userId}
+                    isProMode={isProMode}
+                    isAdmin={currentUser?.isAdmin}
+                    onDebugSync={handleDebugSync}
+                    userPlan={effectivePlan}
+                    onUpgrade={() => setActiveTab('subscription')}
+                    dailyCredits={currentUser?.dailyConnectionCredits}
+                  />
+                </div>
+              )}
+
+              {activeTab === 'budgets' && userId && (
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar">
+
+
+                  <Budgets
+                    userId={userId}
+                    transactions={transactions}
+                    members={members}
+                    activeMemberId={activeMemberId}
+                    budgets={budgets}
+                    userPlan={effectivePlan}
+                  />
+                </div>
+              )}
+            </>
           )}
           {activeTab === 'chat' && (
             <div className="h-full animate-fade-in relative z-10">

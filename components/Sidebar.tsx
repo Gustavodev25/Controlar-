@@ -431,9 +431,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     label="Feedbacks"
                     isOpen={isOpen}
                   />
-                </>) : activeMemberId === 'FAMILY_OVERVIEW' ? (
-                  <NavItem active={true} onClick={() => { }} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
-                ) : (
+                </>) : (
                 <>
                   <NavItem id="sidebar-nav-overview" active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
 
@@ -492,7 +490,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </NavGroup>
                   <NavItem id="sidebar-nav-metas" active={activeTab === 'budgets'} onClick={() => handleNavClick('budgets')} icon={<MathMaxMin size={20} />} label="Metas" isOpen={isOpen} />
                   <NavItem id="sidebar-nav-connections" active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
-                  <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
+
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
 
                   {/* Em Breve Section */}

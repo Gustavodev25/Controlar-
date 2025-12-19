@@ -67,6 +67,8 @@ const Spotlight = ({ targetId, padding = 10 }: { targetId: string | null, paddin
     );
 };
 
+
+
 export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
     isOpen,
     onClose,
@@ -74,12 +76,20 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
     onComplete,
     onNavigateTo
 }) => {
+    // Check for mobile - Moved to top to avoid hook errors
+    const [isMobile, setIsMobile] = useState(false);
+
+    useEffect(() => {
+        const checkMobile = () => setIsMobile(window.innerWidth < 768);
+        checkMobile();
+        window.addEventListener('resize', checkMobile);
+        return () => window.removeEventListener('resize', checkMobile);
+    }, []);
+
     const [step, setStep] = useState(0);
 
     const nextStep = () => setStep(prev => prev + 1);
     const prevStep = () => setStep(prev => Math.max(0, prev - 1));
-
-
 
     const steps = [
         {
@@ -100,16 +110,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
             position: 'bottom' // Tooltip below button
         },
         {
-            targetId: 'sidebar-nav-overview', // Using Metas as a proxy for Settings if Settings doesn't have ID, or stick to Metas/Investments
-            // Or better, point to the general area where stats configuration would be. 
-            // Since we can't easily deep-link to settings toggles without opening modals, let's point to 'Visão Geral' as the place where the *result* is.
-            // Actually, the user asked "configure settings". 
-            // Let's point to the User Profile/Settings area usually at bottom left or top right?
-            // Sidebar footer usually has settings.
-            // For now, let's point to "Transações" as where to manage data.
-            // Wait, the prompt asked to explain "overview settings".
-            // Let's stick to the script: Point to Sidebar generally or a specific item.
-            // Let's use 'sidebar-nav-connections' again or 'dashboard' item.
+            targetId: 'sidebar-nav-overview',
             title: "Visão Geral",
             content: "Aqui você tem o resumo de todas as suas contas. Eu monitoro tudo para você não perder nada de vista!",
             position: 'right-start'
@@ -190,18 +191,18 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
     return createPortal(
         <div className="fixed inset-0 z-[9999] overflow-hidden">
             {/* Backdrop if no spotlight (spotlight handles its own backdrop) */}
-            {isCentered && (
+            {(isCentered || isMobile) && (
                 <motion.div
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                     className="absolute inset-0 bg-black/80 backdrop-blur-sm"
                 />
             )}
 
-            {/* Spotlight Overlay */}
-            {!isCentered && <Spotlight targetId={currentStep.targetId} />}
+            {/* Spotlight Overlay - Hide on mobile if simpler, or keep it but separate from card pos */}
+            {!isCentered && !isMobile && <Spotlight targetId={currentStep.targetId} />}
 
             {/* Content Container */}
-            <div className={`fixed inset-0 flex pointer-events-none z-[110] ${isCentered ? 'items-center justify-center' : ''}`}>
+            <div className={`fixed inset-0 flex pointer-events-none z-[110] ${isCentered || isMobile ? 'items-end justify-center sm:items-center' : ''}`}>
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={step}
@@ -209,8 +210,8 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         transition={{ duration: 0.4, type: "spring" }}
-                        className={`pointer-events-auto relative ${isCentered ? 'max-w-md w-full mx-4' : 'absolute'}`}
-                        style={!isCentered && targetRect ? (() => {
+                        className={`pointer-events-auto relative ${isCentered || isMobile ? 'w-full max-w-md mx-4 mb-6 sm:mb-0' : 'absolute'}`}
+                        style={(!isCentered && !isMobile && targetRect) ? (() => {
                             const rect = targetRect;
 
                             // Specific adjustments
@@ -240,7 +241,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                         })() : {}}
                     >
                         {/* Coinzinha Character */}
-                        <div className={`absolute ${isCentered ? '-top-16 left-1/2 -translate-x-1/2' : '-top-16 -left-12'}`}>
+                        <div className={`absolute ${isCentered || isMobile ? '-top-16 left-1/2 -translate-x-1/2' : '-top-16 -left-12'}`}>
                             <motion.img
                                 key={`img-${step}`}
                                 initial={{ scale: 0, rotate: -10 }}
@@ -254,13 +255,13 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                         {/* Card Content - Dark Theme */}
                         <div className="bg-[#30302E] text-white rounded-2xl p-6 shadow-2xl border border-gray-700 relative overflow-visible mt-4">
                             {/* Balloon Tail */}
-                            {!isCentered && currentStep.targetId !== 'salary-auto-mode-toggle' && currentStep.targetId !== 'open-finance-connect-btn' && (
+                            {!isCentered && !isMobile && currentStep.targetId !== 'salary-auto-mode-toggle' && currentStep.targetId !== 'open-finance-connect-btn' && (
                                 <div
                                     className="absolute top-8 -left-2 w-4 h-4 bg-[#30302E] border-l border-b border-gray-700 transform rotate-45"
                                 />
                             )}
                             {/* Special Tail for Toggle (Top Right) */}
-                            {currentStep.targetId === 'salary-auto-mode-toggle' && (
+                            {!isMobile && currentStep.targetId === 'salary-auto-mode-toggle' && (
                                 <div
                                     className="absolute -top-2 right-10 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
                                 />
@@ -268,7 +269,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
 
                             {/* Special Tail for Connect Button (Top Center) */}
                             {/* Special Tail for Connect Button (Top Center relative to button which is on right side of modal) */}
-                            {currentStep.targetId === 'open-finance-connect-btn' && (
+                            {!isMobile && currentStep.targetId === 'open-finance-connect-btn' && (
                                 <div
                                     className="absolute -top-2 right-24 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
                                 />
