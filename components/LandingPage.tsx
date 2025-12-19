@@ -459,8 +459,7 @@ const FAQSection = () => {
   const faqs = [
     { q: "Meus dados bancários estão seguros?", a: "Absolutamente. Utilizamos criptografia AES-256 de ponta a ponta. Seus dados são armazenados localmente no seu dispositivo quando possível e nunca vendemos suas informações para terceiros." },
     { q: "Como a IA categoriza meus gastos?", a: "Nossa IA analisa o texto natural que você digita (ex: 'Almoço R$ 40'). Ela identifica padrões, palavras-chave e contexto para atribuir a categoria correta (Alimentação), a data e o valor automaticamente." },
-    { q: "Quais formas eu consigo lançar meus gastos e receitas?", a: "Você pode registrar tudo de forma manual, conectar suas contas pelo Open Finance para importação automática, enviar lançamentos pelo WhatsApp ou simplesmente falar com a Coinzinha, nossa IA que organiza tudo para você." },
-    { q: "Posso compartilhar com minha família?", a: "Sim! O plano Family permite incluir até 3 pessoas (incluindo o assinante). Cada membro tem sua própria conta individual, mas todos fazem parte da mesma assinatura. Assim, cada pessoa mantém seus dados privados, enquanto o grupo pode acompanhar gráficos e metas compartilhadas se desejar." }
+    { q: "Quais formas eu consigo lançar meus gastos e receitas?", a: "Você pode registrar tudo de forma manual, conectar suas contas pelo Open Finance para importação automática, enviar lançamentos pelo WhatsApp ou simplesmente falar com a Coinzinha, nossa IA que organiza tudo para você." }
   ];
 
   return (
@@ -1542,7 +1541,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
                     <p className="text-gray-400 text-xs mt-1">Planejamento de Independência Financeira</p>
                   </div>
                   <div className="px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20 flex items-center gap-2">
-                    <Sparkles size={12} /> Plano Pro e Family
+                    <Sparkles size={12} /> Plano Pro
                   </div>
                 </div>
 
