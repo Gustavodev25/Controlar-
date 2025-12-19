@@ -95,13 +95,38 @@ export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettin
           {user.isAdmin && (
             <DropdownItem
               onClick={onToggleAdminMode}
-              className={isAdminMode ? 'bg-red-900/20 text-red-400' : ''}
+              className={`transition-colors duration-300 ${isAdminMode ? 'text-[#D97757]' : 'hover:bg-gray-800'}`}
             >
-              <div className="flex items-center gap-3 w-full">
-                <div className={`w-4 h-4 rounded-full border flex items-center justify-center ${isAdminMode ? 'border-red-500 bg-red-500' : 'border-gray-500'}`}>
-                  {isAdminMode && <div className="w-1.5 h-1.5 bg-white rounded-full"></div>}
+              <div className="flex items-center gap-3 w-full group">
+                <div className="relative flex items-center justify-center">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="18"
+                    height="18"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    className={`transition-colors duration-300 ${isAdminMode
+                      ? 'text-[#D97757]'
+                      : 'text-gray-400 group-hover:text-gray-300'
+                      }`}
+                  >
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path d="M8 7a4 4 0 1 0 8 0a4 4 0 0 0 -8 0" />
+                    <path d="M6 21v-2a4 4 0 0 1 4 -4h3.5" />
+                    <path d="M20 21l2 -2l-2 -2" />
+                    <path d="M17 17l-2 2l2 2" />
+                  </svg>
                 </div>
-                <span>Modo Admin</span>
+                <span className={`font-medium transition-colors duration-300 ${isAdminMode ? 'text-[#D97757]' : 'text-gray-200'}`}>
+                  Modo Admin
+                </span>
+                {isAdminMode && (
+                  <div className="ml-auto w-1.5 h-1.5 rounded-full bg-[#D97757] animate-pulse" />
+                )}
               </div>
             </DropdownItem>
           )}

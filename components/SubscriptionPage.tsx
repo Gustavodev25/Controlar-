@@ -5,7 +5,6 @@ import { CheckoutForm } from './CheckoutForm';
 import { useToasts } from './Toast';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
-import familiaImg from '../assets/familia.png';
 import { toLocalISODate } from '../utils/dateUtils';
 
 import NumberFlow from '@number-flow/react';
@@ -57,21 +56,6 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                 'Contas Bancárias Ilimitadas'
             ],
             popular: true
-        },
-        {
-            id: 'family',
-            name: 'Family',
-            price: 69.90,
-            annualPrice: 749.00,
-            image: familiaImg,
-            description: 'Gestão completa para toda a casa.',
-            features: [
-                'Tudo incluso no plano gratuito',
-                'Até 3 Membros',
-                'Metas Compartilhadas',
-                'Relatórios Unificados'
-            ],
-            popular: false
         }
     ];
 
@@ -156,6 +140,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                         brand: 'credit_card'
                     }
                 };
+
+                if (planToBuy === 'pro') {
+                    localStorage.setItem('show_pro_tutorial', 'true');
+                }
 
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
                 toast.success('🎉 Cupom aplicado! Plano ativado com sucesso sem cobrança.');
@@ -260,6 +248,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     }
                 };
 
+                if (planToBuy === 'pro') {
+                    localStorage.setItem('show_pro_tutorial', 'true');
+                }
+
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
                 toast.success('Pagamento confirmado! Plano ativado com sucesso.');
                 onBack();
@@ -336,15 +328,15 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                         </div>
 
                         {/* Cards Grid */}
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8 max-w-6xl mx-auto pt-4">
+                        <div className="flex flex-col md:flex-row justify-center items-center md:items-stretch gap-6 lg:gap-8 max-w-4xl mx-auto pt-4">
                             {plans.map((plan) => {
                                 const isCurrent = currentPlan === plan.id;
                                 const price = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
                                 const isPro = plan.popular;
 
                                 const containerClasses = isPro
-                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10"
-                                    : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors";
+                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-6 lg:p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10 flex-1 basis-0"
+                                    : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors flex-1 basis-0";
 
                                 return (
                                     <motion.div
@@ -428,7 +420,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                                                     {isPro ? (
                                                         <CheckCircle size={16} className="text-[#d97757]" />
                                                     ) : (
-                                                        <Check size={16} className={plan.id === 'family' ? "text-[#d97757]" : "text-gray-500"} />
+                                                        <Check size={16} className="text-gray-500" />
                                                     )}
                                                     <span className={isPro && idx === 0 ? 'font-bold' : ''}>{feature}</span>
                                                 </li>

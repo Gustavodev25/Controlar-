@@ -35,6 +35,8 @@ import { AIChatAssistant } from './components/AIChatAssistant';
 import { ConnectedAccounts } from './components/ConnectedAccounts';
 import { FireCalculator } from './components/FireCalculator';
 import { SubscriptionPage } from './components/SubscriptionPage';
+import { ProOnboardingModal } from './components/ProOnboardingModal';
+import { BankConnectModal } from './components/BankConnectModal';
 import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
@@ -286,15 +288,16 @@ const App: React.FC = () => {
 
 
   // Landing variant selector (default waitlist, alt URL unlocks auth landing)
+  // Landing variant selector (default waitlist, alt URL unlocks auth landing)
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const updateLandingVariant = () => {
       const params = new URLSearchParams(window.location.search);
       const landingParam = (params.get('landing') || '').toLowerCase();
-      const path = window.location.pathname.toLowerCase();
-      const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
-      setLandingVariant(isAltLanding ? 'auth' : 'waitlist');
+
+      const isWaitlist = landingParam === 'waitlist';
+      setLandingVariant(isWaitlist ? 'waitlist' : 'auth');
     };
 
     updateLandingVariant();
@@ -393,12 +396,14 @@ const App: React.FC = () => {
   // Landing Page State
   const [showLanding, setShowLanding] = useState(true);
   const [landingVariant, setLandingVariant] = useState<'waitlist' | 'auth'>(() => {
-    if (typeof window === 'undefined') return 'waitlist';
+    if (typeof window === 'undefined') return 'auth';
     const params = new URLSearchParams(window.location.search);
     const landingParam = (params.get('landing') || '').toLowerCase();
-    const path = window.location.pathname.toLowerCase();
-    const isAltLanding = landingParam === 'acesso' || landingParam === 'auth' || path === '/acesso' || path === '/acesso/';
-    return isAltLanding ? 'auth' : 'waitlist';
+
+    // Explicitly check for waitlist to keep it as an option if needed, but default to 'auth'
+    const isWaitlist = landingParam === 'waitlist';
+
+    return isWaitlist ? 'waitlist' : 'auth';
   });
 
   const effectivePlan = useMemo(() => {
@@ -597,6 +602,42 @@ const App: React.FC = () => {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data' | 'finance'>('profile');
+
+  // Pro Onboarding State
+  const [isProOnboardingOpen, setIsProOnboardingOpen] = useState(false);
+  const [isBankConnectModalOpen, setIsBankConnectModalOpen] = useState(false);
+
+  useEffect(() => {
+    // Logic to Trigger Pro Tutorial for new AND existing users
+    if (isLoadingData || !currentUser) return;
+
+    const checkAndShowTutorial = () => {
+      // Logic to Trigger Pro Tutorial
+      const isProOrFamily = effectivePlan === 'pro' || effectivePlan === 'family' || currentUser?.isAdmin;
+
+      // If user has already completed it (saved in DB), NEVER show despite local storage
+      if (currentUser?.hasSeenProTutorial) return;
+
+      const justUpgraded = localStorage.getItem('show_pro_tutorial') === 'true';
+      // We still check local storage to avoid spamming if they close it without finishing
+      // But we will primarily rely on the DB flag for "never show again" logic
+      const hasSeenLocally = localStorage.getItem('finances_seen_pro_tutorial_v5');
+
+      if (isProOrFamily) {
+        // Show if: 1. Just upgraded (explicit trigger) OR 2. Hasn't seen locally AND hasn't finished in DB
+        if (justUpgraded || !hasSeenLocally) {
+          console.log('[App] Triggering Pro Onboarding Tutorial...');
+          setTimeout(() => setIsProOnboardingOpen(true), 1000);
+
+          // Mark locally seen so it doesn't spam on refresh if they don't finish
+          localStorage.setItem('finances_seen_pro_tutorial_v5', 'true');
+          localStorage.removeItem('show_pro_tutorial');
+        }
+      }
+    };
+
+    checkAndShowTutorial();
+  }, [effectivePlan, currentUser, isLoadingData]);
 
   useEffect(() => {
     if (activeMemberId) {
@@ -1820,6 +1861,19 @@ const App: React.FC = () => {
         desc.includes('DEBITO AUT. FATURA') ||
         desc.includes('DEBITO AUTOMATICO FATURA') ||
         desc.includes('PGTO TITULO BANCO') ||
+        // Novos padrões para bancos digitais (Inter, Nubank, C6, etc.)
+        (desc.includes('PAGAMENTO') && desc.includes('FATURA')) ||
+        (desc.includes('PAGAMENTO EFETUADO') && desc.includes('FATURA')) ||
+        (desc.includes('PAGAMENTO EFETUADO') && desc.includes('CARTAO')) ||
+        (desc.includes('PAG') && desc.includes('FATURA') && desc.includes('CARTAO')) ||
+        desc.includes('FATURA INTER') ||
+        desc.includes('FATURA NUBANK') ||
+        desc.includes('FATURA C6') ||
+        desc.includes('FATURA ITAU') ||
+        desc.includes('FATURA BRADESCO') ||
+        desc.includes('FATURA SANTANDER') ||
+        desc.includes('FATURA BB') ||
+        desc.includes('FATURA CAIXA') ||
         (t.category && t.category.toUpperCase().includes('FATURA')) ||
         (t.category && t.category.toUpperCase().includes('CARTÃO'));
 
@@ -3402,6 +3456,47 @@ const App: React.FC = () => {
           targetMode={showGlobalModeModal}
         />
       )}
+
+      {/* Pro Onboarding Tutorial */}
+      <ProOnboardingModal
+        isOpen={isProOnboardingOpen}
+        onClose={() => setIsProOnboardingOpen(false)}
+        userName={currentUser?.name || 'Pro User'}
+        onConnectBank={() => setIsBankConnectModalOpen(true)}
+        onComplete={async () => {
+          setIsProOnboardingOpen(false);
+          // Persist "Has Seen" to Database so it never shows again
+          if (currentUser) {
+            console.log('[App] Pro Tutorial Completed. Persisting state to DB.');
+            try {
+              await dbService.updateUserProfile(userId, { hasSeenProTutorial: true });
+            } catch (error) {
+              console.error("[App] Failed to save tutorial state:", error);
+            }
+          }
+        }}
+        toggles={{
+          includeChecking: includeCheckingInStats,
+          setIncludeChecking: setIncludeCheckingInStats,
+          includeCredit: includeCreditCardInStats,
+          setIncludeCredit: setIncludeCreditCardInStats
+        }}
+        onNavigateTo={(tab) => setActiveTab(tab as any)}
+      />
+
+      <BankConnectModal
+        isOpen={isBankConnectModalOpen}
+        onClose={() => setIsBankConnectModalOpen(false)}
+        userId={userId}
+        dailyCredits={currentUser?.dailyConnectionCredits}
+        userPlan={effectivePlan}
+        isAdmin={currentUser?.isAdmin}
+        onSuccess={async () => {
+          // Success logic is handled by listener updates, but we can show a success message?
+          // BankConnectModal usually handles its own toasts.
+          setIsBankConnectModalOpen(false);
+        }}
+      />
 
       {/* Promo Popup from Admin */}
       <PromoPopup

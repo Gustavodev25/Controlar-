@@ -24,6 +24,7 @@ export type TabType =
   | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'chat';
 
 // --- NAVITEM: Item Individual ---
+// --- NAVITEM: Item Individual ---
 interface NavItemProps {
   active: boolean;
   onClick: () => void;
@@ -33,15 +34,18 @@ interface NavItemProps {
   badge?: number;
   disabled?: boolean;
   isChild?: boolean;
+  id?: string;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen, badge, disabled, isChild }) => {
+const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen, badge, disabled, isChild, id }) => {
+  // ... (rest of state and handlers)
   const [isHovered, setIsHovered] = useState(false);
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   const handleMouseEnter = () => {
     if (!isOpen && buttonRef.current) {
+      // ... tooltip logic
       const rect = buttonRef.current.getBoundingClientRect();
       setTooltipPos({
         top: rect.top + rect.height / 2,
@@ -53,7 +57,9 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
 
   return (
     <button
+      id={id}
       ref={buttonRef}
+      // ... rest of props
       onClick={onClick}
       disabled={disabled}
       onMouseEnter={handleMouseEnter}
@@ -74,6 +80,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
         }
       `}
     >
+      {/* ... content */}
       <div className={`relative flex items-center justify-center shrink-0 z-10 ${isChild ? 'scale-75' : ''}`}>
         <span className={`transition-colors duration-300 ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
           {icon}
@@ -103,8 +110,9 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
       {createPortal(
         <AnimatePresence>
           {!isOpen && isHovered && (
+            // ... tooltip content
             <motion.div
-              // CORREÇÃO: y: "-50%" movido para cá para alinhamento perfeito
+              // ...
               initial={{ opacity: 0, x: -10, y: "-50%", scale: 0.95, filter: "blur(10px)" }}
               animate={{ opacity: 1, x: 0, y: "-50%", scale: 1, filter: "blur(0px)" }}
               exit={{ opacity: 0, x: -10, y: "-50%", scale: 0.95, filter: "blur(10px)" }}
@@ -427,7 +435,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem active={true} onClick={() => { }} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
                 ) : (
                 <>
-                  <NavItem active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
+                  <NavItem id="sidebar-nav-overview" active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
 
                   {/* Grupo Transações */}
                   <NavGroup
@@ -482,8 +490,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       isChild={true}
                     />
                   </NavGroup>
-                  <NavItem active={activeTab === 'budgets'} onClick={() => handleNavClick('budgets')} icon={<MathMaxMin size={20} />} label="Metas" isOpen={isOpen} />
-                  <NavItem active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
+                  <NavItem id="sidebar-nav-metas" active={activeTab === 'budgets'} onClick={() => handleNavClick('budgets')} icon={<MathMaxMin size={20} />} label="Metas" isOpen={isOpen} />
+                  <NavItem id="sidebar-nav-connections" active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
 

@@ -213,7 +213,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     };
 
     updateTimers();
-    const interval = setInterval(updateTimers, 1000);
+    const interval = setInterval(updateTimers, 60000); // 60 segundos - reduzido de 1s para economizar recursos
     return () => clearInterval(interval);
   }, [lastSynced, itemStatuses]);
 
@@ -329,8 +329,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       jobs.forEach((job) => {
         // Only keep the most recent job per itemId
         if (!jobMap[job.itemId] ||
-            (job.createdAt && jobMap[job.itemId].createdAt &&
-             job.createdAt > jobMap[job.itemId].createdAt)) {
+          (job.createdAt && jobMap[job.itemId].createdAt &&
+            job.createdAt > jobMap[job.itemId].createdAt)) {
           jobMap[job.itemId] = job;
         }
       });
@@ -607,6 +607,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
           <TooltipIcon content={connectButtonTooltip || (isAdmin ? "Conectar nova instituição" : "Conectar nova instituição (Consome 1 crédito)")}>
             <button
+              id="open-finance-connect-btn"
               onClick={() => {
                 if (userPlan === 'starter' && onUpgrade) {
                   onUpgrade();

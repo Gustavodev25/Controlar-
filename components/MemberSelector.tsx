@@ -87,16 +87,7 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
               <div className="absolute left-0 top-5 -translate-x-1/2 w-2.5 h-2.5 bg-gray-900 border-l border-b border-gray-800 rotate-45"></div>
 
               {/* Family Overview Option */}
-              <button
-                onClick={() => { onSelectMember('FAMILY_OVERVIEW'); setIsOpen(false); }}
-                className={`w-full p-3 flex items-center gap-3 hover:bg-gray-800 transition-colors border-b border-gray-800 ${activeMemberId === 'FAMILY_OVERVIEW' ? 'bg-gray-800/50' : ''}`}
-              >
-                <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-[#d97757]">
-                  <Users size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-300">Área Familiar</span>
-                {activeMemberId === 'FAMILY_OVERVIEW' && <Check size={14} className="ml-auto text-[#d97757]" />}
-              </button>
+
 
               {/* Member List */}
               <div className="max-h-48 overflow-y-auto custom-scrollbar">
@@ -158,16 +149,7 @@ export const MemberSelector: React.FC<MemberSelectorProps> = ({
             <div className="bg-gray-900 border border-gray-800 rounded-xl shadow-2xl overflow-hidden animate-dropdown-open">
 
               {/* Family Overview Option */}
-              <button
-                onClick={() => { onSelectMember('FAMILY_OVERVIEW'); setIsOpen(false); }}
-                className={`w-full p-3 flex items-center gap-3 hover:bg-gray-800 transition-colors border-b border-gray-800 ${activeMemberId === 'FAMILY_OVERVIEW' ? 'bg-gray-800/50' : ''}`}
-              >
-                <div className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center text-[#d97757]">
-                  <Users size={16} />
-                </div>
-                <span className="text-sm font-medium text-gray-300">Área Familiar</span>
-                {activeMemberId === 'FAMILY_OVERVIEW' && <Check size={14} className="ml-auto text-[#d97757]" />}
-              </button>
+
 
               {/* Member List */}
               <div className="max-h-48 overflow-y-auto custom-scrollbar">

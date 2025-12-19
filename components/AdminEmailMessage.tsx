@@ -53,12 +53,13 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
     const [subject, setSubject] = useState('Novidades do Controlar+!');
     const [title, setTitle] = useState('Descubra o novo recurso de IA');
     const [body, setBody] = useState('Olá,\n\nEstamos felizes em anunciar que agora você pode contar com a ajuda do nosso assistente financeiro inteligente.\n\nAproveite para organizar suas finanças de uma forma totalmente nova.');
+    const [boxContent, setBoxContent] = useState(''); // New state for highlighted content
     const [buttonText, setButtonText] = useState('Ver Agora');
     const [buttonLink, setButtonLink] = useState('https://app.controlarmais.com.br');
 
     // Alignment State
-    const [headerAlign, setHeaderAlign] = useState<AlignType>('center');
-    const [titleAlign, setTitleAlign] = useState<AlignType>('center');
+    const [headerAlign, setHeaderAlign] = useState<AlignType>('left');
+    const [titleAlign, setTitleAlign] = useState<AlignType>('left');
     const [bodyAlign, setBodyAlign] = useState<AlignType>('left');
 
     const [recipientType, setRecipientType] = useState<'all' | 'pro' | 'starter' | 'waitlist' | 'specific'>('all');
@@ -289,6 +290,7 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                     subject,
                     title,
                     body,
+                    boxContent, // Include in payload
                     buttonText,
                     buttonLink,
                     headerAlign,
@@ -581,7 +583,7 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                     {deliveryMethod === 'popup' && (
                         <div>
                             <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Imagem do Popup (opcional)</label>
-                            
+
                             {!popupImageUrl ? (
                                 <label className="block w-full cursor-pointer">
                                     <div className="bg-gray-900 border border-gray-800 border-dashed rounded-xl p-4 text-center hover:border-[#d97757] transition-colors group">
@@ -618,7 +620,7 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                                     <div className="h-40 w-full relative">
                                         <img src={popupImageUrl} alt="Selected" className="w-full h-full object-cover opacity-80 group-hover:opacity-40 transition-opacity" />
                                         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
+                                            <button
                                                 onClick={() => {
                                                     setPopupImageUrl('');
                                                     setSelectedFile(null);
@@ -717,6 +719,25 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                             </div>
                         )}
                     </div>
+
+
+
+                    {/* Box Content Input (Email Only) */}
+                    {deliveryMethod === 'email' && (
+                        <div className="mt-4">
+                            <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                                Conteúdo em Destaque (Opcional)
+                            </label>
+                            <input
+                                type="text"
+                                value={boxContent}
+                                onChange={(e) => setBoxContent(e.target.value)}
+                                className="w-full bg-gray-900 border border-gray-800 rounded-xl p-3 text-white focus:border-[#d97757] outline-none transition-colors placeholder-gray-600 font-mono"
+                                placeholder="Ex: CUPOM2025, Código: 12345..."
+                            />
+                            <p className="text-[10px] text-gray-600 mt-1">Aparecerá em uma caixa destacada no centro do email.</p>
+                        </div>
+                    )}
 
                     {/* Email & Popup: Button Options */}
                     {(deliveryMethod === 'email' || deliveryMethod === 'popup') && (
@@ -899,24 +920,37 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                                     ${previewDevice === 'mobile' ? 'w-[375px] rounded-[30px] my-auto min-h-[600px]' : 'w-[600px] rounded-lg my-8 min-h-[500px]'}
                                 `}
                             >
-                                {/* Email Header - bg-gray-950 */}
-                                <div className={`bg-gray-950 p-6 border-b border-[#373734] flex justify-${headerAlign === 'justify' ? 'between' : headerAlign}`}>
-                                    <Logo size={40} textClassName="text-2xl text-white" />
+                                {/* Email Header - Transparent as requested */}
+                                <div className={`bg-transparent p-6 flex justify-${headerAlign === 'justify' ? 'between' : headerAlign}`}>
+                                    <div className="text-2xl font-bold text-white tracking-tight">
+                                        Controlar<span className="text-[#d97757]">+</span>
+                                    </div>
                                 </div>
 
                                 {/* Email Content */}
-                                <div className="p-8 flex-1">
-                                    <h1 className={`text-2xl font-bold text-white mb-6 leading-tight text-${titleAlign}`}>
+                                <div className="px-8 pb-8 flex-1">
+                                    <h1 className={`text-2xl font-bold text-white mb-2 leading-tight text-${titleAlign}`}>
                                         {title || 'Seu Título Aqui'}
                                     </h1>
 
                                     <div
-                                        className={`prose prose-invert max-w-none text-gray-300 leading-relaxed text-${bodyAlign}`}
+                                        className={`max-w-none text-gray-300 leading-relaxed text-${bodyAlign}`}
                                         dangerouslySetInnerHTML={{
                                             __html: (body || 'O conteúdo do seu email aparecerá aqui...')
                                                 .replace(/\n/g, '<br/>')
                                         }}
                                     />
+
+                                    {/* Highlighted Box Content */}
+                                    {boxContent && (
+                                        <div className="my-8 text-center">
+                                            <div className="inline-block bg-gradient-to-br from-[#363735] to-[#30302E] py-5 px-10 rounded-xl border border-[#4a4a48]">
+                                                <span className="text-3xl font-bold tracking-[0.2em] text-[#d97757] font-mono">
+                                                    {boxContent}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* CTA Button */}
                                     <div className="mt-8 text-center">
@@ -931,8 +965,8 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                                     </div>
                                 </div>
 
-                                {/* Email Footer - bg-gray-950 */}
-                                <div className="bg-gray-950 p-6 text-center text-xs text-gray-500 border-t border-[#373734]">
+                                {/* Email Footer - Transparent as requested */}
+                                <div className="bg-transparent p-6 text-center text-xs text-gray-500">
                                     <p>© {new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>
                                     <p className="mt-2">
                                         <a href="#" className="underline hover:text-gray-400">Descadastrar</a> •
@@ -946,7 +980,7 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 };
 

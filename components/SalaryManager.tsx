@@ -483,7 +483,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             </Dropdown>
           )}
 
-          <div className="flex items-center gap-3 bg-[#30302E] border border-gray-800 rounded-xl px-3 py-2">
+          <div id="salary-auto-mode-toggle" className="flex items-center gap-3 bg-[#30302E] border border-gray-800 rounded-xl px-3 py-2">
             <span className={`text-xs font-medium transition-colors ${!isProMode ? 'text-white' : 'text-gray-500'}`}>
               Manual
             </span>

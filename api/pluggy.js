@@ -848,6 +848,19 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 } else {
                     console.log(`>>> No bills found for credit card ${account.id}`);
                 }
+
+                // Store ALL bills for historical lookup (not just current)
+                // This allows the frontend to fetch bills by month
+                account._allBills = Array.from(billsMap.values()).map(b => ({
+                    id: b.id,
+                    dueDate: b.dueDate,
+                    totalAmount: b.totalAmount ?? b.amount ?? b.balance ?? 0,
+                    state: (b.state || b.status || '').toUpperCase(),
+                    minimumPayment: b.minimumPaymentAmount ?? null,
+                    paidAmount: b.paidAmount ?? null,
+                    balanceCloseDate: b.balanceCloseDate ?? null
+                }));
+                console.log(`>>> Storing ${account._allBills.length} bills for account ${account.id}`);
             } catch (e) {
                 console.warn(`>>> Error fetching bills for ${account.id}:`, e.message);
             }
@@ -1023,6 +1036,10 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     paidAmount: account._currentBill.paidAmount,
                     minimumPayment: account._currentBill.minimumPayment
                 }
+            } : {}),
+            // ALL bills for historical lookup (allows frontend to fetch by month)
+            ...(isCredit && account._allBills && account._allBills.length > 0 ? {
+                bills: account._allBills
             } : {}),
             // Bank account specific data
             ...(account.bankData ? {

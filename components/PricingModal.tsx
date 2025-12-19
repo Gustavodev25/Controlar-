@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Puzzle, Rocket, Users } from 'lucide-react';
+import { X, Check, Puzzle, Rocket } from 'lucide-react';
 import { User } from '../types';
 import { CheckoutForm } from './CheckoutForm';
 
@@ -54,23 +54,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
       icon: Rocket,
       buttonText: 'Assinar Pro',
       popular: true
-    },
-    {
-      id: 'family',
-      name: 'Family',
-      price: 69.90,
-      annualPrice: 749.00,
-      description: 'Gestão completa para toda a casa.',
-      features: [
-        'Tudo do Pro',
-        'Até 3 perfis familiares',
-        'Visão consolidada',
-        'Metas compartilhadas',
-        'Suporte prioritário'
-      ],
-      icon: Users,
-      buttonText: 'Assinar Family',
-      popular: false
     }
   ];
 
@@ -97,7 +80,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
   return (
     <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-black/90 backdrop-blur-sm animate-fade-in font-sans">
       {view === 'plans' ? (
-        <div className="relative w-full max-w-6xl mx-auto">
+        <div className="relative w-full max-w-4xl mx-auto">
           {/* Botão de Fechar */}
           <button
             onClick={onClose}
@@ -107,7 +90,7 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
           </button>
 
           {/* Grid de Planos */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {plans.map((plan) => {
               const Icon = plan.icon;
 
@@ -134,16 +117,15 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
                       text-4xl 
                       ${plan.id === 'starter' ? 'text-[#8B5CF6] drop-shadow-lg' : ''} 
                       ${plan.id === 'pro' ? 'text-[#d97757] drop-shadow-lg' : ''} 
-                      ${plan.id === 'family' ? 'text-[#D4B996] drop-shadow-lg' : ''}
+
                     `}>
                       {/* Renderizando o ícone com cor específica de estilo "cobre/ouro" para Family/Starter se quiser, ou usando classes de cor */}
                       <Icon
                         size={48}
-                        weight="fill"
                         className={`
                                 ${plan.id === 'starter' ? 'fill-stone-600 text-stone-400' : ''}
                                 ${plan.id === 'pro' ? 'fill-[#d97757]/20 text-[#d97757]' : ''}
-                                ${plan.id === 'family' ? 'fill-stone-600 text-stone-400' : ''}
+
                             `}
                       />
                     </div>

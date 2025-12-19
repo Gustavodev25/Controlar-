@@ -70,13 +70,40 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   hideCards = false,
   labels
 }) => {
-  // Use prop if available, otherwise toggle fallback
+  // Helper function to detect credit card payment transactions
+  const isCreditCardPayment = useCallback((description: string, category?: string): boolean => {
+    const desc = description.toUpperCase();
+    const cat = (category || '').toUpperCase();
 
-
-
-
-
-
+    return (
+      desc.includes('PAGAMENTO FATURA') ||
+      desc.includes('PAG FATURA') ||
+      desc.includes('PGTO FATURA') ||
+      desc.includes('PGTO CARTAO') ||
+      desc.includes('PAGTO CARTAO') ||
+      desc.includes('CREDIT CARD PAYMENT') ||
+      desc.includes('CARTAO DE CREDITO') ||
+      desc.includes('FATURA CARTAO') ||
+      desc.includes('DEBITO AUT. FATURA') ||
+      desc.includes('DEBITO AUTOMATICO FATURA') ||
+      desc.includes('PGTO TITULO BANCO') ||
+      // Novos padrões para bancos digitais (Inter, Nubank, C6, etc.)
+      (desc.includes('PAGAMENTO') && desc.includes('FATURA')) ||
+      (desc.includes('PAGAMENTO EFETUADO') && desc.includes('FATURA')) ||
+      (desc.includes('PAGAMENTO EFETUADO') && desc.includes('CARTAO')) ||
+      (desc.includes('PAG') && desc.includes('FATURA') && desc.includes('CARTAO')) ||
+      desc.includes('FATURA INTER') ||
+      desc.includes('FATURA NUBANK') ||
+      desc.includes('FATURA C6') ||
+      desc.includes('FATURA ITAU') ||
+      desc.includes('FATURA BRADESCO') ||
+      desc.includes('FATURA SANTANDER') ||
+      desc.includes('FATURA BB') ||
+      desc.includes('FATURA CAIXA') ||
+      cat.includes('FATURA') ||
+      cat.includes('CARTÃO')
+    );
+  }, []);
 
   // Use enabledCreditCardIds from toggles (Synced with App.tsx)
   const cardsIncludedInExpenses = useMemo(() => {
@@ -198,8 +225,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     // Convention: expenses are positive amounts with type 'expense'
     const total = monthTransactions.reduce((sum, tx) => {
       // Ignore payment transactions to prevent double counting or incorrect invoice inflation
-      const description = (tx.description || '').toLowerCase();
-      if (description.includes('pagamento fatura') || description.includes('credit card payment')) {
+      if (isCreditCardPayment(tx.description || '', tx.category)) {
         return sum;
       }
 
@@ -368,8 +394,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     if (transactionsForCard.length > 0) {
       const txSum = transactionsForCard.reduce((sum, tx) => {
         if ((tx as any).ignored) return sum;
-        const description = (tx.description || '').toLowerCase();
-        if (description.includes('pagamento fatura') || description.includes('credit card payment')) return sum;
+        if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
         if (tx.type === 'expense') return sum + Math.abs(tx.amount);
         if (tx.type === 'income') return sum - Math.abs(tx.amount);
         return sum;
@@ -390,6 +415,20 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       if (tx.invoiceDate) return tx.invoiceDate.slice(0, 7);
       if (tx.date) return tx.date.slice(0, 7);
       return '';
+    };
+
+    // Helper to find bill for a specific month from card's bills list
+    const getBillForMonth = (card: ConnectedAccount, targetMonth: string) => {
+      const bills = card.bills || [];
+      if (bills.length === 0) return null;
+
+      // Find bill whose dueDate month matches the target month
+      const matchingBill = bills.find(bill => {
+        const billMonth = bill.dueDate?.slice(0, 7);
+        return billMonth === targetMonth;
+      });
+
+      return matchingBill || null;
     };
 
     return creditAccounts.map((card, cardIndex) => {
@@ -436,6 +475,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
       const sortedMonthKeys = Array.from(cardMonthSums.keys()).sort();
 
+      // When dashboardDate is set, try to find the bill for that specific month
+      let selectedMonthBill: any = null;
+      let selectedMonthAmount: number | null = null;
+
+      if (dashboardDate) {
+        selectedMonthBill = getBillForMonth(card, dashboardDate);
+        if (selectedMonthBill) {
+          selectedMonthAmount = Math.abs(selectedMonthBill.totalAmount || 0);
+        }
+      }
+
       const { currentBill, nextBill, currentAmount, nextAmount } = getBillAmounts(card);
       const deriveNextDueDate = (dateStr?: string) => {
         if (!dateStr) return null;
@@ -445,9 +495,60 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         return d.toISOString().split('T')[0];
       };
 
-      // Se Pluggy trouxe faturas, priorize valores de fatura; senão, caia para transações/calculado
+      // Calculate invoice value based on context (filtered month vs current)
       let invoiceValue = 0;
-      if (currentAmount !== null || nextAmount !== null) {
+
+      // When a specific month is selected (dashboardDate), prioritize that month's bill/transactions
+      if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
+        // Use the bill amount for the selected month from API
+        invoiceValue = selectedMonthAmount;
+      } else if (dashboardDate) {
+        // No bill found for the selected month, calculate from transactions
+        // First try to get from cardMonthSums (based on invoiceDueDate/dueDate/invoiceDate/date)
+        const monthSum = cardMonthSums.get(dashboardDate) || 0;
+
+        if (monthSum > 0) {
+          invoiceValue = monthSum;
+        } else {
+          // Also try to filter by transaction date (some old transactions may only have date)
+          const dateFilteredTx = cardTransactions.filter(tx => {
+            if ((tx as any).ignored) return false;
+            // Check multiple date fields
+            const txDate = tx.date?.slice(0, 7);
+            const txInvoiceDate = tx.invoiceDate?.slice(0, 7);
+            const txDueDate = tx.dueDate?.slice(0, 7);
+            const txInvoiceDueDate = tx.invoiceDueDate?.slice(0, 7);
+
+            return txDate === dashboardDate ||
+              txInvoiceDate === dashboardDate ||
+              txDueDate === dashboardDate ||
+              txInvoiceDueDate === dashboardDate;
+          });
+
+          // Sum up all expenses from filtered transactions
+          const txSum = dateFilteredTx.reduce((sum, tx) => {
+            if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
+            if (tx.type === 'expense') return sum + Math.abs(tx.amount);
+            if (tx.type === 'income') return sum - Math.abs(tx.amount);
+            return sum;
+          }, 0);
+
+          invoiceValue = Math.max(0, txSum);
+
+          // If still zero but we have filteredTransactions, use that
+          if (invoiceValue === 0 && filteredTransactions.length > 0) {
+            const fallbackSum = filteredTransactions.reduce((sum, tx) => {
+              if ((tx as any).ignored) return sum;
+              if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
+              if (tx.type === 'expense') return sum + Math.abs(tx.amount);
+              if (tx.type === 'income') return sum - Math.abs(tx.amount);
+              return sum;
+            }, 0);
+            invoiceValue = Math.max(0, fallbackSum);
+          }
+        }
+      } else if (currentAmount !== null || nextAmount !== null) {
+        // No specific month filter, use current/next bill logic
         if (invoiceMode === 'used_total') {
           invoiceValue = getInvoiceByMode(card, filteredTransactions);
         } else if (invoiceMode === 'due_next') {
@@ -465,7 +566,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       const nextMonthKeyFromBill = nextBill?.dueDate?.slice(0, 7);
 
       // Se não há bill futura, pegue o próximo mês com transações projetadas
-      let currentMonthKey = currentMonthKeyFromBill;
+      let currentMonthKey = dashboardDate || currentMonthKeyFromBill;
       if (!currentMonthKey) {
         const todayKey = new Date().toISOString().slice(0, 7);
         currentMonthKey = sortedMonthKeys.find(k => k >= todayKey) || sortedMonthKeys[0];
@@ -485,9 +586,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         nextMonthKey = sortedMonthKeys.find(k => k > currentMonthKey) || incrementMonthKey(currentMonthKey);
       }
 
-      const currentInvoiceValue = Math.max(0, currentAmount !== null
-        ? currentAmount
-        : (cardMonthSums.get(currentMonthKey || '') || invoiceValue));
+      // For currentInvoiceValue, use the selected month's invoice when dashboardDate is set
+      let currentInvoiceValue: number;
+      if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
+        currentInvoiceValue = selectedMonthAmount;
+      } else if (dashboardDate) {
+        // Use the invoiceValue we already calculated (which tried multiple fallbacks)
+        currentInvoiceValue = invoiceValue;
+      } else {
+        currentInvoiceValue = Math.max(0, currentAmount !== null
+          ? currentAmount
+          : (cardMonthSums.get(currentMonthKey || '') || invoiceValue));
+      }
 
       const nextInvoiceValue = Math.max(0, nextAmount !== null
         ? nextAmount
@@ -740,6 +850,16 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Checking Account */}
           <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-[#30302E] border-gray-800' : 'bg-[#30302E]/50 border-gray-800/50'}`}>
+            {/* Overlay for past month filter - balance not available */}
+            {dashboardDate && dashboardDate !== currentMonthKey && (
+              <div className="absolute inset-0 z-20 bg-[#30302E]/90 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center">
+                <div className="p-3 bg-gray-700/30 rounded-xl mb-2">
+                  <Building size={24} className="text-gray-500" />
+                </div>
+                <p className="text-sm font-medium text-gray-400">Saldo não disponível</p>
+                <p className="text-xs text-gray-500 mt-1">Selecione o mês atual</p>
+              </div>
+            )}
             {/* Blur overlay for Manual Mode */}
             {!isProMode && userPlan === 'starter' && (
               <div
@@ -792,7 +912,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               <div className="flex items-center gap-1">
                 <Dropdown>
                   <Tooltip content="Contas Correntes">
-                    <DropdownTrigger className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors data-[state=open]:bg-gray-800 data-[state=open]:text-white">
+                    <DropdownTrigger id="dashboard-checking-settings" className="p-2 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 transition-colors data-[state=open]:bg-gray-800 data-[state=open]:text-white">
                       <Settings size={16} />
                     </DropdownTrigger>
                   </Tooltip>
@@ -942,9 +1062,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                     ? (cardInvoice?.usedTotal ?? 0)
                     : (cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0);
 
-                  const displayLabel = selectedType === 'used_total'
-                    ? 'total usado'
-                    : (dashboardDate ? 'fatura do mês' : 'fatura atual');
+                  // Format month name for display
+                  const getMonthLabel = () => {
+                    if (selectedType === 'used_total') return 'total usado';
+                    if (dashboardDate) {
+                      const [year, month] = dashboardDate.split('-').map(Number);
+                      const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                      return `fatura ${monthNames[month - 1]}/${year}`;
+                    }
+                    return 'fatura atual';
+                  };
+                  const displayLabel = getMonthLabel();
 
                   return (
                     <motion.div
@@ -1101,35 +1229,52 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                           </div>                                                                        </div>
 
                                         <div className={`transition-all duration-300 ${isEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
-                                          <div className="px-3 pb-3 pt-0 grid grid-cols-2 gap-2">
-                                            <div
-                                              onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
-                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                            >
-                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                Fatura Atual
-                                              </span>
-                                              <span className={`text-xs font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
-                                                {formatCurrency(currentVal)}
-                                              </span>
-                                            </div>
+                                          {/* Check if viewing a past month (not current) */}
+                                          {(() => {
+                                            const isViewingPastMonth = dashboardDate && dashboardDate !== currentMonthKey;
+                                            const monthLabel = dashboardDate
+                                              ? (() => {
+                                                const [year, month] = dashboardDate.split('-').map(Number);
+                                                const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+                                                return `${monthNames[month - 1]}/${year}`;
+                                              })()
+                                              : 'Atual';
 
-                                            <div
-                                              onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                              className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
-                                                ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
-                                                : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                            >
-                                              <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                Total Usado
-                                              </span>
-                                              <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                {formatCurrency(usedVal)}
-                                              </span>
-                                            </div>
-                                          </div>
+                                            return (
+                                              <div className={`px-3 pb-3 pt-0 ${isViewingPastMonth ? '' : 'grid grid-cols-2 gap-2'}`}>
+                                                <div
+                                                  onClick={(e) => { e.stopPropagation(); setMode('current'); }}
+                                                  className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current' || isViewingPastMonth
+                                                    ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                    : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                                >
+                                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' || isViewingPastMonth ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                    Fatura {monthLabel}
+                                                  </span>
+                                                  <span className={`text-xs font-mono font-bold ${selectedType === 'current' || isViewingPastMonth ? 'text-white' : 'text-gray-400'}`}>
+                                                    {formatCurrency(currentVal)}
+                                                  </span>
+                                                </div>
+
+                                                {/* Only show "Total Usado" option for current month */}
+                                                {!isViewingPastMonth && (
+                                                  <div
+                                                    onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
+                                                    className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
+                                                      ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                      : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                                  >
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                      Total Usado
+                                                    </span>
+                                                    <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                      {formatCurrency(usedVal)}
+                                                    </span>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            );
+                                          })()}
                                         </div>
                                       </div>
                                     );
@@ -1245,7 +1390,13 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                             />
                           </p>
                           <span className="text-xs text-gray-500 font-medium">
-                            {dashboardDate ? 'fatura do mes' : 'fatura atual'}
+                            {dashboardDate
+                              ? (() => {
+                                const [year, month] = dashboardDate.split('-').map(Number);
+                                const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+                                return `fatura ${monthNames[month - 1]}/${year}`;
+                              })()
+                              : 'fatura atual'}
                           </span>
                         </div>
                       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark } from './Icons';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight } from './Icons';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
@@ -27,6 +27,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
+
+  // Paginação
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50;
 
   // Account Filter
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
@@ -121,6 +125,24 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
+
+  // Paginação: calcular transações paginadas
+  const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+  const paginatedTransactions = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return filteredTransactions.slice(startIndex, startIndex + itemsPerPage);
+  }, [filteredTransactions, currentPage, itemsPerPage]);
+
+  // Reset página quando filtros mudam
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedYear, startDate, endDate, selectedAccountId]);
+
+  const handlePageChange = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+    }
+  };
 
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
   const formatDate = (dateStr: string) => {
@@ -246,28 +268,28 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <Dropdown>
               <DropdownTrigger className="h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium min-w-[180px] justify-between">
                 <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-[#d97757]" />
-                    <span className="truncate max-w-[140px]">{getSelectedAccountLabel()}</span>
+                  <Filter size={16} className="text-[#d97757]" />
+                  <span className="truncate max-w-[140px]">{getSelectedAccountLabel()}</span>
                 </div>
                 <ArrowDownCircle size={14} className="text-gray-500" />
               </DropdownTrigger>
               <DropdownContent className="w-56" align="left">
-                <DropdownItem 
-                    onClick={() => setSelectedAccountId('all')}
-                    icon={Filter}
-                    className={selectedAccountId === 'all' ? 'bg-white/5 text-white' : ''}
+                <DropdownItem
+                  onClick={() => setSelectedAccountId('all')}
+                  icon={Filter}
+                  className={selectedAccountId === 'all' ? 'bg-white/5 text-white' : ''}
                 >
-                    Todas as Contas
+                  Todas as Contas
                 </DropdownItem>
                 {accounts.map(acc => (
-                    <DropdownItem 
-                        key={acc.id}
-                        onClick={() => setSelectedAccountId(acc.id)}
-                        icon={Landmark}
-                        className={selectedAccountId === acc.id ? 'bg-white/5 text-white' : ''}
-                    >
-                        {acc.name || acc.institution || 'Conta Sem Nome'}
-                    </DropdownItem>
+                  <DropdownItem
+                    key={acc.id}
+                    onClick={() => setSelectedAccountId(acc.id)}
+                    icon={Landmark}
+                    className={selectedAccountId === acc.id ? 'bg-white/5 text-white' : ''}
+                  >
+                    {acc.name || acc.institution || 'Conta Sem Nome'}
+                  </DropdownItem>
                 ))}
               </DropdownContent>
             </Dropdown>
@@ -337,7 +359,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             </tr>
           </thead>
           <tbody className="divide-y divide-[#373734]/50">
-            {filteredTransactions.map((t) => (
+            {paginatedTransactions.map((t) => (
               <tr key={t.id} className="hover:bg-[#373734]/30 transition-colors group">
                 <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs">
                   {formatDate(t.date)}
@@ -372,8 +394,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </td>
                 <td className="px-6 py-4 text-center">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${t.status === 'completed'
-                      ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                      : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                    : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                     }`}>
                     <div className={`w-1.5 h-1.5 rounded-full ${t.status === 'completed' ? 'bg-emerald-500' : 'bg-amber-500'}`}></div>
                     {t.status === 'completed' ? 'Pago' : 'Pendente'}
@@ -416,7 +438,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
         {/* Mobile Card View - REDESIGNED */}
         <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
-          {filteredTransactions.map((t) => (
+          {paginatedTransactions.map((t) => (
             <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group">
               {/* Left Colored Bar */}
               <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
@@ -463,8 +485,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </div>
 
                 <span className={`text-[10px] uppercase tracking-wide px-2.5 py-1 rounded-full font-bold border ${t.status === 'completed'
-                    ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
-                    : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
+                  ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
+                  : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
                   }`}>
                   {t.status === 'completed' ? 'Pago' : 'Pendente'}
                 </span>
@@ -483,17 +505,72 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         </div>
       </div>
 
-      {/* Footer Summary */}
-      <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
-        <div>Total de Registros: <span className="text-white">{filteredTransactions.length}</span></div>
-        <div className="flex items-center gap-2">
-          <span>Saldo Filtrado:</span>
-          <span className={`font-mono font-bold text-sm ${filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) >= 0
+      {/* Footer Summary with Pagination */}
+      <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col gap-3">
+        {/* Pagination Controls */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2">
+            <button
+              onClick={() => handlePageChange(currentPage - 1)}
+              disabled={currentPage === 1}
+              className={`p-2 rounded-lg transition-all ${currentPage === 1 ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            >
+              <ChevronLeft size={18} />
+            </button>
+
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 3) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 2) {
+                  pageNum = totalPages - 4 + i;
+                } else {
+                  pageNum = currentPage - 2 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => handlePageChange(pageNum)}
+                    className={`w-8 h-8 rounded-lg text-xs font-bold transition-all ${currentPage === pageNum
+                      ? 'bg-[#d97757] text-white'
+                      : 'text-gray-400 hover:text-white hover:bg-gray-800'
+                      }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => handlePageChange(currentPage + 1)}
+              disabled={currentPage === totalPages}
+              className={`p-2 rounded-lg transition-all ${currentPage === totalPages ? 'text-gray-600 cursor-not-allowed' : 'text-gray-400 hover:text-white hover:bg-gray-800'}`}
+            >
+              <ChevronRight size={18} />
+            </button>
+
+            <span className="ml-2 text-gray-500">
+              Página {currentPage} de {totalPages}
+            </span>
+          </div>
+        )}
+
+        {/* Stats Row */}
+        <div className="flex flex-col sm:flex-row justify-between gap-2 font-medium uppercase tracking-wide">
+          <div>Mostrando: <span className="text-white">{paginatedTransactions.length}</span> de <span className="text-white">{filteredTransactions.length}</span> registros</div>
+          <div className="flex items-center gap-2">
+            <span>Saldo Filtrado:</span>
+            <span className={`font-mono font-bold text-sm ${filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0) >= 0
               ? 'text-emerald-400'
               : 'text-red-400'
-            }`}>
-            {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
-          </span>
+              }`}>
+              {formatCurrency(filteredTransactions.reduce((acc, curr) => curr.type === 'income' ? acc + curr.amount : acc - curr.amount, 0))}
+            </span>
+          </div>
         </div>
       </div>
 

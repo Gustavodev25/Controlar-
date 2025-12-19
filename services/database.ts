@@ -593,13 +593,15 @@ export const restoreTransaction = async (userId: string, transaction: Transactio
   await setDoc(txRef, data);
 };
 
-export const listenToTransactions = (userId: string, callback: (transactions: Transaction[]) => void) => {
+export const listenToTransactions = (userId: string, callback: (transactions: Transaction[]) => void, minYear: number = 2025) => {
   if (!db) return () => { };
   const txRef = collection(db, "users", userId, "transactions");
-  // Ordenação por data descendente idealmente deve ser feita na query, 
-  // mas requer índices compostos no Firestore às vezes. Faremos no cliente por simplicidade.
 
-  return onSnapshot(txRef, (snapshot) => {
+  // Filtrar apenas transações de 2025+ para reduzir custos do Firestore
+  const minDate = `${minYear}-01-01`;
+  const q = query(txRef, where("date", ">=", minDate));
+
+  return onSnapshot(q, (snapshot) => {
     const transactions: Transaction[] = [];
     snapshot.forEach(doc => {
       transactions.push({ id: doc.id, ...doc.data() } as Transaction);
@@ -1047,11 +1049,15 @@ export const deleteCreditCardTransaction = async (userId: string, transactionId:
   await deleteDoc(txRef);
 };
 
-export const listenToCreditCardTransactions = (userId: string, callback: (transactions: CreditCardTransaction[]) => void) => {
+export const listenToCreditCardTransactions = (userId: string, callback: (transactions: CreditCardTransaction[]) => void, minYear: number = 2025) => {
   if (!db) return () => { };
   const txRef = collection(db, "users", userId, "creditCardTransactions");
 
-  return onSnapshot(txRef, (snapshot) => {
+  // Filtrar apenas transações de 2025+ para reduzir custos do Firestore
+  const minDate = `${minYear}-01-01`;
+  const q = query(txRef, where("date", ">=", minDate));
+
+  return onSnapshot(q, (snapshot) => {
     const transactions: CreditCardTransaction[] = [];
     snapshot.forEach(doc => {
       transactions.push({ id: doc.id, ...doc.data() } as CreditCardTransaction);

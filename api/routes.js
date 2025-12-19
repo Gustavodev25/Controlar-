@@ -241,15 +241,27 @@ router.post('/auth/reset-password', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Reset Password Error:', error.response?.data || error.message);
+    console.error('Reset Password Error:', error);
 
-    // If Firebase API fails, try to provide a helpful message
-    const firebaseError = error.response?.data?.error;
-    if (firebaseError?.message === 'EMAIL_NOT_FOUND') {
-      return res.status(400).json({ error: 'Email não encontrado. Verifique se digitou corretamente.' });
+    // Handle Firebase Admin SDK errors
+    if (error.code === 'auth/user-not-found') {
+      return res.status(404).json({ error: 'Usuário não encontrado. Verifique o email.' });
     }
 
-    res.status(500).json({ error: 'Erro ao redefinir senha.', details: error.message });
+    if (error.code === 'auth/invalid-password') {
+      return res.status(400).json({ error: 'Senha inválida. A senha deve ter pelo menos 6 caracteres.' });
+    }
+
+    // Handle Firebase REST API errors (legacy fallback)
+    const firebaseError = error.response?.data?.error;
+    if (firebaseError?.message === 'EMAIL_NOT_FOUND') {
+      return res.status(404).json({ error: 'Email não encontrado. Verifique se digitou corretamente.' });
+    }
+
+    res.status(500).json({
+      error: 'Erro ao redefinir senha.',
+      details: error.message || 'Erro interno no servidor.'
+    });
   }
 });
 
@@ -418,6 +430,7 @@ router.post('/admin/send-email', async (req, res) => {
     subject,
     title,
     body,
+    boxContent, // New field
     buttonText,
     buttonLink,
     headerAlign,
@@ -446,8 +459,8 @@ router.post('/admin/send-email', async (req, res) => {
     img { -ms-interpolation-mode: bicubic; }
   </style>
 </head>
-<body style="margin: 0; padding: 0; background-color: #1a1a1a; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #1a1a1a; padding: 40px 0;">
+<body style="margin: 0; padding: 0; background-color: transparent; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: transparent; padding: 40px 0;">
     <tr>
       <td align="center">
         <!-- Largura alterada para 500 e cores ajustadas para o tema do exemplo 2 -->
@@ -455,7 +468,7 @@ router.post('/admin/send-email', async (req, res) => {
           
           <!-- Header (Estilo visual do exemplo 2, mas com alinhamento variável do exemplo 1) -->
           <tr>
-            <td align="${hAlign === 'justify' ? 'left' : hAlign}" style="padding: 24px 32px; background-color: #333432; border-bottom: 1px solid #373734; text-align: ${hAlign === 'justify' ? 'left' : hAlign};">
+            <td align="${hAlign === 'justify' ? 'left' : hAlign}" style="padding: 24px 32px; background-color: transparent; border-bottom: 1px solid #373734; text-align: ${hAlign === 'justify' ? 'left' : hAlign};">
               <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em; line-height: 1; display: inline-block;">
                 Controlar<span style="color: #d97757;">+</span>
               </div>
@@ -465,13 +478,22 @@ router.post('/admin/send-email', async (req, res) => {
           <!-- Content (Padding e cores do exemplo 2) -->
           <tr>
             <td style="padding: 40px 32px; background-color: #30302E;">
-              <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">
+              <h1 style="margin: 0 0 8px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">
                 ${title || 'Título da Mensagem'}
               </h1>
 
-              <div style="color: #d1d5db; font-size: 16px; line-height: 1.6; white-space: pre-wrap; text-align: ${bAlign};">
+              <div style="color: #d1d5db; font-size: 16px; line-height: 1.6; text-align: ${bAlign};">
                 ${(body || '').replace(/\n/g, '<br/>')}
               </div>
+
+              <!-- Box Content (Opcional) -->
+              ${boxContent ? `
+              <div style="text-align: center; margin: 32px 0;">
+                <div style="display: inline-block; background: linear-gradient(135deg, #363735 0%, #30302E 100%); padding: 20px 40px; border-radius: 12px; border: 1px solid #4a4a48;">
+                  <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #d97757; font-family: 'Courier New', monospace;">${boxContent}</span>
+                </div>
+              </div>
+              ` : ''}
 
               <!-- Botão (Mantido a lógica, mas ajustado visualmente se necessário) -->
               <div style="margin-top: 32px; text-align: center;">
@@ -484,7 +506,7 @@ router.post('/admin/send-email', async (req, res) => {
 
           <!-- Footer (Estilo visual do exemplo 2) -->
           <tr>
-            <td align="center" style="padding: 24px 32px; background-color: #333432; border-top: 1px solid #373734; color: #6b7280; font-size: 12px;">
+            <td align="center" style="padding: 24px 32px; background-color: transparent; color: #6b7280; font-size: 12px;">
               <p style="margin: 0;">© ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>
               <p style="margin: 8px 0 0 0;">
                 <a href="#" style="color: #9ca3af; text-decoration: underline;">Descadastrar</a> • 
