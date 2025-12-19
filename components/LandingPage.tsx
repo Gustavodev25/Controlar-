@@ -499,7 +499,7 @@ const FAQSection = () => {
 };
 
 // --- COMPONENTE: PLANOS (PRICING) ---
-const PricingSection = () => {
+const PricingSection = ({ onStart }: { onStart: () => void }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
   const getPrice = (monthly: number, annual: number) => {
@@ -561,8 +561,8 @@ const PricingSection = () => {
             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-gray-500" /> Dashboards Básicos</li>
             <li className="flex items-center gap-3 text-sm text-gray-300"><Check size={16} className="text-gray-500" /> 1 Usuário</li>
           </ul>
-          <button className="w-full py-3 rounded-xl border border-gray-700 text-white font-bold hover:bg-gray-800 transition-colors opacity-50 cursor-not-allowed" disabled>
-            Em Breve
+          <button onClick={onStart} className="w-full py-3 rounded-xl border border-gray-700 text-white font-bold hover:bg-gray-800 transition-colors cursor-pointer">
+            Começar
           </button>
         </div>
 
@@ -597,8 +597,8 @@ const PricingSection = () => {
             <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]" /> Consultor Financeiro IA</li>
             <li className="flex items-center gap-3 text-sm text-white"><CheckCircle size={16} className="text-[#f17853]" /> Metas e Lembretes</li>
           </ul>
-          <button className="w-full py-3 rounded-xl bg-[#f17853] hover:bg-[#e06949] text-white font-bold transition-colors shadow-lg shadow-[#f17853]/25 opacity-50 cursor-not-allowed" disabled>
-            Em Breve
+          <button onClick={onStart} className="w-full py-3 rounded-xl bg-[#f17853] hover:bg-[#e06949] text-white font-bold transition-colors shadow-lg shadow-[#f17853]/25 cursor-pointer">
+            Começar
           </button>
         </div>
       </div>
@@ -1862,7 +1862,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onLogin, variant = 'wa
             <h2 className="text-2xl lg:text-5xl font-bold mb-3 lg:mb-4 relative z-10">Planos transparentes</h2>
             <p className="text-sm lg:text-base text-gray-400 relative z-10">Escolha o plano ideal para sua jornada financeira.</p>
           </AnimatedSection>
-          <PricingSection />
+          <PricingSection onStart={onLogin} />
         </div>
       </section>
 

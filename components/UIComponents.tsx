@@ -639,19 +639,29 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     }
   }, [value]);
 
+  // Effect 1: Handle click outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-        // On blur/close, revert input to valid value if invalid?
-        // For now, let's keep what user typed or revert if empty/invalid?
-        // Ideally, if invalid, maybe clear or revert.
-        // Let's revert to props value if current input is invalid length?
-        // But the user might be mid-typing.
-        // Simple behavior: just close.
+      // If clicking inside the input container, do nothing (handled by onClick)
+      if (containerRef.current && containerRef.current.contains(event.target as Node)) {
+        return;
       }
+      // If clicking inside the dropdown content (handled by stopPropagation on the content),
+      // the event shouldn't even reach here if we use stopPropagation there.
+      // But just in case, we rely on the stopPropagation in the render.
+      setIsOpen(false);
     };
 
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isOpen]);
+
+  // Effect 2: Handle fixed positioning
+  useEffect(() => {
     if (isOpen && dropdownMode === 'fixed' && containerRef.current) {
       const updatePosition = () => {
         const rect = containerRef.current!.getBoundingClientRect();
@@ -685,12 +695,8 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
       return () => {
         window.removeEventListener('resize', updatePosition);
         window.removeEventListener('scroll', updatePosition, true);
-        document.removeEventListener('mousedown', handleClickOutside);
       };
     }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, dropdownMode]);
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
