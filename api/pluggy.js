@@ -148,7 +148,8 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
         method,
         url,
         headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-        params
+        params,
+        timeout: 60000 // 60s timeout
     };
     if (data) config.data = data;
 
@@ -162,8 +163,12 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
         return response.data;
     } catch (error) {
         const status = error.response?.status;
-        console.error(`Pluggy Request Failed [${method} ${endpoint}] Status: ${status} | Retry: ${isRetry}`);
+        const code = error.code;
+        const msg = error.message || '';
 
+        console.error(`Pluggy Request Failed [${method} ${endpoint}] Status: ${status} | Code: ${code} | Msg: ${msg} | Retry: ${isRetry}`);
+
+        // Handle 401 (Auth) Retry
         if (status === 401 && !isRetry) {
             console.warn(`Pluggy 401 at ${endpoint}. Clearing cache and retrying...`);
             cachedApiKey = null;
@@ -172,6 +177,19 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
                 return await pluggyRequest(method, endpoint, newApiKey, data, params, true);
             } catch (retryErr) {
                 console.error(`Pluggy Retry Failed at ${endpoint}:`, retryErr.response?.data || retryErr.message);
+                throw retryErr;
+            }
+        }
+
+        // Handle Network Retry (socket hang up, timeout, etc.)
+        const isNetworkError = !status && (code === 'ECONNRESET' || code === 'ETIMEDOUT' || msg.includes('socket hang up') || msg.includes('timeout') || code === 'ECONNREFUSED');
+        if (isNetworkError && !isRetry) {
+            console.warn(`Pluggy Network Error (${msg}) at ${endpoint}. Retrying in 2s...`);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            try {
+                return await pluggyRequest(method, endpoint, apiKey, data, params, true);
+            } catch (retryErr) {
+                console.error(`Pluggy Network Retry Failed at ${endpoint}:`, retryErr.message);
                 throw retryErr;
             }
         }

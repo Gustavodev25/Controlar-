@@ -186,6 +186,61 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
     // If targeted, we check direct DOM rect of target to float nearby.
     // React Portal to body ensures we are on top of everything.
 
+    // Position Calculation Logic
+    let tooltipCords: any = {};
+    let connectButtonTailStyle: any = {};
+
+    if (!isCentered && !isMobile && targetRect) {
+        if (currentStep.targetId === 'open-finance-connect-btn') {
+            const tooltipWidth = 350;
+            const viewportWidth = window.innerWidth;
+            const margin = 20;
+
+            // Target Center
+            const btnCenter = targetRect.left + (targetRect.width / 2);
+
+            // Ideal Left (Centered)
+            let left = btnCenter - (tooltipWidth / 2);
+
+            // Clamp to Viewport
+            if (left + tooltipWidth > viewportWidth - margin) {
+                left = viewportWidth - tooltipWidth - margin;
+            }
+            if (left < margin) {
+                left = margin;
+            }
+
+            tooltipCords = {
+                top: targetRect.bottom + 20,
+                left: left,
+                width: tooltipWidth,
+                maxWidth: tooltipWidth
+            };
+
+            // Calculate Dynamic Arrow Position
+            // Arrow should be at (btnCenter - left) inside the relative tooltip
+            connectButtonTailStyle = {
+                left: btnCenter - left,
+                marginLeft: '-8px' // Center the 16px arrow
+            };
+
+        } else if (currentStep.targetId === 'salary-auto-mode-toggle') {
+            tooltipCords = {
+                top: targetRect.bottom + 15,
+                left: targetRect.left - 280,
+                transform: 'translateX(0)',
+                maxWidth: '350px'
+            };
+        } else {
+            // Default (Sidebar items)
+            tooltipCords = {
+                top: targetRect.top - 20,
+                left: targetRect.right + 30,
+                maxWidth: '350px'
+            };
+        }
+    }
+
     if (!isOpen) return null;
 
     return createPortal(
@@ -211,37 +266,15 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                         exit={{ opacity: 0, scale: 0.9, y: 20 }}
                         transition={{ duration: 0.4, type: "spring" }}
                         className={`pointer-events-auto relative ${isCentered || isMobile ? 'w-full max-w-md mx-4 mb-6 sm:mb-0' : 'absolute'}`}
-                        style={(!isCentered && !isMobile && targetRect) ? (() => {
-                            const rect = targetRect;
-
-                            // Specific adjustments
-                            if (currentStep.targetId === 'salary-auto-mode-toggle') {
-                                return {
-                                    top: rect.bottom + 15,
-                                    left: rect.left - 280,
-                                    transform: 'translateX(0)',
-                                    maxWidth: '350px'
-                                };
-                            }
-
-                            if (currentStep.targetId === 'open-finance-connect-btn') {
-                                return {
-                                    top: rect.bottom + 20,
-                                    // Center the tooltip relative to the button
-                                    left: rect.left + (rect.width / 2) - 175,
-                                    maxWidth: '350px'
-                                };
-                            }
-
-                            return {
-                                top: rect.top - 20,
-                                left: rect.right + 30,
-                                maxWidth: '350px'
-                            };
-                        })() : {}}
+                        style={(!isCentered && !isMobile && targetRect) ? tooltipCords : {}}
                     >
                         {/* Coinzinha Character */}
-                        <div className={`absolute ${isCentered || isMobile ? '-top-16 left-1/2 -translate-x-1/2' : '-top-16 -left-12'}`}>
+                        <div className={`absolute ${isCentered || isMobile
+                            ? '-top-16 left-1/2 -translate-x-1/2'
+                            : currentStep.targetId === 'open-finance-connect-btn'
+                                ? '-top-12 -left-20' // More to the left and slightly lower for the top-right button
+                                : '-top-16 -left-12'
+                            }`}>
                             <motion.img
                                 key={`img-${step}`}
                                 initial={{ scale: 0, rotate: -10 }}
@@ -271,7 +304,8 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
                             {/* Special Tail for Connect Button (Top Center relative to button which is on right side of modal) */}
                             {!isMobile && currentStep.targetId === 'open-finance-connect-btn' && (
                                 <div
-                                    className="absolute -top-2 left-1/2 -ml-2 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
+                                    className="absolute -top-2 w-4 h-4 bg-[#30302E] border-t border-l border-gray-700 transform rotate-45"
+                                    style={connectButtonTailStyle}
                                 />
                             )}
 
