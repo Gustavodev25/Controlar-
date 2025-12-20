@@ -486,14 +486,38 @@ const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactio
         console.error(`>>> Background Sync Failed for ${itemId}:`, error.message);
 
         // Refund the credit
-        const refunded = await refundCredit(userId, creditTransactionId, error.message);
+        // Only refund if we have a valid transaction ID (meaning no partial success yet)
+        let refunded = false;
+        if (creditTransactionId) {
+            refunded = await refundCredit(userId, creditTransactionId, error.message);
+        }
 
         // Update sync status with refund info
         const errorMessage = refunded
             ? 'Erro na sincronização. Seu crédito foi reembolsado automaticamente.'
-            : 'Erro na sincronização.';
+            : 'Sincronização concluída com avisos (Transações em segundo plano).';
 
-        await updateSyncStatus(userId, 'error', errorMessage);
+        // If we didn't refund (because it was stage 2), we consider it "completed" for the user generally,
+        // but maybe with a warning. Or just 'failed' without refund?
+        // If accounts are there, we shouldn't show "Failed". 
+        const finalStatus = refunded ? 'failed' : 'completed';
+
+        if (refunded) {
+            await updateSyncStatus(userId, 'error', errorMessage);
+        } else {
+            // If we didn't refund, it means accounts are likely safe. 
+            // We just log the error in the job but show success to user.
+            await updateSyncStatus(userId, 'success', 'Conectado. Algumas transações podem demorar a aparecer.');
+        }
+
+        // Update job
+        await updateSyncJob(userId, syncJobId, {
+            status: finalStatus,
+            lastError: error.message,
+            creditRefunded: refunded,
+            message: errorMessage,
+            failedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
 
         // Update job as failed
         await updateSyncJob(userId, syncJobId, {
@@ -2453,6 +2477,31 @@ router.post('/sync', async (req, res) => {
 
     const db = firebaseAdmin.firestore();
     const userRef = db.collection('users').doc(userId);
+
+    // 0. Concurrency Check: Prevent starting a new sync if one is already in progress for this Item
+    try {
+        const activeJobsSnapshot = await userRef.collection('sync_jobs')
+            .where('itemId', '==', itemId)
+            .where('status', 'in', ['pending', 'processing', 'retrying'])
+            .limit(1)
+            .get();
+
+        if (!activeJobsSnapshot.empty) {
+            const activeJob = activeJobsSnapshot.docs[0].data();
+            // Optional: Check if it's stale (e.g. > 10 mins) and allow override?
+            // For now, strict blocking to prevent issues.
+            // But if it IS stale, we might want to auto-fail it?
+            // Let's just return error and let user "Cancel" it via UI if needed.
+            return res.status(409).json({
+                error: 'Já existe uma sincronização em andamento para esta conta.',
+                syncJobId: activeJobsSnapshot.docs[0].id
+            });
+        }
+    } catch (e) {
+        console.warn('Error checking concurrency:', e);
+        // Continue but warn
+    }
+
     let creditTransactionId = null;
     let syncJobId = null;
 
@@ -2470,6 +2519,8 @@ router.post('/sync', async (req, res) => {
         // 2. Create tracked sync job
         syncJobId = await createSyncJob(userId, itemId, creditTransactionId);
 
+        // ... rest of logic
+
         // 3. Immediate Response to Frontend with syncJobId for tracking
         res.json({
             success: true,
@@ -2484,7 +2535,9 @@ router.post('/sync', async (req, res) => {
         await processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId, { onlyFetchAccounts: true });
 
         // 5. Trigger Transaction Sync (Background - might freeze on Vercel but Webhook will pick up)
-        processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId, { onlyFetchAccounts: false });
+        // Pass null for creditTransactionId to PREVENT refund if this stage fails 
+        // (since connection/accounts already succeeded)
+        processSyncWithRefund(userId, itemId, syncJobId, null, { onlyFetchAccounts: false });
 
     } catch (e) {
         console.error('>>> Sync Transaction Failed:', e.message);
@@ -2493,6 +2546,24 @@ router.post('/sync', async (req, res) => {
         const status = e.message.includes('Limite') || e.message.includes('Plano') ? 403 : 500;
 
         res.status(status).json({ error: userMessage });
+    }
+});
+
+router.post('/cancel-sync', async (req, res) => {
+    const { userId, syncJobId } = req.body;
+    if (!userId || !syncJobId) return res.status(400).json({ error: 'Dados insuficientes.' });
+
+    try {
+        await updateSyncJob(userId, syncJobId, {
+            status: 'cancelled',
+            message: 'Cancelado pelo usuário',
+            lastError: 'Cancelado manualmente',
+            cancelledAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
+        res.json({ success: true, message: 'Processo cancelado.' });
+    } catch (e) {
+        console.error('Error cancelling sync:', e);
+        res.status(500).json({ error: 'Erro ao cancelar.' });
     }
 });
 
