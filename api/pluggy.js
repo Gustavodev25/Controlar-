@@ -317,11 +317,24 @@ const updateSyncStatus = async (userId, state, message, details = null) => {
             updateData.lastSyncedAt = now;
         }
 
-        await firebaseAdmin.firestore().collection('users').doc(userId)
+        // FIX: Wrap Firestore write in a race with timeout (5s) to prevent DEADLINE_EXCEEDED from hanging the process
+        const firestoreWrite = firebaseAdmin.firestore().collection('users').doc(userId)
             .collection('sync_status').doc('pluggy')
             .set(removeUndefined(updateData), { merge: true });
+
+        const timeout = new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Firestore update timed out')), 5000)
+        );
+
+        await Promise.race([firestoreWrite, timeout]);
+
     } catch (e) {
-        console.error('Error updating sync status:', e);
+        // Log warning for timeout, error for others
+        if (e.message === 'Firestore update timed out') {
+            console.warn(`>>> Warning: updateSyncStatus timed out after 5s for user ${userId}. Skipping status update.`);
+        } else {
+            console.error('Error updating sync status:', e);
+        }
     }
 };
 
