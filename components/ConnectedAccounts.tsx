@@ -658,13 +658,71 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </span>
       </div>
 
-      {accounts.length === 0 ? (
+      {accounts.length === 0 && Object.keys(syncJobs).length === 0 ? (
         <EmptyState
           title="Nenhuma conta conectada"
           description="Conecte seus bancos para ver tudo em um só lugar."
         />
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+          {/* Skeleton Cards for Pending New Connections */}
+          {(() => {
+            // Find itemIds that are in syncJobs but NOT in accounts
+            const accountItemIds = new Set(accounts.map(a => a.itemId));
+            const pendingCreationItems = Object.values(syncJobs).filter(job =>
+              job.itemId &&
+              // Status is pending/processing/retrying
+              ['pending', 'processing', 'retrying'].includes(job.status) &&
+              // And NOT yet in the accounts list
+              !accountItemIds.has(job.itemId)
+            );
+
+            return pendingCreationItems.map(job => (
+              <div key={`skeleton-${job.itemId}`} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
+                <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757]"></div>
+
+                {/* Header Skeleton */}
+                <div className="p-5 rounded-t-2xl border-b border-gray-800 flex flex-col gap-4 bg-[#333432]">
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-10 h-10 rounded-xl bg-gray-800/50 animate-pulse flex-shrink-0"></div>
+                    <div className="flex-1 space-y-2">
+                      <div className="h-2 w-16 bg-gray-800/50 rounded animate-pulse"></div>
+                      <div className="h-4 w-32 bg-gray-800/50 rounded animate-pulse"></div>
+                    </div>
+                  </div>
+
+                  {/* Status Badge */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#d97757]/10 border border-[#d97757]/30">
+                      <Loader2 size={12} className="text-[#d97757] animate-spin" />
+                      <span className="text-[10px] text-[#d97757] font-bold uppercase">
+                        Conectando Banco...
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Body Skeleton */}
+                <div className="p-4 flex-1 bg-[#30302E] space-y-3">
+                  {[1, 2].map(i => (
+                    <div key={i} className="border border-gray-800/60 rounded-xl p-4 bg-gray-900/30">
+                      <div className="flex justify-between items-center gap-3">
+                        <div className="flex gap-3 items-center flex-1">
+                          <div className="w-8 h-8 rounded-lg bg-gray-800/50 animate-pulse"></div>
+                          <div className="space-y-1.5 flex-1">
+                            <div className="h-3 w-24 bg-gray-800/50 rounded animate-pulse"></div>
+                            <div className="h-2 w-16 bg-gray-800/50 rounded animate-pulse"></div>
+                          </div>
+                        </div>
+                        <div className="w-20 h-5 bg-gray-800/50 rounded animate-pulse"></div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ));
+          })()}
+
           {Object.entries(groupedAccounts).map(([groupKey, data]) => {
             const { accounts: institutionAccounts, institution: institutionName, itemId } = data;
 

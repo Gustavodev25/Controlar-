@@ -442,7 +442,7 @@ const refundCredit = async (userId, creditTransactionId, reason) => {
 /**
  * Processes sync with automatic credit refund on failure
  */
-const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactionId) => {
+const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactionId, syncOptions = {}) => {
     try {
         // Update job to processing
         await updateSyncJob(userId, syncJobId, {
@@ -460,7 +460,17 @@ const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactio
         });
 
         // Perform the sync
-        const syncResult = await syncItem(apiKey, itemId, userId, { fullSync: true, syncJobId });
+        const syncResult = await syncItem(apiKey, itemId, userId, { fullSync: true, syncJobId, ...syncOptions });
+
+        // If doing partial sync (accounts only), do NOT mark as completed yet
+        if (syncOptions && syncOptions.onlyFetchAccounts) {
+            console.log(`>>> Partial sync (accounts only) finished for item ${itemId}`);
+            await updateSyncJob(userId, syncJobId, {
+                progress: { step: 'Sincronizando transações...', current: 40, total: 100 },
+                message: 'Contas salvas. Buscando transações em segundo plano...'
+            });
+            return;
+        }
 
         // Mark as completed
         await updateSyncJob(userId, syncJobId, {
@@ -667,7 +677,7 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         return;
     }
 
-    const { fromWebhook = false, accountId: webhookAccountId, transactionsLink, fullSync = false, syncJobId } = options;
+    const { fromWebhook = false, accountId: webhookAccountId, transactionsLink, fullSync = false, syncJobId, onlyFetchAccounts = false } = options;
 
     // Track errors during sync for partial failure reporting
     const syncErrors = [];
@@ -1074,6 +1084,12 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts')
             .doc(account.id).set(removeUndefined(accountData), { merge: true });
 
+        // NEW: Check if we should stop here (Optimization for Vercel/Serverless)
+        if (onlyFetchAccounts) {
+            console.log(`>>> valid option onlyFetchAccounts: skipping transactions for account ${account.id}`);
+            continue;
+        }
+
         // Determine optimal 'from' date for transactions
         let fromStr = from;
         let dateMsg = fullSync ? "últimos 12 meses" : "novos lançamentos";
@@ -1454,14 +1470,26 @@ const enqueueWebhookJob = async (eventId, event) => {
 };
 
 // Helper: Find user by itemId
+// Helper: Find user by itemId
 const findUserByItemId = async (itemId) => {
     if (!firebaseAdmin || !itemId) return null;
     try {
         const db = firebaseAdmin.firestore();
+
+        // 1. Try finding in ready accounts (most common)
         const accountsSnapshot = await db.collectionGroup('accounts').where('itemId', '==', itemId).limit(1).get();
         if (!accountsSnapshot.empty) {
             return accountsSnapshot.docs[0].ref.parent.parent.id;
         }
+
+        // 2. Try finding in active sync jobs (race condition protection)
+        // If webhook arrives before account is saved, the sync job might already exist
+        const jobsSnapshot = await db.collectionGroup('sync_jobs').where('itemId', '==', itemId).limit(1).get();
+        if (!jobsSnapshot.empty) {
+            console.log(`>>> Found user for itemId ${itemId} via sync_jobs`);
+            return jobsSnapshot.docs[0].ref.parent.parent.id;
+        }
+
     } catch (e) {
         console.error('>>> Error finding user by itemId:', e.message);
     }
@@ -2451,8 +2479,12 @@ router.post('/sync', async (req, res) => {
             summary: { total: 0, checking: 0, savings: 0, credit: 0 }
         });
 
-        // 4. Background Processing with automatic refund on failure
-        processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId);
+        // 4. Await Account Sync (Blocking to ensure storage before Vercel freezes)
+        // This ensures "findUserByItemId" will work for subsequent webhooks
+        await processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId, { onlyFetchAccounts: true });
+
+        // 5. Trigger Transaction Sync (Background - might freeze on Vercel but Webhook will pick up)
+        processSyncWithRefund(userId, itemId, syncJobId, creditTransactionId, { onlyFetchAccounts: false });
 
     } catch (e) {
         console.error('>>> Sync Transaction Failed:', e.message);
