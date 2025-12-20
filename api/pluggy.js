@@ -182,7 +182,7 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
         }
 
         // Handle Network Retry (socket hang up, timeout, etc.)
-        const isNetworkError = !status && (code === 'ECONNRESET' || code === 'ETIMEDOUT' || msg.includes('socket hang up') || msg.includes('timeout') || code === 'ECONNREFUSED');
+        const isNetworkError = !status && (code === 'ECONNRESET' || code === 'ETIMEDOUT' || code === 'ECONNABORTED' || msg.includes('socket hang up') || msg.includes('timeout') || code === 'ECONNREFUSED');
         if (isNetworkError && !isRetry) {
             console.warn(`Pluggy Network Error (${msg}) at ${endpoint}. Retrying in 2s...`);
             await new Promise(resolve => setTimeout(resolve, 2000));

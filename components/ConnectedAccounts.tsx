@@ -420,6 +420,42 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return groups;
   }, [accounts, itemStatuses]);
 
+  // Stale threshold for pending connections (1 minute - reduced to fix stuck cards)
+  const STALE_JOB_THRESHOLD_MS = 60 * 1000;
+
+  const pendingCreationItems = useMemo(() => {
+    const now = Date.now();
+    return Object.values(syncJobs).filter(job => {
+      // Must be a relevant status
+      const isActive = ['pending', 'processing', 'retrying'].includes(job.status);
+      if (!isActive) return false;
+
+      // Must not be already in the main list
+      const alreadyExists = accounts.some(acc => acc.itemId === job.itemId);
+      if (alreadyExists) return false;
+
+      // Must be recent (prevent stuck ghost cards)
+      // Check both createdAt and updatedAt if available
+      const jobTimeStr = job.updatedAt || job.createdAt;
+      let jobTime = 0;
+
+      if (jobTimeStr) {
+        // Handle Firebase Timestamp objects or strings
+        if (typeof jobTimeStr === 'object' && 'seconds' in jobTimeStr) {
+          jobTime = (jobTimeStr as any).seconds * 1000;
+        } else {
+          jobTime = new Date(jobTimeStr).getTime();
+        }
+      }
+
+      if (jobTime && (now - jobTime > STALE_JOB_THRESHOLD_MS)) {
+        return false; // Too old, likely zombie job
+      }
+
+      return true;
+    });
+  }, [syncJobs, accounts]);
+
   const toggleLimitView = (id: string) => {
     setLimitView(prev => {
       const next = new Set(prev);
@@ -688,56 +724,23 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       ) : (
         <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
           {/* Skeleton Cards for Pending New Connections */}
-          {(() => {
-            // Find itemIds that are in syncJobs but NOT in accounts
-            const accountItemIds = new Set(accounts.map(a => a.itemId));
-            const now = Date.now();
-            const STALE_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
-
-            const pendingCreationItems = Object.values(syncJobs).filter(job => {
-              // Basic validity checks
-              if (!job.itemId) return false;
-
-              // Status check
-              if (!['pending', 'processing', 'retrying'].includes(job.status)) return false;
-
-              // Existence check (don't show if already managed)
-              if (accountItemIds.has(job.itemId)) return false;
-
-              // Staleness check: Ignore jobs older than threshold
-              // If createdAt is missing, we assume it's fresh enough (or handle loosely), 
-              // but Firestore usually provides it. We convert Timestamp to millis if needed.
-              let createdAtMillis = 0;
-              if (job.createdAt && typeof (job.createdAt as any).toMillis === 'function') {
-                createdAtMillis = (job.createdAt as any).toMillis();
-              } else if (job.createdAt && (job.createdAt as any).seconds) {
-                createdAtMillis = (job.createdAt as any).seconds * 1000;
-              } else if (typeof job.createdAt === 'number') {
-                createdAtMillis = job.createdAt;
-              } else {
-                // If invalid date, assume fresh to fail safe, or stale to be strict?
-                // Let's assume stale to avoid ghosts if date is weird.
-                return false;
-              }
-
-              return (now - createdAtMillis) < STALE_JOB_THRESHOLD_MS;
-            });
-
-            // Helper to cancel a stuck job
-            const handleCancelSync = async (jobId: string) => {
-              if (!jobId) return;
+          {pendingCreationItems.map((job) => {
+            const handleCancelSync = async (e: React.MouseEvent) => {
+              e.stopPropagation();
+              if (!userId || !job.id) return;
               try {
                 await fetch('/api/pluggy/cancel-sync', {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ userId, syncJobId: jobId })
+                  body: JSON.stringify({ userId, syncJobId: job.id })
                 });
-              } catch (e) {
-                console.error('Failed to cancel sync:', e);
+                sonnerToast.info("Cancelamento solicitado.");
+              } catch (err) {
+                console.error('Failed to cancel sync:', err);
               }
             };
 
-            return pendingCreationItems.map(job => (
+            return (
               <div key={`skeleton-${job.itemId}`} className="group border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757]"></div>
 
@@ -752,7 +755,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
                     {/* Cancel Button */}
                     <button
-                      onClick={() => job.id && handleCancelSync(job.id)}
+                      onClick={handleCancelSync}
                       className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white z-20"
                       title="Cancelar Sincronização"
                     >
@@ -789,8 +792,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   ))}
                 </div>
               </div>
-            ));
-          })()}
+            );
+          })}
 
           {Object.entries(groupedAccounts).map(([groupKey, data]) => {
             const { accounts: institutionAccounts, institution: institutionName, itemId } = data;
