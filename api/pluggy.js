@@ -1628,6 +1628,7 @@ const fetchTransactionsByIds = async (apiKey, ids) => {
 };
 
 // Helper: Process and save transactions with optimized batch existence check
+// Helper: Process and save transactions with optimized batch existence check
 const processAndSaveTransactions = async (userId, transactions, accountsCache = new Map()) => {
     if (!userId || !firebaseAdmin || transactions.length === 0) return 0;
 
@@ -1655,7 +1656,11 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
             }
         }
 
-        const isCredit = account?.type?.toUpperCase().includes('CREDIT') || account?.subtype?.toUpperCase().includes('CREDIT');
+        // Improved Credit Detection: Check metadata OR account type
+        const isCredit = !!tx.creditCardMetadata ||
+            account?.type?.toUpperCase().includes('CREDIT') ||
+            account?.subtype?.toUpperCase().includes('CREDIT');
+
         const targetCollection = isCredit ? 'creditCardTransactions' : 'transactions';
 
         // Prepare data structure needed for saving
@@ -1731,7 +1736,7 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
                     category: translatePluggyCategory(tx.category),
                     type: rawAmount >= 0 ? 'expense' : 'income',
                     status: tx.status === 'PENDING' ? 'pending' : 'completed',
-                    cardId: account.id,
+                    cardId: tx.accountId, // Safe usage (was account.id)
                     cardName: cardDisplayName,
                     installmentNumber: meta.installmentNumber || 0,
                     totalInstallments: meta.totalInstallments || 0,
@@ -1752,7 +1757,7 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
                     category: translatePluggyCategory(tx.category),
                     type: rawAmount < 0 ? 'expense' : 'income',
                     status: tx.status === 'PENDING' ? 'pending' : 'completed',
-                    accountId: account.id,
+                    accountId: tx.accountId, // Safe usage (was account.id)
                     accountType: account?.type,
                     importSource: 'pluggy',
                     providerId: txId,
