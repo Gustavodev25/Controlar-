@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
-import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, Check, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info } from "./Icons";
+import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, Check, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info, X } from "./Icons";
 import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
@@ -320,12 +320,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   }, [userId, onRefresh]);
 
   // Listen to Sync Jobs for real-time progress tracking
+  // Ref to track the last known status of jobs to prevent duplicate toasts on refresh
+  const lastJobStatuses = useRef<Record<string, string>>({});
+
   useEffect(() => {
     if (!userId) return;
 
     const unsubscribeJobs = dbService.listenToSyncJobs(userId, (jobs) => {
       // Map jobs by itemId for easy lookup
       const jobMap: Record<string, dbService.SyncJob> = {};
+      const newStatuses: Record<string, string> = {};
+
       jobs.forEach((job) => {
         // Only keep the most recent job per itemId
         if (!jobMap[job.itemId] ||
@@ -333,27 +338,44 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             job.createdAt > jobMap[job.itemId].createdAt)) {
           jobMap[job.itemId] = job;
         }
+
+        // Logic to trigger toasts only on status CHANGE
+        const previousStatus = lastJobStatuses.current[job.id];
+        const currentStatus = job.status;
+
+        // If we haven't seen this job before (first load), and it's already finished, don't toast
+        // This prevents "Sync Failed" toasts on every page refresh
+        const isTerminalState = currentStatus === 'completed' || currentStatus === 'failed';
+        const isFirstLoadOfTerminalState = !previousStatus && isTerminalState;
+
+        if (currentStatus !== previousStatus && !isFirstLoadOfTerminalState) {
+          if (currentStatus === 'completed') {
+            sonnerToast.success('Sincronização concluída!', {
+              id: `sync-job-${job.id}`,
+              duration: 3000
+            });
+            if (onRefresh) onRefresh();
+          } else if (currentStatus === 'failed') {
+            const message = job.creditRefunded
+              ? 'Sincronização falhou. Crédito reembolsado.'
+              : 'Sincronização falhou.';
+            sonnerToast.error(message, {
+              id: `sync-job-${job.id}`,
+              duration: 5000
+            });
+          }
+        }
+
+        // Update status for next run
+        newStatuses[job.id] = currentStatus;
       });
+
       setSyncJobs(jobMap);
 
-      // Show toast notifications for job status changes
-      jobs.forEach((job) => {
-        if (job.status === 'completed') {
-          sonnerToast.success('Sincronização concluída!', {
-            id: `sync-job-${job.id}`,
-            duration: 3000
-          });
-          if (onRefresh) onRefresh();
-        } else if (job.status === 'failed') {
-          const message = job.creditRefunded
-            ? 'Sincronização falhou. Crédito reembolsado.'
-            : 'Sincronização falhou.';
-          sonnerToast.error(message, {
-            id: `sync-job-${job.id}`,
-            duration: 5000
-          });
-        }
-      });
+      // Update our ref with the latest statuses, merging with existing to keep history of jobs not in current snapshot (if any, though listenToSyncJobs limits to 10)
+      // Actually, we only care about the ones currently being tracked.
+      // But safer to just merge:
+      lastJobStatuses.current = { ...lastJobStatuses.current, ...newStatuses };
     });
 
     return () => {
@@ -701,8 +723,22 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               return (now - createdAtMillis) < STALE_JOB_THRESHOLD_MS;
             });
 
+            // Helper to cancel a stuck job
+            const handleCancelSync = async (jobId: string) => {
+              if (!jobId) return;
+              try {
+                await fetch('/api/pluggy/cancel-sync', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ userId, syncJobId: jobId })
+                });
+              } catch (e) {
+                console.error('Failed to cancel sync:', e);
+              }
+            };
+
             return pendingCreationItems.map(job => (
-              <div key={`skeleton-${job.itemId}`} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
+              <div key={`skeleton-${job.itemId}`} className="group border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757]"></div>
 
                 {/* Header Skeleton */}
@@ -713,6 +749,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       <div className="h-2 w-16 bg-gray-800/50 rounded animate-pulse"></div>
                       <div className="h-4 w-32 bg-gray-800/50 rounded animate-pulse"></div>
                     </div>
+
+                    {/* Cancel Button */}
+                    <button
+                      onClick={() => job.id && handleCancelSync(job.id)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-2 hover:bg-gray-700 rounded-full text-gray-400 hover:text-white z-20"
+                      title="Cancelar Sincronização"
+                    >
+                      <X size={16} />
+                    </button>
                   </div>
 
                   {/* Status Badge */}
