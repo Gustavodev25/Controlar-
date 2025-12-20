@@ -2510,7 +2510,7 @@ router.post('/create-token', async (req, res) => {
         const connectTokenResponse = await pluggyRequest('POST', '/connect_token', apiKey, {
             clientUserId: userId || 'anonymous',
             options: {
-                avoidDuplicates: true,
+                avoidDuplicates: false,
                 webhookUrl
             }
         });

@@ -319,13 +319,10 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             setSyncStatus('success');
             setSyncMessage('Conexão iniciada! Seus dados aparecerão em breve.');
 
-            saveSyncProgress({
-                step: 'Processando em segundo plano...',
-                current: 100,
-                total: 100,
-                isComplete: true,
-                startedAt: Date.now()
-            });
+            // Do NOT manually save "completed" progress here. 
+            // It causes a ghost toast on reload if the timeout doesn't fire.
+            // valid progress is now handled by the syncJobs listener in ConnectedAccounts.
+            clearSyncProgress();
 
             setTimeout(() => clearSyncProgress(), 3000);
 

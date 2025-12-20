@@ -669,13 +669,37 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           {(() => {
             // Find itemIds that are in syncJobs but NOT in accounts
             const accountItemIds = new Set(accounts.map(a => a.itemId));
-            const pendingCreationItems = Object.values(syncJobs).filter(job =>
-              job.itemId &&
-              // Status is pending/processing/retrying
-              ['pending', 'processing', 'retrying'].includes(job.status) &&
-              // And NOT yet in the accounts list
-              !accountItemIds.has(job.itemId)
-            );
+            const now = Date.now();
+            const STALE_JOB_THRESHOLD_MS = 10 * 60 * 1000; // 10 minutes
+
+            const pendingCreationItems = Object.values(syncJobs).filter(job => {
+              // Basic validity checks
+              if (!job.itemId) return false;
+
+              // Status check
+              if (!['pending', 'processing', 'retrying'].includes(job.status)) return false;
+
+              // Existence check (don't show if already managed)
+              if (accountItemIds.has(job.itemId)) return false;
+
+              // Staleness check: Ignore jobs older than threshold
+              // If createdAt is missing, we assume it's fresh enough (or handle loosely), 
+              // but Firestore usually provides it. We convert Timestamp to millis if needed.
+              let createdAtMillis = 0;
+              if (job.createdAt && typeof (job.createdAt as any).toMillis === 'function') {
+                createdAtMillis = (job.createdAt as any).toMillis();
+              } else if (job.createdAt && (job.createdAt as any).seconds) {
+                createdAtMillis = (job.createdAt as any).seconds * 1000;
+              } else if (typeof job.createdAt === 'number') {
+                createdAtMillis = job.createdAt;
+              } else {
+                // If invalid date, assume fresh to fail safe, or stale to be strict?
+                // Let's assume stale to avoid ghosts if date is weird.
+                return false;
+              }
+
+              return (now - createdAtMillis) < STALE_JOB_THRESHOLD_MS;
+            });
 
             return pendingCreationItems.map(job => (
               <div key={`skeleton-${job.itemId}`} className="border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
