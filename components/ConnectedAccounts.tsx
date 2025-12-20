@@ -344,11 +344,23 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         const currentStatus = job.status;
 
         // If we haven't seen this job before (first load), and it's already finished, don't toast
-        // This prevents "Sync Failed" toasts on every page refresh
+        // UNLESS it's a very recent job (e.g. < 45s), which means it likely finished just now during a page transition
         const isTerminalState = currentStatus === 'completed' || currentStatus === 'failed';
         const isFirstLoadOfTerminalState = !previousStatus && isTerminalState;
 
-        if (currentStatus !== previousStatus && !isFirstLoadOfTerminalState) {
+        // Check recency
+        const now = Date.now();
+        let isRecent = false;
+        const jobTimeStr = job.createdAt;
+        if (jobTimeStr) {
+          const jobTime = (typeof jobTimeStr === 'object' && 'seconds' in jobTimeStr)
+            ? (jobTimeStr as any).seconds * 1000
+            : new Date(jobTimeStr).getTime();
+          isRecent = (now - jobTime) < 45000; // 45 seconds tolerance
+        }
+
+        // Trigger if: Status changed OR (It's the first load of a done job AND it's fresh)
+        if ((currentStatus !== previousStatus && !isFirstLoadOfTerminalState) || (isFirstLoadOfTerminalState && isRecent)) {
           if (currentStatus === 'completed') {
             sonnerToast.success('Sincronização concluída!', {
               id: `sync-job-${job.id}`,
@@ -427,7 +439,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     const now = Date.now();
     return Object.values(syncJobs).filter(job => {
       // Must be a relevant status
-      const isActive = ['pending', 'processing', 'retrying'].includes(job.status);
+      // We also include 'completed' to cover the gap between "Job Done" and "Account appears in List"
+      const isActive = ['pending', 'processing', 'retrying', 'completed'].includes(job.status);
       if (!isActive) return false;
 
       // Must not be already in the main list
@@ -740,6 +753,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               }
             };
 
+            const isCompleted = job.status === 'completed';
+
             return (
               <div key={`skeleton-${job.itemId}`} className="group border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757]"></div>
@@ -765,12 +780,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
                   {/* Status Badge */}
                   <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#d97757]/10 border border-[#d97757]/30">
-                      <Loader2 size={12} className="text-[#d97757] animate-spin" />
-                      <span className="text-[10px] text-[#d97757] font-bold uppercase">
-                        Conectando Banco...
-                      </span>
-                    </div>
+                    {isCompleted ? (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
+                        <CheckCircle size={12} className="text-emerald-500" />
+                        <span className="text-[10px] text-emerald-500 font-bold uppercase">
+                          Finalizando...
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#d97757]/10 border border-[#d97757]/30">
+                        <Loader2 size={12} className="text-[#d97757] animate-spin" />
+                        <span className="text-[10px] text-[#d97757] font-bold uppercase">
+                          Conectando Banco...
+                        </span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
