@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
 import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, Check, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info, X } from "./Icons";
+import { Plus as LucidePlus, RotateCcw as LucideRotateCcw, Trash2 as LucideTrash2, Clock as LucideClock, AlertCircle as LucideAlertCircle, Calendar, ChevronRight as LucideChevronRight, ChevronLeft as LucideChevronLeft, Wallet as LucideWallet, CreditCard as LucideCreditCard, PiggyBank as LucidePiggyBank, Coins, RefreshCw } from "lucide-react";
 import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
@@ -34,7 +35,7 @@ const formatCurrency = (value?: number, currency: string = "BRL") => {
   try {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
   } catch {
-    return `R$ ${value.toFixed(2)}`;
+    return `R$ ${value.toFixed(2)} `;
   }
 };
 
@@ -62,7 +63,7 @@ const translateAccountType = (type?: string, subtype?: string): string => {
   const translatedSubtype = subtype ? (subtypeMap[subtype] || subtype) : '';
 
   if (translatedType && translatedSubtype) {
-    return `${translatedType} - ${translatedSubtype}`;
+    return `${translatedType} - ${translatedSubtype} `;
   }
 
   return translatedType || translatedSubtype || 'Conta';
@@ -150,7 +151,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (userId) {
       console.log('[Debug] Manually triggering credit increment...');
       const newCount = await dbService.incrementDailyConnectionCredits(userId);
-      toast.success(`Debug: Créditos incrementados para ${newCount}`);
+      toast.success(`Debug: Créditos incrementados para ${newCount} `);
     }
   };
 
@@ -223,7 +224,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   } else if (!isCreditsLoaded) {
     connectButtonTooltip = "Carregando informações de crédito...";
   } else if (!hasCredit) {
-    connectButtonTooltip = `Limite de ${MAX_CREDITS_PER_DAY} conexões diárias atingido. Aguarde até meia-noite.`;
+    connectButtonTooltip = `Limite de ${MAX_CREDITS_PER_DAY} conexões diárias atingido.Aguarde até meia - noite.`;
   }
 
   const handleBankConnected = async (newAccounts: ConnectedAccount[], syncJobId?: string) => {
@@ -363,7 +364,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         if ((currentStatus !== previousStatus && !isFirstLoadOfTerminalState) || (isFirstLoadOfTerminalState && isRecent)) {
           if (currentStatus === 'completed') {
             sonnerToast.success('Sincronização concluída!', {
-              id: `sync-job-${job.id}`,
+              id: `sync-job- ${job.id} `,
               duration: 3000
             });
             if (onRefresh) onRefresh();
@@ -372,7 +373,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               ? 'Sincronização falhou. Crédito reembolsado.'
               : 'Sincronização falhou.';
             sonnerToast.error(message, {
-              id: `sync-job-${job.id}`,
+              id: `sync-job- ${job.id} `,
               duration: 5000
             });
           }
@@ -411,6 +412,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
   const groupedAccounts = useMemo(() => {
     const groups: Record<string, { accounts: ConnectedAccount[], itemId: string, institution: string }> = {};
+
+    // 1. Group existing accounts
     accounts.forEach((acc) => {
       const key = acc.itemId || acc.institution || "Outros";
       const itemStatus = acc.itemId ? itemStatuses[acc.itemId] : null;
@@ -429,6 +432,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         groups[key].institution = institutionName;
       }
     });
+
+    // 2. Add orphan items (Connected in Pluggy but accounts not saved in DB yet)
+    // This fixes the "Connected but not showing" issue
+    Object.values(itemStatuses).forEach(status => {
+      const itemId = status.id;
+      // If this item is NOT already in the groups, add it
+      if (!groups[itemId]) {
+        groups[itemId] = {
+          accounts: [],
+          itemId: itemId,
+          institution: status.connectorName || "Banco Conectado (Sem contas)"
+        };
+      }
+    });
+
     return groups;
   }, [accounts, itemStatuses]);
 
@@ -507,13 +525,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       // Check if already synced today
       const itemTimer = timers[itemId];
       if (itemTimer?.syncedToday) {
-        toast.error(`Este banco já foi sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`);
+        toast.error(`Este banco já foi sincronizado hoje.Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m} m.`);
         return;
       }
 
       // Check if user has credits available
       if (!hasCredit) {
-        toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários. Aguarde até meia-noite.`);
+        toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários.Aguarde até meia - noite.`);
         return;
       }
     }
@@ -690,11 +708,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               }}
               disabled={(!hasCredit || !isCreditsLoaded) && userPlan !== 'starter'}
               className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm ${hasCredit && isCreditsLoaded
-                ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
-                : userPlan === 'starter'
-                  ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
-                  : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
-                }`}
+                  ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
+                  : userPlan === 'starter'
+                    ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
+                    : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                } `}
             >
               {userPlan === 'starter' ? <Lock size={18} /> : <Plus size={18} />}
               <span className="hidden sm:inline">
@@ -756,7 +774,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             const isCompleted = job.status === 'completed';
 
             return (
-              <div key={`skeleton-${job.itemId}`} className="group border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
+              <div key={`skeleton - ${job.itemId} `} className="group border border-gray-800 rounded-2xl shadow-xl flex flex-col relative overflow-hidden bg-[#30302E]">
                 <div className="absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 opacity-5 bg-[#d97757]"></div>
 
                 {/* Header Skeleton */}
@@ -873,7 +891,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                               const now = new Date();
                               const isToday = syncDate.toDateString() === now.toDateString();
                               if (isToday) {
-                                return `Hoje às ${syncDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+                                return `Hoje às ${syncDate.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })} `;
                               }
                               return syncDate.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
                             })()}
@@ -905,7 +923,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       {itemId && (
                         <TooltipIcon content={
                           isUpdating ? "Sincronização em andamento..." :
-                            timer?.syncedToday ? `Já sincronizado hoje. Próxima sincronização em ${timer.auto.h}h ${timer.auto.m}m` :
+                            timer?.syncedToday ? `Já sincronizado hoje.Próxima sincronização em ${timer.auto.h}h ${timer.auto.m} m` :
                               !hasCredit ? `Sem créditos diários disponíveis.` :
                                 isAdmin ? "Sincronizar agora" : "Sincronizar agora (1x por dia)"
                         }>
@@ -913,18 +931,18 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             onClick={() => handleManualSync(itemId)}
                             disabled={!hasCredit || isDeleting !== null || isUpdating || timer?.syncedToday}
                             className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${isUpdating
-                              ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
-                              : (!hasCredit || isDeleting !== null || timer?.syncedToday)
-                                ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
-                                : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
-                              }`}
+                                ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
+                                : (!hasCredit || isDeleting !== null || timer?.syncedToday)
+                                  ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
+                                  : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
+                              } `}
                           >
                             <RotateCcw size={14} className={isUpdating ? "animate-spin" : ""} />
                             <span className="hidden sm:inline">
                               {isUpdating
                                 ? "Sincronizando..."
                                 : timer?.syncedToday
-                                  ? `${timer.auto.h}h ${timer.auto.m}m`
+                                  ? `${timer.auto.h}h ${timer.auto.m} m`
                                   : 'Sincronizar'}
                             </span>
                           </button>
@@ -947,103 +965,125 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                 </div>
 
                 <div className="p-4 relative z-10 flex-1" style={{ backgroundColor: '#30302E' }}>
-                  <AnimatePresence mode="wait">
-                    <motion.div
-                      key={currentPage}
-                      initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-                      animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
-                      exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
-                      transition={{ duration: 0.3, ease: "circInOut" }}
-                      className="space-y-3"
-                    >
-                      {paginatedInstitutionAccounts.map((acc) => {
-                        const isManual = acc.connectionMode === 'MANUAL';
-                        const isCard = isCardFromInstitution(acc);
-                        const bill = acc.currentBill;
+                  {institutionAccounts.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-8 text-center space-y-3 animate-fade-in">
+                      <div className="p-3 bg-yellow-500/10 rounded-full">
+                        <AlertCircle className="text-yellow-500" size={24} />
+                      </div>
+                      <div>
+                        <p className="text-gray-300 font-bold text-sm">Contas não encontradas</p>
+                        <p className="text-gray-500 text-xs max-w-[250px] mx-auto mt-1">
+                          A conexão existe, mas as contas não foram salvas corretamente.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => itemId && handleManualSync(itemId, true)}
+                        disabled={isUpdating}
+                        className="mt-2 text-xs bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/20 px-4 py-2 rounded-lg border border-yellow-500/20 transition-colors font-bold flex items-center gap-2"
+                      >
+                        <RefreshCw size={14} className={isUpdating ? "animate-spin" : ""} />
+                        {isUpdating ? 'Sincronizando...' : 'Reparar Conexão'}
+                      </button>
+                    </div>
+                  ) : (
+                    <AnimatePresence mode="wait">
+                      <motion.div
+                        key={currentPage}
+                        initial={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+                        animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
+                        exit={{ opacity: 0, scale: 0.95, filter: "blur(10px)" }}
+                        transition={{ duration: 0.3, ease: "circInOut" }}
+                        className="space-y-3"
+                      >
+                        {paginatedInstitutionAccounts.map((acc) => {
+                          const isManual = acc.connectionMode === 'MANUAL';
+                          const isCard = isCardFromInstitution(acc);
+                          const bill = acc.currentBill;
 
-                        // Format bill due date
-                        const formatBillDate = (dateStr?: string) => {
-                          if (!dateStr) return null;
-                          try {
-                            const date = new Date(dateStr + 'T12:00:00');
-                            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
-                          } catch {
-                            return null;
-                          }
-                        };
-
-                        // Get bill state label and color
-                        const getBillStateInfo = (state?: string) => {
-                          switch (state?.toUpperCase()) {
-                            case 'OPEN':
-                              return { label: 'Aberta', color: 'text-blue-400', bg: 'bg-blue-500/10' };
-                            case 'CLOSED':
-                              return { label: 'Fechada', color: 'text-amber-400', bg: 'bg-amber-500/10' };
-                            case 'OVERDUE':
-                              return { label: 'Vencida', color: 'text-red-400', bg: 'bg-red-500/10' };
-                            default:
+                          // Format bill due date
+                          const formatBillDate = (dateStr?: string) => {
+                            if (!dateStr) return null;
+                            try {
+                              const date = new Date(dateStr + 'T12:00:00');
+                              return date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
+                            } catch {
                               return null;
-                          }
-                        };
+                            }
+                          };
 
-                        const billDate = formatBillDate(bill?.dueDate);
-                        const billStateInfo = getBillStateInfo(bill?.state);
+                          // Get bill state label and color
+                          const getBillStateInfo = (state?: string) => {
+                            switch (state?.toUpperCase()) {
+                              case 'OPEN':
+                                return { label: 'Aberta', color: 'text-blue-400', bg: 'bg-blue-500/10' };
+                              case 'CLOSED':
+                                return { label: 'Fechada', color: 'text-amber-400', bg: 'bg-amber-500/10' };
+                              case 'OVERDUE':
+                                return { label: 'Vencida', color: 'text-red-400', bg: 'bg-red-500/10' };
+                              default:
+                                return null;
+                            }
+                          };
 
-                        return (
-                          <div key={acc.id} className={`border rounded-xl hover:border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'}`}>
-                            <div className="p-4">
-                              <div className="flex justify-between items-center gap-3 mb-3">
-                                <div className="flex gap-3 items-center flex-1 min-w-0">
-                                  {(() => {
-                                    const { icon, bgClass } = getAccountIcon(acc);
-                                    return (
-                                      <div className={`p-1.5 rounded-lg flex-shrink-0 ${bgClass}`}>
-                                        {icon}
+                          const billDate = formatBillDate(bill?.dueDate);
+                          const billStateInfo = getBillStateInfo(bill?.state);
+
+                          return (
+                            <div key={acc.id} className={`border rounded-xl hover: border-gray-700 transition-colors ${isManual ? 'bg-amber-500/5 border-amber-500/20' : 'bg-gray-900/30 border-gray-800/60'} `}>
+                              <div className="p-4">
+                                <div className="flex justify-between items-center gap-3 mb-3">
+                                  <div className="flex gap-3 items-center flex-1 min-w-0">
+                                    {(() => {
+                                      const { icon, bgClass } = getAccountIcon(acc);
+                                      return (
+                                        <div className={`p-1.5 rounded-lg flex-shrink-0 ${bgClass} `}>
+                                          {icon}
+                                        </div>
+                                      );
+                                    })()}
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2">
+                                        <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
+                                        {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
                                       </div>
-                                    );
-                                  })()}
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center gap-2">
-                                      <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>
-                                      {isManual && <span className="px-1.5 py-0.5 bg-amber-500/20 text-amber-500 text-[9px] font-bold uppercase rounded border border-amber-500/30">Manual</span>}
+                                      <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
+                                        {acc.accountNumber ? `Conta: ${acc.accountNumber} ` : translateAccountType(acc.type, acc.subtype)}
+                                      </p>
                                     </div>
-                                    <p className="text-[10px] text-gray-500 uppercase tracking-wide font-medium truncate">
-                                      {acc.accountNumber ? `Conta: ${acc.accountNumber}` : translateAccountType(acc.type, acc.subtype)}
-                                    </p>
                                   </div>
-                                </div>
 
-                                <div className="text-right flex-shrink-0 flex flex-col items-end">
-                                  <p className={`text-base font-mono font-bold whitespace-nowrap ${isCard ? "text-amber-400" : acc.balance < 0 ? "text-red-400" : "text-emerald-400"}`}>
-                                    {formatCurrency(acc.balance, acc.currency)}
-                                  </p>
-                                  {/* Show bill info for credit cards */}
-                                  {isCard && bill && (billDate || billStateInfo) && (
-                                    <div className="flex items-center gap-1.5 mt-0.5">
-                                      {billStateInfo && (
-                                        <span className={`text-[9px] font-medium ${billStateInfo.color}`}>
-                                          {billStateInfo.label}
-                                        </span>
-                                      )}
-                                      {billDate && (
-                                        <span className="text-xs text-white/40 block mt-0.5">
-                                          Venc. {
-                                            bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())
-                                              ? new Date(bill.dueDate).toLocaleDateString()
-                                              : 'N/A'
-                                          }
-                                        </span>
-                                      )}
-                                    </div>
-                                  )}
+                                  <div className="text-right flex-shrink-0 flex flex-col items-end">
+                                    <p className={`text-base font-mono font-bold whitespace-nowrap ${isCard ? "text-amber-400" : acc.balance < 0 ? "text-red-400" : "text-emerald-400"} `}>
+                                      {formatCurrency(acc.balance, acc.currency)}
+                                    </p>
+                                    {/* Show bill info for credit cards */}
+                                    {isCard && bill && (billDate || billStateInfo) && (
+                                      <div className="flex items-center gap-1.5 mt-0.5">
+                                        {billStateInfo && (
+                                          <span className={`text - [9px] font-medium ${billStateInfo.color} `}>
+                                            {billStateInfo.label}
+                                          </span>
+                                        )}
+                                        {billDate && (
+                                          <span className="text-xs text-white/40 block mt-0.5">
+                                            Venc. {
+                                              bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())
+                                                ? new Date(bill.dueDate).toLocaleDateString()
+                                                : 'N/A'
+                                            }
+                                          </span>
+                                        )}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
                             </div>
-                          </div>
-                        );
-                      })}
-                    </motion.div>
-                  </AnimatePresence>
+                          );
+                        })}
+                      </motion.div>
+                    </AnimatePresence>
+                  )}
                 </div>
 
                 {totalPages > 1 && (
@@ -1052,9 +1092,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.max(1, currentPage - 1) }))}
                       disabled={currentPage === 1}
                       className={`p-2 rounded-lg transition-all border ${currentPage === 1
-                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                        }`}
+                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        } `}
                     >
                       <ChevronLeft size={16} />
                     </button>
@@ -1067,9 +1107,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.min(totalPages, currentPage + 1) }))}
                       disabled={currentPage === totalPages}
                       className={`p-2 rounded-lg transition-all border ${currentPage === totalPages
-                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
-                        }`}
+                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        } `}
                     >
                       <ChevronRight size={16} />
                     </button>
@@ -1141,11 +1181,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-bold text-gray-300 truncate">{acc.name}</p>
                     <p className="text-xs text-gray-500 truncate">
-                      {acc.accountNumber ? `Conta: ${acc.accountNumber}` : translateAccountType(acc.type, acc.subtype)}
+                      {acc.accountNumber ? `Conta: ${acc.accountNumber} ` : translateAccountType(acc.type, acc.subtype)}
                     </p>
                   </div>
                   <div className="text-right">
-                    <span className={`text-xs font-mono font-medium ${acc.balance < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                    <span className={`text-xs font-mono font-medium ${acc.balance < 0 ? 'text-red-400' : 'text-emerald-400'} `}>
                       {formatCurrency(acc.balance, acc.currency)}
                     </span>
                   </div>
@@ -1157,10 +1197,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           {/* Option to delete transactions */}
           <div className="pt-2">
             <div
-              className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer group ${deleteIncludeTransactions ? 'bg-red-500/10 border-red-500/40' : 'bg-red-500/5 border-red-500/10 hover:bg-red-500/10 hover:border-red-500/20'}`}
+              className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer group ${deleteIncludeTransactions ? 'bg-red-500/10 border-red-500/40' : 'bg-red-500/5 border-red-500/10 hover:bg-red-500/10 hover:border-red-500/20'} `}
               onClick={() => setDeleteIncludeTransactions(!deleteIncludeTransactions)}
             >
-              <div className={`w-5 h-5 mt-0.5 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 ${deleteIncludeTransactions ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+              <div className={`w-5 h-5 mt-0.5 rounded-lg flex items-center justify-center transition-all border flex-shrink-0 ${deleteIncludeTransactions ? 'bg-red-500 border-red-500 text-white shadow-lg shadow-red-500/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'} `}>
                 <Check size={12} strokeWidth={4} />
               </div>
               <div className="text-sm">

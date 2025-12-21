@@ -1603,17 +1603,18 @@ export const incrementDailyConnectionCredits = async (userId: string) => {
         newCredits = { ...credits, count: credits.count + 1 };
       }
 
-      transaction.set(userRef, { dailyConnectionCredits: newCredits }, { merge: true });
+      transaction.update(userRef, { dailyConnectionCredits: newCredits });
       return newCredits.count;
     });
 
-    console.log('[DB] Credit increment transaction successful. New count:', newCount);
     return newCount;
-  } catch (error) {
-    console.error('[DB] Error incrementing credits (Transaction):', error);
-    throw error;
+  } catch (e) {
+    console.error("Transaction failed: ", e);
+    throw e;
   }
 };
+
+
 
 
 // --- Coupon Services ---
