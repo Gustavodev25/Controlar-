@@ -10,6 +10,7 @@ import { toLocalISODate } from '../utils/dateUtils';
 import NumberFlow from '@number-flow/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WordPullUp } from './WordPullUp';
+import { usePixelEvent } from '../hooks/usePixelEvent';
 
 interface SubscriptionPageProps {
     user: User;
@@ -23,6 +24,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
     const [selectedPlan, setSelectedPlan] = useState<{ id: 'starter' | 'pro' | 'family', name: string, price: number } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const toast = useToasts();
+    const { trackEvent } = usePixelEvent();
 
     const currentPlan = user.subscription?.plan || 'starter';
 
@@ -141,6 +143,14 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                     }
                 };
 
+                // Meta Pixel: Purchase (Free/Coupon)
+                trackEvent('Purchase', {
+                    value: 0,
+                    currency: 'BRL',
+                    content_name: 'Assinatura Controlar+ (Cupom 100%)',
+                    content_type: 'subscription',
+                });
+
                 if (planToBuy === 'pro') {
                     localStorage.setItem('show_pro_tutorial', 'true');
                 }
@@ -247,6 +257,15 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                         brand: 'credit_card'
                     }
                 };
+
+                // Meta Pixel: Purchase
+                trackEvent('Purchase', {
+                    value: finalValue,
+                    currency: 'BRL',
+                    content_name: 'Assinatura Controlar+',
+                    content_type: 'subscription',
+                    order_id: subscriptionData.subscription?.id || subscriptionData.payment?.id
+                });
 
                 if (planToBuy === 'pro') {
                     localStorage.setItem('show_pro_tutorial', 'true');

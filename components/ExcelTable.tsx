@@ -230,23 +230,44 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
           <div className="flex items-center gap-3">
             {isManualMode && onAdd && (
-              <button
-                onClick={() => {
-                  setNewTransaction({
-                    description: '',
-                    amount: 0,
-                    date: new Date().toISOString().split('T')[0],
-                    category: '',
-                    type: 'expense',
-                    status: 'completed'
-                  });
-                  setIsAddModalOpen(true);
-                }}
-                className="hidden sm:flex items-center gap-2 px-4 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50"
-              >
-                <Plus size={18} strokeWidth={3} />
-                <span>Novo Lançamento</span>
-              </button>
+              <>
+                <button
+                  onClick={() => {
+                    setNewTransaction({
+                      description: '',
+                      amount: 0,
+                      date: new Date().toISOString().split('T')[0],
+                      category: '',
+                      type: 'expense',
+                      status: 'completed'
+                    });
+                    setIsAddModalOpen(true);
+                  }}
+                  className="hidden sm:flex items-center gap-2 px-4 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50"
+                >
+                  <Plus size={18} strokeWidth={3} />
+                  <span>Novo Lançamento</span>
+                </button>
+
+                {/* Mobile Add Button (Icon Only) */}
+                <button
+                  onClick={() => {
+                    setNewTransaction({
+                      description: '',
+                      amount: 0,
+                      date: new Date().toISOString().split('T')[0],
+                      category: '',
+                      type: 'expense',
+                      status: 'completed'
+                    });
+                    setIsAddModalOpen(true);
+                  }}
+                  className="sm:hidden flex items-center justify-center w-10 h-10 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 border border-[#d97757]/50"
+                  title="Novo Lançamento"
+                >
+                  <Plus size={18} strokeWidth={3} />
+                </button>
+              </>
             )}
 
             <div className="relative w-full sm:w-64 group">
@@ -262,18 +283,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2 items-center pt-2">
-          {/* Account Filter Dropdown */}
-          <div className="relative z-50">
+        <div className="grid grid-cols-2 sm:flex sm:flex-wrap gap-2 items-center pt-2">
+          {/* Account Filter Dropdown - Row 1 (Full Width on Mobile) */}
+          <div className="relative z-50 col-span-2 sm:col-span-1 sm:w-auto">
             <Dropdown>
-              <DropdownTrigger className="h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium min-w-[180px] justify-between">
-                <div className="flex items-center gap-2">
-                  <Filter size={16} className="text-[#d97757]" />
-                  <span className="truncate max-w-[140px]">{getSelectedAccountLabel()}</span>
+              <DropdownTrigger className="w-full h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium justify-between min-w-[180px]">
+                <div className="flex items-center gap-2 truncate">
+                  <Filter size={16} className="text-[#d97757] flex-shrink-0" />
+                  <span className="truncate">{getSelectedAccountLabel()}</span>
                 </div>
-                <ArrowDownCircle size={14} className="text-gray-500" />
+                <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
               </DropdownTrigger>
-              <DropdownContent className="w-56" align="left">
+              <DropdownContent className="w-[calc(100vw-48px)] sm:w-56" align="left">
                 <DropdownItem
                   onClick={() => setSelectedAccountId('all')}
                   icon={Filter}
@@ -295,19 +316,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             </Dropdown>
           </div>
 
-          {/* Year Selector */}
-          <div className="w-28 sm:w-32">
-            <CustomSelect
-              value={selectedYear}
-              onChange={(val) => setSelectedYear(Number(val))}
-              options={yearOptions}
-              placeholder="Ano"
-              className="h-11 bg-gray-900 border-gray-800 rounded-xl text-sm"
-            />
-          </div>
-
-          {/* Start Date */}
-          <div className="w-32 sm:w-36">
+          {/* Start Date - Row 2 Col 1 */}
+          <div className="col-span-1 sm:w-36">
             <CustomDatePicker
               value={startDate}
               onChange={setStartDate}
@@ -315,8 +325,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             />
           </div>
 
-          {/* End Date */}
-          <div className="w-32 sm:w-36">
+          {/* End Date - Row 2 Col 2 */}
+          <div className="col-span-1 sm:w-36">
             <CustomDatePicker
               value={endDate}
               onChange={setEndDate}
@@ -324,14 +334,27 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             />
           </div>
 
-          {/* Reset Button */}
+          {/* Year Selector - Row 3 Col 1 */}
+          <div className="col-span-1 sm:w-32">
+            <CustomSelect
+              value={selectedYear}
+              onChange={(val) => setSelectedYear(Number(val))}
+              options={yearOptions}
+              placeholder="Ano"
+              className="h-11 bg-gray-900 border-gray-800 rounded-xl text-sm w-full"
+            />
+          </div>
+
+          {/* Reset Button - Row 3 Col 2 */}
           {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedAccountId !== 'all') && (
-            <button
-              onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedAccountId('all'); }}
-              className="h-11 px-4 flex items-center gap-2 rounded-xl bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800 transition-all text-xs font-bold uppercase tracking-wider"
-            >
-              <X size={14} /> Limpar
-            </button>
+            <div className="col-span-1 sm:w-auto">
+              <button
+                onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedAccountId('all'); }}
+                className="w-full sm:w-auto h-11 px-4 flex items-center justify-center gap-2 rounded-xl bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 border border-gray-800 transition-all text-xs font-bold uppercase tracking-wider"
+              >
+                <X size={14} /> <span className="sm:hidden">Limpar</span><span className="hidden sm:inline">Limpar</span>
+              </button>
+            </div>
           )}
         </div>
       </div>
@@ -437,16 +460,16 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         </table>
 
         {/* Mobile Card View - REDESIGNED */}
-        <div className="lg:hidden p-4 space-y-4 h-full flex flex-col">
+        <div className="lg:hidden p-4 space-y-4 flex flex-col pb-24">
           {paginatedTransactions.map((t) => (
-            <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group">
+            <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group shrink-0">
               {/* Left Colored Bar */}
               <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
 
               <div className="flex justify-between items-start mb-3 pl-3">
-                <div className="flex-1 min-w-0">
-                  <h4 className="font-bold text-gray-100 text-base mb-1 truncate">{t.description}</h4>
-                  <div className="flex items-center gap-3 text-xs text-gray-500">
+                <div className="flex-1 min-w-0 pr-2">
+                  <h4 className="font-bold text-gray-100 text-sm sm:text-base mb-1 break-words leading-tight">{t.description}</h4>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
                     <span className="flex items-center gap-1.5 bg-gray-900 px-2 py-1 rounded-md border border-gray-800">
                       {getCategoryIcon(translateCategory(t.category || "Outros"), 12)}
                       {translateCategory(t.category || "Outros")}
@@ -458,16 +481,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </div>
 
                 {/* Actions */}
-                <div className="flex items-center gap-1 ml-2">
+                <div className="flex flex-col gap-1 ml-1">
                   <button
                     onClick={() => handleEditClick(t)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
+                    title="Editar"
                   >
                     <Edit2 size={14} />
                   </button>
                   <button
                     onClick={() => setDeleteId(t.id)}
                     className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
+                    title="Excluir"
                   >
                     <Trash2 size={14} />
                   </button>

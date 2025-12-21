@@ -8,6 +8,7 @@ import { updateUserProfile, getUserProfile } from '../services/database';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useToasts } from './Toast';
 import { CustomDatePicker } from './UIComponents';
+import { usePixelEvent } from '../hooks/usePixelEvent';
 
 interface AuthModalProps {
   onLogin?: (user: any) => void;
@@ -27,6 +28,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   inviteContext
 }) => {
   const toast = useToasts();
+  const { trackEvent } = usePixelEvent();
   const [isLogin, setIsLogin] = useState(true);
   const [step, setStep] = useState(1);
   const [overflow, setOverflow] = useState("hidden");
@@ -383,6 +385,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               state: formData.state
             }
           });
+
+          // Meta Pixel: CompleteRegistration
+          trackEvent('CompleteRegistration', {
+            content_name: 'Cadastro Controlar+',
+            status: 'success'
+          });
+
           if (onLogin) onLogin(userCredential.user);
         }
 

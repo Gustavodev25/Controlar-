@@ -63,6 +63,7 @@ import { TestimonialsColumn } from './TestimonialsColumn';
 import { SparklesText } from './SparklesText';
 import { FadeText } from './FadeText';
 import { ContainerTextFlip } from './ContainerTextFlip';
+import { usePixelEvent } from '../hooks/usePixelEvent';
 
 interface LandingPageProps {
   onLogin: () => void;
@@ -609,6 +610,7 @@ const PricingSection = ({ onStart }: { onStart: () => void }) => {
 // --- COMPONENTE: WAITLIST MODAL ---
 const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) => {
   const toast = useToasts();
+  const { trackEvent } = usePixelEvent();
   const [waitlistForm, setWaitlistForm] = useState({ name: '', email: '', phone: '', goal: '', goalOther: '', source: '' });
   const [isSubmittingWaitlist, setSubmittingWaitlist] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -677,6 +679,13 @@ const WaitlistModal = ({ isOpen, onClose }: { isOpen: boolean; onClose: () => vo
         goal: goalValue.trim(),
         source: waitlistForm.source.trim() || 'landing-waitlist',
         createdAt: new Date().toISOString()
+      });
+
+      // Meta Pixel: Lead
+      trackEvent('Lead', {
+        content_name: 'Lista de Espera',
+        content_category: 'lead',
+        currency: 'BRL'
       });
 
       toast.success('Pronto! Você entrou para a lista de espera.', 'Avisaremos assim que liberarmos o acesso.');
