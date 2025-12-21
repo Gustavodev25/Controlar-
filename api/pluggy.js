@@ -610,6 +610,74 @@ router.get('/db-items/:userId', async (req, res) => {
     res.json({ items: [] });
 });
 
+// 7.5 Fix Credit Card Signs (Migration)
+// One-time endpoint to fix credit card transactions that were saved with inverted signs
+router.post('/fix-cc-signs/:userId', async (req, res) => {
+    const { userId } = req.params;
+
+    if (!firebaseAdmin) {
+        return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    try {
+        console.log(`[Fix CC Signs] Starting for user ${userId}...`);
+
+        const ccTxCollection = firebaseAdmin.firestore()
+            .collection('users').doc(userId).collection('creditCardTransactions');
+
+        const snapshot = await ccTxCollection.get();
+
+        if (snapshot.empty) {
+            return res.json({ success: true, message: 'No transactions to fix', fixed: 0 });
+        }
+
+        let fixedCount = 0;
+        let batch = firebaseAdmin.firestore().batch();
+        let batchCount = 0;
+
+        for (const doc of snapshot.docs) {
+            const tx = doc.data();
+
+            // Invert the type: expense -> income, income -> expense
+            const newType = tx.type === 'expense' ? 'income' : 'expense';
+
+            batch.update(doc.ref, {
+                type: newType,
+                _fixedSign: true,
+                _fixedAt: new Date().toISOString()
+            });
+
+            fixedCount++;
+            batchCount++;
+
+            // Commit every 450 operations
+            if (batchCount >= 450) {
+                await batch.commit();
+                batch = firebaseAdmin.firestore().batch();
+                batchCount = 0;
+                console.log(`[Fix CC Signs] Committed batch, ${fixedCount} fixed so far...`);
+            }
+        }
+
+        // Commit remaining
+        if (batchCount > 0) {
+            await batch.commit();
+        }
+
+        console.log(`[Fix CC Signs] Completed! Fixed ${fixedCount} transactions.`);
+
+        res.json({
+            success: true,
+            message: `Fixed ${fixedCount} credit card transactions`,
+            fixed: fixedCount
+        });
+
+    } catch (error) {
+        console.error('[Fix CC Signs] Error:', error.message);
+        res.status(500).json({ error: 'Failed to fix transactions', message: error.message });
+    }
+});
+
 // 8. Webhook Worker (Cron Job Endpoint)
 // This endpoint is called by Vercel cron every minute to process pending sync jobs
 router.get('/webhook-worker', async (req, res) => {
