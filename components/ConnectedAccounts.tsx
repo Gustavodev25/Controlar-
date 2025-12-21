@@ -827,12 +827,20 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             const syncJob = itemId ? syncJobs[itemId] : null;
 
             // Determine sync state from multiple sources
-            const isJobProcessing = syncJob?.status === 'processing' || syncJob?.status === 'pending';
-            const isJobRetrying = syncJob?.status === 'retrying';
-            const isJobFailed = syncJob?.status === 'failed';
-            const wasRefunded = syncJob?.creditRefunded;
+            // Fix infinite loading: Force stop spinning if job is older than 5 minutes
+            const now = Date.now();
+            const jobTime = syncJob?.updatedAt
+              ? (typeof syncJob.updatedAt === 'object' && 'seconds' in syncJob.updatedAt ? (syncJob.updatedAt as any).seconds * 1000 : new Date(syncJob.updatedAt).getTime())
+              : (syncJob?.createdAt ? (typeof syncJob.createdAt === 'object' && 'seconds' in syncJob.createdAt ? (syncJob.createdAt as any).seconds * 1000 : new Date(syncJob.createdAt).getTime()) : 0);
 
-            const isUpdating = itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true || isJobProcessing;
+            const isStuck = jobTime > 0 && (now - jobTime > 5 * 60 * 1000); // 5 minutes timeout
+
+            const isJobProcessing = !isStuck && (syncJob?.status === 'processing' || syncJob?.status === 'pending');
+            const isJobRetrying = !isStuck && (syncJob?.status === 'retrying');
+            // const isJobFailed = syncJob?.status === 'failed'; // Hidden as per user request (toast only)
+            // const wasRefunded = syncJob?.creditRefunded;
+
+            const isUpdating = !isStuck && (itemStatus?.status === 'UPDATING' || isSyncingItem[itemId || ''] === true || isJobProcessing);
             const isLoginError = itemStatus?.status === 'LOGIN_ERROR';
             const isWait = itemStatus?.status === 'WAITING_USER_INPUT';
 
@@ -875,38 +883,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2">
-                      {/* Sync Job Progress Indicator */}
-                      {syncJob && (isJobProcessing || isJobRetrying) && (
-                        <div className="mr-2">
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#d97757]/10 border border-[#d97757]/30">
-                            <Loader2 size={12} className="text-[#d97757] animate-spin" />
-                            <span className="text-[10px] text-[#d97757] font-bold uppercase">
-                              {isJobRetrying
-                                ? `Tentando... (${syncJob.attempts || 1}/3)`
-                                : syncJob.progress?.step || 'Sincronizando...'}
-                            </span>
-                          </div>
-                        </div>
-                      )}
+                      {/* Removed Progress Indicators as per user request "deixar tudo no toast" */}
 
-                      {/* Sync Job Failed Indicator */}
-                      {syncJob && isJobFailed && (
-                        <div className="mr-2 flex items-center gap-2">
-                          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20">
-                            <AlertCircle size={12} className="text-red-400" />
-                            <span className="text-[10px] text-red-400 font-bold uppercase">Falhou</span>
-                          </div>
-                          {wasRefunded && (
-                            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
-                              <CheckCircle size={10} className="text-emerald-400" />
-                              <span className="text-[10px] text-emerald-400 font-medium">Reembolsado</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Status badges for errors only */}
-                      {itemId && (isLoginError || isWait) && !isJobFailed && (
+                      {/* Status badges for errors only (Login error is helpful to keep, but hiding generic progress) */}
+                      {itemId && (isLoginError || isWait) && (
                         <div className="mr-2">
                           {isLoginError ? (
                             <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-red-500/10 border border-red-500/20">
@@ -942,9 +922,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             <RotateCcw size={14} className={isUpdating ? "animate-spin" : ""} />
                             <span className="hidden sm:inline">
                               {isUpdating
-                                ? (globalSyncStatus?.state === 'in_progress' && globalSyncStatus?.message
-                                  ? globalSyncStatus.message
-                                  : "Puxando dados...")
+                                ? "Sincronizando..."
                                 : timer?.syncedToday
                                   ? `${timer.auto.h}h ${timer.auto.m}m`
                                   : 'Sincronizar'}

@@ -727,44 +727,81 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     let connectorImageUrl = null;
     let itemCreatedAt = null;
     let itemLastUpdatedAt = null;
+    let executionStatus = null;
+
     try {
         const itemData = await pluggyRequest('GET', `/items/${itemId}`, apiKey);
         institutionName = itemData.connector?.name || 'Banco';
         connectorImageUrl = itemData.connector?.imageUrl || null;
         itemCreatedAt = itemData.createdAt || null;
         itemLastUpdatedAt = itemData.lastUpdatedAt || itemData.updatedAt || null;
-        console.log(`>>> Item ${itemId} institution: ${institutionName}, createdAt: ${itemCreatedAt}, lastUpdatedAt: ${itemLastUpdatedAt}`);
+        executionStatus = itemData.executionStatus;
+
+        console.log(`>>> Item ${itemId} institution: ${institutionName}, status: ${itemData.status}, executionStatus: ${executionStatus}`);
+
+        if (executionStatus === 'PARTIAL_SUCCESS') {
+            console.warn(`>>> Item ${itemId} has PARTIAL_SUCCESS status. Some data may be missing.`);
+        }
     } catch (e) {
         console.warn('>>> Could not fetch item details for institution name:', e.message);
     }
 
     // 1. Fetch Accounts
+    // 1. Fetch Accounts with Retry Strategy (Race Condition Fix)
     let accounts = [];
-    try {
-        let page = 1, totalPages = 1;
-        do {
-            console.log(`>>> Fetching accounts page ${page} for item ${itemId}...`);
-            const res = await pluggyRequest('GET', '/accounts', apiKey, null, { itemId, page, pageSize: 200 });
-            const results = res.results || [];
-            console.log(`>>> Found ${results.length} accounts on page ${page}`);
+    let accountFetchAttempts = 0;
+    const maxAccountFetchAttempts = 5;
 
-            // Log each account for debugging
-            results.forEach((acc, idx) => {
-                console.log(`>>>   Account ${idx + 1}: id=${acc.id}, type=${acc.type}, subtype=${acc.subtype}, name=${acc.marketingName || acc.name}, balance=${acc.balance}`);
-            });
+    while (accountFetchAttempts < maxAccountFetchAttempts) {
+        accountFetchAttempts++;
+        try {
+            let page = 1, totalPages = 1;
+            let currentAttemptAccounts = [];
 
-            accounts.push(...results);
-            totalPages = res.totalPages || 1;
-            page++;
-        } while (page <= totalPages);
+            do {
+                console.log(`>>> Fetching accounts page ${page} for item ${itemId} (Attempt ${accountFetchAttempts}/${maxAccountFetchAttempts})...`);
+                const res = await pluggyRequest('GET', '/accounts', apiKey, null, { itemId, page, pageSize: 200 });
+                const results = res.results || [];
+                console.log(`>>> Found ${results.length} accounts on page ${page}`);
 
-        console.log(`>>> Total accounts fetched: ${accounts.length}`);
-    } catch (e) {
-        console.error('>>> Error fetching accounts:', e.message);
-        console.error('>>> Error details:', e.response?.data || e);
-        await updateSyncStatus(userId, 'error', 'Erro ao buscar contas. Verifique suas credenciais.');
-        return;
+                // Log each account for debugging
+                results.forEach((acc, idx) => {
+                    console.log(`>>>   Account ${idx + 1}: id=${acc.id}, type=${acc.type}, subtype=${acc.subtype}, name=${acc.marketingName || acc.name}, balance=${acc.balance}`);
+                });
+
+                currentAttemptAccounts.push(...results);
+                totalPages = res.totalPages || 1;
+                page++;
+            } while (page <= totalPages);
+
+            // If we found accounts, great! Break the loop.
+            if (currentAttemptAccounts.length > 0) {
+                accounts = currentAttemptAccounts;
+                break;
+            }
+
+            // If we found 0 accounts, checks if we should retry
+            if (accountFetchAttempts < maxAccountFetchAttempts) {
+                console.log(`>>> No accounts found yet. Pluggy might be still processing. Waiting 3s before retry...`);
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            } else {
+                console.warn(`>>> No accounts found after ${maxAccountFetchAttempts} attempts.`);
+            }
+
+        } catch (e) {
+            console.error('>>> Error fetching accounts:', e.message);
+            console.error('>>> Error details:', e.response?.data || e);
+            // If it's a fatal error (like 401), break. If it's 500 or timeout, maybe retry?
+            // For now, we assume if it throws, it's safer to stop or just retry if not last attempt.
+            if (accountFetchAttempts >= maxAccountFetchAttempts) {
+                await updateSyncStatus(userId, 'error', 'Erro ao buscar contas. Verifique suas credenciais.');
+                return;
+            }
+            await new Promise(resolve => setTimeout(resolve, 3000));
+        }
     }
+
+    console.log(`>>> Total accounts fetched: ${accounts.length}`);
 
     // If webhook provided specific accountId, filter to only that account
     if (fromWebhook && webhookAccountId) {
@@ -1130,6 +1167,7 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         // Determine optimal 'from' date for transactions
         let fromStr = from;
         let dateMsg = fullSync ? "últimos 12 meses" : "novos lançamentos";
+        let isInitialSync = fullSync;
 
         if (!fullSync) {
             try {
@@ -1160,6 +1198,7 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                     fromDate.setDate(1);
                     fromStr = fromDate.toISOString().split('T')[0];
                     dateMsg = `últimos 12 meses (primeira sync)`;
+                    isInitialSync = true; // Mark as initial sync for retry logic
                     console.log(`>>> First sync for account ${account.id}: Fetching full 12-month history from ${fromStr}`);
                 }
             } catch (e) {
@@ -1170,6 +1209,7 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
                 fromDate.setDate(1);
                 fromStr = fromDate.toISOString().split('T')[0];
                 dateMsg = `últimos 12 meses`;
+                isInitialSync = true;
             }
         } else {
             console.log(`>>> Full Sync Enforced: Fetching from ${fromStr}`);
@@ -1178,32 +1218,60 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
         // Update status: Searching transactions
         await updateSyncStatus(userId, 'in_progress', `Buscando lançamentos (${dateMsg})...`, { current: progress + 5, total: 100 });
 
-        // Fetch Transactions
+        // Fetch Transactions with Retry Strategy (Ingestion Lag Fix)
         let transactions = [];
-        try {
-            console.log(`>>> Fetching transactions for account ${account.id} from ${fromStr} to ${to}...`);
-            let page = 1, totalPages = 1;
-            do {
-                const res = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from: fromStr, to, page, pageSize: 500 });
-                const results = res.results || [];
-                console.log(`>>>   Page ${page}: Found ${results.length} transactions`);
-                transactions.push(...results);
-                totalPages = res.totalPages || 1;
-                page++;
-            } while (page <= totalPages);
-            console.log(`>>> Total transactions for account ${account.id}: ${transactions.length}`);
-        } catch (e) {
-            console.error(`>>> Error fetching transactions for ${account.id}:`, e.message);
-            console.error(`>>> Error details:`, e.response?.data || e);
-            // Track error for partial failure reporting
-            syncErrors.push({
-                accountId: account.id,
-                accountName: account.marketingName || account.name || 'Unknown',
-                type: 'transaction_fetch',
-                error: e.message
-            });
-            continue;
+        let txFetchAttempts = 0;
+        const maxTxFetchAttempts = 5; // Retry up to 5 times for transactions
+
+        while (txFetchAttempts < maxTxFetchAttempts) {
+            txFetchAttempts++;
+            try {
+                if (txFetchAttempts > 1) console.log(`>>> Retry fetching transactions ${txFetchAttempts}/${maxTxFetchAttempts} for account ${account.id}...`);
+
+                console.log(`>>> Fetching transactions for account ${account.id} from ${fromStr} to ${to}...`);
+                let page = 1, totalPages = 1;
+                let currentAttemptTransactions = [];
+
+                do {
+                    const res = await pluggyRequest('GET', '/transactions', apiKey, null, { accountId: account.id, from: fromStr, to, page, pageSize: 500 });
+                    const results = res.results || [];
+                    console.log(`>>>   Page ${page}: Found ${results.length} transactions`);
+                    currentAttemptTransactions.push(...results);
+                    totalPages = res.totalPages || 1;
+                    page++;
+                } while (page <= totalPages);
+
+                if (currentAttemptTransactions.length > 0) {
+                    transactions = currentAttemptTransactions;
+                    // If we found transactions, verify if they look like a complete set or just a partial snapshot?
+                    // For now, assume any data is better than none.
+                    break;
+                }
+
+                // If empty and isInitialSync, wait and retry
+                // Also retry if we honestly expect data (date range > 1 month)
+                if ((isInitialSync || fullSync) && txFetchAttempts < maxTxFetchAttempts) {
+                    console.log(`>>> No transactions found yet for ${account.id} (Initial Sync). Waiting 3s for ingestion...`);
+                    await new Promise(resolve => setTimeout(resolve, 3000));
+                } else {
+                    break; // stop if not initial sync or max attempts reached
+                }
+
+            } catch (e) {
+                console.error(`>>> Error fetching transactions for ${account.id} (Attempt ${txFetchAttempts}):`, e.message);
+                if (txFetchAttempts >= maxTxFetchAttempts) {
+                    console.error(`>>> Error details:`, e.response?.data || e);
+                    syncErrors.push({
+                        accountId: account.id,
+                        accountName: account.marketingName || account.name || 'Unknown',
+                        type: 'transaction_fetch',
+                        error: e.message
+                    });
+                }
+                await new Promise(resolve => setTimeout(resolve, 3000));
+            }
         }
+        console.log(`>>> Total transactions for account ${account.id}: ${transactions.length}`);
 
         if (transactions.length > 0) {
             await updateSyncStatus(userId, 'in_progress', `Processando ${transactions.length} lançamentos...`, { current: progress + 10, total: 100 });
@@ -1337,21 +1405,35 @@ const syncItem = async (apiKey, itemId, userId, options = {}) => {
     console.log(`>>> Server-Side Sync Completed for ${itemId}. Total transactions processed: ${newTransactionsCount}`);
 
     // Report success or partial success based on accumulated errors
-    if (syncErrors.length > 0) {
-        const errorSummary = syncErrors.map(e => `${e.accountName}: ${e.error}`).join('; ');
-        console.warn(`>>> Sync completed with ${syncErrors.length} errors: ${errorSummary}`);
+    // Report success or partial success based on accumulated errors
+    if (syncErrors.length > 0 || (executionStatus === 'PARTIAL_SUCCESS' && newTransactionsCount === 0)) {
+        let msg = '';
+        let type = 'warning';
 
-        await updateSyncStatus(userId, 'success', `Sincronização concluída com ${syncErrors.length} aviso(s).`, {
+        if (syncErrors.length > 0) {
+            const errorSummary = syncErrors.map(e => `${e.accountName}: ${e.error}`).join('; ');
+            console.warn(`>>> Sync completed with ${syncErrors.length} errors: ${errorSummary}`);
+            msg = `Sincronização concluída com avisos: ${errorSummary}`;
+        } else {
+            // Partial success with 0 transactions
+            console.warn(`>>> Sync completed with PARTIAL_SUCCESS and 0 transactions. Likely bank instability.`);
+            msg = `O banco retornou apenas dados parciais. O saldo foi atualizado, mas as transações podem demorar a aparecer.`;
+            // Add artificial error for UI visibility
+            syncErrors.push({ accountId: 'system', accountName: institutionName, type: 'partial_success', error: 'Dados parciais recebidos do banco' });
+        }
+
+        await updateSyncStatus(userId, 'success', msg, {
             errors: syncErrors,
             partial: true,
-            transactionsProcessed: newTransactionsCount
+            transactionsProcessed: newTransactionsCount,
+            executionStatus
         });
 
         await addSystemNotification(
             userId,
             'Sincronização Parcial',
-            `Seus dados foram atualizados, mas ${syncErrors.length} conta(s) tiveram problemas: ${syncErrors.map(e => e.accountName).join(', ')}.`,
-            'warning'
+            msg,
+            type
         );
     } else {
         await updateSyncStatus(userId, 'success', 'Sincronização concluída com sucesso!');
