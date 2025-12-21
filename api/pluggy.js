@@ -551,22 +551,41 @@ router.delete('/item/:itemId', withPluggyAuth, async (req, res) => {
 });
 
 // 6. Get Item Status
-router.get('/items-status', withPluggyAuth, async (req, res) => {
+router.get('/items-status', async (req, res) => {
+    // Set no-cache headers to prevent stale responses
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+    res.set('Pragma', 'no-cache');
+
+    const fetchItems = async (apiKey) => {
+        const response = await axios.get(`${BASE_URL}/items`, {
+            headers: { 'X-API-KEY': apiKey }
+        });
+        return response.data.results || [];
+    };
+
     try {
         console.log('Fetching items status from Pluggy...');
 
-        const response = await axios.get(`${BASE_URL}/items`, {
-            headers: { 'X-API-KEY': req.pluggyApiKey }
-        });
+        // First try with cached key
+        let apiKey = await getApiKey(false);
+        let results;
 
-        console.log('Items fetched:', response.data.results?.length);
-
-        if (!response.data.results) {
-            console.error('Unexpected response structure:', response.data);
-            return res.json({ success: true, items: [] });
+        try {
+            results = await fetchItems(apiKey);
+        } catch (firstError) {
+            // If 401, retry with fresh key
+            if (firstError.response?.status === 401) {
+                console.log('[items-status] 401 with cached key, refreshing...');
+                apiKey = await getApiKey(true);
+                results = await fetchItems(apiKey);
+            } else {
+                throw firstError;
+            }
         }
 
-        const items = response.data.results.map(i => ({
+        console.log('Items fetched:', results?.length);
+
+        const items = results.map(i => ({
             id: i.id,
             status: i.status,
             lastUpdatedAt: i.lastUpdatedAt,
@@ -577,10 +596,10 @@ router.get('/items-status', withPluggyAuth, async (req, res) => {
     } catch (error) {
         console.error('Failed to fetch items status:', error.message);
 
-        // Handle 401 gracefully - likely means no items exist yet
+        // Handle 401 gracefully - likely means API credentials issue
         if (error.response?.status === 401) {
-            console.log('401 on /items - returning empty list (no items exist yet)');
-            return res.json({ success: true, items: [], message: 'No items connected yet' });
+            console.log('401 on /items even with fresh key - check credentials');
+            return res.json({ success: true, items: [], message: 'Authentication issue' });
         }
 
         // For other errors, still return empty to not break frontend
