@@ -362,23 +362,18 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
 
                         if (isCredit) {
                             // Credit Card Schema
+                            // In Pluggy: POSITIVE amount = expense (you spent money)
+                            //            NEGATIVE amount = income/refund (money returned)
                             mappedTx = {
                                 cardId: account.id,
                                 date: tx.date.split('T')[0],
                                 description: tx.description,
-                                // Credit card expenses are positive in Pluggy usually? Or negative?
-                                // Usually expenses are negative.
-                                // Our DB expects positive amount for expense? 
-                                // Checking `database.ts`: `addCreditCardTransaction` doesn't transform.
-                                // Let's store absolute value and type 'expense'/'income'
                                 amount: Math.abs(tx.amount),
-                                type: tx.amount < 0 ? 'expense' : 'income',
+                                type: tx.amount > 0 ? 'expense' : 'income',
                                 category: tx.category || 'Uncategorized',
                                 status: 'completed',
-                                installmnets: tx.installments || 1, // Fix typo if schema uses 'installments'
-                                installmentNumber: 1, // Pluggy might give total installments but tracking which one is hard without history?
-                                // Pluggy transaction doesn't give "current/total" easily unless description says "01/12"
-                                // We'll save raw data for now.
+                                installmnets: tx.installments || 1,
+                                installmentNumber: 1,
                                 pluggyRaw: tx
                             };
                         } else if (isSavings) {
