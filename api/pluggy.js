@@ -34,6 +34,14 @@ const getApiKey = async (forceRefresh = false) => {
 
     try {
         console.log('Authenticating with Pluggy... (forceRefresh:', forceRefresh, ')');
+
+        // Debug: Log credential presence (NOT the actual values)
+        console.log('[Auth Debug] CLIENT_ID present:', !!CLIENT_ID, 'length:', CLIENT_ID?.length || 0);
+        console.log('[Auth Debug] CLIENT_SECRET present:', !!CLIENT_SECRET, 'length:', CLIENT_SECRET?.length || 0);
+
+        if (!CLIENT_ID || !CLIENT_SECRET) {
+            throw new Error('Pluggy credentials not configured - check PLUGGY_CLIENT_ID and PLUGGY_CLIENT_SECRET env vars');
+        }
         const response = await axios.post(`${BASE_URL}/auth`, {
             clientId: CLIENT_ID,
             clientSecret: CLIENT_SECRET
@@ -222,6 +230,38 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    // Increment daily connection credits for the user
+    const userRef = firebaseAdmin.firestore().doc(`users/${userId}`);
+    try {
+        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+        await firebaseAdmin.firestore().runTransaction(async (transaction) => {
+            const userDoc = await transaction.get(userRef);
+            if (!userDoc.exists) {
+                console.warn(`[Sync] User ${userId} not found for credit increment`);
+                return;
+            }
+
+            const userData = userDoc.data();
+            const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
+
+            let newCredits;
+            if (credits.date !== today) {
+                // Reset for new day
+                newCredits = { date: today, count: 1 };
+            } else {
+                // Increment for today
+                newCredits = { ...credits, count: credits.count + 1 };
+            }
+
+            transaction.update(userRef, { dailyConnectionCredits: newCredits });
+            console.log(`[Sync] User ${userId} credits updated: ${newCredits.count} used today`);
+        });
+    } catch (creditErr) {
+        console.error('[Sync] Failed to increment credits:', creditErr.message);
+        // Continue with sync even if credit increment fails
     }
 
     const syncJobId = uuidv4(); // Generate ID for tracking or let Firestore do it.
@@ -715,11 +755,21 @@ router.get('/webhook-worker', async (req, res) => {
                 timestamp: new Date().toISOString()
             });
         } catch (pluggyError) {
+            const status = pluggyError.response?.status;
+            const errData = pluggyError.response?.data;
             console.error('[Webhook Worker] Pluggy API error:', pluggyError.message);
+            console.error('[Webhook Worker] Status:', status, 'Data:', JSON.stringify(errData));
+
+            // If 401, it means credentials are invalid
+            if (status === 401) {
+                console.error('[Webhook Worker] 401 Unauthorized - Check PLUGGY_CLIENT_ID and PLUGGY_CLIENT_SECRET in Vercel env vars');
+            }
+
             res.json({
                 success: true,
                 message: 'Webhook worker ran but Pluggy API unavailable',
-                error: pluggyError.message
+                error: pluggyError.message,
+                status: status
             });
         }
     } catch (error) {
