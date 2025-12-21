@@ -596,5 +596,57 @@ router.get('/db-items/:userId', async (req, res) => {
     res.json({ items: [] });
 });
 
+// 8. Webhook Worker (Cron Job Endpoint)
+// This endpoint is called by Vercel cron every minute to process pending sync jobs
+router.get('/webhook-worker', async (req, res) => {
+    try {
+        console.log('[Webhook Worker] Cron job triggered at:', new Date().toISOString());
+
+        if (!firebaseAdmin) {
+            console.log('[Webhook Worker] Firebase Admin not initialized');
+            return res.json({ success: true, message: 'Firebase Admin not available' });
+        }
+
+        // Get API Key for potential sync operations
+        const apiKey = await getApiKey();
+        if (!apiKey) {
+            console.log('[Webhook Worker] Could not obtain API key');
+            return res.json({ success: true, message: 'No API key available' });
+        }
+
+        // Check for any items that might need sync (items in 'UPDATING' or 'UPDATED' status)
+        try {
+            const itemsResponse = await axios.get(`${BASE_URL}/items`, {
+                headers: { 'X-API-KEY': apiKey }
+            });
+
+            const items = itemsResponse.data.results || [];
+            const updatedItems = items.filter(i => i.status === 'UPDATED');
+
+            console.log(`[Webhook Worker] Found ${items.length} items, ${updatedItems.length} recently updated`);
+
+            // For now, just log. In future, we could trigger syncs for updated items
+            // that don't have recent sync_jobs
+
+            res.json({
+                success: true,
+                message: 'Webhook worker executed',
+                itemsCount: items.length,
+                updatedCount: updatedItems.length,
+                timestamp: new Date().toISOString()
+            });
+        } catch (pluggyError) {
+            console.error('[Webhook Worker] Pluggy API error:', pluggyError.message);
+            res.json({
+                success: true,
+                message: 'Webhook worker ran but Pluggy API unavailable',
+                error: pluggyError.message
+            });
+        }
+    } catch (error) {
+        console.error('[Webhook Worker] Error:', error.message);
+        res.status(500).json({ error: 'Webhook worker failed', message: error.message });
+    }
+});
 
 export default router;
