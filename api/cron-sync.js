@@ -50,6 +50,9 @@ const PLUGGY_CLIENT_ID = clean(process.env.PLUGGY_CLIENT_ID);
 const PLUGGY_CLIENT_SECRET = clean(process.env.PLUGGY_CLIENT_SECRET);
 const PLUGGY_API_KEY_STATIC = clean(process.env.PLUGGY_API_KEY);
 const PLUGGY_API_URL = process.env.PLUGGY_API_URL || 'https://api.pluggy.ai';
+const DEFAULT_PLUGGY_TIMEOUT_MS = 45000;
+const RAW_PLUGGY_TIMEOUT_MS = Number(process.env.PLUGGY_REQUEST_TIMEOUT_MS || DEFAULT_PLUGGY_TIMEOUT_MS);
+const PLUGGY_REQUEST_TIMEOUT_MS = Number.isFinite(RAW_PLUGGY_TIMEOUT_MS) ? RAW_PLUGGY_TIMEOUT_MS : DEFAULT_PLUGGY_TIMEOUT_MS;
 
 // Token cache
 let cachedApiKey = null;
@@ -70,7 +73,7 @@ const getPluggyApiKey = async () => {
   const response = await axios.post(
     `${PLUGGY_API_URL}/auth`,
     { clientId: PLUGGY_CLIENT_ID, clientSecret: PLUGGY_CLIENT_SECRET },
-    { headers: { 'Content-Type': 'application/json' } }
+    { headers: { 'Content-Type': 'application/json' }, timeout: PLUGGY_REQUEST_TIMEOUT_MS }
   );
 
   cachedApiKey = response.data.apiKey;
@@ -83,7 +86,8 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
     method,
     url: `${PLUGGY_API_URL}${endpoint}`,
     headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
-    params
+    params,
+    timeout: PLUGGY_REQUEST_TIMEOUT_MS
   };
   if (data) config.data = data;
 

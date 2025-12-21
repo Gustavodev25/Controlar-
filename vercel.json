@@ -1,4 +1,12 @@
 {
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60
+    },
+    "api/cron-sync.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/api/(.*)",
@@ -13,6 +21,10 @@
     {
       "path": "/api/cron/sync",
       "schedule": "03 20 * * *"
+    },
+    {
+      "path": "/api/pluggy/webhook-worker",
+      "schedule": "*/1 * * * *"
     }
   ]
 }

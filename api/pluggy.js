@@ -3,14 +3,11 @@ import express from 'express';
 import axios from 'axios';
 import path from 'path';
 import { createHash } from 'crypto';
+import { AsyncLocalStorage } from 'async_hooks';
 import { firebaseAdmin } from './firebaseAdmin.js';
 import { loadEnv } from './env.js';
 
 loadEnv();
-
-const router = express.Router();
-router.use(express.json({ limit: '10mb' }));
-router.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 const clean = (str) => (str || '').replace(/[\r\n\s]/g, '');
 
@@ -18,6 +15,55 @@ const PLUGGY_CLIENT_ID = clean(process.env.PLUGGY_CLIENT_ID);
 const PLUGGY_CLIENT_SECRET = clean(process.env.PLUGGY_CLIENT_SECRET);
 const PLUGGY_API_KEY_STATIC = clean(process.env.PLUGGY_API_KEY);
 const PLUGGY_API_URL = process.env.PLUGGY_API_URL || 'https://api.pluggy.ai';
+const IS_VERCEL = Boolean(process.env.VERCEL);
+const VERCEL_MAX_DURATION_MS = Number(process.env.VERCEL_MAX_DURATION_MS || 60000);
+const DEFAULT_LOCAL_BUDGET_MS = 5 * 60 * 1000;
+const FUNCTION_TIME_BUDGET_MS = IS_VERCEL
+    ? Math.max(10000, VERCEL_MAX_DURATION_MS - 5000)
+    : Number(process.env.PLUGGY_LOCAL_BUDGET_MS || DEFAULT_LOCAL_BUDGET_MS);
+const MIN_PLUGGY_TIMEOUT_MS = 5000;
+const DEFAULT_PLUGGY_TIMEOUT_MS = 45000;
+const PLUGGY_TIMEOUT_CAP_MS = Number(process.env.PLUGGY_REQUEST_TIMEOUT_MS || 0);
+const ENABLE_HEAVY_SYNC = !IS_VERCEL || String(process.env.PLUGGY_ALLOW_HEAVY_SYNC || '').toLowerCase() === 'true';
+
+const requestContext = new AsyncLocalStorage();
+
+const getTimeLeftMs = () => {
+    const store = requestContext.getStore();
+    if (!store || !Number.isFinite(store.deadlineAt)) return null;
+    return Math.max(0, store.deadlineAt - Date.now());
+};
+
+const computePluggyTimeoutMs = (minTimeoutMs = MIN_PLUGGY_TIMEOUT_MS) => {
+    const timeLeftMs = getTimeLeftMs();
+    if (!Number.isFinite(timeLeftMs)) {
+        const fallback = PLUGGY_TIMEOUT_CAP_MS > 0 ? PLUGGY_TIMEOUT_CAP_MS : DEFAULT_PLUGGY_TIMEOUT_MS;
+        return Math.max(minTimeoutMs, fallback);
+    }
+
+    const safeMs = Math.max(1000, timeLeftMs - 1000);
+    const capMs = PLUGGY_TIMEOUT_CAP_MS > 0 ? Math.min(PLUGGY_TIMEOUT_CAP_MS, safeMs) : safeMs;
+    return Math.max(1000, capMs);
+};
+
+const computePollAttemptLimit = (intervalMs, maxAttempts) => {
+    if (!IS_VERCEL) return maxAttempts;
+    const timeLeftMs = getTimeLeftMs();
+    const budgetMs = (Number.isFinite(timeLeftMs) && timeLeftMs > 0)
+        ? timeLeftMs
+        : FUNCTION_TIME_BUDGET_MS;
+    const maxByBudget = Math.floor((budgetMs - 5000) / intervalMs);
+    return Math.max(1, Math.min(maxAttempts, maxByBudget));
+};
+
+const router = express.Router();
+router.use((req, res, next) => {
+    const startedAt = Date.now();
+    const deadlineAt = startedAt + FUNCTION_TIME_BUDGET_MS;
+    requestContext.run({ startedAt, deadlineAt }, () => next());
+});
+router.use(express.json({ limit: '10mb' }));
+router.use(express.urlencoded({ extended: false, limit: '10mb' }));
 
 // Token cache
 let cachedApiKey = null;
@@ -100,7 +146,7 @@ const getPluggyApiKey = async () => {
                 { clientId: PLUGGY_CLIENT_ID, clientSecret: PLUGGY_CLIENT_SECRET },
                 {
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 30000 // 30 second timeout
+                    timeout: Math.min(30000, computePluggyTimeoutMs(10000))
                 }
             );
 
@@ -149,7 +195,7 @@ const pluggyRequest = async (method, endpoint, apiKey, data = null, params = nul
         url,
         headers: { 'Content-Type': 'application/json', 'X-API-KEY': apiKey },
         params,
-        timeout: 60000 // 60s timeout
+        timeout: computePluggyTimeoutMs()
     };
     if (data) config.data = data;
 
@@ -463,6 +509,18 @@ const processSyncWithRefund = async (userId, itemId, syncJobId, creditTransactio
             progress: { step: 'Conectando ao banco...', current: 10, total: 100 },
             message: 'Estabelecendo conexão segura'
         });
+
+        if (!ENABLE_HEAVY_SYNC && !(syncOptions && syncOptions.onlyFetchAccounts)) {
+            console.log(`>>> Skipping full transaction sync on Vercel for item ${itemId}. Relying on webhooks.`);
+            await updateSyncStatus(userId, 'pending', 'Atualizacao solicitada. Transacoes via webhook.');
+            await updateSyncJob(userId, syncJobId, {
+                status: 'completed',
+                progress: { step: 'Aguardando webhooks', current: 100, total: 100 },
+                message: 'Atualizacao confirmada. Transacoes via webhook.',
+                completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+            });
+            return;
+        }
 
         const apiKey = await getPluggyApiKey();
 
@@ -1868,7 +1926,8 @@ const processAndSaveTransactions = async (userId, transactions, accountsCache = 
 };
 
 const handleQueuedWebhookEvent = async (event) => {
-    const { event: eventType, itemId, clientUserId, data } = event || {};
+    const { event: eventType, itemId, clientUserId } = event || {};
+    const payload = event?.data || event || {};
 
     // Find user
     let userId = clientUserId;
@@ -1885,7 +1944,7 @@ const handleQueuedWebhookEvent = async (event) => {
 
     switch (eventType) {
         case 'transactions/created': {
-            const link = data?.createdTransactionsLink;
+            const link = payload?.createdTransactionsLink;
             if (link) {
                 await updateSyncStatus(userId, 'in_progress', 'Processando novas transacoes...');
                 const transactions = await fetchTransactionsFromLink(apiKey, link);
@@ -1896,12 +1955,12 @@ const handleQueuedWebhookEvent = async (event) => {
 
             // Fallback (rare): incremental sync on the affected account
             await updateSyncStatus(userId, 'in_progress', 'Processando transacoes...');
-            await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: data?.accountId });
+            await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: payload?.accountId });
             return { success: true, userId, eventType, fallback: 'syncItem' };
         }
 
         case 'transactions/updated': {
-            const ids = data?.ids || [];
+            const ids = payload?.ids || [];
             if (ids.length > 0) {
                 await updateSyncStatus(userId, 'in_progress', 'Atualizando transacoes...');
                 const transactions = await fetchTransactionsByIds(apiKey, ids);
@@ -1913,7 +1972,7 @@ const handleQueuedWebhookEvent = async (event) => {
         }
 
         case 'transactions/deleted': {
-            const ids = data?.ids || [];
+            const ids = payload?.ids || [];
             if (ids.length > 0) {
                 await updateSyncStatus(userId, 'in_progress', 'Removendo transacoes...');
                 await deleteTransactions(userId, ids);
@@ -1998,7 +2057,8 @@ router.post('/webhook', async (req, res) => {
  * @param {number} attempt - Current attempt number (0-indexed)
  */
 const processWebhookWithRetry = async (event, jobRef, attempt) => {
-    const { event: eventType, itemId, clientUserId, data } = event;
+    const { event: eventType, itemId, clientUserId } = event;
+    const payload = event?.data || event || {};
     const eventId = getWebhookEventId(event);
 
     console.log(`>>> Webhook processing attempt ${attempt + 1}/${WEBHOOK_JOB_MAX_ATTEMPTS} for ${eventId}`);
@@ -2060,7 +2120,7 @@ const processWebhookWithRetry = async (event, jobRef, attempt) => {
             }
 
             case 'transactions/created': {
-                const link = data?.createdTransactionsLink;
+                const link = payload?.createdTransactionsLink;
                 if (link) {
                     console.log(`>>> Processing 'transactions/created' with link: ${link}`);
                     await updateSyncStatus(userId, 'in_progress', 'Processando novas transações...');
@@ -2082,7 +2142,7 @@ const processWebhookWithRetry = async (event, jobRef, attempt) => {
                     console.log(`>>> Processing 'transactions/created' without link (fallback to syncItem)`);
                     await updateSyncStatus(userId, 'in_progress', 'Processando transações...');
                     try {
-                        await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: data?.accountId });
+                        await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: payload?.accountId });
                     } catch (err) {
                         console.error(`>>> Error in fallback syncItem:`, err);
                         throw err;
@@ -2092,7 +2152,7 @@ const processWebhookWithRetry = async (event, jobRef, attempt) => {
             }
 
             case 'transactions/updated': {
-                const ids = data?.ids || [];
+                const ids = payload?.ids || [];
                 if (ids.length > 0) {
                     await updateSyncStatus(userId, 'in_progress', 'Atualizando transações...');
                     const transactions = await fetchTransactionsByIds(apiKey, ids);
@@ -2104,7 +2164,7 @@ const processWebhookWithRetry = async (event, jobRef, attempt) => {
             }
 
             case 'transactions/deleted': {
-                const ids = data?.ids || [];
+                const ids = payload?.ids || [];
                 if (ids.length > 0) {
                     await updateSyncStatus(userId, 'in_progress', 'Removendo transações...');
                     await deleteTransactions(userId, ids);
@@ -2335,10 +2395,12 @@ router.get('/webhook-worker', async (req, res) => {
 const pollAndSync = async (apiKey, itemId, userId) => {
     const POLL_INTERVAL_MS = 3000;
     const MAX_ATTEMPTS = 40; // ~2 minutes timeout
+    const attemptLimit = computePollAttemptLimit(POLL_INTERVAL_MS, MAX_ATTEMPTS);
+    const timeBudgetLimited = IS_VERCEL && attemptLimit < MAX_ATTEMPTS;
 
     console.log(`>>> Starting Polling for Item ${itemId} (User: ${userId})`);
 
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    for (let i = 0; i < attemptLimit; i++) {
         try {
             await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
@@ -2348,7 +2410,15 @@ const pollAndSync = async (apiKey, itemId, userId) => {
             console.log(`>>> Poll #${i + 1} Item ${itemId}: ${status}`);
 
             if (status === 'UPDATED') {
-                await updateSyncStatus(userId, 'in_progress', 'Banco atualizado. Buscando transações...');
+                const updatedMessage = ENABLE_HEAVY_SYNC
+                    ? 'Banco atualizado. Buscando transações...'
+                    : 'Banco atualizado. Processamento via webhook...';
+                await updateSyncStatus(userId, 'in_progress', updatedMessage);
+
+                if (!ENABLE_HEAVY_SYNC) {
+                    return;
+                }
+
                 // Run the sync
                 await syncItem(apiKey, itemId, userId, { fromWebhook: false, fullSync: false }); // Incremental-ish sync
                 return;
@@ -2370,6 +2440,11 @@ const pollAndSync = async (apiKey, itemId, userId) => {
         }
     }
 
+    if (timeBudgetLimited) {
+        await updateSyncStatus(userId, 'pending', 'Atualizacao em andamento. Processamento continua em segundo plano.');
+        return;
+    }
+
     // Timeout
     await updateSyncStatus(userId, 'error', 'Tempo limite excedido na atualização do banco.');
 };
@@ -2381,6 +2456,8 @@ const pollAndSync = async (apiKey, itemId, userId) => {
 const pollAndSyncWithRefund = async (apiKey, itemId, userId, syncJobId, creditTransactionId) => {
     const POLL_INTERVAL_MS = 3000;
     const MAX_ATTEMPTS = 40; // ~2 minutes timeout
+    const attemptLimit = computePollAttemptLimit(POLL_INTERVAL_MS, MAX_ATTEMPTS);
+    const timeBudgetLimited = IS_VERCEL && attemptLimit < MAX_ATTEMPTS;
 
     console.log(`>>> Starting Polling with Refund for Item ${itemId} (User: ${userId})`);
 
@@ -2390,7 +2467,7 @@ const pollAndSyncWithRefund = async (apiKey, itemId, userId, syncJobId, creditTr
         message: 'Aguardando resposta do banco'
     });
 
-    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+    for (let i = 0; i < attemptLimit; i++) {
         try {
             await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
@@ -2400,13 +2477,27 @@ const pollAndSyncWithRefund = async (apiKey, itemId, userId, syncJobId, creditTr
             console.log(`>>> Poll #${i + 1} Item ${itemId}: ${status}`);
 
             // Update progress
-            const progress = Math.min(20 + Math.floor((i / MAX_ATTEMPTS) * 50), 70);
+            const progress = Math.min(20 + Math.floor((i / attemptLimit) * 50), 70);
             await updateSyncJob(userId, syncJobId, {
-                progress: { step: `Aguardando banco... (${i + 1}/${MAX_ATTEMPTS})`, current: progress, total: 100 }
+                progress: { step: `Aguardando banco... (${i + 1}/${attemptLimit})`, current: progress, total: 100 }
             });
 
             if (status === 'UPDATED') {
-                await updateSyncStatus(userId, 'in_progress', 'Banco atualizado. Buscando transações...');
+                const updatedMessage = ENABLE_HEAVY_SYNC
+                    ? 'Banco atualizado. Buscando transações...'
+                    : 'Banco atualizado. Processamento via webhook...';
+                await updateSyncStatus(userId, 'in_progress', updatedMessage);
+
+                if (!ENABLE_HEAVY_SYNC) {
+                    await updateSyncJob(userId, syncJobId, {
+                        status: 'completed',
+                        progress: { step: 'Aguardando webhooks', current: 100, total: 100 },
+                        message: 'Atualizacao confirmada. Transacoes via webhook.',
+                        completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+                    });
+                    return;
+                }
+
                 await updateSyncJob(userId, syncJobId, {
                     progress: { step: 'Sincronizando transações...', current: 75, total: 100 },
                     message: 'Banco atualizado, sincronizando dados'
@@ -2459,6 +2550,17 @@ const pollAndSyncWithRefund = async (apiKey, itemId, userId, syncJobId, creditTr
         } catch (e) {
             console.error(`>>> Polling error for ${itemId}:`, e.message);
         }
+    }
+
+    if (timeBudgetLimited) {
+        await updateSyncStatus(userId, 'pending', 'Atualizacao em andamento. Processamento continua em segundo plano.');
+        await updateSyncJob(userId, syncJobId, {
+            status: 'completed',
+            progress: { step: 'Aguardando webhooks', current: 100, total: 100 },
+            message: 'Atualizacao em andamento. Transacoes via webhook.',
+            completedAt: firebaseAdmin.firestore.FieldValue.serverTimestamp()
+        });
+        return;
     }
 
     // Timeout - refund credit
