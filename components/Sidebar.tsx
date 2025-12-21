@@ -492,6 +492,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem id="sidebar-nav-connections" active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
 
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
+                  <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
 
                   {/* Em Breve Section */}
                   {isOpen && <p className="w-full text-xs font-bold text-gray-600 uppercase tracking-widest px-2 mt-4 mb-2">Em Breve</p>}

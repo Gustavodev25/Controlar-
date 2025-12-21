@@ -80,8 +80,8 @@ const captureDeviceDetails = async (uid: string) => {
         ip = data.ip || 'Unknown';
         location = `${data.city || 'Desconhecido'}, ${data.region_code || ''}`;
       }
-    } catch (e) {
-      console.warn("Could not fetch IP/Location", e);
+    } catch {
+      // silently ignore IP fetch failures
     }
 
     const log = {
@@ -662,7 +662,6 @@ const App: React.FC = () => {
 
       if (isProOrFamily) {
         if (justUpgraded || !seenInThisSession) {
-          console.log('[App] Triggering Pro Onboarding Tutorial...');
           setTimeout(() => setIsProOnboardingOpen(true), 1000);
 
           // Mark seen in session
@@ -822,11 +821,7 @@ const App: React.FC = () => {
           adminFromClaims = !!(tokenResult?.claims?.admin || tokenResult?.claims?.isAdmin);
           const profile = await dbService.getUserProfile(firebaseUser.uid);
 
-          console.log('[Auth] Profile loaded:', {
-            profileIsAdmin: profile?.isAdmin,
-            adminFromClaims,
-            finalIsAdmin: profile?.isAdmin ?? adminFromClaims
-          });
+
 
           const baseProfile: User = {
             name: firebaseUser.displayName || profile?.name || 'Usuário',
@@ -995,10 +990,7 @@ const App: React.FC = () => {
           return null;
         }
 
-        console.log('[Profile Listener] Profile update received;', {
-          credits: JSON.stringify(data.dailyConnectionCredits),
-          prevCredits: JSON.stringify(prev.dailyConnectionCredits)
-        });
+
 
         // Merge existing user with new profile data
         const updatedUser = { ...prev, ...data };
@@ -1008,7 +1000,6 @@ const App: React.FC = () => {
         // This ensures the UI always has the latest credit count from Firebase
         if (data.dailyConnectionCredits) {
           updatedUser.dailyConnectionCredits = data.dailyConnectionCredits;
-          console.log('[Profile Listener] Updated dailyConnectionCredits:', JSON.stringify(data.dailyConnectionCredits));
         }
 
         // Preserve isAdmin logic (existing)
@@ -1081,27 +1072,18 @@ const App: React.FC = () => {
 
     const familyGroupId = currentUser?.familyGroupId;
 
-    console.log('[Family Goals] Setting up goals listener:', {
-      userId,
-      familyGroupId,
-      familyRole: currentUser?.familyRole,
-      usingFamilyGoals: !!familyGroupId
-    });
+
 
     let unsubGoals: () => void;
 
     if (familyGroupId) {
       // User is part of a family - listen to family's goals collection
-      console.log('[Family Goals] Listening to family goals at families/' + familyGroupId + '/goals');
       unsubGoals = dbService.listenToGoalsByGroupId(familyGroupId, (data) => {
-        console.log('[Family Goals] Received family goals:', data.length);
         setFamilyGoals(data);
       });
     } else {
       // User is not part of a family - listen to user's own goals
-      console.log('[Family Goals] Listening to user goals at users/' + userId + '/goals');
       unsubGoals = dbService.listenToGoals(userId, (data) => {
-        console.log('[Family Goals] Received user goals:', data.length);
         setFamilyGoals(data);
       });
     }
@@ -2974,11 +2956,13 @@ const App: React.FC = () => {
     </div>
   }
 
+
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
     if (showInviteLanding) {
       return (
         <>
+          <MetaPixelLoader />
           <ToastContainer />
           <InviteLanding
             ownerName={pendingInvite?.ownerName || 'Alguém'}
@@ -2994,6 +2978,7 @@ const App: React.FC = () => {
     if (showLanding && !pendingTwoFactor) {
       return (
         <>
+          <MetaPixelLoader />
           <ToastContainer />
           <LandingPage variant={landingVariant} onLogin={() => setShowLanding(false)} />
         </>
@@ -3001,6 +2986,7 @@ const App: React.FC = () => {
     }
     return (
       <>
+        <MetaPixelLoader />
         <ToastContainer />
         <AuthModal
           onLogin={(u) => {

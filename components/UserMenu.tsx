@@ -20,14 +20,14 @@ interface UserMenuProps {
 export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettings, isAdminMode, onToggleAdminMode, onFamilyView, onBackToProfile, isInFamilyView, showFamilyOption }) => {
 
   // Debug log to see if user.isAdmin is being received
-  useEffect(() => {
-    console.log('[UserMenu] User data:', {
-      name: user.name,
-      isAdmin: user.isAdmin,
-      hasIsAdminProp: 'isAdmin' in user,
-      userKeys: Object.keys(user)
-    });
-  }, [user, user.isAdmin]);
+  // useEffect(() => {
+  //   console.log('[UserMenu] User data:', {
+  //     name: user.name,
+  //     isAdmin: user.isAdmin,
+  //     hasIsAdminProp: 'isAdmin' in user,
+  //     userKeys: Object.keys(user)
+  //   });
+  // }, [user, user.isAdmin]);
 
   const getPlanDisplay = () => {
     if (user.familyRole === 'member') return 'Convidado Familiar';

@@ -88,13 +88,7 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
       const data = snap.data();
       const profile = { ...(data.profile as Partial<User> || {}) };
 
-      console.log('[DB getUserProfile] Raw Firebase data:', {
-        hasProfile: !!data.profile,
-        profileIsAdmin: data.profile?.isAdmin,
-        rootIsAdmin: data.isAdmin,
-        hasRootSubscription: !!data.subscription,
-        userId
-      });
+
 
       // ALWAYS check both profile.isAdmin AND root isAdmin
       // Priority: root isAdmin (most reliable) > profile.isAdmin
@@ -112,8 +106,7 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
         profile.subscription = data.subscription;
       }
 
-      console.log('[DB getUserProfile] Final profile.isAdmin:', profile.isAdmin);
-      console.log('[DB getUserProfile] Final profile.subscription:', profile.subscription);
+
 
       if (data.connectionLogs && Array.isArray(data.connectionLogs)) {
         profile.connectionLogs = data.connectionLogs;
@@ -182,13 +175,7 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       const data = docSnap.data();
       const profile = { ...(data.profile as Partial<User> || {}) };
 
-      console.log('[DB listenToUserProfile] Raw data:', {
-        hasProfile: !!data.profile,
-        profileIsAdmin: data.profile?.isAdmin,
-        rootIsAdmin: data.isAdmin,
-        hasRootSubscription: !!data.subscription,
-        userId
-      });
+
 
       // ALWAYS check both profile.isAdmin AND root isAdmin
       // Priority: root isAdmin (most reliable) > profile.isAdmin
@@ -209,22 +196,18 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       // Map dailyConnectionCredits from root if present
       // IMPORTANT: This field is stored at root level, not inside profile
       if (data.dailyConnectionCredits) {
-        console.log('[DB Listener] Found dailyConnectionCredits in root:', JSON.stringify(data.dailyConnectionCredits));
         profile.dailyConnectionCredits = data.dailyConnectionCredits;
       } else {
-        console.log('[DB Listener] dailyConnectionCredits NOT found in root for user:', userId);
         // Initialize with empty state if not present (user never used credits)
         // This ensures the field is always defined
         profile.dailyConnectionCredits = { date: '', count: 0 };
       }
 
-      console.log('[DB listenToUserProfile] Returning profile with isAdmin:', profile.isAdmin);
-      console.log('[DB listenToUserProfile] Returning profile with subscription:', profile.subscription);
-      console.log('[DB listenToUserProfile] Returning profile with dailyConnectionCredits:', JSON.stringify(profile.dailyConnectionCredits));
+
 
       callback(profile);
     } else {
-      console.log('[DB Listener] User document does not exist:', userId);
+
       callback({});
     }
   });
@@ -288,17 +271,17 @@ export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {
     return [];
   }
   try {
-    console.log("Buscando waitlist no Firebase...");
+
     const waitlistRef = collection(db, "waitlist");
 
     // Primeiro tentamos sem ordenação para ver se o problema é o índice
     const snapshot = await getDocs(waitlistRef);
 
-    console.log("Snapshot recebido, total de docs:", snapshot.size);
+
 
     const entries = snapshot.docs.map(doc => {
       const data = doc.data();
-      console.log("Documento:", doc.id, data);
+
       return {
         id: doc.id,
         ...data
@@ -312,7 +295,7 @@ export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {
       return dateB - dateA;
     });
 
-    console.log("Entries processados e ordenados:", entries);
+
     return entries;
   } catch (error) {
     console.error("Error fetching waitlist:", error);

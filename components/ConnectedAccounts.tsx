@@ -118,9 +118,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
 
   // Debug logic
-  useEffect(() => {
-    console.log('[ConnectedAccounts] Received dailyCredits:', dailyCredits, 'Today:', todayDateStr);
-  }, [dailyCredits, todayDateStr]);
+  // useEffect(() => {
+  //   console.log('[ConnectedAccounts] Received dailyCredits:', dailyCredits, 'Today:', todayDateStr);
+  // }, [dailyCredits, todayDateStr]);
 
   // NOTE: When dailyCredits is undefined, it means the user has NEVER used credits before
   // (the field doesn't exist in Firebase yet). This is different from "loading".
@@ -235,7 +235,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       sonnerToast.info("Conexão iniciada! Seus dados aparecerão em breve.", { duration: 3000 });
     }
 
-    console.log('[ConnectedAccounts] Bank connected, syncJobId:', syncJobId);
+    // console.log('[ConnectedAccounts] Bank connected, syncJobId:', syncJobId);
 
     // Refresh to show the new connection (if any)
     if (onRefresh) onRefresh();

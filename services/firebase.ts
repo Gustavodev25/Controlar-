@@ -17,10 +17,10 @@ const firebaseConfig = {
 };
 
 // Log para debug (remover em produção)
-console.log("Firebase Config:", {
-  ...firebaseConfig,
-  apiKey: firebaseConfig.apiKey.substring(0, 10) + "..." // Ocultar parte da chave
-});
+// console.log("Firebase Config:", {
+//   ...firebaseConfig,
+//   apiKey: firebaseConfig.apiKey.substring(0, 10) + "..." // Ocultar parte da chave
+// });
 
 let app;
 let auth;

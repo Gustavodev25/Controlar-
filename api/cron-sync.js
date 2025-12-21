@@ -66,6 +66,28 @@ const getPluggyApiKey = async () => {
     return cachedApiKey;
   }
 
+  // Check Firestore cache (shared across serverless instances)
+  const firestoreDb = await initFirebase();
+  if (firestoreDb) {
+    try {
+      const tokenDoc = await firestoreDb.collection('system_config').doc('pluggy_token').get();
+
+      if (tokenDoc.exists) {
+        const tokenData = tokenDoc.data();
+        const expiresAt = tokenData.expiresAt?.toMillis?.() || tokenData.expiresAt;
+
+        if (expiresAt && Date.now() < expiresAt) {
+          cachedApiKey = tokenData.apiKey;
+          cachedApiKeyExpiry = expiresAt;
+          console.log('[Cron Sync] Using Firestore cached Pluggy API Key');
+          return cachedApiKey;
+        }
+      }
+    } catch (e) {
+      console.warn('[Cron Sync] Could not read Pluggy token from Firestore cache:', e.message);
+    }
+  }
+
   if (!PLUGGY_CLIENT_ID || !PLUGGY_CLIENT_SECRET) {
     throw new Error('Pluggy credentials not configured');
   }
@@ -78,6 +100,23 @@ const getPluggyApiKey = async () => {
 
   cachedApiKey = response.data.apiKey;
   cachedApiKeyExpiry = Date.now() + TOKEN_TTL_MS;
+
+  // Persist to Firestore for cross-instance sharing
+  if (firestoreDb) {
+    try {
+      const admin = await import('firebase-admin');
+      await firestoreDb.collection('system_config').doc('pluggy_token').set({
+        apiKey: cachedApiKey,
+        expiresAt: admin.default.firestore.Timestamp.fromMillis(cachedApiKeyExpiry),
+        createdAt: admin.default.firestore.FieldValue.serverTimestamp(),
+        generatedBy: 'cron-sync'
+      });
+      console.log('[Cron Sync] Pluggy Token saved to Firestore cache');
+    } catch (e) {
+      console.warn('[Cron Sync] Could not save Pluggy token to Firestore cache:', e.message);
+    }
+  }
+
   return cachedApiKey;
 };
 

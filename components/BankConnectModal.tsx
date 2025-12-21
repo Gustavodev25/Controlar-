@@ -290,7 +290,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 startedAt: Date.now()
             });
 
-            console.log('[BankConnectModal] Starting sync for itemId:', itemId);
+            // console.log('[BankConnectModal] Starting sync for itemId:', itemId);
 
             // Call the robust server-side sync (formerly Legacy, now Modern)
             const response = await fetch(`${API_BASE}/pluggy/sync`, {
@@ -300,7 +300,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             });
 
             const data = await response.json();
-            console.log('[BankConnectModal] Sync response:', data);
+            // console.log('[BankConnectModal] Sync response:', data);
 
             if (!response.ok) {
                 saveSyncProgress({
@@ -524,7 +524,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     };
 
     const handleSuccess = useCallback(async (data: { item: { id: string } }) => {
-        console.log('Pluggy connection success, item:', data.item?.id);
+        // console.log('Pluggy connection success, item:', data.item?.id);
         setShowPluggyWidget(false);
 
         if (!userId) {
@@ -549,7 +549,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 throw new Error(result.error || 'Erro ao iniciar sincronização');
             }
 
-            console.log('[BankConnectModal] Sync started, syncJobId:', result.syncJobId);
+            // console.log('[BankConnectModal] Sync started, syncJobId:', result.syncJobId);
 
             // Notify parent with syncJobId for tracking progress
             if (onSuccess) {
