@@ -607,8 +607,8 @@ router.get('/webhook-worker', async (req, res) => {
             return res.json({ success: true, message: 'Firebase Admin not available' });
         }
 
-        // Get API Key for potential sync operations
-        const apiKey = await getApiKey();
+        // Force refresh API Key (cache doesn't persist in serverless)
+        const apiKey = await getApiKey(true);
         if (!apiKey) {
             console.log('[Webhook Worker] Could not obtain API key');
             return res.json({ success: true, message: 'No API key available' });
@@ -624,9 +624,6 @@ router.get('/webhook-worker', async (req, res) => {
             const updatedItems = items.filter(i => i.status === 'UPDATED');
 
             console.log(`[Webhook Worker] Found ${items.length} items, ${updatedItems.length} recently updated`);
-
-            // For now, just log. In future, we could trigger syncs for updated items
-            // that don't have recent sync_jobs
 
             res.json({
                 success: true,
@@ -646,6 +643,45 @@ router.get('/webhook-worker', async (req, res) => {
     } catch (error) {
         console.error('[Webhook Worker] Error:', error.message);
         res.status(500).json({ error: 'Webhook worker failed', message: error.message });
+    }
+});
+
+// 9. Webhook Receiver (Pluggy sends events here)
+// This endpoint receives webhook notifications from Pluggy
+router.post('/webhook', async (req, res) => {
+    try {
+        const event = req.body;
+        console.log('[Pluggy Webhook] Received event:', JSON.stringify(event, null, 2));
+
+        // Acknowledge receipt immediately
+        res.json({ success: true, received: true });
+
+        // Process the webhook in the background
+        if (event && event.event) {
+            const { event: eventType, itemId, data } = event;
+            console.log(`[Pluggy Webhook] Event type: ${eventType}, Item: ${itemId}`);
+
+            // Handle different event types
+            switch (eventType) {
+                case 'item/updated':
+                case 'item/created':
+                    console.log(`[Pluggy Webhook] Item ${itemId} was ${eventType === 'item/created' ? 'created' : 'updated'}`);
+                    // Could trigger a sync here if needed
+                    break;
+                case 'item/error':
+                    console.log(`[Pluggy Webhook] Item ${itemId} had an error:`, data);
+                    break;
+                case 'connector/status_updated':
+                    console.log(`[Pluggy Webhook] Connector status updated:`, data);
+                    break;
+                default:
+                    console.log(`[Pluggy Webhook] Unknown event type: ${eventType}`);
+            }
+        }
+    } catch (error) {
+        console.error('[Pluggy Webhook] Error processing webhook:', error.message);
+        // Still return 200 to acknowledge receipt
+        res.json({ success: true, error: error.message });
     }
 });
 
