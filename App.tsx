@@ -2711,6 +2711,15 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteCreditCardTransaction = async (id: string) => {
+    if (!userId) return;
+    try {
+      await dbService.deleteCreditCardTransaction(userId, id);
+    } catch (e) {
+      console.error("Error deleting credit card transaction:", e);
+    }
+  };
+
   const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => {
     if (userId) {
       await dbService.updateUserProfile(userId, {
@@ -3245,7 +3254,7 @@ const App: React.FC = () => {
                 <div className="h-[calc(100vh-140px)] animate-fade-in">
                   <CreditCardTable
                     transactions={creditCardTransactions}
-                    onDelete={handleDeleteTransaction}
+                    onDelete={handleDeleteCreditCardTransaction}
                     onUpdate={handleUpdateTransaction}
                     creditCardAccounts={accountBalances?.credit?.accounts}
                     userId={userId || undefined}

@@ -2,13 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
+import { UniversalModal } from './UniversalModal';
+
 import { EmptyState } from './EmptyState';
 import { translatePluggyCategory } from '../services/openFinanceService';
 
@@ -58,6 +60,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isEditVisible, setIsEditVisible] = useState(false);
   const [isEditAnimating, setIsEditAnimating] = useState(false);
+
+
+  // Auto-remove duplicates
+  const [hasCheckedDuplicates, setHasCheckedDuplicates] = useState(false);
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -171,13 +177,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         // Bank/Card Filter
         let matchesCard = true;
         if (selectedCardId !== 'all') {
-            // Check both cardId and accountId as they might be used interchangeably
-            // Using String() to ensure safe comparison against potential number/string mismatches
-            const targetId = String(selectedCardId);
-            const txCardId = t.cardId ? String(t.cardId) : '';
-            const txAccountId = t.accountId ? String(t.accountId) : '';
-            
-            matchesCard = txCardId === targetId || txAccountId === targetId;
+          // Check both cardId and accountId as they might be used interchangeably
+          // Using String() to ensure safe comparison against potential number/string mismatches
+          const targetId = String(selectedCardId);
+          const txCardId = t.cardId ? String(t.cardId) : '';
+          const txAccountId = t.accountId ? String(t.accountId) : '';
+
+          matchesCard = txCardId === targetId || txAccountId === targetId;
         }
 
         return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesCard;
@@ -217,6 +223,38 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     }
     return () => clearTimeout(timeoutId);
   }, [isEditModalOpen]);
+
+  // Auto-remove duplicates when transactions load
+  React.useEffect(() => {
+    if (hasCheckedDuplicates || transactions.length === 0) return;
+
+    const groups: Record<string, Transaction[]> = {};
+    transactions.forEach(t => {
+      const key = `${t.date}-${Math.abs(t.amount)}-${(t.description || '').trim().toLowerCase()}-${t.type}`;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(t);
+    });
+
+    const duplicates = Object.values(groups).filter(g => g.length > 1);
+
+    if (duplicates.length > 0) {
+      const idsToDelete: string[] = [];
+      duplicates.forEach(group => {
+        for (let i = 1; i < group.length; i++) {
+          idsToDelete.push(group[i].id);
+        }
+      });
+
+      // Delete duplicates silently
+      Promise.all(idsToDelete.map(id => onDelete(id)))
+        .then(() => {
+          toast.success(`${idsToDelete.length} duplicatas removidas automaticamente!`);
+        })
+        .catch(() => { });
+    }
+
+    setHasCheckedDuplicates(true);
+  }, [transactions, hasCheckedDuplicates, onDelete, toast]);
 
   const handleEditClick = (transaction: Transaction) => {
     setEditTransaction({ ...transaction });
@@ -282,6 +320,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           </div>
 
           <div className="flex items-center gap-3">
+
             {isManualMode && onAdd && (
               <button
                 onClick={() => {
@@ -322,33 +361,33 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
         {/* Filters Row */}
         <div className="flex flex-wrap gap-2 items-center pt-2">
-           {/* Card Filter Dropdown */}
-           <div className="relative z-50">
+          {/* Card Filter Dropdown */}
+          <div className="relative z-50">
             <Dropdown>
               <DropdownTrigger className="h-11 px-4 bg-gray-900 border border-gray-800 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white hover:border-gray-700 transition-all font-medium min-w-[180px] justify-between">
                 <div className="flex items-center gap-2">
-                    <Filter size={16} className="text-[#d97757]" />
-                    <span className="truncate max-w-[140px]">{getSelectedCardLabel()}</span>
+                  <Filter size={16} className="text-[#d97757]" />
+                  <span className="truncate max-w-[140px]">{getSelectedCardLabel()}</span>
                 </div>
                 <ArrowDownCircle size={14} className="text-gray-500" />
               </DropdownTrigger>
               <DropdownContent className="w-56" align="left">
-                <DropdownItem 
-                    onClick={() => setSelectedCardId('all')}
-                    icon={Filter}
-                    className={selectedCardId === 'all' ? 'bg-white/5 text-white' : ''}
+                <DropdownItem
+                  onClick={() => setSelectedCardId('all')}
+                  icon={Filter}
+                  className={selectedCardId === 'all' ? 'bg-white/5 text-white' : ''}
                 >
-                    Todos os Cartões
+                  Todos os Cartões
                 </DropdownItem>
                 {creditCardAccounts.map(card => (
-                    <DropdownItem 
-                        key={card.id}
-                        onClick={() => setSelectedCardId(card.id)}
-                        icon={CreditCard}
-                        className={selectedCardId === card.id ? 'bg-white/5 text-white' : ''}
-                    >
-                        {card.name || card.institution || 'Cartão Sem Nome'}
-                    </DropdownItem>
+                  <DropdownItem
+                    key={card.id}
+                    onClick={() => setSelectedCardId(card.id)}
+                    icon={CreditCard}
+                    className={selectedCardId === card.id ? 'bg-white/5 text-white' : ''}
+                  >
+                    {card.name || card.institution || 'Cartão Sem Nome'}
+                  </DropdownItem>
                 ))}
               </DropdownContent>
             </Dropdown>
@@ -601,6 +640,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           </span>
         </div>
       </div>
+
+
 
       {/* Delete Confirmation */}
       <ConfirmationBar

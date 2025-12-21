@@ -252,19 +252,49 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             });
             const accounts = accountsResp.data.results;
 
+            // PRE-FETCH: Get existing accounts to determine last sync date (Incremental Sync)
+            const existingAccountsMap = {};
+            try {
+                const existingSnap = await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts').get();
+                existingSnap.forEach(doc => {
+                    const data = doc.data();
+                    // We prefer 'transactionsUpdatedAt' if we had it, but 'updatedAt' is what we have.
+                    // Or we can check if there is a 'lastSyncedAt'.
+                    // For now, use 'updatedAt' which we update below.
+                    existingAccountsMap[doc.id] = data.updatedAt;
+                });
+            } catch (e) {
+                console.error('[Sync] Failed to fetch existing accounts dates:', e);
+            }
+
             // Save Accounts
             const batch = firebaseAdmin.firestore().batch();
             const accountsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts');
 
             for (const acc of accounts) {
                 const accRef = accountsRef.doc(acc.id);
-                // Determine connection mode
-                // If it's a new account, default to 'MANUAL' to avoid polluting main view? 
-                // Or 'AUTO'? 
-                // Existing logic usually defaults new accounts to manual or asks user.
+
+                // Check if this is a credit card account
+                const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+
+                // Extract creditData fields to root level for credit cards
+                const creditFields = isCredit && acc.creditData ? {
+                    creditLimit: acc.creditData.creditLimit || null,
+                    availableCreditLimit: acc.creditData.availableCreditLimit || null,
+                    usedCreditLimit: acc.creditData.creditLimit && acc.creditData.availableCreditLimit
+                        ? acc.creditData.creditLimit - acc.creditData.availableCreditLimit
+                        : null,
+                    brand: acc.creditData.brand || null,
+                    balanceCloseDate: acc.creditData.balanceCloseDate || null,
+                    balanceDueDate: acc.creditData.balanceDueDate || null,
+                    minimumPayment: acc.creditData.minimumPayment || null,
+                    closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
+                    dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
+                } : {};
 
                 batch.set(accRef, {
                     ...acc,
+                    ...creditFields,
                     itemId: itemId,
                     updatedAt: new Date().toISOString()
                 }, { merge: true });
@@ -273,11 +303,11 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
 
             await jobDoc.update({ progress: 20, step: 'Fetching transactions...' });
 
-            // 2. Get Transactions (Last 90 days) - PER ACCOUNT
+            // 2. Get Transactions (Last 90 days OR Incremental) - PER ACCOUNT
             // We fetch per account to avoid "accountId null" error and to route correctly
-            const fromDate = new Date();
-            fromDate.setDate(fromDate.getDate() - 90);
-            const fromDateStr = fromDate.toISOString().split('T')[0];
+            const defaultFromDate = new Date();
+            defaultFromDate.setDate(defaultFromDate.getDate() - 90);
+            const defaultFromDateStr = defaultFromDate.toISOString().split('T')[0];
 
             let txCount = 0;
             const txBatch = firebaseAdmin.firestore().batch();
@@ -290,8 +320,28 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
 
             for (const account of accounts) {
                 try {
-                    console.log(`Fetching transactions for account ${account.id} (${account.name})...`);
-                    const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromDateStr}`, {
+                    // Determine 'from' date for this account
+                    let fromStr = defaultFromDateStr;
+                    const lastSync = existingAccountsMap[account.id];
+
+                    if (lastSync) {
+                        try {
+                            const lastDate = new Date(lastSync);
+                            if (!isNaN(lastDate.getTime())) {
+                                // Use the date part of the last sync. 
+                                // Pluggy 'from' is inclusive, so this covers the overlapping day.
+                                fromStr = lastDate.toISOString().split('T')[0];
+                                console.log(`[Sync] Incremental: Account ${account.name} last synced ${lastSync}. Fetching from ${fromStr}`);
+                            }
+                        } catch (err) {
+                            console.warn('[Sync] Invalid lastSync date:', lastSync);
+                        }
+                    } else {
+                        console.log(`[Sync] Full: Account ${account.name} (first sync). Fetching from ${fromStr}`);
+                    }
+
+                    console.log(`Fetching transactions for account ${account.id} (${account.name}) from ${fromStr}...`);
+                    const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
                         headers: { 'X-API-KEY': apiKey }
                     });
                     const transactions = txResp.data.results;

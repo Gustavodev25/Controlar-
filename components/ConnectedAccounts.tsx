@@ -708,10 +708,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               }}
               disabled={(!hasCredit || !isCreditsLoaded) && userPlan !== 'starter'}
               className={`px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm ${hasCredit && isCreditsLoaded
-                  ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
-                  : userPlan === 'starter'
-                    ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
-                    : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
+                ? 'bg-[#d97757] hover:bg-[#c66646] text-white'
+                : userPlan === 'starter'
+                  ? 'bg-gray-800 text-gray-400 hover:bg-gray-700 hover:text-white cursor-pointer'
+                  : 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700'
                 } `}
             >
               {userPlan === 'starter' ? <Lock size={18} /> : <Plus size={18} />}
@@ -931,10 +931,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                             onClick={() => handleManualSync(itemId)}
                             disabled={!hasCredit || isDeleting !== null || isUpdating || timer?.syncedToday}
                             className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${isUpdating
-                                ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
-                                : (!hasCredit || isDeleting !== null || timer?.syncedToday)
-                                  ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
-                                  : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
+                              ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
+                              : (!hasCredit || isDeleting !== null || timer?.syncedToday)
+                                ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
+                                : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
                               } `}
                           >
                             <RotateCcw size={14} className={isUpdating ? "animate-spin" : ""} />
@@ -1060,7 +1060,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                     {isCard && bill && (billDate || billStateInfo) && (
                                       <div className="flex items-center gap-1.5 mt-0.5">
                                         {billStateInfo && (
-                                          <span className={`text - [9px] font-medium ${billStateInfo.color} `}>
+                                          <span className={`text-[9px] font-medium ${billStateInfo.color} `}>
                                             {billStateInfo.label}
                                           </span>
                                         )}
@@ -1077,6 +1077,36 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                     )}
                                   </div>
                                 </div>
+
+                                {/* Credit Card Limit & Progress */}
+                                {isCard && (
+                                  <div className="mt-3 pt-3 border-t border-gray-800/50">
+                                    {(() => {
+                                      const creditLimit = acc.creditLimit || 0;
+                                      const usedAmount = bill?.totalAmount || Math.abs(acc.balance || 0); // Use bill amount as "used" per user request
+                                      const usagePercentage = creditLimit > 0 ? (usedAmount / creditLimit) * 100 : 0;
+
+                                      return (
+                                        <div className="space-y-1.5">
+                                          <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                                            <div
+                                              className="h-full bg-[#3b82f6] rounded-full transition-all duration-500"
+                                              style={{ width: `${Math.min(usagePercentage, 100)}%` }}
+                                            />
+                                          </div>
+                                          <div className="flex justify-between items-center text-[10px] font-bold tracking-wide">
+                                            <span className="text-emerald-500">
+                                              Limite: {formatCurrency(creditLimit)}
+                                            </span>
+                                            <span className="text-gray-500">
+                                              Usado: {formatCurrency(usedAmount)}
+                                            </span>
+                                          </div>
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
@@ -1092,8 +1122,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.max(1, currentPage - 1) }))}
                       disabled={currentPage === 1}
                       className={`p-2 rounded-lg transition-all border ${currentPage === 1
-                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
                         } `}
                     >
                       <ChevronLeft size={16} />
@@ -1107,8 +1137,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                       onClick={() => setAccountPages(prev => ({ ...prev, [groupKey]: Math.min(totalPages, currentPage + 1) }))}
                       disabled={currentPage === totalPages}
                       className={`p-2 rounded-lg transition-all border ${currentPage === totalPages
-                          ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
-                          : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
+                        ? 'bg-gray-900 text-gray-600 border-gray-800 cursor-not-allowed'
+                        : 'bg-gray-900 hover:bg-gray-800 text-white border-gray-800 hover:border-gray-700'
                         } `}
                     >
                       <ChevronRight size={16} />
