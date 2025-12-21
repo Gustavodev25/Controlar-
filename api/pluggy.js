@@ -1621,12 +1621,20 @@ const fetchTransactionsFromLink = async (apiKey, link) => {
 
     const toEndpoint = (raw) => {
         if (!raw || typeof raw !== 'string') return null;
-        const trimmed = raw.trim();
+        let trimmed = raw.trim();
         if (!trimmed) return null;
 
-        if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-            const u = new URL(trimmed);
-            return `${u.pathname}${u.search}`;
+        // If it sends the full URL, strip the domain to get just the endpoint
+        if (trimmed.startsWith(PLUGGY_API_URL)) {
+            trimmed = trimmed.substring(PLUGGY_API_URL.length);
+        } else if (trimmed.startsWith('http')) {
+            // Handle case where API URL might not match exactly or is different
+            try {
+                const url = new URL(trimmed);
+                trimmed = url.pathname + url.search;
+            } catch (e) {
+                // Invalid URL, try as relative
+            }
         }
 
         if (trimmed.startsWith('/')) return trimmed;
@@ -2054,14 +2062,31 @@ const processWebhookWithRetry = async (event, jobRef, attempt) => {
             case 'transactions/created': {
                 const link = data?.createdTransactionsLink;
                 if (link) {
+                    console.log(`>>> Processing 'transactions/created' with link: ${link}`);
                     await updateSyncStatus(userId, 'in_progress', 'Processando novas transações...');
-                    const transactions = await fetchTransactionsFromLink(apiKey, link);
-                    const count = await processAndSaveTransactions(userId, transactions);
-                    await updateSyncStatus(userId, 'success', `${count} transações sincronizadas.`);
-                    console.log(`>>> Processed ${count} new transactions for user ${userId}`);
+
+                    try {
+                        const transactions = await fetchTransactionsFromLink(apiKey, link);
+                        console.log(`>>> Fetched ${transactions.length} transactions from link`);
+
+                        const count = await processAndSaveTransactions(userId, transactions);
+                        console.log(`>>> Processed and saved ${count} transactions`);
+
+                        await updateSyncStatus(userId, 'success', `${count} transações sincronizadas.`);
+                    } catch (err) {
+                        console.error(`>>> Error processing transactions/created:`, err);
+                        await updateSyncStatus(userId, 'error', 'Erro ao processar transações.');
+                        throw err; // Re-throw to trigger retry logic
+                    }
                 } else {
+                    console.log(`>>> Processing 'transactions/created' without link (fallback to syncItem)`);
                     await updateSyncStatus(userId, 'in_progress', 'Processando transações...');
-                    await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: data?.accountId });
+                    try {
+                        await syncItem(apiKey, itemId, userId, { fromWebhook: true, accountId: data?.accountId });
+                    } catch (err) {
+                        console.error(`>>> Error in fallback syncItem:`, err);
+                        throw err;
+                    }
                 }
                 break;
             }
