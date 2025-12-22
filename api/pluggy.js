@@ -190,6 +190,11 @@ router.get('/items', withPluggyAuth, async (req, res) => {
         // Simplification: Return all items. In a real multi-tenant app, you'd filter this!
         res.json({ success: true, items: response.data.results });
     } catch (error) {
+        if (error.response?.status === 401) {
+            console.error('[/items] 401 Unauthorized - Credentials valid but access denied. Check Pluggy Dashboard permissions.');
+            // Return empty list to avoid crashing frontend, but signal error
+            return res.status(401).json({ error: 'Unauthorized to list items', items: [] });
+        }
         console.error('List Items Error:', error.response?.data || error.message);
         res.status(500).json({ error: 'Failed to list items.' });
     }
@@ -219,8 +224,26 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
         }
 
     } catch (error) {
-        console.error('Trigger Sync Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to trigger sync.' });
+        const errData = error.response?.data;
+        console.error('Trigger Sync Error:', errData || error.message);
+
+        // Handle specific Pluggy errors
+        if (error.response?.status === 404 || errData?.code === 404) {
+            return res.status(404).json({
+                error: 'Conexão bancária não encontrada. Por favor, reconecte o banco.',
+                code: 'ITEM_NOT_FOUND',
+                needsReconnect: true
+            });
+        }
+
+        if (error.response?.status === 401) {
+            return res.status(401).json({
+                error: 'Erro de autenticação com o banco. Tente novamente.',
+                code: 'AUTH_ERROR'
+            });
+        }
+
+        res.status(500).json({ error: 'Falha ao sincronizar. Tente novamente.' });
     }
 });
 
@@ -293,15 +316,18 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             const accounts = accountsResp.data.results;
 
             // PRE-FETCH: Get existing accounts to determine last sync date (Incremental Sync)
+            // Now we store both the full date string and the connectedAt timestamp
             const existingAccountsMap = {};
             try {
                 const existingSnap = await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts').get();
                 existingSnap.forEach(doc => {
                     const data = doc.data();
-                    // We prefer 'transactionsUpdatedAt' if we had it, but 'updatedAt' is what we have.
-                    // Or we can check if there is a 'lastSyncedAt'.
-                    // For now, use 'updatedAt' which we update below.
-                    existingAccountsMap[doc.id] = data.updatedAt;
+                    // Store complete sync info for incremental sync
+                    existingAccountsMap[doc.id] = {
+                        lastSyncedAt: data.lastSyncedAt || data.updatedAt, // Full ISO timestamp
+                        connectedAt: data.connectedAt,  // First connection timestamp
+                        isFirstSync: !data.connectedAt  // True if account never synced before
+                    };
                 });
             } catch (e) {
                 console.error('[Sync] Failed to fetch existing accounts dates:', e);
@@ -310,9 +336,12 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             // Save Accounts
             const batch = firebaseAdmin.firestore().batch();
             const accountsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts');
+            const syncTimestamp = new Date().toISOString(); // Use same timestamp for all accounts in this sync
 
             for (const acc of accounts) {
                 const accRef = accountsRef.doc(acc.id);
+                const existingInfo = existingAccountsMap[acc.id];
+                const isFirstSync = !existingInfo || existingInfo.isFirstSync;
 
                 // Check if this is a credit card account
                 const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
@@ -332,11 +361,18 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
                 } : {};
 
+                // Only set connectedAt on first sync (preserves original connection time)
+                const connectionFields = isFirstSync ? {
+                    connectedAt: syncTimestamp
+                } : {};
+
                 batch.set(accRef, {
                     ...acc,
                     ...creditFields,
+                    ...connectionFields,
                     itemId: itemId,
-                    updatedAt: new Date().toISOString()
+                    lastSyncedAt: syncTimestamp, // Always update on every sync
+                    updatedAt: syncTimestamp
                 }, { merge: true });
             }
             await batch.commit();
@@ -362,19 +398,22 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 try {
                     // Determine 'from' date for this account
                     let fromStr = defaultFromDateStr;
-                    const lastSync = existingAccountsMap[account.id];
+                    let lastSyncTimestamp = null; // Full timestamp for filtering
+                    const syncInfo = existingAccountsMap[account.id];
 
-                    if (lastSync) {
+                    if (syncInfo && syncInfo.lastSyncedAt) {
                         try {
-                            const lastDate = new Date(lastSync);
+                            const lastDate = new Date(syncInfo.lastSyncedAt);
                             if (!isNaN(lastDate.getTime())) {
-                                // Use the date part of the last sync. 
+                                // Use the date part of the last sync for API request
                                 // Pluggy 'from' is inclusive, so this covers the overlapping day.
                                 fromStr = lastDate.toISOString().split('T')[0];
-                                console.log(`[Sync] Incremental: Account ${account.name} last synced ${lastSync}. Fetching from ${fromStr}`);
+                                // Store full timestamp for filtering transactions by hour
+                                lastSyncTimestamp = lastDate.getTime();
+                                console.log(`[Sync] Incremental: Account ${account.name} last synced ${syncInfo.lastSyncedAt}. Fetching from ${fromStr}`);
                             }
                         } catch (err) {
-                            console.warn('[Sync] Invalid lastSync date:', lastSync);
+                            console.warn('[Sync] Invalid lastSync date:', syncInfo.lastSyncedAt);
                         }
                     } else {
                         console.log(`[Sync] Full: Account ${account.name} (first sync). Fetching from ${fromStr}`);
@@ -384,7 +423,23 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
                         headers: { 'X-API-KEY': apiKey }
                     });
-                    const transactions = txResp.data.results;
+                    let transactions = txResp.data.results;
+
+                    // Filter out transactions that were already synced (by timestamp)
+                    // This handles the case where user connected at 10:00 AM - only get transactions from 10:00 onwards
+                    if (lastSyncTimestamp && transactions.length > 0) {
+                        const originalCount = transactions.length;
+                        transactions = transactions.filter(tx => {
+                            const txDate = new Date(tx.date);
+                            // Keep transactions that are newer than the last sync timestamp
+                            // Include transactions from the same day but after the sync time
+                            return txDate.getTime() >= lastSyncTimestamp;
+                        });
+                        const filtered = originalCount - transactions.length;
+                        if (filtered > 0) {
+                            console.log(`[Sync] Filtered ${filtered} already-synced transactions (kept ${transactions.length})`);
+                        }
+                    }
 
                     // Determine Target Collection
                     const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';

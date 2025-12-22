@@ -67,15 +67,25 @@ export const updateUserProfile = async (userId: string, data: Partial<User>) => 
   const userRef = doc(db, "users", userId);
 
   // Sanitize data: remove keys with undefined values
-  const cleanData = Object.entries(data).reduce((acc, [key, value]) => {
+  const cleanData = Object.entries(data).reduce((acc: any, [key, value]) => {
     if (value !== undefined) {
-      acc[key as keyof User] = value;
+      acc[key] = value;
     }
     return acc;
-  }, {} as Partial<User>);
+  }, {});
 
   // Merge true para não sobrescrever outros campos
   await setDoc(userRef, { profile: cleanData }, { merge: true });
+};
+
+export const setAdminStatus = async (userId: string, isAdmin: boolean) => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+  // Update both root and profile to be sure, but root is priority
+  await updateDoc(userRef, {
+    isAdmin: isAdmin,
+    "profile.isAdmin": isAdmin
+  });
 };
 
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
@@ -155,6 +165,8 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
         // Include other necessary fields - use merged subscription
         subscription: subscription,
         isAdmin: data.isAdmin === true || profile.isAdmin === true,
+        connectionLogs: data.connectionLogs || profile.connectionLogs || [],
+        birthDate: profile.birthDate || data.birthDate,
         ...profile
       } as User & { id: string };
     });
@@ -1501,6 +1513,44 @@ export const deleteAllConnectedAccounts = async (userId: string) => {
   }
 };
 
+// Delete accounts with invalid balance (NaN, null, undefined)
+export const deleteInvalidAccounts = async (userId: string) => {
+  if (!db) return 0;
+  try {
+    const accountsRef = collection(db, "users", userId, "accounts");
+    const snapshot = await getDocs(accountsRef);
+
+    let deletedCount = 0;
+    const batch = writeBatch(db);
+
+    snapshot.docs.forEach((docSnapshot) => {
+      const data = docSnapshot.data();
+      const balance = data.balance;
+
+      // Check if balance is invalid: undefined, null, NaN, or not a number
+      const isInvalid = balance === undefined ||
+        balance === null ||
+        (typeof balance === 'number' && isNaN(balance)) ||
+        typeof balance !== 'number';
+
+      if (isInvalid) {
+        batch.delete(docSnapshot.ref);
+        deletedCount++;
+        console.log(`[deleteInvalidAccounts] Marking for deletion: ${docSnapshot.id}, balance: ${balance}`);
+      }
+    });
+
+    if (deletedCount > 0) {
+      await batch.commit();
+      console.log(`Deleted ${deletedCount} invalid accounts for user ${userId}`);
+    }
+
+    return deletedCount;
+  } catch (error) {
+    console.error("Error deleting invalid accounts:", error);
+    throw error;
+  }
+};
 
 // --- Notifications ---
 export const addNotification = async (userId: string, notification: Omit<AppNotification, 'id'>) => {

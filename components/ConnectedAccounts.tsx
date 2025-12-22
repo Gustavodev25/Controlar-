@@ -31,7 +31,7 @@ interface ConnectedAccountsProps {
 }
 
 const formatCurrency = (value?: number, currency: string = "BRL") => {
-  if (value === undefined || value === null) return "--";
+  if (value === undefined || value === null || isNaN(value)) return "--";
   try {
     return new Intl.NumberFormat("pt-BR", { style: "currency", currency }).format(value);
   } catch {
@@ -103,7 +103,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
   const [forceSyncItemId, setForceSyncItemId] = useState<string | null>(null);
-  const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; syncedToday: boolean; isFresh: boolean } | null>>({});
+  const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; syncedToday: boolean; connectedToday?: boolean; isFresh: boolean } | null>>({});
 
   const [itemStatuses, setItemStatuses] = useState<Record<string, ItemSyncStatus>>({});
   const [isSyncingItem, setIsSyncingItem] = useState<Record<string, boolean>>({});
@@ -155,42 +155,51 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
-  const calculateTimers = (lastSyncedStr: string) => {
-    if (!lastSyncedStr) return {
-      auto: { h: 0, m: 0, s: 0 },
-      cooldownMs: 0,
-      syncedToday: false,
-      isFresh: false
-    };
-
-    const lastSync = new Date(lastSyncedStr);
+  const calculateTimers = (lastSyncedStr: string, connectedAtStr?: string) => {
     const now = new Date();
-
-    if (isNaN(lastSync.getTime())) return null;
-
-    const elapsed = now.getTime() - lastSync.getTime();
 
     // Global Reset is always next midnight
     const nextMidnight = new Date(now);
     nextMidnight.setHours(24, 0, 0, 0);
     const nextAutoSyncMs = nextMidnight.getTime() - now.getTime();
 
-    // Check if last sync was today (same date)
-    const lastSyncDate = lastSync.toLocaleDateString('en-CA'); // YYYY-MM-DD
-    const todayDate = now.toLocaleDateString('en-CA');
-    const syncedToday = lastSyncDate === todayDate;
-
-    // If synced today, cooldown until midnight. Otherwise, no cooldown.
-    const manualCooldownMs = syncedToday ? nextAutoSyncMs : 0;
-
     const h = Math.floor(nextAutoSyncMs / (1000 * 60 * 60));
     const m = Math.floor((nextAutoSyncMs % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((nextAutoSyncMs % (1000 * 60)) / 1000);
 
+    const todayDate = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+
+    // Check if account was connected today (first connection counts as "sync for today")
+    let connectedToday = false;
+    if (connectedAtStr) {
+      const connectedAt = new Date(connectedAtStr);
+      if (!isNaN(connectedAt.getTime())) {
+        const connectedDate = connectedAt.toLocaleDateString('en-CA');
+        connectedToday = connectedDate === todayDate;
+      }
+    }
+
+    // Check if last sync was today
+    let syncedToday = false;
+    let elapsed = 0;
+    if (lastSyncedStr) {
+      const lastSync = new Date(lastSyncedStr);
+      if (!isNaN(lastSync.getTime())) {
+        elapsed = now.getTime() - lastSync.getTime();
+        const lastSyncDate = lastSync.toLocaleDateString('en-CA');
+        syncedToday = lastSyncDate === todayDate;
+      }
+    }
+
+    // User can only sync once per day, starting at midnight
+    // If connected today OR synced today, they must wait until next midnight
+    const usedTodayQuota = connectedToday || syncedToday;
+
     return {
       auto: { h, m, s },
-      cooldownMs: manualCooldownMs,
-      syncedToday,
+      cooldownMs: usedTodayQuota ? nextAutoSyncMs : 0,
+      syncedToday: usedTodayQuota, // True if already used the daily quota
+      connectedToday,
       isFresh: elapsed < 5 * 60 * 1000 // 5 mins fresh
     };
   };
@@ -198,25 +207,70 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   // Maintain timer state for display
   useEffect(() => {
     const updateTimers = () => {
-      const newTimers: Record<string, { auto: { h: number; m: number; s: number }, cooldownMs: number, syncedToday: boolean, isFresh: boolean } | null> = {};
-      const mergedLastSynced = { ...lastSynced };
+      const newTimers: Record<string, { auto: { h: number; m: number; s: number }, cooldownMs: number, syncedToday: boolean, connectedToday?: boolean, isFresh: boolean } | null> = {};
+
+      // Build lookup maps for lastSynced and connectedAt by itemId
+      const lastSyncedByItem: Record<string, string> = { ...lastSynced };
+      const connectedAtByItem: Record<string, string> = {};
+
+      // Get connectedAt from accounts (grouped by itemId)
+      accounts.forEach(acc => {
+        if (acc.itemId) {
+          if (acc.connectedAt && !connectedAtByItem[acc.itemId]) {
+            connectedAtByItem[acc.itemId] = acc.connectedAt;
+          }
+          if (acc.lastSyncedAt) {
+            // Use account lastSyncedAt as preference
+            lastSyncedByItem[acc.itemId] = acc.lastSyncedAt;
+          }
+        }
+      });
+
+      // Also use itemStatuses for lastUpdatedAt
       Object.values(itemStatuses).forEach(status => {
         if (status.lastUpdatedAt) {
-          mergedLastSynced[status.id] = status.lastUpdatedAt;
+          lastSyncedByItem[status.id] = status.lastUpdatedAt;
         }
       });
-      Object.entries(mergedLastSynced).forEach(([id, dateStr]) => {
-        if (dateStr) {
-          newTimers[id] = calculateTimers(dateStr);
-        }
+
+      // Calculate timers for each item
+      Object.keys({ ...lastSyncedByItem, ...connectedAtByItem }).forEach(itemId => {
+        const lastSyncStr = lastSyncedByItem[itemId];
+        const connectedAtStr = connectedAtByItem[itemId];
+        newTimers[itemId] = calculateTimers(lastSyncStr, connectedAtStr);
       });
+
       setTimers(newTimers);
     };
 
     updateTimers();
-    const interval = setInterval(updateTimers, 60000); // 60 segundos - reduzido de 1s para economizar recursos
+    const interval = setInterval(updateTimers, 60000); // 60 segundos
     return () => clearInterval(interval);
-  }, [lastSynced, itemStatuses]);
+  }, [lastSynced, itemStatuses, accounts]);
+
+  // Auto-cleanup invalid accounts (NaN balance) on load
+  const hasCleanedUp = useRef(false);
+  useEffect(() => {
+    if (!userId || hasCleanedUp.current) return;
+
+    // Check if there are any accounts with invalid balance
+    const hasInvalidAccounts = accounts.some(acc =>
+      acc.balance === undefined ||
+      acc.balance === null ||
+      (typeof acc.balance === 'number' && isNaN(acc.balance))
+    );
+
+    if (hasInvalidAccounts) {
+      hasCleanedUp.current = true;
+      // Run cleanup silently
+      dbService.deleteInvalidAccounts(userId).then(count => {
+        if (count > 0) {
+          console.log(`[Auto-cleanup] Removed ${count} invalid accounts`);
+          onRefresh?.();
+        }
+      }).catch(console.error);
+    }
+  }, [userId, accounts, onRefresh]);
 
   let connectButtonTooltip = "";
   if (userPlan === 'starter') {
@@ -396,18 +450,26 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     };
   }, [userId, onRefresh]);
 
-  // Global Timer Display Logic
-  const globalTimerDisplay = useMemo(() => {
-    const now = new Date();
-    const nextMidnight = new Date(now);
-    nextMidnight.setHours(24, 0, 0, 0);
-    const diff = nextMidnight.getTime() - now.getTime();
+  // Global Timer Display Logic - Updates every second for smooth animation
+  const [globalTimerDisplay, setGlobalTimerDisplay] = useState({ h: 0, m: 0, s: 0 });
 
-    const h = Math.floor(diff / (1000 * 60 * 60));
-    const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-    const s = Math.floor((diff % (1000 * 60)) / 1000);
-    return { h, m, s };
-  }, [timers /* trigger re-calc on tick */]);
+  useEffect(() => {
+    const updateGlobalTimer = () => {
+      const now = new Date();
+      const nextMidnight = new Date(now);
+      nextMidnight.setHours(24, 0, 0, 0);
+      const diff = nextMidnight.getTime() - now.getTime();
+
+      const h = Math.floor(diff / (1000 * 60 * 60));
+      const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      const s = Math.floor((diff % (1000 * 60)) / 1000);
+      setGlobalTimerDisplay({ h, m, s });
+    };
+
+    updateGlobalTimer(); // Initial
+    const interval = setInterval(updateGlobalTimer, 1000); // Update every second
+    return () => clearInterval(interval);
+  }, []);
 
 
   const groupedAccounts = useMemo(() => {
@@ -522,10 +584,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (!userId || isSyncingItem[itemId]) return;
 
     if (!force) {
-      // Check if already synced today
+      // Check if already synced or connected today
       const itemTimer = timers[itemId];
       if (itemTimer?.syncedToday) {
-        toast.error(`Este banco já foi sincronizado hoje.Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m} m.`);
+        const message = itemTimer.connectedToday
+          ? `Banco conectado hoje. Sincronização liberada à meia-noite (${itemTimer.auto.h}h ${itemTimer.auto.m}m).`
+          : `Já sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`;
+        toast.error(message);
         return;
       }
 
@@ -548,12 +613,18 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       if (data.success) {
         toast.info("Sincronização iniciada com sucesso!");
         fetchItemStatuses();
+      } else if (data.needsReconnect || data.code === 'ITEM_NOT_FOUND') {
+        // Item não existe mais na Pluggy - precisa reconectar
+        toast.error("Conexão expirada. Por favor, reconecte este banco.", "A conexão com seu banco expirou.");
+        // Opcionalmente abrir o modal de conexão para reconectar
+        setForceSyncItemId(null);
+        setShowBankModal(true);
       } else {
         toast.error(data.error || "Erro ao iniciar sincronização.");
       }
     } catch (error) {
       console.error("Sync error", error);
-      toast.error("Erro ao sincronizar.");
+      toast.error("Erro ao sincronizar. Verifique sua conexão.");
     } finally {
       setIsSyncingItem(prev => ({ ...prev, [itemId]: false }));
     }
@@ -579,6 +650,24 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     } catch (e) {
       toast.dismiss(toastId);
       toast.error('Erro de conexão.');
+    }
+  };
+
+  const handleCleanupInvalidAccounts = async () => {
+    if (!userId) return;
+    const toastId = toast.loading('Removendo contas inválidas...');
+    try {
+      const deletedCount = await dbService.deleteInvalidAccounts(userId);
+      toast.dismiss(toastId);
+      if (deletedCount > 0) {
+        toast.success(`${deletedCount} conta(s) inválida(s) removida(s)!`);
+        onRefresh?.();
+      } else {
+        toast.info('Nenhuma conta inválida encontrada.');
+      }
+    } catch (e) {
+      toast.dismiss(toastId);
+      toast.error('Erro ao remover contas inválidas.');
     }
   };
 

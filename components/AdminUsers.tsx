@@ -16,16 +16,17 @@ import {
     AlertCircle,
     Users as UsersIcon,
     ChevronDown,
-    Filter
+    Filter,
+    Clock
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { User as UserType } from '../types';
 import { EmptyState } from './EmptyState';
 import { ConfirmationBar } from './ConfirmationBar';
-import { 
-    Dropdown, 
-    DropdownTrigger, 
-    DropdownContent, 
+import {
+    Dropdown,
+    DropdownTrigger,
+    DropdownContent,
     DropdownItem,
     DropdownLabel,
     DropdownSeparator
@@ -41,6 +42,7 @@ interface SystemUser extends UserType {
 
 type PlanFilter = 'all' | 'starter' | 'pro' | 'family';
 type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due';
+type RoleFilter = 'all' | 'admin' | 'user';
 
 const planTabs: { value: PlanFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
@@ -55,8 +57,10 @@ export const AdminUsers: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [deleteId, setDeleteId] = useState<string | null>(null);
+    const [adminToggleId, setAdminToggleId] = useState<string | null>(null);
 
     // Load users
     useEffect(() => {
@@ -94,9 +98,14 @@ export const AdminUsers: React.FC = () => {
             const userStatus = user.subscription?.status || 'active';
             const matchesStatus = statusFilter === 'all' || userStatus === statusFilter;
 
-            return matchesSearch && matchesPlan && matchesStatus;
+            // Role filter
+            const matchesRole = roleFilter === 'all' ||
+                (roleFilter === 'admin' && user.isAdmin) ||
+                (roleFilter === 'user' && !user.isAdmin);
+
+            return matchesSearch && matchesPlan && matchesStatus && matchesRole;
         });
-    }, [users, searchTerm, planFilter, statusFilter]);
+    }, [users, searchTerm, planFilter, statusFilter, roleFilter]);
 
     // Stats
     const stats = useMemo(() => ({
@@ -174,6 +183,34 @@ export const AdminUsers: React.FC = () => {
         });
     };
 
+    const getAge = (birthDate?: string) => {
+        if (!birthDate) return '-';
+        const today = new Date();
+        const birth = new Date(birthDate);
+        let age = today.getFullYear() - birth.getFullYear();
+        const m = today.getMonth() - birth.getMonth();
+        if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+            age--;
+        }
+        return `${age} anos`;
+    };
+
+    const getLastLogin = (user: SystemUser) => {
+        const logs = user.connectionLogs;
+        if (!logs || logs.length === 0) return '-';
+        // logs are typically sorted with latest first
+        const lastLog = logs[0];
+        if (!lastLog || !lastLog.timestamp) return '-';
+
+        const date = new Date(lastLog.timestamp);
+        return date.toLocaleDateString('pt-BR', {
+            day: '2-digit',
+            month: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+    };
+
     const handleDelete = async () => {
         if (!deleteId) return;
         try {
@@ -185,6 +222,37 @@ export const AdminUsers: React.FC = () => {
             toast.error('Erro ao remover usuário.');
         } finally {
             setDeleteId(null);
+        }
+    };
+
+    const handleToggleAdmin = async () => {
+        if (!adminToggleId) return;
+        try {
+            const user = users.find(u => u.id === adminToggleId);
+            if (!user) return;
+
+            const newStatus = !user.isAdmin;
+            await dbService.setAdminStatus(user.id, newStatus);
+
+            setUsers(prev => prev.map(u =>
+                u.id === adminToggleId ? { ...u, isAdmin: newStatus } : u
+            ));
+
+            toast.success(`Usuário ${newStatus ? 'promovido a Admin' : 'removido de Admin'} com sucesso.`);
+        } catch (error) {
+            console.error('Error toggling admin status:', error);
+            toast.error('Erro ao alterar status de admin.');
+        } finally {
+            setAdminToggleId(null);
+        }
+    };
+
+    const getRoleLabel = (role: RoleFilter) => {
+        switch (role) {
+            case 'all': return 'Todos Tipos';
+            case 'admin': return 'Admins';
+            case 'user': return 'Usuários';
+            default: return role;
         }
     };
 
@@ -258,48 +326,87 @@ export const AdminUsers: React.FC = () => {
                     />
                 </div>
 
-                {/* Status Filter */}
-                <Dropdown>
-                    <DropdownTrigger className="w-full sm:w-auto">
-                        <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
-                            <div className="flex items-center gap-2">
-                                <Filter size={16} className="text-gray-500" />
-                                <span className="text-sm">{getStatusLabel(statusFilter)}</span>
+                {/* Filters Group */}
+                <div className="flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+                    {/* Status Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="w-full sm:w-auto">
+                            <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
+                                <div className="flex items-center gap-2">
+                                    <Filter size={16} className="text-gray-500" />
+                                    <span className="text-sm">{getStatusLabel(statusFilter)}</span>
+                                </div>
+                                <ChevronDown size={16} className="text-gray-500" />
                             </div>
-                            <ChevronDown size={16} className="text-gray-500" />
-                        </div>
-                    </DropdownTrigger>
-                    <DropdownContent align="right" width="w-48">
-                        <DropdownLabel>Filtrar por Status</DropdownLabel>
-                        <DropdownItem 
-                            onClick={() => setStatusFilter('all')}
-                            className={statusFilter === 'all' ? 'bg-white/5' : ''}
-                        >
-                            Todos
-                        </DropdownItem>
-                        <DropdownItem 
-                            onClick={() => setStatusFilter('active')}
-                            icon={CheckCircle}
-                            className={statusFilter === 'active' ? 'bg-white/5' : ''}
-                        >
-                            Ativo
-                        </DropdownItem>
-                        <DropdownItem 
-                            onClick={() => setStatusFilter('canceled')}
-                            icon={X}
-                            className={statusFilter === 'canceled' ? 'bg-white/5' : ''}
-                        >
-                            Cancelado
-                        </DropdownItem>
-                        <DropdownItem 
-                            onClick={() => setStatusFilter('past_due')}
-                            icon={AlertCircle}
-                            className={statusFilter === 'past_due' ? 'bg-white/5' : ''}
-                        >
-                            Atrasado
-                        </DropdownItem>
-                    </DropdownContent>
-                </Dropdown>
+                        </DropdownTrigger>
+                        <DropdownContent align="right" width="w-48">
+                            <DropdownLabel>Filtrar por Status</DropdownLabel>
+                            <DropdownItem
+                                onClick={() => setStatusFilter('all')}
+                                className={statusFilter === 'all' ? 'bg-white/5' : ''}
+                            >
+                                Todos
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setStatusFilter('active')}
+                                icon={CheckCircle}
+                                className={statusFilter === 'active' ? 'bg-white/5' : ''}
+                            >
+                                Ativo
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setStatusFilter('canceled')}
+                                icon={X}
+                                className={statusFilter === 'canceled' ? 'bg-white/5' : ''}
+                            >
+                                Cancelado
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setStatusFilter('past_due')}
+                                icon={AlertCircle}
+                                className={statusFilter === 'past_due' ? 'bg-white/5' : ''}
+                            >
+                                Atrasado
+                            </DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+
+                    {/* Role Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="w-full sm:w-auto">
+                            <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
+                                <div className="flex items-center gap-2">
+                                    <UsersIcon size={16} className="text-gray-500" />
+                                    <span className="text-sm">{getRoleLabel(roleFilter)}</span>
+                                </div>
+                                <ChevronDown size={16} className="text-gray-500" />
+                            </div>
+                        </DropdownTrigger>
+                        <DropdownContent align="right" width="w-48">
+                            <DropdownLabel>Filtrar por Tipo</DropdownLabel>
+                            <DropdownItem
+                                onClick={() => setRoleFilter('all')}
+                                className={roleFilter === 'all' ? 'bg-white/5' : ''}
+                            >
+                                Todos
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setRoleFilter('admin')}
+                                icon={Shield}
+                                className={roleFilter === 'admin' ? 'bg-white/5' : ''}
+                            >
+                                Admins
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setRoleFilter('user')}
+                                icon={User}
+                                className={roleFilter === 'user' ? 'bg-white/5' : ''}
+                            >
+                                Usuários
+                            </DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+                </div>
             </div>
 
             {/* Plan Tabs */}
@@ -346,9 +453,11 @@ export const AdminUsers: React.FC = () => {
                                 <tr>
                                     <th className="px-4 py-3 text-left">Usuário</th>
                                     <th className="px-4 py-3 text-left">Email</th>
+                                    <th className="px-4 py-3 text-left">Idade</th>
                                     <th className="px-4 py-3 text-left">Plano</th>
                                     <th className="px-4 py-3 text-left">Status</th>
                                     <th className="px-4 py-3 text-left">Ciclo</th>
+                                    <th className="px-4 py-3 text-left">Último Acesso</th>
                                     <th className="px-4 py-3 text-left">Próx. Cobrança</th>
                                     <th className="px-4 py-3 text-center">Ações</th>
                                 </tr>
@@ -379,6 +488,9 @@ export const AdminUsers: React.FC = () => {
                                             <span className="text-gray-400 text-sm">{user.email}</span>
                                         </td>
                                         <td className="px-4 py-3">
+                                            <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
                                             {getPlanBadge(user.subscription?.plan)}
                                         </td>
                                         <td className="px-4 py-3">
@@ -390,12 +502,25 @@ export const AdminUsers: React.FC = () => {
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">
+                                            <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
+                                                <Clock size={12} />
+                                                {getLastLogin(user)}
+                                            </div>
+                                        </td>
+                                        <td className="px-4 py-3">
                                             <span className="text-gray-400 text-xs font-mono">
                                                 {formatDate(user.subscription?.nextBillingDate)}
                                             </span>
                                         </td>
                                         <td className="px-4 py-3">
                                             <div className="flex items-center justify-center gap-2">
+                                                <button
+                                                    onClick={() => setAdminToggleId(user.id)}
+                                                    className={`p-2 rounded-lg transition-colors ${user.isAdmin ? 'text-[#d97757] hover:bg-[#d97757]/10' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
+                                                    title={user.isAdmin ? "Remover Admin" : "Tornar Admin"}
+                                                >
+                                                    <Shield size={16} className={user.isAdmin ? "fill-current" : ""} />
+                                                </button>
                                                 <button
                                                     onClick={() => setSelectedUser(user)}
                                                     className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
@@ -426,170 +551,172 @@ export const AdminUsers: React.FC = () => {
             </div>
 
             {/* Detail Modal */}
-            {createPortal(
-                <AnimatePresence>
-                    {selectedUser && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60"
-                            onClick={() => setSelectedUser(null)}
-                        >
+            {
+                createPortal(
+                    <AnimatePresence>
+                        {selectedUser && (
                             <motion.div
-                                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60"
+                                onClick={() => setSelectedUser(null)}
                             >
-                                {/* Background Glow */}
-                                <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative"
+                                >
+                                    {/* Background Glow */}
+                                    <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
 
-                                {/* Header */}
-                                <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-                                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                                        <div className="p-1.5 rounded-lg bg-[#d97757]/10 text-[#d97757]">
-                                            <User size={16} />
-                                        </div>
-                                        Detalhes do Usuário
-                                    </h3>
-                                    <button
-                                        onClick={() => setSelectedUser(null)}
-                                        className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
+                                    {/* Header */}
+                                    <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+                                        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-[#d97757]/10 text-[#d97757]">
+                                                <User size={16} />
+                                            </div>
+                                            Detalhes do Usuário
+                                        </h3>
+                                        <button
+                                            onClick={() => setSelectedUser(null)}
+                                            className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
+                                        >
+                                            <X size={18} />
+                                        </button>
+                                    </div>
 
-                                {/* Content */}
-                                <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 animate-fade-in relative z-10">
-                                    {/* User Avatar & Name */}
-                                    <div className="flex items-center gap-4">
-                                        <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-md ${selectedUser.avatarUrl ? 'bg-gray-800' : getAvatarColors(selectedUser.name || '').bg} ${selectedUser.avatarUrl ? 'text-white' : getAvatarColors(selectedUser.name || '').text}`}>
-                                            {selectedUser.avatarUrl ? (
-                                                <img src={selectedUser.avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
-                                            ) : (
-                                                getInitials(selectedUser.name || 'U')
-                                            )}
-                                        </div>
-                                        <div>
-                                            <div className="flex items-center gap-2">
-                                                <p className="text-lg font-bold text-white">{selectedUser.name || 'Sem nome'}</p>
-                                                {selectedUser.isAdmin && (
-                                                    <span className="p-1 rounded bg-amber-500/10 text-amber-500" title="Admin">
-                                                        <Shield size={14} />
-                                                    </span>
+                                    {/* Content */}
+                                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-5 animate-fade-in relative z-10">
+                                        {/* User Avatar & Name */}
+                                        <div className="flex items-center gap-4">
+                                            <div className={`w-16 h-16 rounded-full flex items-center justify-center text-xl font-bold shadow-md ${selectedUser.avatarUrl ? 'bg-gray-800' : getAvatarColors(selectedUser.name || '').bg} ${selectedUser.avatarUrl ? 'text-white' : getAvatarColors(selectedUser.name || '').text}`}>
+                                                {selectedUser.avatarUrl ? (
+                                                    <img src={selectedUser.avatarUrl} alt="" className="w-16 h-16 rounded-full object-cover" />
+                                                ) : (
+                                                    getInitials(selectedUser.name || 'U')
                                                 )}
                                             </div>
-                                            <p className="text-sm text-gray-400">{selectedUser.email}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* User Info */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Informações da Conta</label>
-                                        <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">ID</span>
-                                                <span className="text-xs text-gray-300 font-mono">{selectedUser.id}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">CPF</span>
-                                                <span className="text-sm text-gray-300">{selectedUser.cpf || '-'}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">Nascimento</span>
-                                                <span className="text-sm text-gray-300">{formatDate(selectedUser.birthDate)}</span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">2FA</span>
-                                                <span className={`text-sm ${selectedUser.twoFactorEnabled ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                                    {selectedUser.twoFactorEnabled ? 'Ativado' : 'Desativado'}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Subscription Info */}
-                                    <div className="space-y-1.5">
-                                        <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Assinatura</label>
-                                        <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">Plano</span>
-                                                {getPlanBadge(selectedUser.subscription?.plan)}
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">Status</span>
-                                                {getStatusBadge(selectedUser.subscription?.status)}
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">Ciclo</span>
-                                                <span className="text-sm text-gray-300">
-                                                    {selectedUser.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
-                                                </span>
-                                            </div>
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-xs text-gray-500 uppercase">Próx. Cobrança</span>
-                                                <span className="text-sm text-gray-300 font-mono">
-                                                    {formatDate(selectedUser.subscription?.nextBillingDate)}
-                                                </span>
-                                            </div>
-                                            {selectedUser.subscription?.asaasCustomerId && (
-                                                <div className="flex justify-between items-center">
-                                                    <span className="text-xs text-gray-500 uppercase">Asaas ID</span>
-                                                    <span className="text-xs text-gray-400 font-mono">
-                                                        {selectedUser.subscription.asaasCustomerId}
-                                                    </span>
+                                            <div>
+                                                <div className="flex items-center gap-2">
+                                                    <p className="text-lg font-bold text-white">{selectedUser.name || 'Sem nome'}</p>
+                                                    {selectedUser.isAdmin && (
+                                                        <span className="p-1 rounded bg-amber-500/10 text-amber-500" title="Admin">
+                                                            <Shield size={14} />
+                                                        </span>
+                                                    )}
                                                 </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    {/* Address */}
-                                    {selectedUser.address && (
-                                        <div className="space-y-1.5">
-                                            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Endereço</label>
-                                            <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4">
-                                                <p className="text-sm text-gray-300">
-                                                    {selectedUser.address.street}, {selectedUser.address.number}
-                                                    {selectedUser.address.complement && ` - ${selectedUser.address.complement}`}
-                                                </p>
-                                                <p className="text-sm text-gray-400">
-                                                    {selectedUser.address.neighborhood} - {selectedUser.address.city}/{selectedUser.address.state}
-                                                </p>
-                                                <p className="text-xs text-gray-500 mt-1">CEP: {selectedUser.address.cep}</p>
+                                                <p className="text-sm text-gray-400">{selectedUser.email}</p>
                                             </div>
                                         </div>
-                                    )}
 
-                                    {/* Family Group */}
-                                    {selectedUser.familyGroupId && (
+                                        {/* User Info */}
                                         <div className="space-y-1.5">
-                                            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Grupo Familiar</label>
-                                            <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-2">
+                                            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Informações da Conta</label>
+                                            <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-xs text-gray-500 uppercase">ID do Grupo</span>
-                                                    <span className="text-xs text-gray-300 font-mono">{selectedUser.familyGroupId}</span>
+                                                    <span className="text-xs text-gray-500 uppercase">ID</span>
+                                                    <span className="text-xs text-gray-300 font-mono">{selectedUser.id}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
-                                                    <span className="text-xs text-gray-500 uppercase">Papel</span>
-                                                    <span className={`text-sm ${selectedUser.familyRole === 'owner' ? 'text-[#d97757]' : 'text-gray-300'}`}>
-                                                        {selectedUser.familyRole === 'owner' ? 'Proprietário' : 'Membro'}
+                                                    <span className="text-xs text-gray-500 uppercase">CPF</span>
+                                                    <span className="text-sm text-gray-300">{selectedUser.cpf || '-'}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Nascimento</span>
+                                                    <span className="text-sm text-gray-300">{formatDate(selectedUser.birthDate)}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">2FA</span>
+                                                    <span className={`text-sm ${selectedUser.twoFactorEnabled ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                                        {selectedUser.twoFactorEnabled ? 'Ativado' : 'Desativado'}
                                                     </span>
                                                 </div>
                                             </div>
                                         </div>
-                                    )}
-                                </div>
+
+                                        {/* Subscription Info */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Assinatura</label>
+                                            <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Plano</span>
+                                                    {getPlanBadge(selectedUser.subscription?.plan)}
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Status</span>
+                                                    {getStatusBadge(selectedUser.subscription?.status)}
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Ciclo</span>
+                                                    <span className="text-sm text-gray-300">
+                                                        {selectedUser.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Próx. Cobrança</span>
+                                                    <span className="text-sm text-gray-300 font-mono">
+                                                        {formatDate(selectedUser.subscription?.nextBillingDate)}
+                                                    </span>
+                                                </div>
+                                                {selectedUser.subscription?.asaasCustomerId && (
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-gray-500 uppercase">Asaas ID</span>
+                                                        <span className="text-xs text-gray-400 font-mono">
+                                                            {selectedUser.subscription.asaasCustomerId}
+                                                        </span>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Address */}
+                                        {selectedUser.address && (
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Endereço</label>
+                                                <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4">
+                                                    <p className="text-sm text-gray-300">
+                                                        {selectedUser.address.street}, {selectedUser.address.number}
+                                                        {selectedUser.address.complement && ` - ${selectedUser.address.complement}`}
+                                                    </p>
+                                                    <p className="text-sm text-gray-400">
+                                                        {selectedUser.address.neighborhood} - {selectedUser.address.city}/{selectedUser.address.state}
+                                                    </p>
+                                                    <p className="text-xs text-gray-500 mt-1">CEP: {selectedUser.address.cep}</p>
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Family Group */}
+                                        {selectedUser.familyGroupId && (
+                                            <div className="space-y-1.5">
+                                                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Grupo Familiar</label>
+                                                <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-2">
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-gray-500 uppercase">ID do Grupo</span>
+                                                        <span className="text-xs text-gray-300 font-mono">{selectedUser.familyGroupId}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-xs text-gray-500 uppercase">Papel</span>
+                                                        <span className={`text-sm ${selectedUser.familyRole === 'owner' ? 'text-[#d97757]' : 'text-gray-300'}`}>
+                                                            {selectedUser.familyRole === 'owner' ? 'Proprietário' : 'Membro'}
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>,
-                document.body
-            )}
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )
+            }
 
             {/* Delete Confirmation */}
             <ConfirmationBar
@@ -601,6 +728,19 @@ export const AdminUsers: React.FC = () => {
                 cancelText="Cancelar"
                 isDestructive={true}
             />
-        </div>
+
+            {/* Admin Toggle Confirmation */}
+            <ConfirmationBar
+                isOpen={!!adminToggleId}
+                onCancel={() => setAdminToggleId(null)}
+                onConfirm={handleToggleAdmin}
+                label={users.find(u => u.id === adminToggleId)?.isAdmin
+                    ? "Remover privilégios de Admin?"
+                    : "Promover a Admin?"}
+                confirmText="Confirmar"
+                cancelText="Cancelar"
+                isDestructive={false}
+            />
+        </div >
     );
 };

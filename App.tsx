@@ -2865,16 +2865,8 @@ const App: React.FC = () => {
     const connectedAcc = connectedAccounts.find(acc => acc.id === investment.id);
 
     if (connectedAcc) {
-      // Update connected account (nickname/icon)
-      const updatedAccount: ConnectedAccount = {
-        ...connectedAcc,
-        name: investment.name, // Use the new name as the nickname
-        // We might want to store the custom icon too if ConnectedAccount supports it?
-        // Assuming ConnectedAccount has 'name' field which we overwrite. 
-        // (Original name usually in 'institution' or we can keep original in another field if needed, 
-        // but usually users want to rename it).
-      };
-      await dbService.updateConnectedAccount(userId, updatedAccount);
+      // Update connected account (nickname)
+      await dbService.updateConnectedAccount(userId, connectedAcc.id, { name: investment.name });
       toast.success("Apelido da conta atualizado!");
     } else {
       // Standard manual investment update

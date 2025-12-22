@@ -303,6 +303,9 @@ export interface ConnectedAccount {
   bankNumber?: string;
   branchNumber?: string;
   transferNumber?: string;
+  // Sync tracking
+  connectedAt?: string;   // ISO timestamp of first connection
+  lastSyncedAt?: string;  // ISO timestamp of last sync
 }
 
 export interface AppNotification {
