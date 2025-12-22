@@ -3464,13 +3464,23 @@ const App: React.FC = () => {
       {/* Pro Onboarding Tutorial */}
       <ProOnboardingModal
         isOpen={isProOnboardingOpen}
-        onClose={() => setIsProOnboardingOpen(false)}
+        onClose={async () => {
+          setIsProOnboardingOpen(false);
+          // Persist "Has Seen" to Database so it never shows again even if skipped
+          if (currentUser && userId) {
+            try {
+              await dbService.updateUserProfile(userId, { hasSeenProTutorial: true });
+            } catch (error) {
+              console.error("[App] Failed to save tutorial state:", error);
+            }
+          }
+        }}
         userName={currentUser?.name || 'Pro User'}
         onConnectBank={() => setIsBankConnectModalOpen(true)}
         onComplete={async () => {
           setIsProOnboardingOpen(false);
           // Persist "Has Seen" to Database so it never shows again
-          if (currentUser) {
+          if (currentUser && userId) {
             console.log('[App] Pro Tutorial Completed. Persisting state to DB.');
             try {
               await dbService.updateUserProfile(userId, { hasSeenProTutorial: true });

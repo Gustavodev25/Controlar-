@@ -33,7 +33,7 @@ import {
 } from './Icons';
 import { Logo } from './Logo';
 import { User, AppNotification, PromoPopup } from '../types';
-import { getAllUsers, addNotification, addPromoPopup } from '../services/database';
+import { getAllUsers, addNotification, addPromoPopup, getWaitlistEntries } from '../services/database';
 import { CustomSelect } from './UIComponents';
 import { useToasts } from './Toast';
 
@@ -43,9 +43,10 @@ interface AdminEmailMessageProps {
 
 type AlignType = 'left' | 'center' | 'right' | 'justify';
 
-const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) => {
+export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) => {
     // Data State
     const [allUsers, setAllUsers] = useState<(User & { id: string })[]>([]);
+    const [waitlistEntries, setWaitlistEntries] = useState<any[]>([]); // Store waitlist data
     const [isLoadingUsers, setIsLoadingUsers] = useState(true);
     const toast = useToasts();
 
@@ -122,16 +123,25 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
             textarea.setSelectionRange(start + newText.length, start + newText.length);
         }, 0);
     };
-
-    // Fetch Users
+    // Fetch Users & Waitlist
     useEffect(() => {
-        const loadUsers = async () => {
+        const loadData = async () => {
             setIsLoadingUsers(true);
-            const users = await getAllUsers();
-            setAllUsers(users);
-            setIsLoadingUsers(false);
+            try {
+                const [users, waitlist] = await Promise.all([
+                    getAllUsers(),
+                    getWaitlistEntries()
+                ]);
+                setAllUsers(users);
+                setWaitlistEntries(waitlist);
+            } catch (error) {
+                console.error("Error loading data:", error);
+                toast.error("Erro ao carregar usuários.");
+            } finally {
+                setIsLoadingUsers(false);
+            }
         };
-        loadUsers();
+        loadData();
     }, []);
 
     // Filter users for search
@@ -152,16 +162,18 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
 
     // Computed Recipients
     const recipientCount = useMemo(() => {
-        if (!allUsers.length) return 0;
+        // If loading, 0
+        if (isLoadingUsers) return 0;
+
         switch (recipientType) {
             case 'all': return allUsers.length;
             case 'pro': return allUsers.filter(u => u.subscription?.plan === 'pro' || u.subscription?.plan === 'family').length;
             case 'starter': return allUsers.filter(u => !u.subscription?.plan || u.subscription?.plan === 'starter').length;
-            case 'waitlist': return 0;
+            case 'waitlist': return waitlistEntries.length;
             case 'specific': return selectedUserIds.length;
             default: return 0;
         }
-    }, [allUsers, recipientType, selectedUserIds]);
+    }, [allUsers, waitlistEntries, recipientType, selectedUserIds, isLoadingUsers]);
 
     // Send Message Logic (Email or Notification)
     const handleSend = async () => {
@@ -170,11 +182,18 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
             return;
         }
 
+        // Validation for Waitlist: Can only send EMAIL
+        if (recipientType === 'waitlist' && deliveryMethod !== 'email') {
+            toast.warning('Usuários da Lista de Espera não possuem conta no app. Envie apenas por Email.');
+            return;
+        }
+
         setIsSending(true);
 
         try {
             // Gather target users with their IDs
-            let targetUsers: (User & { id: string })[] = [];
+            let targetUsers: (Partial<User> & { id: string, email: string })[] = [];
+
             switch (recipientType) {
                 case 'all':
                     targetUsers = allUsers;
@@ -184,6 +203,16 @@ const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUser }) =>
                     break;
                 case 'starter':
                     targetUsers = allUsers.filter(u => !u.subscription?.plan || u.subscription?.plan === 'starter');
+                    break;
+                case 'waitlist':
+                    // Map waitlist entries to a minimal user structure compatible with sending logic
+                    targetUsers = waitlistEntries.map(entry => ({
+                        id: entry.id,
+                        email: entry.email,
+                        name: entry.name,
+                        // Add mock properties if needed for strict User typing, 
+                        // but logic below only needs id and email mostly.
+                    }));
                     break;
                 case 'specific':
                     targetUsers = selectedUsersList;

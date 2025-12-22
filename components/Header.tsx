@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion';
 import {
   Menu,
   Lock,
@@ -193,7 +193,9 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="h-16 lg:h-20 bg-[#30302E] sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4">
+      <header
+        className="h-16 lg:h-20 sticky top-0 z-40 px-3 lg:px-6 flex items-center justify-between gap-2 lg:gap-4 mx-auto transition-all bg-[#30302E] border-b border-gray-800"
+      >
         {/* Mobile Menu Button */}
         <button
           onClick={() => setSidebarOpen(!isSidebarOpen)}
