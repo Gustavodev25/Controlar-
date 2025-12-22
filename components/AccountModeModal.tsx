@@ -241,7 +241,7 @@ export const AccountModeModal: React.FC<AccountModeModalProps> = ({
                 disabled={isProcessing}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition-all shadow-lg shadow-emerald-900/20 flex items-center justify-center gap-2"
               >
-                {isProcessing ? 'Sincronizando...' : 'Confirmar e Reativar'}
+                {isProcessing ? 'Sincronizando...' : 'Confirmar'}
               </button>
             </div>
           )}

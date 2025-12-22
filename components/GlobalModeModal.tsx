@@ -211,7 +211,7 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
               disabled={isProcessing}
               className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-emerald-900/20"
             >
-              {isProcessing ? 'Sincronizando...' : 'Confirmar e Reativar'}
+              {isProcessing ? 'Sincronizando...' : 'Confirmar'}
             </button>
           </div>
         </div>

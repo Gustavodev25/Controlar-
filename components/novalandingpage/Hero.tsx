@@ -1,73 +1,115 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import heroImg from '../../assets/hero.png';
-import { cn } from '../../lib/utils';
-import { FlipWords } from './FlipWords';
+import { ShiningText } from '../ShiningText';
+import { AnimatedGridPattern } from '../AnimatedGridPattern';
+import { InfiniteSlider } from '../InfiniteSlider';
+import dashboardImg from '../../assets/dashboard.png';
 
-export const Hero: React.FC = () => {
+// Bank logos
+import bancodobrasilLogo from '../../assets/bancos/bancodobrasil.png';
+import bradescoLogo from '../../assets/bancos/bradesco.png';
+import brbLogo from '../../assets/bancos/brb.png';
+import c6Logo from '../../assets/bancos/c6.png';
+import caixaLogo from '../../assets/bancos/caixa.png';
+import interLogo from '../../assets/bancos/inter.png';
+import nubankLogo from '../../assets/bancos/nubank.png';
+import santanderLogo from '../../assets/bancos/santander.png';
+import xpLogo from '../../assets/bancos/xp.png';
+
+export function Hero() {
+    const banks = [
+        { name: 'Banco do Brasil', logo: bancodobrasilLogo },
+        { name: 'Bradesco', logo: bradescoLogo },
+        { name: 'BRB', logo: brbLogo },
+        { name: 'C6 Bank', logo: c6Logo },
+        { name: 'Caixa', logo: caixaLogo },
+        { name: 'Inter', logo: interLogo },
+        { name: 'Nubank', logo: nubankLogo },
+        { name: 'Santander', logo: santanderLogo },
+        { name: 'XP', logo: xpLogo },
+    ];
 
     return (
-        <div className="relative mx-2 mt-2 rounded-[24px] border border-white/10 pt-24 lg:pt-36 pb-0 overflow-hidden min-h-[600px] h-[calc(100vh-1rem)] flex flex-col justify-start items-center">
+        <div className="w-full bg-[#1a0f0a] flex flex-col">
+            <section className="relative w-full min-h-screen bg-[radial-gradient(ellipse_60%_40%_at_50%_40%,_#3a1a10_0%,_#1a0f0a_100%)] overflow-hidden flex items-center justify-center pt-40 pb-0">
 
-            {/* --- Background Blurs (Estilo Aurora/Nebulosa) --- */}
+                {/* Grid Animado de Fundo - Sutil e Centralizado */}
+                <AnimatedGridPattern
+                    width={60}
+                    height={60}
+                    numSquares={20}
+                    maxOpacity={0.08}
+                    duration={4}
+                    repeatDelay={2}
+                    className="[mask-image:radial-gradient(ellipse_50%_50%_at_50%_40%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03]"
+                />
 
-            {/* Camada de Fundo - Base Suave (Cobre a largura toda embaixo) */}
-            <div className="absolute -bottom-[20%] left-0 right-0 h-[600px] bg-[#D97757] opacity-10 blur-[180px] pointer-events-none" />
+                <div className="container mx-auto flex flex-col items-center justify-center z-10 px-4 lg:px-12 h-full">
+                    <div className="space-y-8 text-center max-w-4xl">
+                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
+                            Desbloqueie o Potencial <br />
+                            das suas <ShiningText text="Finanças." />
+                        </h1>
+                        <p className="text-xl text-gray-400 max-w-xl mx-auto">
+                            Controlar+ é a plataforma financeira mais produtiva já feita.
+                            Obtenha clareza total sobre seu dinheiro em segundos.
+                        </p>
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                            <button className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group">
+                                Começar Agora
+                                <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+                                </svg>
+                            </button>
+                            <button className="px-12 py-4 min-w-[200px] bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-full font-medium transition-all flex items-center justify-center gap-2">
+                                Saber mais
+                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                                </svg>
+                            </button>
+                        </div>
+                    </div>
 
-            {/* Canto Esquerdo - Mais intenso */}
-            <div className="absolute -bottom-32 -left-32 w-[600px] h-[600px] bg-[#D97757] opacity-25 blur-[160px] rounded-full pointer-events-none mix-blend-screen" />
-
-            {/* Canto Direito - Mais intenso */}
-            <div className="absolute -bottom-32 -right-32 w-[600px] h-[600px] bg-[#D97757] opacity-25 blur-[160px] rounded-full pointer-events-none mix-blend-screen" />
-
-            {/* Elemento Central de Conexão (Para criar o degradê contínuo igual da imagem) */}
-            <div className="absolute -bottom-64 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-[#D97757] opacity-20 blur-[140px] rounded-full pointer-events-none" />
-
-            {/* --------------------------------------------------- */}
-
-            <div className="container mx-auto px-4 relative z-10 flex flex-col h-full pointer-events-none">
-
-                {/* Text Content */}
-                <div className="text-center max-w-6xl mx-auto mt-8 lg:mt-12 flex-shrink-0 pointer-events-auto z-30">
-                    <motion.h1
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5 }}
-                        className="text-3xl md:text-4xl lg:text-6xl font-bold text-white tracking-tight mb-4 leading-[1.1]"
-                    >
-                        Molde seu futuro financeiro com <br className="hidden md:block" />
-                        <motion.span layout className="inline-flex items-center justify-center flex-wrap gap-2">
-                            <FlipWords words={["inteligência", "estratégia", "controle"]} className="text-[#D97757] !px-0" />
-                            <motion.span layout>e precisão.</motion.span>
-                        </motion.span>
-                    </motion.h1>
-
-                    <motion.p
-                        initial={{ opacity: 0, y: 20 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.5, delay: 0.1 }}
-                        className="text-sm md:text-base text-gray-400 mb-6 max-w-3xl mx-auto leading-relaxed"
-                    >
-                        Oferecemos uma suíte completa de serviços, desde gestão pessoal até insights de IA, tudo entregue com excelência inigualável.
-                    </motion.p>
+                    {/* Dashboard Image - Cortado pela máscara do container */}
+                    <div className="relative w-full max-w-5xl mt-8 translate-y-[15%]">
+                        <div className="relative rounded-t-xl overflow-hidden border border-white/10 border-b-0 shadow-2xl shadow-black/50">
+                            <img
+                                src={dashboardImg}
+                                alt="Dashboard Controlar+"
+                                className="w-full h-auto"
+                            />
+                        </div>
+                    </div>
                 </div>
+            </section>
 
-                {/* Visual Mockup Area */}
-                <div className="relative w-full flex justify-center pointer-events-auto flex-grow items-end pb-0">
-                    <motion.div
-                        initial={{ opacity: 0, y: 100 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        transition={{ duration: 0.8, delay: 0.3 }}
-                        className="w-[200px] md:w-[350px] lg:w-[400px] z-20 relative -mb-10 md:mb-0"
-                    >
-                        <img
-                            src={heroImg}
-                            alt="Interface do Aplicativo Controlar"
-                            className="w-full h-auto object-contain drop-shadow-2xl"
-                        />
-                    </motion.div>
+            {/* Infinite Slider - Bancos Parceiros */}
+            <section className="relative w-full py-8 bg-[#30302E] border-t border-white/5">
+                <div className="flex items-center">
+                    {/* Quadrado com texto */}
+                    <div className="flex-shrink-0 px-8 py-4 border-r border-white/10">
+                        <p className="text-sm text-gray-400 uppercase tracking-widest whitespace-nowrap">Conecte com seus bancos favoritos</p>
+                    </div>
+
+                    {/* Slider */}
+                    <div className="relative flex-1 overflow-hidden">
+                        {/* Fade nas laterais */}
+                        <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#30302E] to-transparent z-10 pointer-events-none" />
+                        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#30302E] to-transparent z-10 pointer-events-none" />
+
+                        <InfiniteSlider gap={48} duration={30}>
+                            {banks.map((bank) => (
+                                <div key={bank.name} className="flex items-center justify-center px-6 py-4">
+                                    <img
+                                        src={bank.logo}
+                                        alt={bank.name}
+                                        className="h-8 w-auto opacity-60 hover:opacity-100 transition-opacity"
+                                    />
+                                </div>
+                            ))}
+                        </InfiniteSlider>
+                    </div>
                 </div>
-            </div>
+            </section>
         </div>
     );
-};
+}

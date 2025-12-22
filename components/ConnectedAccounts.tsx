@@ -583,7 +583,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const handleManualSync = async (itemId: string, force = false) => {
     if (!userId || isSyncingItem[itemId]) return;
 
-    if (!force) {
+    // Admins bypass all sync restrictions
+    if (!force && !isAdmin) {
       // Check if already synced or connected today
       const itemTimer = timers[itemId];
       if (itemTimer?.syncedToday) {
@@ -1018,10 +1019,10 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                         }>
                           <button
                             onClick={() => handleManualSync(itemId)}
-                            disabled={!hasCredit || isDeleting !== null || isUpdating || timer?.syncedToday}
+                            disabled={isDeleting !== null || isUpdating || (!isAdmin && (!hasCredit || timer?.syncedToday))}
                             className={`px-3 py-1.5 rounded-lg transition-all flex items-center gap-2 text-xs font-bold shadow-sm ${isUpdating
                               ? 'bg-[#d97757]/20 text-[#d97757] border border-[#d97757]/30 animate-pulse'
-                              : (!hasCredit || isDeleting !== null || timer?.syncedToday)
+                              : (!isAdmin && (!hasCredit || timer?.syncedToday)) || isDeleting !== null
                                 ? 'bg-gray-800/50 text-gray-500 cursor-not-allowed border border-gray-800'
                                 : 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30 hover:border-[#d97757]/50'
                               } `}

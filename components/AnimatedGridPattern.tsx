@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { motion } from "framer-motion";
 
-import { cn } from "../../lib/utils";
+import { cn } from "@/lib/utils";
 
 interface AnimatedGridPatternProps {
     width?: number;
@@ -32,7 +32,7 @@ export function AnimatedGridPattern({
     ...props
 }: AnimatedGridPatternProps) {
     const id = useId();
-    const containerRef = useRef<SVGSVGElement>(null);
+    const containerRef = useRef(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const [squares, setSquares] = useState(() => generateSquares(numSquares));
 
