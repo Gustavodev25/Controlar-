@@ -45,7 +45,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
 import { AdminPixels } from './components/AdminPixels';
-import { MetaPixelLoader } from './components/MetaPixelLoader';
+import { PixelPageViewTracker } from './components/PixelPageViewTracker';
 import { AdminFeedbacks } from './components/AdminFeedbacks';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminSubscriptions } from './components/AdminSubscriptions';
@@ -2971,7 +2971,7 @@ const App: React.FC = () => {
     if (showInviteLanding) {
       return (
         <>
-          <MetaPixelLoader />
+          <PixelPageViewTracker activeTab="invite-landing" />
           <ToastContainer />
           <InviteLanding
             ownerName={pendingInvite?.ownerName || 'Alguém'}
@@ -2987,7 +2987,7 @@ const App: React.FC = () => {
     if (showLanding && !pendingTwoFactor) {
       return (
         <>
-          <MetaPixelLoader />
+          <PixelPageViewTracker activeTab={`landing-${landingVariant}`} />
           <ToastContainer />
           <LandingPage variant={landingVariant} onLogin={() => setShowLanding(false)} />
         </>
@@ -2995,7 +2995,7 @@ const App: React.FC = () => {
     }
     return (
       <>
-        <MetaPixelLoader />
+        <PixelPageViewTracker activeTab="auth" />
         <ToastContainer />
         <AuthModal
           onLogin={(u) => {
@@ -3021,7 +3021,8 @@ const App: React.FC = () => {
 
       <ToastContainer />
       <GlobalSyncToast />
-      <MetaPixelLoader activeTab={activeTab} />
+      <PixelPageViewTracker activeTab={activeTab} />
+      <ToastContainer />
       <InviteAcceptModal
         isOpen={showInviteModal}
         onAccept={handleAcceptInvite}
