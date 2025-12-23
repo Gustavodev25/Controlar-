@@ -153,6 +153,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
                 if (planToBuy === 'pro') {
                     localStorage.setItem('show_pro_tutorial', 'true');
+                    // Clear session flag to ensure tutorial shows even if user was browsing before upgrade
+                    sessionStorage.removeItem('pro_tutorial_session_seen');
                 }
 
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));
@@ -269,6 +271,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
 
                 if (planToBuy === 'pro') {
                     localStorage.setItem('show_pro_tutorial', 'true');
+                    // Clear session flag to ensure tutorial shows even if user was browsing before upgrade
+                    sessionStorage.removeItem('pro_tutorial_session_seen');
                 }
 
                 await onUpdateUser(JSON.parse(JSON.stringify(updatedUser)));

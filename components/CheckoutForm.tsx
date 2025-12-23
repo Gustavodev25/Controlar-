@@ -487,45 +487,47 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
-              {/* Coupon Input */}
-              <div className="mb-6">
-                <label className="block text-xs font-semibold text-gray-400 mb-2">Cupom de Desconto</label>
-                {!appliedCoupon ? (
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={couponCode}
-                      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                      placeholder="Código"
-                      className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 h-10 text-white text-sm focus:border-[#d97757] focus:outline-none uppercase"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleApplyCoupon}
-                      disabled={!couponCode || isValidatingCoupon}
-                      className="bg-gray-700 hover:bg-gray-600 text-white px-3 rounded-lg font-medium text-sm disabled:opacity-50 transition-colors"
-                    >
-                      {isValidatingCoupon ? <Loader2 size={16} className="animate-spin" /> : 'Aplicar'}
-                    </button>
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
-                    <div className="flex items-center gap-2">
-                      <div className="bg-green-500 rounded-full p-0.5">
-                        <Check size={10} className="text-black" />
-                      </div>
-                      <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
+              {/* Coupon Input - Only for monthly plans */}
+              {billingCycle === 'monthly' && (
+                <div className="mb-6">
+                  <label className="block text-xs font-semibold text-gray-400 mb-2">Cupom de Desconto</label>
+                  {!appliedCoupon ? (
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={couponCode}
+                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                        placeholder="Código"
+                        className="flex-1 bg-gray-900 border border-gray-700 rounded-lg px-3 h-10 text-white text-sm focus:border-[#d97757] focus:outline-none uppercase"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyCoupon}
+                        disabled={!couponCode || isValidatingCoupon}
+                        className="bg-gray-700 hover:bg-gray-600 text-white px-3 rounded-lg font-medium text-sm disabled:opacity-50 transition-colors"
+                      >
+                        {isValidatingCoupon ? <Loader2 size={16} className="animate-spin" /> : 'Aplicar'}
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handleRemoveCoupon}
-                      className="text-gray-400 hover:text-white transition-colors"
-                    >
-                      <X size={16} />
-                    </button>
-                  </div>
-                )}
-              </div>
+                  ) : (
+                    <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
+                      <div className="flex items-center gap-2">
+                        <div className="bg-green-500 rounded-full p-0.5">
+                          <Check size={10} className="text-black" />
+                        </div>
+                        <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveCoupon}
+                        className="text-gray-400 hover:text-white transition-colors"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <div className="flex justify-between items-center mb-6">
                 <span className="text-lg font-bold text-white">Total</span>

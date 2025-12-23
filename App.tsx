@@ -47,6 +47,7 @@ import { AdminCoupons } from './components/AdminCoupons';
 import { AdminPixels } from './components/AdminPixels';
 import { PixelPageViewTracker } from './components/PixelPageViewTracker';
 import { AdminFeedbacks } from './components/AdminFeedbacks';
+import { Roadmap } from './components/Roadmap';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminSubscriptions } from './components/AdminSubscriptions';
 import { AdminControl } from './components/AdminControl';
@@ -384,6 +385,9 @@ const App: React.FC = () => {
         setIsProMode(true);
         // Also force-save to local storage so it persists right away
         localStorage.setItem('finances_pro_mode', 'true');
+        // Trigger Pro tutorial after upgrade
+        localStorage.setItem('show_pro_tutorial', 'true');
+        sessionStorage.removeItem('pro_tutorial_session_seen');
       }
     }
   });
@@ -972,6 +976,22 @@ const App: React.FC = () => {
 
     const unsubInv = dbService.listenToInvestments(userId, (data) => {
       setInvestments(data);
+
+      // Auto-cleanup invalid investments (NaN currentAmount, empty name)
+      const hasInvalid = data.some(inv =>
+        inv.currentAmount === undefined ||
+        inv.currentAmount === null ||
+        (typeof inv.currentAmount === 'number' && isNaN(inv.currentAmount)) ||
+        !inv.name || inv.name.trim() === ''
+      );
+
+      if (hasInvalid) {
+        dbService.deleteInvalidInvestments(userId).then(count => {
+          if (count > 0) {
+            console.log(`[Auto-cleanup] Removed ${count} invalid investments`);
+          }
+        }).catch(console.error);
+      }
     });
 
     const unsubBudgets = dbService.listenToBudgets(userId, (data) => {
@@ -3074,6 +3094,7 @@ const App: React.FC = () => {
           reminders={reminders}
           budgets={budgets}
           transactions={transactions}
+          subscriptions={subscriptions}
           notifications={notifications}
           onArchiveNotification={handleArchiveNotification}
           onDeleteNotification={handleDeleteNotification}
@@ -3345,6 +3366,12 @@ const App: React.FC = () => {
                     budgets={budgets}
                     userPlan={effectivePlan}
                   />
+                </div>
+              )}
+
+              {activeTab === 'roadmap' && (
+                <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar animate-fade-in">
+                  <Roadmap />
                 </div>
               )}
             </>

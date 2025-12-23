@@ -1152,6 +1152,50 @@ export const deleteInvestment = async (userId: string, investmentId: string) => 
   const invRef = doc(db, "users", userId, "investments", investmentId);
   await deleteDoc(invRef);
 };
+
+// Delete investments with invalid currentAmount (NaN, null, undefined, or empty name)
+export const deleteInvalidInvestments = async (userId: string) => {
+  if (!db) return 0;
+  try {
+    const invRef = collection(db, "users", userId, "investments");
+    const snapshot = await getDocs(invRef);
+
+    let deletedCount = 0;
+    const batch = writeBatch(db);
+
+    snapshot.docs.forEach((docSnapshot) => {
+      const data = docSnapshot.data();
+      const currentAmount = data.currentAmount;
+      const name = data.name;
+
+      // Check if currentAmount is invalid: undefined, null, NaN, or not a number
+      const isAmountInvalid = currentAmount === undefined ||
+        currentAmount === null ||
+        (typeof currentAmount === 'number' && isNaN(currentAmount)) ||
+        typeof currentAmount !== 'number';
+
+      // Also check for empty/missing name (indicates corrupted data)
+      const isNameInvalid = !name || name.trim() === '';
+
+      if (isAmountInvalid || isNameInvalid) {
+        batch.delete(docSnapshot.ref);
+        deletedCount++;
+        console.log(`[deleteInvalidInvestments] Marking for deletion: ${docSnapshot.id}, currentAmount: ${currentAmount}, name: ${name}`);
+      }
+    });
+
+    if (deletedCount > 0) {
+      await batch.commit();
+      console.log(`Deleted ${deletedCount} invalid investments for user ${userId}`);
+    }
+
+    return deletedCount;
+  } catch (error) {
+    console.error("Error deleting invalid investments:", error);
+    throw error;
+  }
+};
+
 export const listenToInvestments = (userId: string, callback: (investments: Investment[]) => void) => {
   if (!db) return () => { };
   const invRef = collection(db, "users", userId, "investments");
@@ -1952,7 +1996,7 @@ export interface Feedback {
   userId?: string;
   userEmail?: string;
   userName?: string;
-  status: 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+  status: 'pending' | 'reviewed' | 'planned' | 'in_progress' | 'completed' | 'resolved' | 'dismissed';
   createdAt: string;
   resolvedAt?: string;
   adminNotes?: string;

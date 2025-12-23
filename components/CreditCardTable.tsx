@@ -290,9 +290,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   };
 
   return (
-    <div className="bg-[#30302E] rounded-3xl shadow-2xl border border-[#373734] overflow-hidden flex flex-col h-full animate-fade-in">
+    <div className="bg-[#30302E] border border-[#373734] rounded-xl flex flex-col h-full animate-fade-in w-full shadow-sm">
       {/* Toolbar */}
-      <div className="p-4 lg:p-6 border-b border-[#373734] flex flex-col gap-4 bg-[#30302E]/95 backdrop-blur-xl relative z-20">
+      <div className="p-4 lg:p-6 flex flex-col gap-4 relative z-20 border-b border-[#373734]">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-[#d97757]/10 rounded-xl border border-[#d97757]/20">
@@ -464,33 +464,33 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       {/* Grid */}
       <div className="overflow-auto flex-1 custom-scrollbar z-0 bg-[#30302E]">
         <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
-          <thead className="bg-[#373734] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
+          <thead className="bg-[#30302E] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
             <tr>
-              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40" onClick={() => handleSort('date')}>
+              <th className="px-6 py-4 border-b border-r border-[#373734] cursor-pointer hover:text-white transition-colors w-40 first:rounded-tl-xl" onClick={() => handleSort('date')}>
                 <div className="flex items-center gap-2">Data {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}</div>
               </th>
-              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
+              <th className="px-6 py-4 border-b border-r border-[#373734] cursor-pointer hover:text-white transition-colors" onClick={() => handleSort('description')}>
                 Descrição {sortField === 'description' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
+              <th className="px-6 py-4 border-b border-r border-[#373734] cursor-pointer hover:text-white transition-colors w-48" onClick={() => handleSort('category')}>
                 Categoria {sortField === 'category' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
-              <th className="px-6 py-4 border-b border-[#373734] cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
+              <th className="px-6 py-4 border-b border-r border-[#373734] cursor-pointer hover:text-white transition-colors w-40 text-right" onClick={() => handleSort('amount')}>
                 Valor {sortField === 'amount' && (sortDirection === 'asc' ? '↑' : '↓')}
               </th>
 
-              <th className="px-6 py-4 border-b border-[#373734] w-32 text-center">Status</th>
-              <th className="px-6 py-4 border-b border-[#373734] w-28 text-center">Ações</th>
+              <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
+              <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
             </tr>
           </thead>
 
-          <tbody className="divide-y divide-[#373734]/50">
+          <tbody className="divide-y divide-[#373734]">
             {filteredTransactions.map((t) => (
-              <tr key={t.id} className="hover:bg-[#373734]/30 transition-colors group">
-                <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs">
+              <tr key={t.id} className="hover:bg-[#373734]/10 transition-colors group border-b border-[#373734]">
+                <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs border-r border-[#373734]">
                   {formatDate(t.date)}
                 </td>
-                <td className="px-6 py-4 text-gray-200 font-medium">
+                <td className="px-6 py-4 text-gray-200 font-medium border-r border-[#373734]">
                   <div className="flex flex-col gap-1">
                     <div className="flex items-center gap-2">
                       <span>{t.description}</span>
@@ -515,7 +515,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     )}
                   </div>
                 </td>
-                <td className="px-6 py-4 text-gray-400">
+                <td className="px-6 py-4 text-gray-400 border-r border-[#373734]">
                   <div className="flex items-center gap-2">
                     <div className="p-1.5 bg-gray-900 rounded-lg text-gray-500 border border-gray-800">
                       {getCategoryIcon(translatePluggyCategory(t.category), 14)}
@@ -523,13 +523,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     <span className="text-xs">{translatePluggyCategory(t.category)}</span>
                   </div>
                 </td>
-                <td className="px-6 py-4 text-right">
+                <td className="px-6 py-4 text-right border-r border-[#373734]">
                   <span className={`font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'}`}>
                     {t.type === 'income' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}
                   </span>
                 </td>
 
-                <td className="px-6 py-4 text-center">
+                <td className="px-6 py-4 text-center border-r border-[#373734]">
                   <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] uppercase font-bold tracking-wide border ${t.status === 'completed'
                     ? 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20'
                     : 'bg-amber-500/10 text-amber-500 border-amber-500/20'
@@ -577,7 +577,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         {/* Mobile */}
         <div className="lg:hidden p-4 space-y-4 flex flex-col pb-24">
           {filteredTransactions.map((t) => (
-            <div key={t.id} className="bg-[#30302E] border border-[#373734] rounded-2xl p-4 relative overflow-hidden shadow-lg group shrink-0">
+            <div key={t.id} className="bg-transparent border-b border-[#373734] p-4 relative group shrink-0 last:border-0">
               <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
               <div className="flex justify-between items-start mb-3 pl-3">
                 <div className="flex-1 min-w-0 pr-2">
@@ -658,7 +658,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       </div>
 
       {/* Footer Summary */}
-      <div className="bg-[#373734] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-3 font-medium uppercase tracking-wide">
+      <div className="border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-3 font-medium uppercase tracking-wide bg-[#30302E]">
         <div className="flex items-center gap-4">
           <span>Lançamentos: <span className="text-white">{filteredTransactions.length}</span></span>
         </div>

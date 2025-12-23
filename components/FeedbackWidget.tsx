@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, MessageSquare, Send, Check, AlertCircle, Lightbulb, ThumbsUp, Bug } from './Icons';
+import * as dbService from '../services/database';
 
 interface FeedbackWidgetProps {
     userEmail?: string;
@@ -56,23 +57,27 @@ export const FeedbackWidget: React.FC<FeedbackWidgetProps> = ({ userEmail, userN
         setError('');
 
         try {
-            const selectedType = feedbackTypes.find(t => t.value === feedbackType);
-            const subject = encodeURIComponent(`[Controlar+] ${selectedType?.label}: Feedback de ${userName || 'Usuário'}`);
-            const body = encodeURIComponent(
-                `Tipo: ${selectedType?.label}\n` +
-                `De: ${userName || 'Anônimo'} (${userEmail || 'Sem email'})\n` +
-                `Data: ${new Date().toLocaleString('pt-BR')}\n\n` +
-                `Mensagem:\n${message}`
-            );
-
-            window.open(`mailto:suporte@controlar.app?subject=${subject}&body=${body}`, '_blank');
+            await dbService.addFeedback({
+                type: feedbackType === 'problem' ? 'bug' : 'suggestion', // Map to DB types
+                message: message,
+                status: 'pending',
+                createdAt: new Date().toISOString(),
+                userEmail: userEmail || '',
+                userName: userName || '',
+                // If the type is 'praise' or 'other', we map to 'suggestion' or keep logic 
+                // But DB only expects 'bug' | 'suggestion'. Let's adjust DB or map them.
+                // For now, map 'problem' to 'bug', others to 'suggestion'.
+                // If we want to capture 'praise' specifically, we should have updated DB type too.
+                // Assuming 'suggestion' is broad enough or we stick to strict mapping.
+            });
 
             setIsSent(true);
             setTimeout(() => {
                 setIsDismissed(true);
                 sessionStorage.setItem('feedback_dismissed', 'true');
-            }, 2000);
+            }, 3000);
         } catch (err) {
+            console.error(err);
             setError('Erro ao enviar. Tente novamente.');
         } finally {
             setIsSending(false);

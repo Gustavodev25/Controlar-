@@ -18,7 +18,7 @@ import { CustomSelect, CustomMonthPicker } from './UIComponents';
 import { NotificationCenter } from './NotificationCenter';
 import { UserMenu } from './UserMenu';
 import { SyncStatusPanel } from './SyncStatusPanel';
-import { User, Member, Reminder, Budget, Transaction, AppNotification as SystemNotification } from '../types';
+import { User, Member, Reminder, Budget, Transaction, Subscription, AppNotification as SystemNotification } from '../types';
 import { TabType } from './Sidebar';
 
 export type FilterMode = 'month' | 'year' | 'last3' | 'last6' | 'all';
@@ -70,6 +70,7 @@ interface HeaderProps {
   reminders: Reminder[];
   budgets: Budget[];
   transactions: Transaction[];
+  subscriptions: Subscription[];
   notifications: SystemNotification[];
   onArchiveNotification: (id: string) => void;
   onDeleteNotification: (id: string) => void;
@@ -118,6 +119,7 @@ export const Header: React.FC<HeaderProps> = ({
   reminders,
   budgets,
   transactions,
+  subscriptions,
   notifications,
   onArchiveNotification,
   onDeleteNotification,
@@ -159,6 +161,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'admin_feedbacks': return { title: 'Feedbacks', desc: 'Gerenciar feedbacks e bugs reportados pelos usuários.' };
       case 'admin_users': return { title: 'Usuários', desc: 'Gerenciar usuários cadastrados no sistema.' };
       case 'credit_cards': return { title: 'Faturas', desc: 'Gerencie suas despesas em cartões de crédito.' };
+      case 'roadmap': return { title: 'Roadmap Público', desc: 'Acompanhe as próximas novidades.' };
       default: return { title: 'Controlar+', desc: '' };
     }
   };
@@ -372,6 +375,7 @@ export const Header: React.FC<HeaderProps> = ({
             reminders={reminders}
             budgets={budgets}
             transactions={transactions}
+            subscriptions={subscriptions}
             externalNotifications={notifications}
             onArchiveNotification={onArchiveNotification}
             onDeleteNotification={onDeleteNotification}

@@ -63,7 +63,10 @@ const getRandomColor = () => {
   return colors[Math.floor(Math.random() * colors.length)];
 };
 
-const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+const formatCurrency = (val: number) => {
+  if (val === undefined || val === null || isNaN(val)) return "--";
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(val);
+};
 
 // Componente de Card Individual (Estilo GRID/Card)
 const InvestmentCard: React.FC<{
@@ -230,7 +233,7 @@ const InvestmentCard: React.FC<{
       <div className="px-5 mt-6 flex-1 flex flex-col justify-center">
         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-1">Saldo Atual</p>
         <p className="font-mono font-bold text-2xl md:text-3xl text-white tracking-tight">
-          <NumberFlow value={investment.currentAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+          <NumberFlow value={typeof investment.currentAmount === 'number' && !isNaN(investment.currentAmount) ? investment.currentAmount : 0} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
         </p>
 
         {!investment.isConnected && investment.targetAmount > 0 && (
@@ -296,14 +299,19 @@ export const Investments: React.FC<InvestmentsProps> = ({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Merge connected accounts
-  const connectedInvestments: Investment[] = connectedSavingsAccounts.map(acc => ({
+  // Merge connected accounts - filter out accounts with invalid balance
+  const validSavingsAccounts = connectedSavingsAccounts.filter(acc => {
+    const balance = acc.balance;
+    return balance !== undefined && balance !== null && !isNaN(balance);
+  });
+
+  const connectedInvestments: Investment[] = validSavingsAccounts.map(acc => ({
     id: acc.id,
     name: acc.name,
     icon: 'reserva.png', // Default icon
     color: 'green',
     targetAmount: 0,
-    currentAmount: acc.balance || 0,
+    currentAmount: typeof acc.balance === 'number' && !isNaN(acc.balance) ? acc.balance : 0,
     createdAt: acc.lastUpdated || toLocalISOString(),
     isConnected: true,
     institution: acc.institution,
@@ -311,7 +319,14 @@ export const Investments: React.FC<InvestmentsProps> = ({
     accountNumber: acc.accountNumber // Número da conta
   }));
 
-  const allInvestments = [...connectedInvestments, ...investments];
+  // Filter out investments with invalid data (NaN currentAmount, missing name, etc.)
+  const validInvestments = investments.filter(inv => {
+    const hasValidAmount = typeof inv.currentAmount === 'number' && !isNaN(inv.currentAmount);
+    const hasValidName = inv.name && inv.name.trim() !== '';
+    return hasValidAmount && hasValidName;
+  });
+
+  const allInvestments = [...connectedInvestments, ...validInvestments];
 
   // Deposit modal
   const [depositModalOpen, setDepositModalOpen] = useState(false);

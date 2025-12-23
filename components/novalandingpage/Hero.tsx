@@ -1,4 +1,6 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
+import NumberFlow from '@number-flow/react';
 import { ShiningText } from '../ShiningText';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 import { InfiniteSlider } from '../InfiniteSlider';
@@ -14,6 +16,138 @@ import interLogo from '../../assets/bancos/inter.png';
 import nubankLogo from '../../assets/bancos/nubank.png';
 import santanderLogo from '../../assets/bancos/santander.png';
 import xpLogo from '../../assets/bancos/xp.png';
+
+// --- HOOK: Scroll Animation ---
+const useScrollAnimation = (threshold = 0.1) => {
+    const ref = useRef<HTMLDivElement>(null);
+    const [isVisible, setIsVisible] = useState(false);
+
+    useEffect(() => {
+        const observer = new IntersectionObserver(
+            ([entry]) => {
+                if (entry.isIntersecting) {
+                    setIsVisible(true);
+                }
+            },
+            { threshold, rootMargin: '50px' }
+        );
+
+        const currentRef = ref.current;
+        if (currentRef) {
+            observer.observe(currentRef);
+        }
+
+        return () => {
+            if (currentRef) {
+                observer.unobserve(currentRef);
+            }
+        };
+    }, [threshold]);
+
+    return { ref, isVisible };
+};
+
+// --- COMPONENTE: Animated Section Wrapper ---
+const AnimatedSection: React.FC<{
+    children: React.ReactNode;
+    className?: string;
+    delay?: number;
+    direction?: 'up' | 'down' | 'left' | 'right' | 'fade';
+}> = ({ children, className = '', delay = 0, direction = 'up' }) => {
+    const { ref, isVisible } = useScrollAnimation(0.1);
+
+    const animations = {
+        up: 'translate-y-8 opacity-0',
+        down: '-translate-y-8 opacity-0',
+        left: 'translate-x-8 opacity-0',
+        right: '-translate-x-8 opacity-0',
+        fade: 'opacity-0'
+    };
+
+    const baseClasses = `transition-all duration-700 ease-out ${isVisible ? 'translate-y-0 translate-x-0 opacity-100' : animations[direction]}`;
+
+    return (
+        <div
+            ref={ref}
+            className={`${baseClasses} ${className}`}
+            style={{ transitionDelay: `${delay}ms` }}
+        >
+            {children}
+        </div>
+    );
+};
+
+// --- COMPONENTE: Draw Line (SVG Draw Effect com Framer Motion) ---
+const DrawLine: React.FC<{
+    className?: string;
+    delay?: number;
+}> = ({ className = '', delay = 0.4 }) => {
+    const { ref, isVisible } = useScrollAnimation(0.1);
+
+    return (
+        <div ref={ref} className={`mt-4 ${className}`}>
+            <svg
+                width="80"
+                height="12"
+                viewBox="0 0 80 12"
+                fill="none"
+                xmlns="http://www.w3.org/2000/svg"
+            >
+                <motion.path
+                    d="M2 6C2 6 10 2 20 6C30 10 40 2 50 6C60 10 70 2 78 6"
+                    stroke="#D97757"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    initial={{ pathLength: 0, opacity: 0 }}
+                    animate={isVisible ? { pathLength: 1, opacity: 1 } : { pathLength: 0, opacity: 0 }}
+                    transition={{
+                        pathLength: { delay, duration: 1.2, ease: "easeInOut" },
+                        opacity: { delay, duration: 0.3 }
+                    }}
+                />
+            </svg>
+        </div>
+    );
+};
+
+// --- COMPONENTE: Animated Stat (NumberFlow com Scroll Trigger) ---
+const AnimatedStat: React.FC<{
+    value: number;
+    displayValue: number;
+    prefix?: string;
+    suffix?: string;
+    label: string;
+    delay?: number;
+}> = ({ value, displayValue: targetDisplay, prefix = '', suffix = '', label, delay = 0 }) => {
+    const { ref, isVisible } = useScrollAnimation(0.1);
+    const [currentValue, setCurrentValue] = useState(0);
+
+    useEffect(() => {
+        if (isVisible) {
+            const timer = setTimeout(() => {
+                setCurrentValue(targetDisplay);
+            }, delay);
+            return () => clearTimeout(timer);
+        }
+    }, [isVisible, targetDisplay, delay]);
+
+    return (
+        <div ref={ref} className="text-center min-w-[120px]">
+            <p className="text-3xl md:text-4xl font-bold text-[#D97757] tabular-nums">
+                {prefix}
+                <NumberFlow
+                    value={currentValue}
+                    format={{ useGrouping: true }}
+                    locales="pt-BR"
+                    transformTiming={{ duration: 1000, easing: 'ease-out' }}
+                />
+                {suffix}
+            </p>
+            <p className="text-sm text-gray-400 mt-1">{label}</p>
+        </div>
+    );
+};
 
 export function Hero() {
     const banks = [
@@ -83,7 +217,7 @@ export function Hero() {
             </section>
 
             {/* Infinite Slider - Bancos Parceiros */}
-            <section className="relative w-full py-8 bg-[#30302E] border-t border-white/5">
+            <section className="relative w-full py-8 bg-[#30302E] border-y border-white/5">
                 <div className="flex items-center">
                     {/* Quadrado com texto */}
                     <div className="flex-shrink-0 px-8 py-4 border-r border-white/10">
@@ -107,6 +241,49 @@ export function Hero() {
                                 </div>
                             ))}
                         </InfiniteSlider>
+                    </div>
+                </div>
+            </section>
+
+            {/* Estatísticas do Sistema */}
+            <section className="relative w-full py-12 bg-[#262624]">
+                <div className="container mx-auto px-8">
+                    <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
+                        {/* Texto Principal */}
+                        <AnimatedSection direction="left" delay={0} className="flex-shrink-0">
+                            <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
+                                Simplificando sua vida <br />
+                                financeira todos os dias.
+                            </h2>
+                            <DrawLine delay={0.4} />
+                        </AnimatedSection>
+
+                        {/* Métricas */}
+                        <div className="flex flex-wrap items-center justify-center lg:justify-end gap-12 lg:gap-16">
+                            <AnimatedStat
+                                value={50000}
+                                displayValue={50}
+                                prefix="+ "
+                                suffix="K"
+                                label="Transações processadas"
+                                delay={100}
+                            />
+                            <AnimatedStat
+                                value={1500}
+                                displayValue={1500}
+                                prefix="+ "
+                                label="Usuários ativos"
+                                delay={200}
+                            />
+                            <AnimatedStat
+                                value={2000000}
+                                displayValue={2}
+                                prefix="R$ "
+                                suffix="M+"
+                                label="Economia gerada"
+                                delay={300}
+                            />
+                        </div>
                     </div>
                 </div>
             </section>

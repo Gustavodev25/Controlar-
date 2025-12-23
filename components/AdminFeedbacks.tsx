@@ -11,7 +11,9 @@ import {
     Clock,
     CheckCircle,
     AlertCircle,
-    Eye
+    Eye,
+    Map,
+    Hammer
 } from './Icons';
 import * as dbService from '../services/database';
 import { Feedback } from '../services/database';
@@ -19,13 +21,16 @@ import { EmptyState } from './EmptyState';
 import { ConfirmationBar } from './ConfirmationBar';
 import NumberFlow from '@number-flow/react';
 
-type StatusFilter = 'all' | 'pending' | 'reviewed' | 'resolved' | 'dismissed';
+type StatusFilter = 'all' | 'pending' | 'reviewed' | 'planned' | 'in_progress' | 'completed' | 'resolved' | 'dismissed';
 
 const statusTabs: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
     { value: 'pending', label: 'Pendente' },
     { value: 'reviewed', label: 'Em Análise' },
-    { value: 'resolved', label: 'Resolvido' },
+    { value: 'planned', label: 'Planejado' },
+    { value: 'in_progress', label: 'Em Construção' },
+    { value: 'completed', label: 'Concluído' },
+    // { value: 'resolved', label: 'Resolvido' }, // Hide resolved to simplify, or merge with completed
     { value: 'dismissed', label: 'Dispensado' },
 ];
 
@@ -52,9 +57,12 @@ export const AdminFeedbacks: React.FC = () => {
     const getStatusColor = (status: Feedback['status']) => {
         switch (status) {
             case 'pending': return 'bg-amber-500/10 text-amber-500 border-amber-500/20';
-            case 'reviewed': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+            case 'reviewed': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+            case 'planned': return 'bg-blue-500/10 text-blue-500 border-blue-500/20';
+            case 'in_progress': return 'bg-purple-500/10 text-purple-500 border-purple-500/20';
+            case 'completed': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
             case 'resolved': return 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20';
-            case 'dismissed': return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
+            case 'dismissed': return 'bg-red-500/10 text-red-500 border-red-500/20';
             default: return 'bg-gray-500/10 text-gray-500 border-gray-500/20';
         }
     };
@@ -63,6 +71,9 @@ export const AdminFeedbacks: React.FC = () => {
         switch (status) {
             case 'pending': return 'Pendente';
             case 'reviewed': return 'Em Análise';
+            case 'planned': return 'Planejado';
+            case 'in_progress': return 'Em Construção';
+            case 'completed': return 'Concluído';
             case 'resolved': return 'Resolvido';
             case 'dismissed': return 'Dispensado';
             default: return status;
@@ -73,7 +84,7 @@ export const AdminFeedbacks: React.FC = () => {
         await dbService.updateFeedback({
             ...feedback,
             status: newStatus,
-            resolvedAt: newStatus === 'resolved' ? new Date().toISOString() : null,
+            resolvedAt: (newStatus === 'resolved' || newStatus === 'completed') ? new Date().toISOString() : null,
             adminNotes: adminNotes || feedback.adminNotes || null
         });
         setSelectedFeedback(null);
@@ -226,7 +237,9 @@ export const AdminFeedbacks: React.FC = () => {
                                             <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${getStatusColor(feedback.status)}`}>
                                                 {feedback.status === 'pending' && <Clock size={10} />}
                                                 {feedback.status === 'reviewed' && <Eye size={10} />}
-                                                {feedback.status === 'resolved' && <CheckCircle size={10} />}
+                                                {feedback.status === 'planned' && <Clock size={10} />}
+                                                {feedback.status === 'in_progress' && <Hammer size={10} />}
+                                                {(feedback.status === 'completed' || feedback.status === 'resolved') && <CheckCircle size={10} />}
                                                 {feedback.status === 'dismissed' && <X size={10} />}
                                                 {getStatusLabel(feedback.status)}
                                             </span>
@@ -344,28 +357,66 @@ export const AdminFeedbacks: React.FC = () => {
                                     </div>
 
                                     {/* Status Actions */}
-                                    <div className="flex gap-3 pt-2">
+                                    <div className="flex flex-col gap-2 pt-2">
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleUpdateStatus(selectedFeedback, 'reviewed');
+                                                }}
+                                                className="flex-1 py-3 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all font-medium text-xs flex items-center justify-center gap-1.5"
+                                            >
+                                                <Eye size={14} /> Em Análise
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleUpdateStatus(selectedFeedback, 'planned');
+                                                }}
+                                                className="flex-1 py-3 rounded-xl border border-blue-900/30 bg-blue-900/10 hover:bg-blue-900/20 text-blue-400 hover:text-blue-300 transition-all font-medium text-xs flex items-center justify-center gap-1.5"
+                                            >
+                                                <Clock size={14} /> Planejado
+                                            </button>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleUpdateStatus(selectedFeedback, 'in_progress');
+                                                }}
+                                                className="flex-1 py-3 rounded-xl border border-amber-900/30 bg-amber-900/10 hover:bg-amber-900/20 text-amber-400 hover:text-amber-300 transition-all font-medium text-xs flex items-center justify-center gap-1.5"
+                                            >
+                                                <Hammer size={14} /> Em Construção
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                    e.preventDefault();
+                                                    e.stopPropagation();
+                                                    handleUpdateStatus(selectedFeedback, 'completed');
+                                                }}
+                                                className="flex-1 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold transition-all shadow-lg shadow-[#d97757]/20 text-xs flex items-center justify-center gap-1.5"
+                                            >
+                                                <Check size={14} /> Concluído
+                                            </button>
+                                        </div>
                                         <button
                                             type="button"
                                             onClick={(e) => {
                                                 e.preventDefault();
                                                 e.stopPropagation();
-                                                handleUpdateStatus(selectedFeedback, 'reviewed');
-                                            }}
-                                            className="flex-1 py-3 rounded-xl border border-gray-800 bg-gray-900/40 hover:bg-gray-800/50 text-gray-300 hover:text-white transition-all font-medium text-sm flex items-center justify-center gap-1.5"
-                                        >
-                                            <Eye size={14} /> Em Análise
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={(e) => {
-                                                e.preventDefault();
-                                                e.stopPropagation();
+                                                // Map 'resolved' to completed or keep as internal resolved
                                                 handleUpdateStatus(selectedFeedback, 'resolved');
                                             }}
-                                            className="flex-1 py-3 rounded-xl bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold transition-all shadow-lg shadow-[#d97757]/20 text-sm flex items-center justify-center gap-1.5"
+                                            className="w-full py-2 rounded-xl text-gray-500 hover:text-white text-xs hover:bg-gray-800 transition-all"
                                         >
-                                            <Check size={14} /> Resolvido
+                                            Marcar como Resolvido (Interno)
                                         </button>
                                     </div>
 

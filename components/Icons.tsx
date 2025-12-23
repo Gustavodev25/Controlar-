@@ -112,7 +112,9 @@ import {
   Code,
   Bug,
   ThumbsUp,
-  Ban
+  Ban,
+  Map,
+  Hammer
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -218,6 +220,8 @@ export {
   QrCode,
   Building,
   RotateCcw,
+  Map,
+  Hammer,
   CreditCard,
   Download,
   Upload,

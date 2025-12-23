@@ -200,52 +200,310 @@ router.get('/items', withPluggyAuth, async (req, res) => {
     }
 });
 
-// 3. Trigger Sync (Update Item)
+// 3. Trigger Sync (Update Item) - Now includes full data sync
 router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
-    try {
-        const response = await axios.patch(`${BASE_URL}/items/${itemId}`, {
-            // Trigger sync by updating webhook or just valid PATCH
-            webhookUrl: process.env.PLUGGY_WEBHOOK_URL
-        }, {
-            headers: { 'X-API-KEY': req.pluggyApiKey }
-        });
 
-        res.json({ success: true, message: 'Sync triggered' });
-
-        // Ideally we should also mark a "sync_job" in Firebase as "pending"
-        if (firebaseAdmin) {
-            await firebaseAdmin.firestore().collection('users').doc(userId).collection('sync_jobs').add({
-                itemId,
-                status: 'pending',
-                type: 'MANUAL',
-                createdAt: new Date().toISOString()
-            });
-        }
-
-    } catch (error) {
-        const errData = error.response?.data;
-        console.error('Trigger Sync Error:', errData || error.message);
-
-        // Handle specific Pluggy errors
-        if (error.response?.status === 404 || errData?.code === 404) {
-            return res.status(404).json({
-                error: 'Conexão bancária não encontrada. Por favor, reconecte o banco.',
-                code: 'ITEM_NOT_FOUND',
-                needsReconnect: true
-            });
-        }
-
-        if (error.response?.status === 401) {
-            return res.status(401).json({
-                error: 'Erro de autenticação com o banco. Tente novamente.',
-                code: 'AUTH_ERROR'
-            });
-        }
-
-        res.status(500).json({ error: 'Falha ao sincronizar. Tente novamente.' });
+    if (!firebaseAdmin) {
+        return res.status(500).json({ error: 'Firebase Admin not initialized' });
     }
+
+    // Create Job Doc first to track progress
+    const jobsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('sync_jobs');
+    let jobDoc;
+
+    try {
+        jobDoc = await jobsRef.add({
+            itemId,
+            status: 'processing',
+            progress: 0,
+            type: 'MANUAL',
+            createdAt: new Date().toISOString()
+        });
+    } catch (e) {
+        console.error('Failed to create sync job:', e);
+        return res.status(500).json({ error: 'Failed to create sync job' });
+    }
+
+    // Respond immediately so frontend knows sync started
+    res.json({ success: true, message: 'Sync triggered', syncJobId: jobDoc.id });
+
+    // Background Processing - fetch and save data
+    (async () => {
+        const apiKey = req.pluggyApiKey;
+
+        try {
+            // First, trigger Pluggy to refresh the item data
+            try {
+                await axios.patch(`${BASE_URL}/items/${itemId}`, {
+                    webhookUrl: process.env.PLUGGY_WEBHOOK_URL
+                }, {
+                    headers: { 'X-API-KEY': apiKey }
+                });
+                console.log(`[Trigger-Sync] Pluggy item ${itemId} refresh triggered`);
+            } catch (patchErr) {
+                // If item not found, mark job as failed and exit
+                if (patchErr.response?.status === 404) {
+                    await jobDoc.update({
+                        status: 'failed',
+                        error: 'Item not found in Pluggy',
+                        needsReconnect: true
+                    });
+                    return;
+                }
+                // For other errors, log but continue with sync
+                console.warn('[Trigger-Sync] Patch failed but continuing:', patchErr.message);
+            }
+
+            await jobDoc.update({ progress: 10, step: 'Fetching accounts...' });
+
+            // 1. Get Accounts
+            const accountsResp = await axios.get(`${BASE_URL}/accounts?itemId=${itemId}`, {
+                headers: { 'X-API-KEY': apiKey }
+            });
+            const accounts = accountsResp.data.results;
+            console.log(`[Trigger-Sync] Found ${accounts.length} accounts for item ${itemId}`);
+
+            // PRE-FETCH: Get existing accounts to determine last sync date (Incremental Sync)
+            const existingAccountsMap = {};
+            try {
+                const existingSnap = await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts').get();
+                existingSnap.forEach(doc => {
+                    const data = doc.data();
+                    existingAccountsMap[doc.id] = {
+                        lastSyncedAt: data.lastSyncedAt || data.updatedAt,
+                        connectedAt: data.connectedAt,
+                        isFirstSync: !data.connectedAt
+                    };
+                });
+            } catch (e) {
+                console.error('[Trigger-Sync] Failed to fetch existing accounts dates:', e);
+            }
+
+            // Save Accounts
+            const batch = firebaseAdmin.firestore().batch();
+            const accountsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts');
+            const syncTimestamp = new Date().toISOString();
+
+            for (const acc of accounts) {
+                const accRef = accountsRef.doc(acc.id);
+                const existingInfo = existingAccountsMap[acc.id];
+                const isFirstSync = !existingInfo || existingInfo.isFirstSync;
+
+                const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+                const creditFields = isCredit && acc.creditData ? {
+                    creditLimit: acc.creditData.creditLimit || null,
+                    availableCreditLimit: acc.creditData.availableCreditLimit || null,
+                    usedCreditLimit: acc.creditData.creditLimit && acc.creditData.availableCreditLimit
+                        ? acc.creditData.creditLimit - acc.creditData.availableCreditLimit
+                        : null,
+                    brand: acc.creditData.brand || null,
+                    balanceCloseDate: acc.creditData.balanceCloseDate || null,
+                    balanceDueDate: acc.creditData.balanceDueDate || null,
+                    minimumPayment: acc.creditData.minimumPayment || null,
+                    closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
+                    dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
+                } : {};
+
+                const connectionFields = isFirstSync ? { connectedAt: syncTimestamp } : {};
+
+                batch.set(accRef, {
+                    ...acc,
+                    ...creditFields,
+                    ...connectionFields,
+                    accountNumber: acc.number || null, // Map Pluggy's 'number' to 'accountNumber'
+                    itemId: itemId,
+                    lastSyncedAt: syncTimestamp,
+                    updatedAt: syncTimestamp
+                }, { merge: true });
+            }
+            await batch.commit();
+
+            await jobDoc.update({ progress: 30, step: 'Fetching transactions...' });
+
+            // 2. Get Transactions (Incremental) - PER ACCOUNT
+            const defaultFromDate = new Date();
+            defaultFromDate.setDate(defaultFromDate.getDate() - 90);
+            const defaultFromDateStr = defaultFromDate.toISOString().split('T')[0];
+
+            let txCount = 0;
+            const txCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions');
+            const ccTxCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('creditCardTransactions');
+
+            let opCount = 0;
+            let currentBatch = firebaseAdmin.firestore().batch();
+
+            for (const account of accounts) {
+                try {
+                    // Determine 'from' date for this account (Incremental Sync)
+                    let fromStr = defaultFromDateStr;
+                    let lastSyncTimestamp = null;
+                    const syncInfo = existingAccountsMap[account.id];
+
+                    if (syncInfo && syncInfo.lastSyncedAt) {
+                        try {
+                            const lastDate = new Date(syncInfo.lastSyncedAt);
+                            if (!isNaN(lastDate.getTime())) {
+                                fromStr = lastDate.toISOString().split('T')[0];
+                                lastSyncTimestamp = lastDate.getTime();
+                                console.log(`[Trigger-Sync] Incremental: Account ${account.name} last synced ${syncInfo.lastSyncedAt}. Fetching from ${fromStr}`);
+                            }
+                        } catch (err) {
+                            console.warn('[Trigger-Sync] Invalid lastSync date:', syncInfo.lastSyncedAt);
+                        }
+                    } else {
+                        console.log(`[Trigger-Sync] Full: Account ${account.name} (first sync). Fetching from ${fromStr}`);
+                    }
+
+                    const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
+                        headers: { 'X-API-KEY': apiKey }
+                    });
+                    let transactions = txResp.data.results;
+
+                    // Filter out transactions that were already synced (by timestamp)
+                    if (lastSyncTimestamp && transactions.length > 0) {
+                        const originalCount = transactions.length;
+                        transactions = transactions.filter(tx => {
+                            const txDate = new Date(tx.date);
+                            return txDate.getTime() >= lastSyncTimestamp;
+                        });
+                        const filtered = originalCount - transactions.length;
+                        if (filtered > 0) {
+                            console.log(`[Trigger-Sync] Filtered ${filtered} already-synced transactions (kept ${transactions.length})`);
+                        }
+                    }
+
+                    // Determine Target Collection
+                    const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
+                    const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+                    let targetColl = isCredit ? ccTxCollection : txCollection;
+
+                    for (const tx of transactions) {
+                        const txRef = targetColl.doc(tx.id);
+                        let mappedTx = {};
+
+                        if (isCredit) {
+                            mappedTx = {
+                                cardId: account.id,
+                                date: tx.date.split('T')[0],
+                                description: tx.description,
+                                amount: Math.abs(tx.amount),
+                                type: tx.amount > 0 ? 'expense' : 'income',
+                                category: tx.category || 'Uncategorized',
+                                status: 'completed',
+                                installments: tx.installments || 1,
+                                installmentNumber: 1,
+                                pluggyRaw: tx
+                            };
+                        } else {
+                            mappedTx = {
+                                providerId: tx.id,
+                                description: tx.description,
+                                amount: Math.abs(tx.amount),
+                                type: tx.amount < 0 ? 'expense' : 'income',
+                                date: tx.date.split('T')[0],
+                                accountId: tx.accountId,
+                                category: tx.category || 'Uncategorized',
+                                status: 'completed',
+                                updatedAt: new Date().toISOString(),
+                                isInvestment: isSavings,
+                                pluggyRaw: tx
+                            };
+                        }
+
+                        currentBatch.set(txRef, mappedTx, { merge: true });
+                        opCount++;
+                        txCount++;
+
+                        if (opCount >= 450) {
+                            await currentBatch.commit();
+                            currentBatch = firebaseAdmin.firestore().batch();
+                            opCount = 0;
+                        }
+                    }
+                } catch (accErr) {
+                    console.error(`[Trigger-Sync] Failed to fetch transactions for account ${account.id}:`, accErr.message);
+                }
+            }
+
+            if (opCount > 0) await currentBatch.commit();
+
+            await jobDoc.update({ progress: 70, step: 'Fetching credit card bills...' });
+
+            // 3. Get Credit Card Bills
+            let billCount = 0;
+            for (const account of accounts) {
+                const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
+                if (!isCredit) continue;
+
+                try {
+                    const billsResp = await axios.get(`${BASE_URL}/bills?accountId=${account.id}`, {
+                        headers: { 'X-API-KEY': apiKey }
+                    });
+                    const bills = billsResp.data.results || [];
+
+                    if (bills.length > 0) {
+                        const sortedBills = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+                        const currentBill = sortedBills[0];
+                        const previousBill = sortedBills[1] || null;
+
+                        const accountRef = firebaseAdmin.firestore()
+                            .collection('users').doc(userId)
+                            .collection('accounts').doc(account.id);
+
+                        await accountRef.update({
+                            currentBill: {
+                                id: currentBill.id,
+                                dueDate: currentBill.dueDate,
+                                totalAmount: currentBill.totalAmount || null,
+                                minimumPaymentAmount: currentBill.minimumPaymentAmount || null,
+                                status: currentBill.status || 'OPEN',
+                                closeDate: currentBill.closeDate || null
+                            },
+                            previousBill: previousBill ? {
+                                id: previousBill.id,
+                                dueDate: previousBill.dueDate,
+                                totalAmount: previousBill.totalAmount || null
+                            } : null,
+                            bills: sortedBills.slice(0, 6).map(b => ({
+                                id: b.id,
+                                dueDate: b.dueDate,
+                                totalAmount: b.totalAmount || null,
+                                minimumPaymentAmount: b.minimumPaymentAmount || null,
+                                status: b.status || 'UNKNOWN'
+                            })),
+                            billsUpdatedAt: new Date().toISOString()
+                        });
+
+                        billCount++;
+                        console.log(`[Trigger-Sync] Updated account ${account.id} with bill data`);
+                    }
+                } catch (billErr) {
+                    console.error(`[Trigger-Sync] Failed to fetch bills for account ${account.id}:`, billErr.message);
+                }
+            }
+
+            // Mark job as completed
+            await jobDoc.update({
+                status: 'completed',
+                progress: 100,
+                updatedAt: new Date().toISOString(),
+                message: `Synced ${txCount} transactions, ${billCount} card bills`
+            });
+
+            console.log(`[Trigger-Sync] Completed! ${txCount} transactions, ${billCount} bills`);
+
+        } catch (err) {
+            console.error('[Trigger-Sync] Background sync failed:', err);
+            await jobDoc.update({
+                status: 'failed',
+                error: err.message,
+                updatedAt: new Date().toISOString()
+            });
+        }
+    })();
 });
+
 
 // 4. Manual Sync (Fetch & Save) - The Core Logic
 router.post('/sync', withPluggyAuth, async (req, res) => {
@@ -370,6 +628,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     ...acc,
                     ...creditFields,
                     ...connectionFields,
+                    accountNumber: acc.number || null, // Map Pluggy's 'number' to 'accountNumber'
                     itemId: itemId,
                     lastSyncedAt: syncTimestamp, // Always update on every sync
                     updatedAt: syncTimestamp

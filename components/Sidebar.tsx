@@ -9,7 +9,8 @@ import {
   SidebarWallet,
   Pig,
   Wallet,
-  MessageSquare
+  MessageSquare,
+  Map
 } from './Icons';
 import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag, CreditCard } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
@@ -20,7 +21,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
-  | 'budgets' | 'connections' | 'investments' | 'fire'
+  | 'budgets' | 'connections' | 'investments' | 'fire' | 'roadmap'
   | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'chat';
 
 // --- NAVITEM: Item Individual ---
@@ -31,7 +32,7 @@ interface NavItemProps {
   icon: React.ReactNode;
   label: string;
   isOpen: boolean;
-  badge?: number;
+  badge?: number | string;
   disabled?: boolean;
   isChild?: boolean;
   id?: string;
@@ -60,7 +61,7 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
       id={id}
       ref={buttonRef}
       // ... rest of props
-      onClick={onClick}
+      onClick={!disabled ? onClick : undefined}
       disabled={disabled}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={() => setIsHovered(false)}
@@ -85,9 +86,15 @@ const NavItem: React.FC<NavItemProps> = ({ active, onClick, icon, label, isOpen,
         <span className={`transition-colors duration-300 ${active ? 'text-[#d97757]' : 'text-gray-500 group-hover:text-gray-300'}`}>
           {icon}
         </span>
-        {(badge || 0) > 0 && (
-          <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white z-20 border-2 border-[#30302E]">
-            {badge && badge > 9 ? '9+' : badge}
+        {badge !== undefined && (typeof badge === 'number' ? badge > 0 : true) && (
+          <span className={`
+            absolute flex items-center justify-center font-bold text-white z-20 shadow-sm
+            ${typeof badge === 'number'
+              ? '-top-1.5 -right-1.5 h-4 w-4 rounded-full bg-red-500 text-[10px] border-2 border-[#18181b]'
+              : '-top-2.5 -right-4 px-1.5 py-[1px] rounded-full bg-[#d97757] text-[8px] uppercase tracking-wider'
+            }
+          `}>
+            {typeof badge === 'number' ? (badge > 9 ? '9+' : badge) : badge}
           </span>
         )}
       </div>
@@ -494,6 +501,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
 
+                  <NavItem active={activeTab === 'roadmap'} onClick={() => handleNavClick('roadmap')} icon={<Map size={20} />} label="Roadmap Público" isOpen={isOpen} badge="NOVO" />
+
                   {/* Em Breve Section */}
                   {isOpen && <p className="w-full text-xs font-bold text-gray-600 uppercase tracking-widest px-2 mt-4 mb-2">Em Breve</p>}
                   <NavItem active={false} onClick={() => { }} icon={<TrendingUp size={20} />} label="Investimentos" isOpen={isOpen} disabled />
@@ -504,27 +513,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Footer - Beta Badge + Feedback Button (hidden in admin mode) */}
+          {/* Feedback Button - Fora do separador */}
           {!isAdminMode && (
-            <div className={`mt-auto border-t border-gray-800/50 ${isOpen ? 'p-4' : 'p-2'} space-y-2 bg-[#30302E]`}>
-              {/* Beta Version Badge */}
-              <div className={`flex items-center ${isOpen ? 'gap-2 px-2' : 'justify-center'}`}>
-                <div className="text-[#D97757]">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" className="icon icon-tabler icons-tabler-filled icon-tabler-flask-2"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M15 2a1 1 0 0 1 0 2v5.674l.062 .03a7 7 0 0 1 3.85 5.174l.037 .262a7 7 0 0 1 -3.078 6.693a1 1 0 0 1 -.553 .167h-6.635a1 1 0 0 1 -.552 -.166a7 7 0 0 1 .807 -12.134l.062 -.028v-5.672a1 1 0 1 1 0 -2h6zm-2 2h-2v6.34a1 1 0 0 1 -.551 .894l-.116 .049a5 5 0 0 0 -2.92 2.717h9.172a5 5 0 0 0 -2.918 -2.715a1 1 0 0 1 -.667 -.943v-6.342z" /></svg>
-                </div>
-                <AnimatePresence>
-                  {isOpen && (
-                    <motion.span
-                      initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                      className="text-[10px] font-bold uppercase tracking-wider text-white"
-                    >
-                      Versão beta da Controlar+ <span className="text-[#D97757]">v0.1.0</span>
-                    </motion.span>
-                  )}
-                </AnimatePresence>
-              </div>
-
-              {/* Feedback Button */}
+            <div className={`${isOpen ? 'px-3 pb-2' : 'px-2 pb-2'}`}>
               <button
                 onClick={onOpenFeedback}
                 className={`
@@ -548,6 +539,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   )}
                 </AnimatePresence>
               </button>
+            </div>
+          )}
+
+          {/* Footer - Beta Badge (hidden in admin mode) */}
+          {!isAdminMode && (
+            <div className={`mt-auto border-t border-gray-800/50 ${isOpen ? 'p-3' : 'p-2'} bg-[#30302E]`}>
+              <div className={`flex items-center ${isOpen ? 'gap-2 px-1' : 'justify-center'}`}>
+                <Logo
+                  size={18}
+                  withText={false}
+                  imgClassName="opacity-60"
+                />
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.p
+                      initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                      className="text-[9px] text-gray-500"
+                    >
+                      Versão beta <span className="text-[#D97757]">v0.1.0</span> · Versões iniciais
+                    </motion.p>
+                  )}
+                </AnimatePresence>
+              </div>
             </div>
           )}
         </motion.aside>

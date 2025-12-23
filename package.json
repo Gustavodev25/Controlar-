@@ -20,6 +20,7 @@
     "@mui/x-charts": "^8.22.0",
     "@number-flow/react": "^0.5.10",
     "@stripe/stripe-js": "^8.5.3",
+    "@tabler/icons-react": "^3.36.0",
     "@types/ua-parser-js": "^0.7.39",
     "@vercel/analytics": "^1.6.1",
     "axios": "^1.13.2",
