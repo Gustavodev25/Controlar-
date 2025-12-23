@@ -211,6 +211,21 @@ export const AdminUsers: React.FC = () => {
         });
     };
 
+    const getTimeSinceCreation = (createdAt?: string) => {
+        if (!createdAt) return '-';
+        const created = new Date(createdAt);
+        const now = new Date();
+        const diffTime = Math.abs(now.getTime() - created.getTime());
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        if (diffDays === 0) return 'Hoje';
+        if (diffDays === 1) return '1 dia';
+        if (diffDays < 30) return `${diffDays} dias`;
+        if (diffDays < 60) return '1 mês';
+        if (diffDays < 365) return `${Math.floor(diffDays / 30)} meses`;
+        return `${Math.floor(diffDays / 365)} anos`;
+    };
+
     const handleDelete = async () => {
         if (!deleteId) return;
         try {
@@ -453,6 +468,7 @@ export const AdminUsers: React.FC = () => {
                                 <tr>
                                     <th className="px-4 py-3 text-left">Usuário</th>
                                     <th className="px-4 py-3 text-left">Email</th>
+                                    <th className="px-4 py-3 text-left">Membro Há</th>
                                     <th className="px-4 py-3 text-left">Idade</th>
                                     <th className="px-4 py-3 text-left">Plano</th>
                                     <th className="px-4 py-3 text-left">Status</th>
@@ -485,7 +501,13 @@ export const AdminUsers: React.FC = () => {
                                             </div>
                                         </td>
                                         <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-sm">{user.email}</span>
+                                            <span className="text-gray-400 text-sm block truncate max-w-[150px]" title={user.email}>{user.email}</span>
+                                        </td>
+                                        <td className="px-4 py-3">
+                                            <div className="flex flex-col">
+                                                <span className="text-white text-sm">{formatDate(user.createdAt)}</span>
+                                                <span className="text-gray-500 text-xs">{getTimeSinceCreation(user.createdAt)}</span>
+                                            </div>
                                         </td>
                                         <td className="px-4 py-3">
                                             <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>

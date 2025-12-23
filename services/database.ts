@@ -167,6 +167,7 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
         isAdmin: data.isAdmin === true || profile.isAdmin === true,
         connectionLogs: data.connectionLogs || profile.connectionLogs || [],
         birthDate: profile.birthDate || data.birthDate,
+        createdAt: data.createdAt || profile.createdAt, // Include creation date
         ...profile
       } as User & { id: string };
     });

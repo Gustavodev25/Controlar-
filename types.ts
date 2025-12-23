@@ -51,6 +51,7 @@ export interface User {
     date: string; // YYYY-MM-DD
     count: number;
   };
+  createdAt?: string;
   hasSeenProTutorial?: boolean;
   connectionLogs?: ConnectionLog[];
 }
