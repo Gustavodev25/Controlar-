@@ -182,7 +182,11 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
             const customerData = await customerResponse.json();
 
             if (!customerResponse.ok || !customerData.success) {
-                throw new Error(customerData.error || 'Erro ao criar cliente no Asaas.');
+                // Combine main error with detailed description if available
+                const detail = customerData.details || '';
+                const mainError = customerData.error || 'Erro ao criar cliente no Asaas.';
+                const combinedError = detail ? `${mainError} ${detail}` : mainError;
+                throw new Error(combinedError);
             }
 
             console.log('>>> Customer created:', customerData.customer.id);

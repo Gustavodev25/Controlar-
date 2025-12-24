@@ -229,7 +229,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     e.preventDefault();
 
     // Basic required fields check
-    if (!cardData.number || !cardData.holderName || !cardData.ccv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber) {
+    if (!cardData.number || !cardData.holderName || !cardData.ccv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber || !holderInfo.phone) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -258,9 +258,20 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       return;
     }
 
+    // Validate Phone
+    const validatePhone = (phone: string): boolean => {
+      const cleaned = phone.replace(/\D/g, '');
+      return cleaned.length >= 10 && cleaned.length <= 11;
+    };
+
+    if (!holderInfo.phone || !validatePhone(holderInfo.phone)) {
+      toast.error("Telefone inválido. Informe DDD + Número.");
+      return;
+    }
+
     // If coupon used, increment usage
     if (appliedCoupon) {
-      dbService.incrementCouponUsage(appliedCoupon.id);
+      dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
 
     await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice);

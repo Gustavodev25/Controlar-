@@ -332,6 +332,13 @@ export interface Coupon {
   // Progressive discount: different discount per billing month
   // Example: [{month: 1, discount: 100}, {month: 2, discount: 50}, {month: 3, discount: 0}]
   progressiveDiscounts?: { month: number; discount: number }[];
+  partnership?: {
+    partnerName: string;
+    commissionType: 'percentage' | 'fixed';
+    commissionValue: number;
+    accumulatedCommission: number;
+    partnerPix?: string;
+  };
 }
 
 export interface PromoPopup {

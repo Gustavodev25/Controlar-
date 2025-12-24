@@ -1289,20 +1289,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    };
 
    const handleCancelSubscription = async () => {
-      const updatedUser: UserType = {
-         ...formData,
-         subscription: {
-            ...formData.subscription!,
-            status: 'canceled', // Na prática, muitas vezes mantém 'active' até o fim do período, mas aqui marcamos cancelado
-            autoRenew: false
-         }
-      };
+      const subscriptionId = formData.subscription?.asaasSubscriptionId;
 
-      setFormData(updatedUser);
-      setAutoRenew(false);
-      await persistUser(updatedUser);
-      toast.success("Assinatura cancelada com sucesso.");
-      setShowCancelSubscriptionConfirmation(false);
+      try {
+         // 1. If there's an Asaas Subscription ID, cancel it on the server
+         if (subscriptionId) {
+            const response = await fetch(`/api/asaas/subscription/${subscriptionId}`, {
+               method: 'DELETE'
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+               throw new Error(data.error || 'Erro ao cancelar assinatura no provedor.');
+            }
+         }
+
+         // 2. Update local state only if server cancellation succeeded (or if no ID existed)
+         const updatedUser: UserType = {
+            ...formData,
+            subscription: {
+               ...formData.subscription!,
+               status: 'canceled',
+               autoRenew: false
+            }
+         };
+
+         setFormData(updatedUser);
+         setAutoRenew(false);
+         await persistUser(updatedUser);
+         toast.success("Assinatura cancelada com sucesso. Cobranças futuras foram interrompidas.");
+         setShowCancelSubscriptionConfirmation(false);
+
+      } catch (error: any) {
+         console.error("Erro ao cancelar:", error);
+         toast.error(error.message || "Não foi possível cancelar a assinatura. Tente novamente.");
+      }
    };
 
    const handleRefund = async () => {

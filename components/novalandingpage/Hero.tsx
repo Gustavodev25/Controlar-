@@ -162,6 +162,31 @@ export function Hero() {
         { name: 'XP', logo: xpLogo },
     ];
 
+    const containerVariants = {
+        hidden: { opacity: 0 },
+        visible: {
+            opacity: 1,
+            transition: {
+                staggerChildren: 0.15,
+                delayChildren: 0.1
+            }
+        }
+    };
+
+    const itemVariants = {
+        hidden: { y: 20, opacity: 0, filter: 'blur(10px)' },
+        visible: {
+            y: 0,
+            opacity: 1,
+            filter: 'blur(0px)',
+            transition: {
+                type: "spring" as const,
+                damping: 20,
+                stiffness: 100
+            }
+        }
+    };
+
     return (
         <div className="w-full bg-[#1a0f0a] flex flex-col">
             <section className="relative w-full min-h-screen bg-[radial-gradient(ellipse_60%_40%_at_50%_40%,_#3a1a10_0%,_#1a0f0a_100%)] overflow-hidden flex items-center justify-center pt-40 pb-0">
@@ -177,17 +202,22 @@ export function Hero() {
                     className="[mask-image:radial-gradient(ellipse_50%_50%_at_50%_40%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03]"
                 />
 
-                <div className="container mx-auto flex flex-col items-center justify-center z-10 px-4 lg:px-12 h-full">
+                <motion.div
+                    className="container mx-auto flex flex-col items-center justify-center z-10 px-4 lg:px-12 h-full"
+                    initial="hidden"
+                    animate="visible"
+                    variants={containerVariants}
+                >
                     <div className="space-y-8 text-center max-w-4xl">
-                        <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
+                        <motion.h1 variants={itemVariants} className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
                             Desbloqueie o Potencial <br />
                             das suas <ShiningText text="Finanças." />
-                        </h1>
-                        <p className="text-xl text-gray-400 max-w-xl mx-auto">
+                        </motion.h1>
+                        <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-xl mx-auto">
                             Controlar+ é a plataforma financeira mais produtiva já feita.
                             Obtenha clareza total sobre seu dinheiro em segundos.
-                        </p>
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+                        </motion.p>
+                        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
                             <button className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group">
                                 Começar Agora
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -200,11 +230,11 @@ export function Hero() {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                                 </svg>
                             </button>
-                        </div>
+                        </motion.div>
                     </div>
 
                     {/* Dashboard Image - Cortado pela máscara do container */}
-                    <div className="relative w-full max-w-5xl mt-8 translate-y-[15%]">
+                    <motion.div variants={itemVariants} className="relative w-full max-w-5xl mt-8 translate-y-[15%]">
                         <div className="relative rounded-t-xl overflow-hidden border border-white/10 border-b-0 shadow-2xl shadow-black/50">
                             <img
                                 src={dashboardImg}
@@ -212,8 +242,8 @@ export function Hero() {
                                 className="w-full h-auto"
                             />
                         </div>
-                    </div>
-                </div>
+                    </motion.div>
+                </motion.div>
             </section>
 
             {/* Infinite Slider - Bancos Parceiros */}

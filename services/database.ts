@@ -1790,13 +1790,46 @@ export const validateCoupon = async (code: string): Promise<{ isValid: boolean; 
   return { isValid: true, coupon };
 };
 
-export const incrementCouponUsage = async (couponId: string) => {
+export const incrementCouponUsage = async (couponId: string, transactionAmount: number = 0) => {
   if (!db) return;
   const couponRef = doc(db, "coupons", couponId);
   const snap = await getDoc(couponRef);
   if (snap.exists()) {
-    const current = snap.data().currentUses || 0;
-    await updateDoc(couponRef, { currentUses: current + 1 });
+    const data = snap.data() as Coupon;
+    const current = data.currentUses || 0;
+
+    let updates: any = { currentUses: current + 1 };
+
+    // Calculate commission if it's a partnership coupon
+    if (data.partnership) {
+      let commission = 0;
+      if (data.partnership.commissionType === 'percentage') {
+        // commissionValue is percentage (e.g., 10 for 10%)
+        commission = transactionAmount * (data.partnership.commissionValue / 100);
+      } else {
+        // commissionValue is fixed amount (e.g., 50 for R$ 50)
+        commission = data.partnership.commissionValue;
+      }
+
+      const currentAccumulated = data.partnership.accumulatedCommission || 0;
+      updates['partnership.accumulatedCommission'] = currentAccumulated + commission;
+    }
+
+    await updateDoc(couponRef, updates);
+  }
+};
+
+export const resetPartnerCommission = async (couponId: string) => {
+  if (!db) return;
+  const couponRef = doc(db, "coupons", couponId);
+  const snap = await getDoc(couponRef);
+  if (snap.exists()) {
+    const data = snap.data();
+    if (data.partnership) {
+      await updateDoc(couponRef, {
+        'partnership.accumulatedCommission': 0
+      });
+    }
   }
 };
 

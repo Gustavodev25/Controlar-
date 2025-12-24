@@ -9,6 +9,7 @@ import { CreditCardTable } from './components/CreditCardTable';
 import { AIModal } from './components/AIModal';
 import { AuthModal } from './components/AuthModal';
 import { LandingPage } from './components/LandingPage';
+import { PublicChangelog } from './components/PublicChangelog';
 import { SettingsModal } from './components/SettingsModal';
 import { DashboardCharts } from './components/Charts';
 import { Reminders } from './components/Reminders';
@@ -418,6 +419,22 @@ const App: React.FC = () => {
     return isWaitlist ? 'waitlist' : 'auth';
   });
 
+  const [showChangelog, setShowChangelog] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname === '/changelog';
+    }
+    return false;
+  });
+
+  // Handle browser back/forward for URL changes
+  useEffect(() => {
+    const handlePopState = () => {
+      setShowChangelog(window.location.pathname === '/changelog');
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const effectivePlan = useMemo(() => {
     const sub = currentUser?.subscription;
     // Only grant plan features if status is strictly 'active'
@@ -655,8 +672,21 @@ const App: React.FC = () => {
       // Logic to Trigger Pro Tutorial
       const isProOrFamily = effectivePlan === 'pro' || effectivePlan === 'family' || currentUser?.isAdmin;
 
-      // If user has already completed it (saved in DB), NEVER show.
+      // 1. Check DB flag
       if (currentUser?.hasSeenProTutorial) return;
+
+      // 2. Check LocalStorage Backup (failsafe)
+      // 2. Check LocalStorage Backup (failsafe)
+      if (userId) {
+        const localSeenKey = `confirmed_pro_tutorial_seen_${userId}`;
+        if (localStorage.getItem(localSeenKey) === 'true') {
+          // Optionally try to sync to DB if missing
+          if (!currentUser.hasSeenProTutorial) {
+            dbService.updateUserProfile(userId, { hasSeenProTutorial: true }).catch(console.error);
+          }
+          return;
+        }
+      }
 
       const justUpgraded = localStorage.getItem('show_pro_tutorial') === 'true';
 
@@ -680,7 +710,7 @@ const App: React.FC = () => {
     };
 
     checkAndShowTutorial();
-  }, [effectivePlan, currentUser, isLoadingData]);
+  }, [effectivePlan, currentUser, isLoadingData, userId]);
 
   useEffect(() => {
     if (activeMemberId) {
@@ -2978,8 +3008,23 @@ const App: React.FC = () => {
   }
 
 
+
+  if (showChangelog) {
+    return (
+      <PublicChangelog
+        onBack={() => {
+          // If logged in, go to dashboard, else home
+          const target = currentUser ? '/dashboard' : '/';
+          window.history.pushState({}, '', target);
+          setShowChangelog(false);
+        }}
+      />
+    );
+  }
+
   // --- RENDERING LOGIC FOR LANDING / AUTH ---
   if (!currentUser) {
+
     if (showInviteLanding) {
       return (
         <>
@@ -3487,6 +3532,7 @@ const App: React.FC = () => {
           setIsProOnboardingOpen(false);
           // Persist "Has Seen" to Database so it never shows again even if skipped
           if (currentUser && userId) {
+            localStorage.setItem(`confirmed_pro_tutorial_seen_${userId}`, 'true');
             try {
               await dbService.updateUserProfile(userId, { hasSeenProTutorial: true });
             } catch (error) {
@@ -3500,6 +3546,7 @@ const App: React.FC = () => {
           setIsProOnboardingOpen(false);
           // Persist "Has Seen" to Database so it never shows again
           if (currentUser && userId) {
+            localStorage.setItem(`confirmed_pro_tutorial_seen_${userId}`, 'true');
             console.log('[App] Pro Tutorial Completed. Persisting state to DB.');
             try {
               await dbService.updateUserProfile(userId, { hasSeenProTutorial: true });
