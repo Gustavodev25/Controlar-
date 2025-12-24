@@ -33,12 +33,12 @@ import {
 } from './Icons';
 import { Logo } from './Logo';
 import { User, AppNotification, PromoPopup } from '../types';
-import { getAllUsers, addNotification, addPromoPopup, getWaitlistEntries } from '../services/database';
+import { getAllUsers, addNotification, addPromoPopup, getWaitlistEntries, saveEmailDraft, getEmailDraft } from '../services/database';
 import { CustomSelect } from './UIComponents';
 import { useToasts } from './Toast';
 
 interface AdminEmailMessageProps {
-    currentUser?: User | null;
+    currentUser?: (User & { id: string }) | null;
 }
 
 type AlignType = 'left' | 'center' | 'right' | 'justify';
@@ -134,15 +134,68 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                 ]);
                 setAllUsers(users);
                 setWaitlistEntries(waitlist);
+
+                // Load Draft
+                if (currentUser?.id) {
+                    const draft = await getEmailDraft(currentUser.id);
+                    if (draft) {
+                        setSubject(draft.subject || '');
+                        setTitle(draft.title || '');
+                        setBody(draft.body || '');
+                        setBoxContent(draft.boxContent || '');
+                        setButtonText(draft.buttonText || '');
+                        setButtonLink(draft.buttonLink || '');
+                        setHeaderAlign(draft.headerAlign || 'left');
+                        setTitleAlign(draft.titleAlign || 'left');
+                        setBodyAlign(draft.bodyAlign || 'left');
+                        setRecipientType(draft.recipientType || 'all');
+                        setDeliveryMethod(draft.deliveryMethod || 'notification');
+                        setNotificationType(draft.notificationType || 'system');
+                        setPopupImageUrl(draft.popupImageUrl || '');
+                        setSelectedUserIds(draft.selectedUserIds || []);
+
+                        toast.info('Rascunho restaurado com sucesso.');
+                    }
+                }
             } catch (error) {
                 console.error("Error loading data:", error);
-                toast.error("Erro ao carregar usuários.");
+                toast.error("Erro ao carregar dados.");
             } finally {
                 setIsLoadingUsers(false);
             }
         };
         loadData();
-    }, []);
+    }, [currentUser]);
+
+    // Save Draft Logic
+    const handleSaveDraft = async () => {
+        if (!currentUser?.id) return;
+
+        try {
+            const draftData = {
+                subject,
+                title,
+                body,
+                boxContent,
+                buttonText,
+                buttonLink,
+                headerAlign,
+                titleAlign,
+                bodyAlign,
+                recipientType,
+                deliveryMethod,
+                notificationType,
+                popupImageUrl,
+                selectedUserIds
+            };
+
+            await saveEmailDraft(currentUser.id, draftData);
+            toast.success('Rascunho salvo com sucesso!');
+        } catch (error) {
+            console.error('Error saving draft:', error);
+            toast.error('Erro ao salvar rascunho.');
+        }
+    };
 
     // Filter users for search
     const filteredUsers = useMemo(() => {
@@ -376,7 +429,10 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                     <p className="text-gray-400 text-sm mt-1">Envie notificações, popups ou comunicados para os usuários.</p>
                 </div>
                 <div className="flex gap-3">
-                    <button className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium border border-gray-700">
+                    <button
+                        onClick={handleSaveDraft}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white transition-colors text-sm font-medium border border-gray-700"
+                    >
                         <Save size={16} />
                         Salvar Rascunho
                     </button>

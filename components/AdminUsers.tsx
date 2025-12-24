@@ -17,7 +17,8 @@ import {
     Users as UsersIcon,
     ChevronDown,
     Filter,
-    Clock
+    Clock,
+    ArrowUpDown
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { User as UserType } from '../types';
@@ -43,6 +44,7 @@ interface SystemUser extends UserType {
 type PlanFilter = 'all' | 'starter' | 'pro' | 'family';
 type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due';
 type RoleFilter = 'all' | 'admin' | 'user';
+type SortOption = 'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'last_active';
 
 const planTabs: { value: PlanFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
@@ -57,7 +59,9 @@ export const AdminUsers: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
     const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+    const [sortOption, setSortOption] = useState<SortOption>('newest');
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [deleteId, setDeleteId] = useState<string | null>(null);
     const [adminToggleId, setAdminToggleId] = useState<string | null>(null);
@@ -104,8 +108,25 @@ export const AdminUsers: React.FC = () => {
                 (roleFilter === 'user' && !user.isAdmin);
 
             return matchesSearch && matchesPlan && matchesStatus && matchesRole;
+        }).sort((a, b) => {
+            switch (sortOption) {
+                case 'name_asc':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'name_desc':
+                    return (b.name || '').localeCompare(a.name || '');
+                case 'newest':
+                    return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime();
+                case 'oldest':
+                    return new Date(a.createdAt || 0).getTime() - new Date(b.createdAt || 0).getTime();
+                case 'last_active':
+                    const lastLoginA = a.connectionLogs?.[0]?.timestamp ? new Date(a.connectionLogs[0].timestamp).getTime() : 0;
+                    const lastLoginB = b.connectionLogs?.[0]?.timestamp ? new Date(b.connectionLogs[0].timestamp).getTime() : 0;
+                    return lastLoginB - lastLoginA;
+                default:
+                    return 0;
+            }
         });
-    }, [users, searchTerm, planFilter, statusFilter, roleFilter]);
+    }, [users, searchTerm, planFilter, statusFilter, roleFilter, sortOption]);
 
     // Stats
     const stats = useMemo(() => ({
@@ -281,6 +302,17 @@ export const AdminUsers: React.FC = () => {
         }
     };
 
+    const getSortLabel = (sort: SortOption) => {
+        switch (sort) {
+            case 'name_asc': return 'Nome (A-Z)';
+            case 'name_desc': return 'Nome (Z-A)';
+            case 'newest': return 'Mais Recentes';
+            case 'oldest': return 'Mais Antigos';
+            case 'last_active': return 'Último Acesso';
+            default: return sort;
+        }
+    };
+
     return (
         <div className="space-y-6 animate-fade-in">
             {/* Header */}
@@ -418,6 +450,56 @@ export const AdminUsers: React.FC = () => {
                                 className={roleFilter === 'user' ? 'bg-white/5' : ''}
                             >
                                 Usuários
+                            </DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+
+                    {/* Sort Dropdown */}
+                    <Dropdown>
+                        <DropdownTrigger className="w-full sm:w-auto">
+                            <div className="flex items-center justify-between w-full sm:w-48 px-4 py-3 bg-[#30302E] border border-[#373734] rounded-xl text-white hover:border-gray-600 transition-colors">
+                                <div className="flex items-center gap-2">
+                                    <ArrowUpDown size={16} className="text-gray-500" />
+                                    <span className="text-sm">{getSortLabel(sortOption)}</span>
+                                </div>
+                                <ChevronDown size={16} className="text-gray-500" />
+                            </div>
+                        </DropdownTrigger>
+                        <DropdownContent align="right" width="w-48">
+                            <DropdownLabel>Ordenar por</DropdownLabel>
+                            <DropdownItem
+                                onClick={() => setSortOption('newest')}
+                                icon={Calendar}
+                                className={sortOption === 'newest' ? 'bg-white/5' : ''}
+                            >
+                                Mais Recentes
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('oldest')}
+                                icon={Calendar}
+                                className={sortOption === 'oldest' ? 'bg-white/5' : ''}
+                            >
+                                Mais Antigos
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('last_active')}
+                                icon={Clock}
+                                className={sortOption === 'last_active' ? 'bg-white/5' : ''}
+                            >
+                                Último Acesso
+                            </DropdownItem>
+                            <DropdownSeparator />
+                            <DropdownItem
+                                onClick={() => setSortOption('name_asc')}
+                                className={sortOption === 'name_asc' ? 'bg-white/5' : ''}
+                            >
+                                Nome (A-Z)
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('name_desc')}
+                                className={sortOption === 'name_desc' ? 'bg-white/5' : ''}
+                            >
+                                Nome (Z-A)
                             </DropdownItem>
                         </DropdownContent>
                     </Dropdown>

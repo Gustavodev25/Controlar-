@@ -383,7 +383,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               neighborhood: formData.neighborhood,
               city: formData.city,
               state: formData.state
-            }
+            },
+            createdAt: new Date().toISOString()
           });
 
           // Meta Pixel: CompleteRegistration
@@ -428,7 +429,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           email: user.email || '',
           baseSalary: 0,
           avatarUrl: user.photoURL || undefined,
-          isAdmin: false
+          isAdmin: false,
+          createdAt: new Date().toISOString()
         });
         localStorage.setItem('is_new_signup', 'true');
       } else {

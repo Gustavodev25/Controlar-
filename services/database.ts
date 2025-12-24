@@ -2320,3 +2320,28 @@ export const updateSystemSettings = async (settings: Partial<import("../types").
     throw error;
   }
 };
+
+// --- Admin Helper Services ---
+export const saveEmailDraft = async (userId: string, draftData: any) => {
+  if (!db) return;
+  const draftRef = doc(db, "users", userId, "settings", "emailDraft");
+  await setDoc(draftRef, {
+    ...draftData,
+    updatedAt: new Date().toISOString()
+  });
+};
+
+export const getEmailDraft = async (userId: string) => {
+  if (!db) return null;
+  try {
+    const draftRef = doc(db, "users", userId, "settings", "emailDraft");
+    const snap = await getDoc(draftRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (error) {
+    console.error("Error fetching email draft:", error);
+    return null;
+  }
+};
