@@ -4,6 +4,7 @@ import NumberFlow from '@number-flow/react';
 import { ShiningText } from '../ShiningText';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 import { InfiniteSlider } from '../InfiniteSlider';
+import { BlurTextEffect } from '../BlurTextEffect';
 import dashboardImg from '../../assets/dashboard.png';
 
 // Bank logos
@@ -144,12 +145,90 @@ const AnimatedStat: React.FC<{
                 />
                 {suffix}
             </p>
-            <p className="text-sm text-gray-400 mt-1">{label}</p>
+            <p className="text-sm text-gray-400 mt-1">
+                <BlurTextEffect>{label}</BlurTextEffect>
+            </p>
         </div>
     );
 };
 
-export function Hero() {
+// Helper Component Types
+interface CountdownTimerProps {
+    targetDate: string;
+}
+
+// Countdown Timer Component with NumberFlow
+const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) => {
+    const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number }>({ d: 0, h: 0, m: 0, s: 0 });
+
+    useEffect(() => {
+        const calculateTimeLeft = () => {
+            const difference = +new Date(targetDate) - +new Date();
+            if (difference > 0) {
+                return {
+                    d: Math.floor(difference / (1000 * 60 * 60 * 24)),
+                    h: Math.floor((difference / (1000 * 60 * 60)) % 24),
+                    m: Math.floor((difference / 1000 / 60) % 60),
+                    s: Math.floor((difference / 1000) % 60),
+                };
+            }
+            return { d: 0, h: 0, m: 0, s: 0 };
+        };
+
+        setTimeLeft(calculateTimeLeft());
+        const timer = setInterval(() => {
+            setTimeLeft(calculateTimeLeft());
+        }, 1000);
+
+        return () => clearInterval(timer);
+    }, [targetDate]);
+
+    return (
+        <div className="flex items-center gap-4 text-white">
+            <div className="flex flex-col items-center">
+                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                    <NumberFlow value={timeLeft.d} format={{ minimumIntegerDigits: 2 }} />
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Dias</span>
+            </div>
+            <span className="text-2xl font-bold text-gray-600">:</span>
+            <div className="flex flex-col items-center">
+                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                    <NumberFlow value={timeLeft.h} format={{ minimumIntegerDigits: 2 }} />
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Horas</span>
+            </div>
+            <span className="text-2xl font-bold text-gray-600">:</span>
+            <div className="flex flex-col items-center">
+                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                    <NumberFlow value={timeLeft.m} format={{ minimumIntegerDigits: 2 }} />
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Min</span>
+            </div>
+            <span className="text-2xl font-bold text-gray-600">:</span>
+            <div className="flex flex-col items-center">
+                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                    <NumberFlow value={timeLeft.s} format={{ minimumIntegerDigits: 2 }} />
+                </span>
+                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Seg</span>
+            </div>
+        </div>
+    );
+};
+
+// Benefits Item Component
+const BenefitsItem = ({ text }: { text: string }) => (
+    <div className="flex items-center gap-3 text-sm text-gray-300">
+        <div className="flex-shrink-0 w-5 h-5 rounded-full bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+            <svg className="w-3 h-3 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+        </div>
+        {text}
+    </div>
+);
+
+export function Hero({ onLogin }: { onLogin: () => void }) {
     const banks = [
         { name: 'Banco do Brasil', logo: bancodobrasilLogo },
         { name: 'Bradesco', logo: bradescoLogo },
@@ -188,7 +267,7 @@ export function Hero() {
     };
 
     return (
-        <div className="w-full bg-[#1a0f0a] flex flex-col">
+        <div id="hero" className="w-full bg-[#1a0f0a] flex flex-col">
             <section className="relative w-full min-h-screen bg-[radial-gradient(ellipse_60%_40%_at_50%_40%,_#3a1a10_0%,_#1a0f0a_100%)] overflow-hidden flex items-center justify-center pt-40 pb-0">
 
                 {/* Grid Animado de Fundo - Sutil e Centralizado */}
@@ -203,44 +282,108 @@ export function Hero() {
                 />
 
                 <motion.div
-                    className="container mx-auto flex flex-col items-center justify-center z-10 px-4 lg:px-12 h-full"
+                    className="container mx-auto flex flex-col lg:flex-row items-center justify-between gap-12 z-10 px-4 lg:px-12 h-full"
                     initial="hidden"
                     animate="visible"
                     variants={containerVariants}
                 >
-                    <div className="space-y-8 text-center max-w-4xl">
+                    {/* Left Side: Original Hero Text */}
+                    <div className="flex-1 space-y-8 text-center lg:text-left">
                         <motion.h1 variants={itemVariants} className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
                             Desbloqueie o Potencial <br />
                             das suas <ShiningText text="Finanças." />
                         </motion.h1>
-                        <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-xl mx-auto">
+                        <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-xl mx-auto lg:mx-0">
                             Controlar+ é a plataforma financeira mais produtiva já feita.
                             Obtenha clareza total sobre seu dinheiro em segundos.
                         </motion.p>
-                        <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
-                            <button className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group">
+
+                        {/* Countdown Timer Featured */}
+                        {/* Countdown Timer & CTA */}
+                        <motion.div variants={itemVariants} className="flex flex-col items-center lg:items-start gap-6 pt-4">
+                            <div className="flex flex-col items-center lg:items-start gap-3">
+                                <p className="text-sm uppercase tracking-widest text-[#D97757] font-bold">Oferta de Ano Novo acaba em:</p>
+                                <CountdownTimer targetDate="2026-01-01T12:00:00" />
+                            </div>
+
+                            <button onClick={onLogin} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
                                 Começar Agora
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
                             </button>
-                            <button className="px-12 py-4 min-w-[200px] bg-white/5 hover:bg-white/10 text-white border border-white/10 rounded-full font-medium transition-all flex items-center justify-center gap-2">
-                                Saber mais
-                                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                            </button>
                         </motion.div>
                     </div>
 
-                    {/* Dashboard Image - Cortado pela máscara do container */}
-                    <motion.div variants={itemVariants} className="relative w-full max-w-5xl mt-8 translate-y-[15%]">
-                        <div className="relative rounded-t-xl overflow-hidden border border-white/10 border-b-0 shadow-2xl shadow-black/50">
-                            <img
-                                src={dashboardImg}
-                                alt="Dashboard Controlar+"
-                                className="w-full h-auto"
-                            />
+                    {/* Right Side: Promotion Card (Clean Style) */}
+                    <motion.div variants={itemVariants} className="w-full max-w-sm lg:max-w-md relative mt-12 lg:mt-0">
+                        <div className="relative bg-[#262624] border border-[#D97757] rounded-3xl p-8 shadow-2xl">
+
+                            {/* Floating Badge */}
+                            <div className="absolute -top-3 right-6">
+                                <span className="bg-[#D97757] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider shadow-lg">
+                                    Oferta de Ano Novo
+                                </span>
+                            </div>
+
+                            {/* Card Header */}
+                            <div className="text-center mb-6 pt-2">
+                                <h3 className="text-2xl font-bold text-white leading-tight">
+                                    Pague R$ 5,00
+                                    <span className="block text-lg font-normal text-gray-400 mt-1">no primeiro mês!</span>
+                                </h3>
+                            </div>
+
+                            {/* Scarcity Badge */}
+                            <div className="text-center mb-6">
+                                <p className="text-[#ef4444] font-black text-xl tracking-widest uppercase filter drop-shadow-sm">APENAS 37/50 VAGAS</p>
+                                <p className="text-[11px] text-gray-500 font-medium mt-1 uppercase tracking-wide">Fecha 01/01</p>
+                            </div>
+
+                            {/* Price Section */}
+                            <div className="flex flex-col items-center justify-center mb-8">
+                                <span className="text-gray-500 line-through text-sm mb-1">De R$ 35,90</span>
+                                <div className="flex items-baseline gap-1">
+                                    <span className="text-2xl text-white font-bold">R$</span>
+                                    <span className="text-6xl font-bold text-white tracking-tighter">5,00</span>
+                                    <span className="text-xl text-gray-400">/mês</span>
+                                </div>
+                                <div className="mt-3 bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full text-xs font-bold uppercase border border-emerald-500/20">
+                                    Economize R$ 30,90
+                                </div>
+                            </div>
+
+                            {/* Benefits */}
+                            <div className="space-y-4 mb-8">
+                                <BenefitsItem text="Acesso completo ao Controlar+" />
+                                <BenefitsItem text="Conexão Bancária Ilimitada" />
+                                <BenefitsItem text="IA Financeira Avançada" />
+                                <BenefitsItem text="Metas e Lembretes" />
+                            </div>
+
+                            {/* CTA */}
+                            <button onClick={onLogin} className="w-full py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-xl font-bold text-lg transition-all transform hover:scale-[1.02] active:scale-[0.98]">
+                                Assinar Agora
+                            </button>
+
+                            {/* Progress bar */}
+                            <div className="mt-6">
+                                <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">
+                                    <span>Vagas Preenchidas</span>
+                                    <span>68%</span>
+                                </div>
+                                <div className="w-full h-2 bg-gray-700/30 rounded-full overflow-hidden">
+                                    <motion.div
+                                        initial={{ width: 0 }}
+                                        animate={{ width: "68%" }}
+                                        transition={{ duration: 1.5, ease: "easeOut" }}
+                                        className="h-full bg-[#D97757]"
+                                    />
+                                </div>
+                                <p className="text-center text-[10px] text-gray-500 mt-3 uppercase tracking-widest">
+                                    Oferta válida até 01/01
+                                </p>
+                            </div>
                         </div>
                     </motion.div>
                 </motion.div>
@@ -282,8 +425,8 @@ export function Hero() {
                         {/* Texto Principal */}
                         <AnimatedSection direction="left" delay={0} className="flex-shrink-0">
                             <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
-                                Simplificando sua vida <br />
-                                financeira todos os dias.
+                                <BlurTextEffect>Simplificando sua vida</BlurTextEffect> <br />
+                                <BlurTextEffect>financeira todos os dias.</BlurTextEffect>
                             </h2>
                             <DrawLine delay={0.4} />
                         </AnimatedSection>

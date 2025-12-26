@@ -3,14 +3,25 @@ import { Topbar } from './Topbar';
 import { Hero } from './Hero';
 import { FeaturesSectionWithHoverEffects } from './Features';
 import { ProgressSection } from './ProgressSection';
+import { TestimonialsSection } from './Testimonials';
+import { FAQSection } from './FAQ';
+import { PricingSection } from './PricingSection';
+import { FinalCTA } from './FinalCTA';
 
-export const NovaLanding: React.FC = () => {
+import { Footer } from './Footer';
+
+export const NovaLanding: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
     return (
         <div className="min-h-screen bg-[#050505] text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
-            <Topbar />
-            <Hero />
+            <Topbar onLogin={onLogin} />
+            <Hero onLogin={onLogin} />
             <FeaturesSectionWithHoverEffects />
             <ProgressSection />
+            <TestimonialsSection />
+            <PricingSection onLogin={onLogin} />
+            <FAQSection onLogin={onLogin} />
+            <FinalCTA onLogin={onLogin} />
+            <Footer />
         </div>
     );
 };

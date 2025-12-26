@@ -12,6 +12,8 @@ import {
     IconWallet,
 } from "@tabler/icons-react";
 
+import { BlurTextEffect } from '../BlurTextEffect';
+
 export function FeaturesSectionWithHoverEffects() {
     const features = [
         {
@@ -61,7 +63,7 @@ export function FeaturesSectionWithHoverEffects() {
         },
     ];
     return (
-        <div className="w-full bg-[#262624] py-20">
+        <div id="features" className="w-full bg-[#262624] py-20">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 relative z-10 container mx-auto px-8">
                 {features.map((feature, index) => (
                     <Feature key={feature.title} {...feature} index={index} />
@@ -102,11 +104,11 @@ const Feature = ({
             <div className="text-lg font-bold mb-2 relative z-10 px-10">
                 <div className="absolute left-0 inset-y-0 h-6 group-hover/feature:h-8 w-1 rounded-tr-full rounded-br-full bg-neutral-700 group-hover/feature:bg-[#D97757] transition-all duration-200 origin-center" />
                 <span className="group-hover/feature:translate-x-2 transition duration-200 inline-block text-neutral-100">
-                    {title}
+                    <BlurTextEffect>{title}</BlurTextEffect>
                 </span>
             </div>
             <p className="text-sm text-neutral-300 max-w-xs relative z-10 px-10">
-                {description}
+                <BlurTextEffect>{description}</BlurTextEffect>
             </p>
         </div>
     );
