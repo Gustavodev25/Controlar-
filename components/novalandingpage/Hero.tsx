@@ -351,6 +351,14 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                 <div className="mt-3 bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full text-xs font-bold uppercase border border-emerald-500/20">
                                     Economize R$ 30,90
                                 </div>
+
+                                <div className="mt-4 flex flex-col items-center gap-2 animate-pulse">
+                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-lg">
+                                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">CUPOM:</span>
+                                        <span className="text-[#D97757] font-bold tracking-widest text-sm">DESCONTO05</span>
+                                        <span className="text-[10px] bg-[#D97757] text-white px-1.5 py-0.5 rounded font-bold ml-1">-5%</span>
+                                    </div>
+                                </div>
                             </div>
 
                             {/* Benefits */}
