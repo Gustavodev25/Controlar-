@@ -23,7 +23,7 @@ interface SyncStatusPanelProps {
   compact?: boolean;
 }
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 const AUTO_SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000; // 24 hours
 const MANUAL_SYNC_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -273,17 +273,17 @@ export const SyncStatusPanel: React.FC<SyncStatusPanelProps> = ({
             flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium
             ${syncStatus.state === 'success' ? 'bg-green-500/10 text-green-400' :
               syncStatus.state === 'error' ? 'bg-red-500/10 text-red-400' :
-              syncStatus.state === 'pending' || syncStatus.state === 'in_progress' ? 'bg-yellow-500/10 text-yellow-400' :
-              'bg-gray-700 text-gray-400'
+                syncStatus.state === 'pending' || syncStatus.state === 'in_progress' ? 'bg-yellow-500/10 text-yellow-400' :
+                  'bg-gray-700 text-gray-400'
             }
           `}>
             {syncStatus.state === 'success' && <CheckCircle size={12} />}
             {syncStatus.state === 'error' && <AlertCircle size={12} />}
             {(syncStatus.state === 'pending' || syncStatus.state === 'in_progress') && <Loader2 size={12} className="animate-spin" />}
             {syncStatus.state === 'success' ? 'Atualizado' :
-             syncStatus.state === 'error' ? 'Erro' :
-             syncStatus.state === 'pending' ? 'Pendente' :
-             syncStatus.state === 'in_progress' ? 'Sincronizando' : 'Aguardando'}
+              syncStatus.state === 'error' ? 'Erro' :
+                syncStatus.state === 'pending' ? 'Pendente' :
+                  syncStatus.state === 'in_progress' ? 'Sincronizando' : 'Aguardando'}
           </div>
         )}
       </div>

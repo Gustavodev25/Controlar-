@@ -21,7 +21,7 @@ interface BankConnectModalProps {
     isAdmin?: boolean;
 }
 
-const API_BASE = '/api';
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 const pad2 = (val: number) => String(val).padStart(2, '0');
 

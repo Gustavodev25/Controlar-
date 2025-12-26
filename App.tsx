@@ -63,6 +63,7 @@ import { translatePluggyCategory } from './services/openFinanceService';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 import { UAParser } from 'ua-parser-js';
+import { API_BASE } from './config/api';
 
 // Removed FilterMode type definition as it is imported from components/Header
 
@@ -773,7 +774,7 @@ const App: React.FC = () => {
 
     const fetchConnectorNames = async () => {
       try {
-        const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
+        const response = await fetch(`${API_BASE}/pluggy/items-status?userId=${userId}`);
         const data = await response.json();
         if (data.success && data.items) {
           const namesMap: Record<string, string> = {};
@@ -2431,7 +2432,7 @@ const App: React.FC = () => {
         const itemId = itemIds[i];
 
         // Call the new Trigger endpoint
-        const res = await fetch('/api/pluggy/trigger-sync', {
+        const res = await fetch(`${API_BASE}/pluggy/trigger-sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ itemId, userId }) // Pass userId for status updates
@@ -2545,7 +2546,7 @@ const App: React.FC = () => {
           startedAt: Date.now()
         });
 
-        const response = await fetch('/api/pluggy/sync', {
+        const response = await fetch(`${API_BASE}/pluggy/sync`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ itemId, monthsBack: 12, monthsForward: 1 })
