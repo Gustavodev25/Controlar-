@@ -1,0 +1,24 @@
+{
+    "name": "controlar-api",
+    "version": "1.0.0",
+    "type": "module",
+    "main": "server.js",
+    "scripts": {
+        "start": "node server.js",
+        "dev": "node server.js"
+    },
+    "dependencies": {
+        "@anthropic-ai/sdk": "^0.71.2",
+        "@google/genai": "^1.30.0",
+        "axios": "^1.13.2",
+        "cors": "^2.8.5",
+        "dotenv": "^17.2.3",
+        "express": "^5.1.0",
+        "firebase-admin": "^13.6.0",
+        "nodemailer": "^7.0.11",
+        "stripe": "^20.0.0"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}
