@@ -533,10 +533,12 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             return;
         }
 
-        // Start sync in background and close modal immediately
-        // Progress will be shown in ConnectedAccounts via sync jobs
+        // Show syncing status while waiting for the sync to complete
+        setSyncStatus('syncing');
+        setSyncMessage('Sincronizando contas e transações...');
+
         try {
-            // Call sync API - it will create a sync job and process in background
+            // Call sync API - now synchronous, will wait for completion
             const response = await fetch(`${API_BASE}/pluggy/sync`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -545,25 +547,27 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
             const result = await response.json();
 
-            if (!response.ok) {
-                throw new Error(result.error || 'Erro ao iniciar sincronização');
+            if (!response.ok || result.success === false) {
+                throw new Error(result.error || 'Erro ao sincronizar');
             }
 
-            // console.log('[BankConnectModal] Sync started, syncJobId:', result.syncJobId);
+            // Show success message
+            setSyncStatus('success');
+            setSyncMessage(result.message || `${result.accountsFound || 0} contas, ${result.transactionsFound || 0} transações sincronizadas!`);
 
-            // Notify parent with syncJobId for tracking progress
+            // Notify parent
             if (onSuccess) {
-                onSuccess([], result.syncJobId);
+                onSuccess([], undefined);
             }
 
-            // Close modal immediately - progress will show in ConnectedAccounts
-            onClose();
+            // Close modal after showing success
+            setTimeout(() => onClose(), 2000);
 
         } catch (err: any) {
-            console.error('Error starting sync:', err);
+            console.error('Error during sync:', err);
             setError(err?.message || 'Erro ao sincronizar.');
             setSyncStatus('error');
-            setSyncMessage(err?.message || 'Erro ao iniciar sincronização.');
+            setSyncMessage(err?.message || 'Erro na sincronização.');
         }
     }, [onClose, onSuccess, userId]);
 

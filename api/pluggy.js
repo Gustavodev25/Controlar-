@@ -385,21 +385,28 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
     return { ready: true, status: 'TIMEOUT' };
 };
 
-// 4. Manual Sync (Fetch & Save) - OPTIMIZED FOR VERCEL PRO
-// Ultra-fast parallel processing for all accounts
+// 4. Manual Sync (Fetch & Save) - SYNCHRONOUS FOR VERCEL
+// Vercel terminates serverless functions after res.json(), so we MUST process before responding
 router.post('/sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
     const startTime = Date.now();
+
+    console.log(`[Sync] Starting sync for item ${itemId}, user ${userId}`);
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
     }
 
     const db = firebaseAdmin.firestore();
-    const userRef = db.doc(`users/${userId}`);
+    const apiKey = req.pluggyApiKey;
+    const syncTimestamp = new Date().toISOString();
+    const accountsRef = db.collection('users').doc(userId).collection('accounts');
+    const txCollection = db.collection('users').doc(userId).collection('transactions');
+    const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
 
-    // Increment credits in background (don't wait)
+    // Increment credits (don't block on this)
     const today = new Date().toLocaleDateString('en-CA');
+    const userRef = db.doc(`users/${userId}`);
     db.runTransaction(async (transaction) => {
         const userDoc = await transaction.get(userRef);
         if (!userDoc.exists) return;
@@ -410,193 +417,171 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         transaction.update(userRef, { dailyConnectionCredits: newCredits });
     }).catch(() => { }); // Silent fail for credits
 
-    // Create Job Doc and respond immediately
-    const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
-        itemId,
-        status: 'processing',
-        progress: 0,
-        createdAt: new Date().toISOString()
-    });
+    try {
+        // STEP 0: Wait for Pluggy item to be ready
+        console.log(`[Sync] Waiting for item ${itemId} to be ready...`);
+        const itemStatus = await waitForItemReady(apiKey, itemId);
+        console.log(`[Sync] Item ready check: ${itemStatus.status}`);
 
-    res.json({ success: true, syncJobId: jobDoc.id });
-
-    // OPTIMIZED Background Processing with parallel fetches
-    (async () => {
-        const apiKey = req.pluggyApiKey;
-        const syncTimestamp = new Date().toISOString();
-        const accountsRef = db.collection('users').doc(userId).collection('accounts');
-        const txCollection = db.collection('users').doc(userId).collection('transactions');
-        const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
-
-        try {
-            // STEP 0: Wait for Pluggy item to be ready
-            await jobDoc.update({ progress: 5, step: 'Aguardando banco...' });
-
-            const itemStatus = await waitForItemReady(apiKey, itemId);
-            console.log(`[Sync] Item ready check: ${JSON.stringify(itemStatus)}`);
-
-            if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
-                await jobDoc.update({
-                    status: 'failed',
-                    error: 'O banco requer ação adicional. Tente reconectar.',
-                    needsReconnect: true
-                });
-                return;
-            }
-
-            // STEP 1: Fetch accounts and existing data IN PARALLEL
-            await jobDoc.update({ progress: 10, step: 'Buscando contas...' });
-
-            const [accountsResp, existingSnap] = await Promise.all([
-                pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
-                accountsRef.get()
-            ]);
-
-            const accounts = accountsResp.data.results || [];
-            console.log(`[Sync] Found ${accounts.length} accounts for item ${itemId}`);
-
-            // If no accounts found, the item may still be processing
-            if (accounts.length === 0) {
-                console.log('[Sync] No accounts found - item may still be updating');
-                await jobDoc.update({
-                    status: 'completed',
-                    progress: 100,
-                    message: '0 contas encontradas. O banco pode estar processando ainda.',
-                    accountsFound: 0,
-                    transactionsFound: 0
-                });
-                return;
-            }
-
-            const existingMap = {};
-            existingSnap.forEach(doc => {
-                const d = doc.data();
-                existingMap[doc.id] = { lastSyncedAt: d.lastSyncedAt, connectedAt: d.connectedAt };
+        if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
+            return res.json({
+                success: false,
+                error: 'O banco requer ação adicional. Tente reconectar.',
+                needsReconnect: true
             });
+        }
 
-            await jobDoc.update({ progress: 15, step: `Salvando ${accounts.length} contas...` });
+        // STEP 1: Fetch accounts
+        console.log(`[Sync] Fetching accounts...`);
+        const [accountsResp, existingSnap] = await Promise.all([
+            pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
+            accountsRef.get()
+        ]);
 
-            // STEP 2: Save accounts (quick batch)
-            const accBatch = db.batch();
-            for (const acc of accounts) {
-                const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
-                const existing = existingMap[acc.id];
+        const accounts = accountsResp.data.results || [];
+        console.log(`[Sync] Found ${accounts.length} accounts`);
 
-                const creditFields = isCredit && acc.creditData ? {
-                    creditLimit: acc.creditData.creditLimit || null,
-                    availableCreditLimit: acc.creditData.availableCreditLimit || null,
-                    brand: acc.creditData.brand || null,
-                    balanceCloseDate: acc.creditData.balanceCloseDate || null,
-                    balanceDueDate: acc.creditData.balanceDueDate || null,
-                    closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
-                    dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
-                } : {};
+        // If no accounts found, return early but mark as success
+        if (accounts.length === 0) {
+            console.log('[Sync] No accounts found - item may still be updating');
+            return res.json({
+                success: true,
+                message: '0 contas encontradas. O banco pode estar processando ainda.',
+                accountsFound: 0,
+                transactionsFound: 0
+            });
+        }
 
-                accBatch.set(accountsRef.doc(acc.id), {
-                    ...acc,
-                    ...creditFields,
-                    ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
-                    accountNumber: acc.number || null,
-                    itemId,
-                    lastSyncedAt: syncTimestamp,
-                    updatedAt: syncTimestamp
-                }, { merge: true });
-            }
-            await accBatch.commit();
+        const existingMap = {};
+        existingSnap.forEach(doc => {
+            const d = doc.data();
+            existingMap[doc.id] = { lastSyncedAt: d.lastSyncedAt, connectedAt: d.connectedAt };
+        });
 
-            // STEP 3: Fetch ALL transactions IN PARALLEL (this is the big speed boost!)
-            const fromDate = new Date();
-            fromDate.setDate(fromDate.getDate() - 60); // 60 days lookback
-            const fromStr = fromDate.toISOString().split('T')[0];
+        // STEP 2: Save accounts (quick batch)
+        console.log(`[Sync] Saving ${accounts.length} accounts...`);
+        const accBatch = db.batch();
+        for (const acc of accounts) {
+            const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+            const existing = existingMap[acc.id];
 
-            const txPromises = accounts.map(account =>
-                pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
-                    headers: { 'X-API-KEY': apiKey }
-                }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                    .catch(() => ({ account, transactions: [] })) // Silent fail per account
-            );
+            const creditFields = isCredit && acc.creditData ? {
+                creditLimit: acc.creditData.creditLimit || null,
+                availableCreditLimit: acc.creditData.availableCreditLimit || null,
+                brand: acc.creditData.brand || null,
+                balanceCloseDate: acc.creditData.balanceCloseDate || null,
+                balanceDueDate: acc.creditData.balanceDueDate || null,
+                closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
+                dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
+            } : {};
 
-            const allTxResults = await Promise.all(txPromises);
-            await jobDoc.update({ progress: 50, step: 'Salvando transações...' });
+            accBatch.set(accountsRef.doc(acc.id), {
+                ...acc,
+                ...creditFields,
+                ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
+                accountNumber: acc.number || null,
+                itemId,
+                lastSyncedAt: syncTimestamp,
+                updatedAt: syncTimestamp
+            }, { merge: true });
+        }
+        await accBatch.commit();
+        console.log(`[Sync] Accounts saved`);
 
-            // STEP 4: Process and batch write all transactions
-            let txCount = 0;
-            let opCount = 0;
-            let currentBatch = db.batch();
-            const batchPromises = [];
+        // STEP 3: Fetch ALL transactions IN PARALLEL
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - 60); // 60 days lookback
+        const fromStr = fromDate.toISOString().split('T')[0];
 
-            for (const { account, transactions } of allTxResults) {
-                const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
-                const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
-                const targetColl = isCredit ? ccTxCollection : txCollection;
+        console.log(`[Sync] Fetching transactions from ${fromStr}...`);
+        const txPromises = accounts.map(account =>
+            pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
+                headers: { 'X-API-KEY': apiKey }
+            }).then(resp => ({ account, transactions: resp.data.results || [] }))
+                .catch(() => ({ account, transactions: [] })) // Silent fail per account
+        );
 
-                for (const tx of transactions) {
-                    let mappedTx;
+        const allTxResults = await Promise.all(txPromises);
 
-                    if (isCredit) {
-                        // Credit Card Transaction
-                        let invoiceMonthKey = tx.date.slice(0, 7);
-                        if (account.creditData?.balanceCloseDate) {
-                            const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
-                            const txDate = new Date(tx.date);
-                            if (txDate.getDate() > closingDay) {
-                                txDate.setMonth(txDate.getMonth() + 1);
-                            }
-                            invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+        // STEP 4: Process and batch write all transactions
+        let txCount = 0;
+        let opCount = 0;
+        let currentBatch = db.batch();
+        const batchPromises = [];
+
+        for (const { account, transactions } of allTxResults) {
+            const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
+            const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+            const targetColl = isCredit ? ccTxCollection : txCollection;
+
+            for (const tx of transactions) {
+                let mappedTx;
+
+                if (isCredit) {
+                    // Credit Card Transaction
+                    let invoiceMonthKey = tx.date.slice(0, 7);
+                    if (account.creditData?.balanceCloseDate) {
+                        const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                        const txDate = new Date(tx.date);
+                        if (txDate.getDate() > closingDay) {
+                            txDate.setMonth(txDate.getMonth() + 1);
                         }
-
-                        mappedTx = {
-                            cardId: account.id,
-                            date: tx.date.split('T')[0],
-                            description: tx.description,
-                            amount: Math.abs(tx.amount),
-                            type: tx.amount > 0 ? 'expense' : 'income',
-                            category: tx.category || 'Uncategorized',
-                            status: 'completed',
-                            installments: tx.installments || 1,
-                            installmentNumber: 1,
-                            invoiceMonthKey,
-                            pluggyRaw: tx
-                        };
-                    } else {
-                        // Regular/Savings Transaction
-                        mappedTx = {
-                            providerId: tx.id,
-                            description: tx.description,
-                            amount: Math.abs(tx.amount),
-                            type: tx.amount < 0 ? 'expense' : 'income',
-                            date: tx.date.split('T')[0],
-                            accountId: tx.accountId,
-                            category: tx.category || 'Uncategorized',
-                            status: 'completed',
-                            updatedAt: syncTimestamp,
-                            isInvestment: isSavings,
-                            pluggyRaw: tx
-                        };
+                        invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                     }
 
-                    currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
-                    opCount++;
-                    txCount++;
+                    mappedTx = {
+                        cardId: account.id,
+                        date: tx.date.split('T')[0],
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount > 0 ? 'expense' : 'income',
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        installments: tx.installments || 1,
+                        installmentNumber: 1,
+                        invoiceMonthKey,
+                        pluggyRaw: tx
+                    };
+                } else {
+                    // Regular/Savings Transaction
+                    mappedTx = {
+                        providerId: tx.id,
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount < 0 ? 'expense' : 'income',
+                        date: tx.date.split('T')[0],
+                        accountId: tx.accountId,
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        updatedAt: syncTimestamp,
+                        isInvestment: isSavings,
+                        pluggyRaw: tx
+                    };
+                }
 
-                    if (opCount >= 450) {
-                        batchPromises.push(currentBatch.commit());
-                        currentBatch = db.batch();
-                        opCount = 0;
-                    }
+                currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                opCount++;
+                txCount++;
+
+                if (opCount >= 450) {
+                    batchPromises.push(currentBatch.commit());
+                    currentBatch = db.batch();
+                    opCount = 0;
                 }
             }
+        }
 
-            if (opCount > 0) batchPromises.push(currentBatch.commit());
+        if (opCount > 0) batchPromises.push(currentBatch.commit());
 
-            // Commit all batches in parallel
-            await Promise.all(batchPromises);
+        // Commit all batches in parallel
+        await Promise.all(batchPromises);
+        console.log(`[Sync] Saved ${txCount} transactions`);
 
-            await jobDoc.update({ progress: 80, step: 'Buscando faturas...' });
+        // STEP 5: Fetch credit card bills
+        const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
 
-            // STEP 5: Fetch ALL credit card bills IN PARALLEL
-            const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
-
+        if (creditAccounts.length > 0) {
+            console.log(`[Sync] Fetching bills for ${creditAccounts.length} credit accounts...`);
             const billPromises = creditAccounts.map(account =>
                 pluggyApi.get(`/bills?accountId=${account.id}`, { headers: { 'X-API-KEY': apiKey } })
                     .then(resp => ({ account, bills: resp.data.results || [] }))
@@ -639,22 +624,27 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 });
 
             await Promise.all(billUpdatePromises);
-
-            const duration = Date.now() - startTime;
-            await jobDoc.update({
-                status: 'completed',
-                progress: 100,
-                message: `${txCount} transações em ${(duration / 1000).toFixed(1)}s`,
-                duration
-            });
-
-            console.log(`[Sync] Completed in ${duration}ms: ${txCount} transactions`);
-
-        } catch (err) {
-            console.error('[Sync] Failed:', err.message);
-            await jobDoc.update({ status: 'failed', error: err.message });
         }
-    })();
+
+        const duration = Date.now() - startTime;
+        console.log(`[Sync] Completed in ${duration}ms: ${accounts.length} accounts, ${txCount} transactions`);
+
+        // Return success with details
+        return res.json({
+            success: true,
+            message: `Sincronizado: ${accounts.length} contas, ${txCount} transações`,
+            accountsFound: accounts.length,
+            transactionsFound: txCount,
+            duration
+        });
+
+    } catch (err) {
+        console.error('[Sync] Failed:', err.message);
+        return res.status(500).json({
+            success: false,
+            error: err.message || 'Erro na sincronização'
+        });
+    }
 });
 
 // 5. Delete Item (optimized)
