@@ -2,7 +2,7 @@ import express from 'express';
 import axios from 'axios';
 import { firebaseAdmin } from './firebaseAdmin.js';
 import { loadEnv } from './env.js';
-import { v4 as uuidv4 } from 'uuid'; // Usually available, or we can use crypto
+import { v4 as uuidv4 } from 'uuid';
 
 loadEnv();
 
@@ -10,16 +10,21 @@ const router = express.Router();
 
 const CLIENT_ID = process.env.PLUGGY_CLIENT_ID?.trim();
 const CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET?.trim();
-const BASE_URL = 'https://api.pluggy.ai'; // Production URL
+const BASE_URL = 'https://api.pluggy.ai';
 
-// Log credentials on startup (masked)
-console.log('Pluggy Config:', {
-    clientId: CLIENT_ID ? `${CLIENT_ID.substring(0, 8)}...${CLIENT_ID.substring(CLIENT_ID.length - 4)}` : 'NOT SET',
-    clientIdLength: CLIENT_ID?.length,
-    secretLength: CLIENT_SECRET?.length,
-    hasSecret: !!CLIENT_SECRET,
-    baseUrl: BASE_URL
+// Vercel Pro timeout config (max 60s, use 55s for safety)
+const VERCEL_TIMEOUT = 55000;
+const AXIOS_TIMEOUT = 15000; // 15s per request max
+
+// Create optimized axios instance
+const pluggyApi = axios.create({
+    baseURL: BASE_URL,
+    timeout: AXIOS_TIMEOUT,
+    headers: { 'Content-Type': 'application/json' }
 });
+
+// Minimal startup log
+console.log('Pluggy: Ready', { hasCredentials: !!(CLIENT_ID && CLIENT_SECRET) });
 
 // Helper to get Pluggy API Key
 let cachedApiKey = null;
@@ -28,533 +33,348 @@ let apiKeyExpiresAt = 0;
 const getApiKey = async (forceRefresh = false) => {
     const now = Date.now();
     if (!forceRefresh && cachedApiKey && now < apiKeyExpiresAt) {
-        console.log('Using cached API key');
         return cachedApiKey;
     }
 
-    try {
-        console.log('Authenticating with Pluggy... (forceRefresh:', forceRefresh, ')');
-
-        // Debug: Log credential presence (NOT the actual values)
-        console.log('[Auth Debug] CLIENT_ID present:', !!CLIENT_ID, 'length:', CLIENT_ID?.length || 0);
-        console.log('[Auth Debug] CLIENT_SECRET present:', !!CLIENT_SECRET, 'length:', CLIENT_SECRET?.length || 0);
-
-        if (!CLIENT_ID || !CLIENT_SECRET) {
-            throw new Error('Pluggy credentials not configured - check PLUGGY_CLIENT_ID and PLUGGY_CLIENT_SECRET env vars');
-        }
-        const response = await axios.post(`${BASE_URL}/auth`, {
-            clientId: CLIENT_ID,
-            clientSecret: CLIENT_SECRET
-        });
-
-        // Log full response for debugging
-        console.log('Auth Response Keys:', Object.keys(response.data));
-        console.log('Auth Response Data:', JSON.stringify(response.data, null, 2).substring(0, 500));
-
-        if (!response.data || !response.data.apiKey) {
-            console.error('Pluggy Auth Response Missing API Key:', response.data);
-            throw new Error('Invalid Auth Response');
-        }
-
-        cachedApiKey = response.data.apiKey;
-        console.log('Pluggy Auth Successful. Key length:', cachedApiKey.length);
-        console.log('Key first 20 chars:', cachedApiKey.substring(0, 20));
-
-        // Expires in 2 hours usually, set safety buffer
-        apiKeyExpiresAt = now + (1.9 * 60 * 60 * 1000);
-        return cachedApiKey;
-    } catch (error) {
-        console.error('Failed to authenticate with Pluggy:', error.message);
-        if (error.response) console.error('Auth Error Details:', error.response.data);
-        throw new Error('Pluggy Authentication Failed');
+    if (!CLIENT_ID || !CLIENT_SECRET) {
+        throw new Error('Pluggy credentials not configured');
     }
+
+    const response = await pluggyApi.post('/auth', {
+        clientId: CLIENT_ID,
+        clientSecret: CLIENT_SECRET
+    });
+
+    if (!response.data?.apiKey) {
+        throw new Error('Invalid Auth Response');
+    }
+
+    cachedApiKey = response.data.apiKey;
+    apiKeyExpiresAt = now + (1.9 * 60 * 60 * 1000); // 1.9h cache
+    return cachedApiKey;
 };
 
-// Middleware to inject API Key
+// Middleware to inject API Key (optimized)
 const withPluggyAuth = async (req, res, next) => {
     try {
-        const apiKey = await getApiKey();
-        if (!apiKey) {
-            throw new Error('No API Key generated');
-        }
-        req.pluggyApiKey = apiKey;
+        req.pluggyApiKey = await getApiKey();
+        if (!req.pluggyApiKey) throw new Error('No API Key');
         next();
     } catch (error) {
-        console.error('Middleware Auth Error:', error.message);
-        res.status(500).json({ error: 'Failed to authenticate with Bank Provider.' });
+        res.status(500).json({ error: 'Auth failed' });
     }
 };
 
 // --- Endpoints ---
 
-// 0. Test Auth Endpoint (Debug)
+// 0. Test Auth Endpoint (minimal)
 router.get('/test-auth', async (req, res) => {
     try {
-        // Force fresh authentication
-        console.log('=== TEST AUTH START ===');
         const apiKey = await getApiKey(true);
-        console.log('Fresh API Key obtained, length:', apiKey.length);
-
-        // Test 1: Try /connectors (simpler endpoint)
-        console.log('Test 1: /connectors call...');
-        try {
-            const connectorsResponse = await axios.get(`${BASE_URL}/connectors?sandbox=true`, {
-                headers: { 'X-API-KEY': apiKey }
-            });
-            console.log('Connectors call SUCCESS! Count:', connectorsResponse.data.results?.length);
-        } catch (err) {
-            console.error('Connectors failed:', err.response?.status, err.response?.data);
-        }
-
-        // Test 2: Try /items with X-API-KEY
-        console.log('Test 2: /items with X-API-KEY...');
-        try {
-            const itemsResponse = await axios.get(`${BASE_URL}/items`, {
-                headers: { 'X-API-KEY': apiKey }
-            });
-            console.log('Items call SUCCESS! Count:', itemsResponse.data.results?.length);
-        } catch (err) {
-            console.error('Items with X-API-KEY failed:', err.response?.status, err.response?.data);
-        }
-
-        // Test 3: Try /items with Authorization Bearer
-        console.log('Test 3: /items with Authorization Bearer...');
-        try {
-            const itemsResponse2 = await axios.get(`${BASE_URL}/items`, {
-                headers: { 'Authorization': `Bearer ${apiKey}` }
-            });
-            console.log('Items with Bearer SUCCESS! Count:', itemsResponse2.data.results?.length);
-        } catch (err) {
-            console.error('Items with Bearer failed:', err.response?.status, err.response?.data);
-        }
-
-        console.log('=== TEST AUTH END ===');
+        const [connectors, items] = await Promise.all([
+            pluggyApi.get('/connectors?sandbox=true', { headers: { 'X-API-KEY': apiKey } }).catch(() => null),
+            pluggyApi.get('/items', { headers: { 'X-API-KEY': apiKey } }).catch(() => null)
+        ]);
 
         res.json({
             success: true,
-            keyLength: apiKey.length,
-            message: 'Check server console for detailed results'
+            connectorsOk: !!connectors,
+            itemsOk: !!items,
+            itemsCount: items?.data?.results?.length || 0
         });
     } catch (error) {
-        console.error('Test Auth Failed:', error.message);
-        if (error.response) {
-            console.error('Error Response:', error.response.status, error.response.data);
-        }
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            details: error.response?.data
-        });
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
-// 1. Create Connect Token
+// 1. Create Connect Token (optimized)
 router.post('/create-token', withPluggyAuth, async (req, res) => {
     try {
-        const { userId } = req.body;
-        // Optional: webhookUrl can be configured here if needed for connection events
-
-        const response = await axios.post(`${BASE_URL}/connect_token`, {
-            // We can pass options here
+        const response = await pluggyApi.post('/connect_token', {
             webhookUrl: process.env.PLUGGY_WEBHOOK_URL,
-            clientUserId: userId
-        }, {
-            headers: { 'X-API-KEY': req.pluggyApiKey }
-        });
+            clientUserId: req.body.userId
+        }, { headers: { 'X-API-KEY': req.pluggyApiKey } });
 
-        // Also fetch existing items to show in the "Manage" view if requested
-        // But for now just return the token
         res.json({ accessToken: response.data.accessToken });
     } catch (error) {
-        console.error('Create Token Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to create connection token.' });
+        res.status(500).json({ error: 'Failed to create token' });
     }
 });
 
-// 2. List Items (Remote)
+// 2. List Items (optimized)
 router.get('/items', withPluggyAuth, async (req, res) => {
     try {
-        const { userId } = req.query; // Used for filtering if Pluggy supports it, or validation
-
-        // Fetch all items (Pluggy API usually returns items associated with the credentials or allows filtering)
-        // If we want items specific to a user, we rely on how we stored them or clientUserId if ConnectToken used it.
-        // But typically we list all items and filter by ownership if we stored itemId->userId map.
-        // FOR NOW: We'll assume the client just wants to list items available to this API Key (simple mode)
-        // OR better: filtered by the items we know belong to this user in Firebase?
-        // Actually, the frontend calls this to get "Orphan" items too.
-
-        const response = await axios.get(`${BASE_URL}/items`, {
-            headers: { 'X-API-KEY': req.pluggyApiKey }
-        });
-
-        // Simplification: Return all items. In a real multi-tenant app, you'd filter this!
-        res.json({ success: true, items: response.data.results });
+        const response = await pluggyApi.get('/items', { headers: { 'X-API-KEY': req.pluggyApiKey } });
+        res.json({ success: true, items: response.data.results || [] });
     } catch (error) {
         if (error.response?.status === 401) {
-            console.error('[/items] 401 Unauthorized - Credentials valid but access denied. Check Pluggy Dashboard permissions.');
-            // Return empty list to avoid crashing frontend, but signal error
-            return res.status(401).json({ error: 'Unauthorized to list items', items: [] });
+            return res.status(401).json({ error: 'Unauthorized', items: [] });
         }
-        console.error('List Items Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to list items.' });
+        res.status(500).json({ error: 'Failed to list items' });
     }
 });
 
-// 3. Trigger Sync (Update Item) - Now includes full data sync
+// 3. Trigger Sync (Update Item) - OPTIMIZED FOR VERCEL PRO
+// Ultra-fast parallel processing
 router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
+    const startTime = Date.now();
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
     }
 
-    // Create Job Doc first to track progress
-    const jobsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('sync_jobs');
-    let jobDoc;
+    const db = firebaseAdmin.firestore();
+    const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
+        itemId,
+        status: 'processing',
+        progress: 0,
+        type: 'MANUAL',
+        createdAt: new Date().toISOString()
+    });
 
-    try {
-        jobDoc = await jobsRef.add({
-            itemId,
-            status: 'processing',
-            progress: 0,
-            type: 'MANUAL',
-            createdAt: new Date().toISOString()
-        });
-    } catch (e) {
-        console.error('Failed to create sync job:', e);
-        return res.status(500).json({ error: 'Failed to create sync job' });
-    }
-
-    // Respond immediately so frontend knows sync started
     res.json({ success: true, message: 'Sync triggered', syncJobId: jobDoc.id });
 
-    // Background Processing - fetch and save data
+    // OPTIMIZED Background Processing
     (async () => {
         const apiKey = req.pluggyApiKey;
+        const syncTimestamp = new Date().toISOString();
+        const accountsRef = db.collection('users').doc(userId).collection('accounts');
+        const txCollection = db.collection('users').doc(userId).collection('transactions');
+        const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
 
         try {
-            // First, trigger Pluggy to refresh the item data
-            try {
-                await axios.patch(`${BASE_URL}/items/${itemId}`, {
-                    webhookUrl: process.env.PLUGGY_WEBHOOK_URL
-                }, {
-                    headers: { 'X-API-KEY': apiKey }
-                });
-                console.log(`[Trigger-Sync] Pluggy item ${itemId} refresh triggered`);
-            } catch (patchErr) {
-                // If item not found, mark job as failed and exit
-                if (patchErr.response?.status === 404) {
-                    await jobDoc.update({
-                        status: 'failed',
-                        error: 'Item not found in Pluggy',
-                        needsReconnect: true
-                    });
-                    return;
-                }
-                // For other errors, log but continue with sync
-                console.warn('[Trigger-Sync] Patch failed but continuing:', patchErr.message);
-            }
-
-            await jobDoc.update({ progress: 10, step: 'Fetching accounts...' });
-
-            // 1. Get Accounts
-            const accountsResp = await axios.get(`${BASE_URL}/accounts?itemId=${itemId}`, {
+            // Trigger Pluggy refresh (don't wait for result)
+            pluggyApi.patch(`/items/${itemId}`, { webhookUrl: process.env.PLUGGY_WEBHOOK_URL }, {
                 headers: { 'X-API-KEY': apiKey }
+            }).catch(err => {
+                if (err.response?.status === 404) {
+                    jobDoc.update({ status: 'failed', error: 'Item not found', needsReconnect: true });
+                }
             });
-            const accounts = accountsResp.data.results;
-            console.log(`[Trigger-Sync] Found ${accounts.length} accounts for item ${itemId}`);
 
-            // PRE-FETCH: Get existing accounts to determine last sync date (Incremental Sync)
-            const existingAccountsMap = {};
-            try {
-                const existingSnap = await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts').get();
-                existingSnap.forEach(doc => {
-                    const data = doc.data();
-                    existingAccountsMap[doc.id] = {
-                        lastSyncedAt: data.lastSyncedAt || data.updatedAt,
-                        connectedAt: data.connectedAt,
-                        isFirstSync: !data.connectedAt
-                    };
-                });
-            } catch (e) {
-                console.error('[Trigger-Sync] Failed to fetch existing accounts dates:', e);
-            }
+            await jobDoc.update({ progress: 10, step: 'Buscando contas...' });
 
-            // Save Accounts
-            const batch = firebaseAdmin.firestore().batch();
-            const accountsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts');
-            const syncTimestamp = new Date().toISOString();
+            // STEP 1: Fetch accounts and existing data IN PARALLEL
+            const [accountsResp, existingSnap] = await Promise.all([
+                pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
+                accountsRef.get()
+            ]);
 
+            const accounts = accountsResp.data.results || [];
+            const existingMap = {};
+            existingSnap.forEach(doc => {
+                const d = doc.data();
+                existingMap[doc.id] = { connectedAt: d.connectedAt };
+            });
+
+            // STEP 2: Save accounts (quick batch)
+            const accBatch = db.batch();
             for (const acc of accounts) {
-                const accRef = accountsRef.doc(acc.id);
-                const existingInfo = existingAccountsMap[acc.id];
-                const isFirstSync = !existingInfo || existingInfo.isFirstSync;
-
                 const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+                const existing = existingMap[acc.id];
+
                 const creditFields = isCredit && acc.creditData ? {
                     creditLimit: acc.creditData.creditLimit || null,
                     availableCreditLimit: acc.creditData.availableCreditLimit || null,
-                    usedCreditLimit: acc.creditData.creditLimit && acc.creditData.availableCreditLimit
-                        ? acc.creditData.creditLimit - acc.creditData.availableCreditLimit
-                        : null,
                     brand: acc.creditData.brand || null,
                     balanceCloseDate: acc.creditData.balanceCloseDate || null,
                     balanceDueDate: acc.creditData.balanceDueDate || null,
-                    minimumPayment: acc.creditData.minimumPayment || null,
                     closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
                     dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
                 } : {};
 
-                const connectionFields = isFirstSync ? { connectedAt: syncTimestamp } : {};
-
-                batch.set(accRef, {
+                accBatch.set(accountsRef.doc(acc.id), {
                     ...acc,
                     ...creditFields,
-                    ...connectionFields,
-                    accountNumber: acc.number || null, // Map Pluggy's 'number' to 'accountNumber'
-                    itemId: itemId,
+                    ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
+                    accountNumber: acc.number || null,
+                    itemId,
                     lastSyncedAt: syncTimestamp,
                     updatedAt: syncTimestamp
                 }, { merge: true });
             }
-            await batch.commit();
+            await accBatch.commit();
 
-            await jobDoc.update({ progress: 30, step: 'Fetching transactions...' });
+            await jobDoc.update({ progress: 30, step: 'Buscando transações...' });
 
-            // 2. Get Transactions (Incremental) - PER ACCOUNT
-            const defaultFromDate = new Date();
-            defaultFromDate.setDate(defaultFromDate.getDate() - 90);
-            const defaultFromDateStr = defaultFromDate.toISOString().split('T')[0];
+            // STEP 3: Fetch ALL transactions IN PARALLEL
+            const fromDate = new Date();
+            fromDate.setDate(fromDate.getDate() - 60);
+            const fromStr = fromDate.toISOString().split('T')[0];
 
+            const txPromises = accounts.map(account =>
+                pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
+                    headers: { 'X-API-KEY': apiKey }
+                }).then(resp => ({ account, transactions: resp.data.results || [] }))
+                  .catch(() => ({ account, transactions: [] }))
+            );
+
+            const allTxResults = await Promise.all(txPromises);
+            await jobDoc.update({ progress: 50, step: 'Salvando transações...' });
+
+            // STEP 4: Process and batch write all transactions
             let txCount = 0;
-            const txCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions');
-            const ccTxCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('creditCardTransactions');
-
             let opCount = 0;
-            let currentBatch = firebaseAdmin.firestore().batch();
+            let currentBatch = db.batch();
+            const batchPromises = [];
 
-            for (const account of accounts) {
-                try {
-                    // Determine 'from' date for this account (Incremental Sync)
-                    // ALWAYS fetch the last 60 days to ensure we catch updates, corrections, and fix malformed data.
-                    // We rely on the write logic (merge: true) to prevent duplicates or overwrite with better data.
-                    // This avoids issues with Timezones (UTC vs Local) and ensures we re-process transactions 
-                    // that might have been saved with errors (like the previous 'installmnets' typo).
-                    const lookbackDate = new Date();
-                    lookbackDate.setDate(lookbackDate.getDate() - 60);
-                    let fromStr = lookbackDate.toISOString().split('T')[0];
-                    console.log(`[Trigger-Sync] Robust Sync: Fetching from ${fromStr} (ignoring strict lastSyncedAt)`);
-
-                    const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
-                        headers: { 'X-API-KEY': apiKey }
-                    });
-                    let transactions = txResp.data.results;
-
-                    // We do NOT filter by lastSyncTimestamp here anymore because we WANT to re-process 
-                    // recent transactions to fix potential data issues (missing keys, typos).
-                    // Firestore 'set' with merge will handle idempotency.
-                    console.log(`[Trigger-Sync] Fetched ${transactions.length} transactions needing processing`);
-
-                    // Determine Target Collection
-                    const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
-                    const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
-                    let targetColl = isCredit ? ccTxCollection : txCollection;
-
-                    for (const tx of transactions) {
-                        const txRef = targetColl.doc(tx.id);
-                        let mappedTx = {};
-
-                        if (isCredit) {
-                            // Calculate invoiceMonthKey based on closing day
-                            let invoiceMonthKey = null;
-                            if (account.creditData && account.creditData.balanceCloseDate) {
-                                const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
-                                const txDate = new Date(tx.date);
-                                const day = txDate.getDate();
-                                const invoiceDate = new Date(txDate);
-
-                                // If after closing day, it belongs to next month
-                                if (day > closingDay) {
-                                    invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                                }
-                                invoiceMonthKey = `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}`;
-                            } else {
-                                // Fallback: Use simple YYYY-MM
-                                invoiceMonthKey = tx.date.slice(0, 7);
-                            }
-
-                            mappedTx = {
-                                cardId: account.id,
-                                date: tx.date.split('T')[0],
-                                description: tx.description,
-                                amount: Math.abs(tx.amount),
-                                type: tx.amount > 0 ? 'expense' : 'income',
-                                category: tx.category || 'Uncategorized',
-                                status: 'completed',
-                                installments: tx.installments || 1,
-                                installmentNumber: 1,
-                                invoiceMonthKey,
-                                pluggyRaw: tx
-                            };
-                        } else {
-                            mappedTx = {
-                                providerId: tx.id,
-                                description: tx.description,
-                                amount: Math.abs(tx.amount),
-                                type: tx.amount < 0 ? 'expense' : 'income',
-                                date: tx.date.split('T')[0],
-                                accountId: tx.accountId,
-                                category: tx.category || 'Uncategorized',
-                                status: 'completed',
-                                updatedAt: new Date().toISOString(),
-                                isInvestment: isSavings,
-                                pluggyRaw: tx
-                            };
-                        }
-
-                        currentBatch.set(txRef, mappedTx, { merge: true });
-                        opCount++;
-                        txCount++;
-
-                        if (opCount >= 450) {
-                            await currentBatch.commit();
-                            currentBatch = firebaseAdmin.firestore().batch();
-                            opCount = 0;
-                        }
-                    }
-                } catch (accErr) {
-                    console.error(`[Trigger-Sync] Failed to fetch transactions for account ${account.id}:`, accErr.message);
-                }
-            }
-
-            if (opCount > 0) await currentBatch.commit();
-
-            await jobDoc.update({ progress: 70, step: 'Fetching credit card bills...' });
-
-            // 3. Get Credit Card Bills
-            let billCount = 0;
-            for (const account of accounts) {
+            for (const { account, transactions } of allTxResults) {
                 const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
-                if (!isCredit) continue;
+                const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+                const targetColl = isCredit ? ccTxCollection : txCollection;
 
-                try {
-                    const billsResp = await axios.get(`${BASE_URL}/bills?accountId=${account.id}`, {
-                        headers: { 'X-API-KEY': apiKey }
-                    });
-                    const bills = billsResp.data.results || [];
+                for (const tx of transactions) {
+                    let mappedTx;
 
-                    if (bills.length > 0) {
-                        const sortedBills = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
-                        const currentBill = sortedBills[0];
-                        const previousBill = sortedBills[1] || null;
+                    if (isCredit) {
+                        let invoiceMonthKey = tx.date.slice(0, 7);
+                        if (account.creditData?.balanceCloseDate) {
+                            const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                            const txDate = new Date(tx.date);
+                            if (txDate.getDate() > closingDay) {
+                                txDate.setMonth(txDate.getMonth() + 1);
+                            }
+                            invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+                        }
 
-                        const accountRef = firebaseAdmin.firestore()
-                            .collection('users').doc(userId)
-                            .collection('accounts').doc(account.id);
-
-                        await accountRef.update({
-                            currentBill: {
-                                id: currentBill.id,
-                                dueDate: currentBill.dueDate,
-                                totalAmount: currentBill.totalAmount || null,
-                                minimumPaymentAmount: currentBill.minimumPaymentAmount || null,
-                                status: currentBill.status || 'OPEN',
-                                closeDate: currentBill.closeDate || null
-                            },
-                            previousBill: previousBill ? {
-                                id: previousBill.id,
-                                dueDate: previousBill.dueDate,
-                                totalAmount: previousBill.totalAmount || null
-                            } : null,
-                            bills: sortedBills.slice(0, 6).map(b => ({
-                                id: b.id,
-                                dueDate: b.dueDate,
-                                totalAmount: b.totalAmount || null,
-                                minimumPaymentAmount: b.minimumPaymentAmount || null,
-                                status: b.status || 'UNKNOWN'
-                            })),
-                            billsUpdatedAt: new Date().toISOString()
-                        });
-
-                        billCount++;
-                        console.log(`[Trigger-Sync] Updated account ${account.id} with bill data`);
+                        mappedTx = {
+                            cardId: account.id,
+                            date: tx.date.split('T')[0],
+                            description: tx.description,
+                            amount: Math.abs(tx.amount),
+                            type: tx.amount > 0 ? 'expense' : 'income',
+                            category: tx.category || 'Uncategorized',
+                            status: 'completed',
+                            installments: tx.installments || 1,
+                            installmentNumber: 1,
+                            invoiceMonthKey,
+                            pluggyRaw: tx
+                        };
+                    } else {
+                        mappedTx = {
+                            providerId: tx.id,
+                            description: tx.description,
+                            amount: Math.abs(tx.amount),
+                            type: tx.amount < 0 ? 'expense' : 'income',
+                            date: tx.date.split('T')[0],
+                            accountId: tx.accountId,
+                            category: tx.category || 'Uncategorized',
+                            status: 'completed',
+                            updatedAt: syncTimestamp,
+                            isInvestment: isSavings,
+                            pluggyRaw: tx
+                        };
                     }
-                } catch (billErr) {
-                    console.error(`[Trigger-Sync] Failed to fetch bills for account ${account.id}:`, billErr.message);
+
+                    currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                    opCount++;
+                    txCount++;
+
+                    if (opCount >= 450) {
+                        batchPromises.push(currentBatch.commit());
+                        currentBatch = db.batch();
+                        opCount = 0;
+                    }
                 }
             }
 
-            // Mark job as completed
+            if (opCount > 0) batchPromises.push(currentBatch.commit());
+            await Promise.all(batchPromises);
+
+            await jobDoc.update({ progress: 70, step: 'Buscando faturas...' });
+
+            // STEP 5: Fetch ALL credit card bills IN PARALLEL
+            const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+
+            const billPromises = creditAccounts.map(account =>
+                pluggyApi.get(`/bills?accountId=${account.id}`, { headers: { 'X-API-KEY': apiKey } })
+                    .then(resp => ({ account, bills: resp.data.results || [] }))
+                    .catch(() => ({ account, bills: [] }))
+            );
+
+            const allBillResults = await Promise.all(billPromises);
+
+            const billUpdatePromises = allBillResults
+                .filter(({ bills }) => bills.length > 0)
+                .map(({ account, bills }) => {
+                    const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+                    const current = sorted[0];
+                    const previous = sorted[1] || null;
+
+                    return accountsRef.doc(account.id).update({
+                        currentBill: {
+                            id: current.id,
+                            dueDate: current.dueDate,
+                            totalAmount: current.totalAmount || null,
+                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            status: current.status || 'OPEN',
+                            closeDate: current.closeDate || null
+                        },
+                        previousBill: previous ? {
+                            id: previous.id,
+                            dueDate: previous.dueDate,
+                            totalAmount: previous.totalAmount || null
+                        } : null,
+                        bills: sorted.slice(0, 6).map(b => ({
+                            id: b.id,
+                            dueDate: b.dueDate,
+                            totalAmount: b.totalAmount || null,
+                            minimumPaymentAmount: b.minimumPaymentAmount || null,
+                            status: b.status || 'UNKNOWN'
+                        })),
+                        billsUpdatedAt: syncTimestamp
+                    });
+                });
+
+            await Promise.all(billUpdatePromises);
+
+            const duration = Date.now() - startTime;
             await jobDoc.update({
                 status: 'completed',
                 progress: 100,
-                updatedAt: new Date().toISOString(),
-                message: `Synced ${txCount} transactions, ${billCount} card bills`
+                updatedAt: syncTimestamp,
+                message: `${txCount} transações em ${(duration/1000).toFixed(1)}s`,
+                duration
             });
 
-            console.log(`[Trigger-Sync] Completed! ${txCount} transactions, ${billCount} bills`);
+            console.log(`[Trigger-Sync] Done in ${duration}ms: ${txCount} tx`);
 
         } catch (err) {
-            console.error('[Trigger-Sync] Background sync failed:', err);
-            await jobDoc.update({
-                status: 'failed',
-                error: err.message,
-                updatedAt: new Date().toISOString()
-            });
+            console.error('[Trigger-Sync] Failed:', err.message);
+            await jobDoc.update({ status: 'failed', error: err.message, updatedAt: new Date().toISOString() });
         }
     })();
 });
 
 
-// 4. Manual Sync (Fetch & Save) - The Core Logic
+// 4. Manual Sync (Fetch & Save) - OPTIMIZED FOR VERCEL PRO
+// Ultra-fast parallel processing for all accounts
 router.post('/sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
+    const startTime = Date.now();
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
     }
 
-    // Increment daily connection credits for the user
-    const userRef = firebaseAdmin.firestore().doc(`users/${userId}`);
-    try {
-        const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const db = firebaseAdmin.firestore();
+    const userRef = db.doc(`users/${userId}`);
 
-        await firebaseAdmin.firestore().runTransaction(async (transaction) => {
-            const userDoc = await transaction.get(userRef);
-            if (!userDoc.exists) {
-                console.warn(`[Sync] User ${userId} not found for credit increment`);
-                return;
-            }
+    // Increment credits in background (don't wait)
+    const today = new Date().toLocaleDateString('en-CA');
+    db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) return;
+        const credits = userDoc.data().dailyConnectionCredits || { date: '', count: 0 };
+        const newCredits = credits.date !== today
+            ? { date: today, count: 1 }
+            : { ...credits, count: credits.count + 1 };
+        transaction.update(userRef, { dailyConnectionCredits: newCredits });
+    }).catch(() => {}); // Silent fail for credits
 
-            const userData = userDoc.data();
-            const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
-
-            let newCredits;
-            if (credits.date !== today) {
-                // Reset for new day
-                newCredits = { date: today, count: 1 };
-            } else {
-                // Increment for today
-                newCredits = { ...credits, count: credits.count + 1 };
-            }
-
-            transaction.update(userRef, { dailyConnectionCredits: newCredits });
-            console.log(`[Sync] User ${userId} credits updated: ${newCredits.count} used today`);
-        });
-    } catch (creditErr) {
-        console.error('[Sync] Failed to increment credits:', creditErr.message);
-        // Continue with sync even if credit increment fails
-    }
-
-    const syncJobId = uuidv4(); // Generate ID for tracking or let Firestore do it.
-
-    // Start background process (don't await completion for the response)
-    // BUT for the first connection, the frontend might be waiting or polling.
-    // The frontend code shows it expects `syncJobId` back and then listens to Firestore.
-
-    // Create Job Doc
-    const jobsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('sync_jobs');
-    const jobDoc = await jobsRef.add({
+    // Create Job Doc and respond immediately
+    const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
         itemId,
         status: 'processing',
         progress: 0,
@@ -563,370 +383,239 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
 
     res.json({ success: true, syncJobId: jobDoc.id });
 
-    // Background Processing
+    // OPTIMIZED Background Processing with parallel fetches
     (async () => {
+        const apiKey = req.pluggyApiKey;
+        const syncTimestamp = new Date().toISOString();
+        const accountsRef = db.collection('users').doc(userId).collection('accounts');
+        const txCollection = db.collection('users').doc(userId).collection('transactions');
+        const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
+
         try {
-            const apiKey = req.pluggyApiKey;
+            // STEP 1: Fetch accounts and existing data IN PARALLEL
+            const [accountsResp, existingSnap] = await Promise.all([
+                pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
+                accountsRef.get()
+            ]);
 
-            // 1. Get Accounts
-            const accountsResp = await axios.get(`${BASE_URL}/accounts?itemId=${itemId}`, {
-                headers: { 'X-API-KEY': apiKey }
+            const accounts = accountsResp.data.results || [];
+            const existingMap = {};
+            existingSnap.forEach(doc => {
+                const d = doc.data();
+                existingMap[doc.id] = { lastSyncedAt: d.lastSyncedAt, connectedAt: d.connectedAt };
             });
-            const accounts = accountsResp.data.results;
 
-            // PRE-FETCH: Get existing accounts to determine last sync date (Incremental Sync)
-            // Now we store both the full date string and the connectedAt timestamp
-            const existingAccountsMap = {};
-            try {
-                const existingSnap = await firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts').get();
-                existingSnap.forEach(doc => {
-                    const data = doc.data();
-                    // Store complete sync info for incremental sync
-                    existingAccountsMap[doc.id] = {
-                        lastSyncedAt: data.lastSyncedAt || data.updatedAt, // Full ISO timestamp
-                        connectedAt: data.connectedAt,  // First connection timestamp
-                        isFirstSync: !data.connectedAt  // True if account never synced before
-                    };
-                });
-            } catch (e) {
-                console.error('[Sync] Failed to fetch existing accounts dates:', e);
-            }
+            await jobDoc.update({ progress: 15, step: 'Buscando transações...' });
 
-            // Save Accounts
-            const batch = firebaseAdmin.firestore().batch();
-            const accountsRef = firebaseAdmin.firestore().collection('users').doc(userId).collection('accounts');
-            const syncTimestamp = new Date().toISOString(); // Use same timestamp for all accounts in this sync
-
+            // STEP 2: Save accounts (quick batch)
+            const accBatch = db.batch();
             for (const acc of accounts) {
-                const accRef = accountsRef.doc(acc.id);
-                const existingInfo = existingAccountsMap[acc.id];
-                const isFirstSync = !existingInfo || existingInfo.isFirstSync;
-
-                // Check if this is a credit card account
                 const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+                const existing = existingMap[acc.id];
 
-                // Extract creditData fields to root level for credit cards
                 const creditFields = isCredit && acc.creditData ? {
                     creditLimit: acc.creditData.creditLimit || null,
                     availableCreditLimit: acc.creditData.availableCreditLimit || null,
-                    usedCreditLimit: acc.creditData.creditLimit && acc.creditData.availableCreditLimit
-                        ? acc.creditData.creditLimit - acc.creditData.availableCreditLimit
-                        : null,
                     brand: acc.creditData.brand || null,
                     balanceCloseDate: acc.creditData.balanceCloseDate || null,
                     balanceDueDate: acc.creditData.balanceDueDate || null,
-                    minimumPayment: acc.creditData.minimumPayment || null,
                     closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
                     dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
                 } : {};
 
-                // Only set connectedAt on first sync (preserves original connection time)
-                const connectionFields = isFirstSync ? {
-                    connectedAt: syncTimestamp
-                } : {};
-
-                batch.set(accRef, {
+                accBatch.set(accountsRef.doc(acc.id), {
                     ...acc,
                     ...creditFields,
-                    ...connectionFields,
-                    accountNumber: acc.number || null, // Map Pluggy's 'number' to 'accountNumber'
-                    itemId: itemId,
-                    lastSyncedAt: syncTimestamp, // Always update on every sync
+                    ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
+                    accountNumber: acc.number || null,
+                    itemId,
+                    lastSyncedAt: syncTimestamp,
                     updatedAt: syncTimestamp
                 }, { merge: true });
             }
-            await batch.commit();
+            await accBatch.commit();
 
-            await jobDoc.update({ progress: 20, step: 'Fetching transactions...' });
+            // STEP 3: Fetch ALL transactions IN PARALLEL (this is the big speed boost!)
+            const fromDate = new Date();
+            fromDate.setDate(fromDate.getDate() - 60); // 60 days lookback
+            const fromStr = fromDate.toISOString().split('T')[0];
 
-            // 2. Get Transactions (Last 90 days OR Incremental) - PER ACCOUNT
-            // We fetch per account to avoid "accountId null" error and to route correctly
-            const defaultFromDate = new Date();
-            defaultFromDate.setDate(defaultFromDate.getDate() - 90);
-            const defaultFromDateStr = defaultFromDate.toISOString().split('T')[0];
+            const txPromises = accounts.map(account =>
+                pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
+                    headers: { 'X-API-KEY': apiKey }
+                }).then(resp => ({ account, transactions: resp.data.results || [] }))
+                  .catch(() => ({ account, transactions: [] })) // Silent fail per account
+            );
 
+            const allTxResults = await Promise.all(txPromises);
+            await jobDoc.update({ progress: 50, step: 'Salvando transações...' });
+
+            // STEP 4: Process and batch write all transactions
             let txCount = 0;
-            const txBatch = firebaseAdmin.firestore().batch();
-            const txCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('transactions');
-            const ccTxCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('creditCardTransactions');
-            const investmentsCollection = firebaseAdmin.firestore().collection('users').doc(userId).collection('investments');
-
             let opCount = 0;
-            let currentBatch = firebaseAdmin.firestore().batch();
+            let currentBatch = db.batch();
+            const batchPromises = [];
 
-            for (const account of accounts) {
-                try {
-                    // Determine 'from' date for this account
-                    let fromStr = defaultFromDateStr;
-                    let lastSyncTimestamp = null; // Full timestamp for filtering
-                    const syncInfo = existingAccountsMap[account.id];
-
-                    if (syncInfo && syncInfo.lastSyncedAt) {
-                        try {
-                            const lastDate = new Date(syncInfo.lastSyncedAt);
-                            if (!isNaN(lastDate.getTime())) {
-                                // Use the date part of the last sync for API request
-                                // Pluggy 'from' is inclusive, so this covers the overlapping day.
-                                fromStr = lastDate.toISOString().split('T')[0];
-                                // Store full timestamp for filtering transactions by hour
-                                lastSyncTimestamp = lastDate.getTime();
-                                console.log(`[Sync] Incremental: Account ${account.name} last synced ${syncInfo.lastSyncedAt}. Fetching from ${fromStr}`);
-                            }
-                        } catch (err) {
-                            console.warn('[Sync] Invalid lastSync date:', syncInfo.lastSyncedAt);
-                        }
-                    } else {
-                        console.log(`[Sync] Full: Account ${account.name} (first sync). Fetching from ${fromStr}`);
-                    }
-
-                    console.log(`Fetching transactions for account ${account.id} (${account.name}) from ${fromStr}...`);
-                    const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
-                        headers: { 'X-API-KEY': apiKey }
-                    });
-                    let transactions = txResp.data.results;
-
-                    // Filter out transactions that were already synced (by timestamp)
-                    // This handles the case where user connected at 10:00 AM - only get transactions from 10:00 onwards
-                    if (lastSyncTimestamp && transactions.length > 0) {
-                        const originalCount = transactions.length;
-                        transactions = transactions.filter(tx => {
-                            const txDate = new Date(tx.date);
-                            // Keep transactions that are newer than the last sync timestamp
-                            // Include transactions from the same day but after the sync time
-                            return txDate.getTime() >= lastSyncTimestamp;
-                        });
-                        const filtered = originalCount - transactions.length;
-                        if (filtered > 0) {
-                            console.log(`[Sync] Filtered ${filtered} already-synced transactions (kept ${transactions.length})`);
-                        }
-                    }
-
-                    // Determine Target Collection
-                    const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
-                    const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
-
-                    let targetColl = txCollection;
-                    if (isCredit) targetColl = ccTxCollection;
-                    if (isSavings) targetColl = investmentsCollection;
-
-                    for (const tx of transactions) {
-                        const txRef = targetColl.doc(tx.id);
-
-                        // Map fields based on target
-                        let mappedTx = {};
-
-                        if (isCredit) {
-                            // Credit Card Schema
-                            // In Pluggy: POSITIVE amount = expense (you spent money)
-                            //            NEGATIVE amount = income/refund (money returned)
-
-                            // Calculate invoiceMonthKey based on closing day
-                            let invoiceMonthKey = null;
-                            if (account.creditData && account.creditData.balanceCloseDate) {
-                                const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
-                                const txDate = new Date(tx.date);
-                                const day = txDate.getDate();
-                                const invoiceDate = new Date(txDate);
-
-                                // If after closing day, it belongs to next month
-                                if (day > closingDay) {
-                                    invoiceDate.setMonth(invoiceDate.getMonth() + 1);
-                                }
-                                invoiceMonthKey = `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}`;
-                            } else {
-                                // Fallback: Use simple YYYY-MM
-                                invoiceMonthKey = tx.date.slice(0, 7);
-                            }
-
-                            mappedTx = {
-                                cardId: account.id,
-                                date: tx.date.split('T')[0],
-                                description: tx.description,
-                                amount: Math.abs(tx.amount),
-                                type: tx.amount > 0 ? 'expense' : 'income',
-                                category: tx.category || 'Uncategorized',
-                                status: 'completed',
-                                installments: tx.installments || 1,
-                                installmentNumber: 1,
-                                invoiceMonthKey,
-                                pluggyRaw: tx
-                            };
-                        } else if (isSavings) {
-                            // Investment/Savings Schema (Caixinha)
-                            targetColl = txCollection;
-                            mappedTx = {
-                                providerId: tx.id,
-                                description: tx.description,
-                                amount: Math.abs(tx.amount),
-                                type: tx.amount < 0 ? 'expense' : 'income',
-                                date: tx.date.split('T')[0],
-                                accountId: tx.accountId,
-                                category: tx.category || 'Uncategorized',
-                                status: 'completed',
-                                updatedAt: new Date().toISOString(),
-                                isInvestment: isSavings, // Mark as investment if savings
-                                pluggyRaw: tx
-                            };
-
-                        } else {
-                            // Normal Transaction
-                            mappedTx = {
-                                providerId: tx.id,
-                                description: tx.description,
-                                amount: Math.abs(tx.amount),
-                                type: tx.amount < 0 ? 'expense' : 'income',
-                                date: tx.date.split('T')[0],
-                                accountId: tx.accountId,
-                                category: tx.category || 'Uncategorized',
-                                status: 'completed',
-                                updatedAt: new Date().toISOString(),
-                                pluggyRaw: tx
-                            };
-                        }
-
-                        currentBatch.set(txRef, mappedTx, { merge: true });
-                        opCount++;
-                        txCount++;
-
-                        if (opCount >= 450) {
-                            await currentBatch.commit();
-                            currentBatch = firebaseAdmin.firestore().batch();
-                            opCount = 0;
-                        }
-                    }
-
-                } catch (accErr) {
-                    console.error(`Failed to fetch transactions for account ${account.id}:`, accErr.message);
-                }
-            }
-
-            if (opCount > 0) await currentBatch.commit();
-
-            await jobDoc.update({ progress: 80, step: 'Fetching credit card bills...' });
-
-            // 3. Get Credit Card Bills for credit accounts
-            let billCount = 0;
-            for (const account of accounts) {
+            for (const { account, transactions } of allTxResults) {
                 const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
-                if (!isCredit) continue;
+                const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+                const targetColl = isCredit ? ccTxCollection : txCollection;
 
-                try {
-                    console.log(`Fetching bills for credit card ${account.id} (${account.name})...`);
-                    const billsResp = await axios.get(`${BASE_URL}/bills?accountId=${account.id}`, {
-                        headers: { 'X-API-KEY': apiKey }
-                    });
-                    const bills = billsResp.data.results || [];
-                    console.log(`Found ${bills.length} bills for account ${account.id}`);
+                for (const tx of transactions) {
+                    let mappedTx;
 
-                    // Update the account document with bill information
-                    if (bills.length > 0) {
-                        // Sort by dueDate to get current/latest bill
-                        const sortedBills = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
-                        const currentBill = sortedBills[0];
-                        const previousBill = sortedBills[1] || null;
+                    if (isCredit) {
+                        // Credit Card Transaction
+                        let invoiceMonthKey = tx.date.slice(0, 7);
+                        if (account.creditData?.balanceCloseDate) {
+                            const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                            const txDate = new Date(tx.date);
+                            if (txDate.getDate() > closingDay) {
+                                txDate.setMonth(txDate.getMonth() + 1);
+                            }
+                            invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+                        }
 
-                        const accountRef = firebaseAdmin.firestore()
-                            .collection('users').doc(userId)
-                            .collection('accounts').doc(account.id);
-
-                        await accountRef.update({
-                            // Current bill info
-                            currentBill: {
-                                id: currentBill.id,
-                                dueDate: currentBill.dueDate,
-                                totalAmount: currentBill.totalAmount || null,
-                                minimumPaymentAmount: currentBill.minimumPaymentAmount || null,
-                                status: currentBill.status || 'OPEN',
-                                closeDate: currentBill.closeDate || null
-                            },
-                            // Previous bill for comparison
-                            previousBill: previousBill ? {
-                                id: previousBill.id,
-                                dueDate: previousBill.dueDate,
-                                totalAmount: previousBill.totalAmount || null
-                            } : null,
-                            // All bills (last 6)
-                            bills: sortedBills.slice(0, 6).map(b => ({
-                                id: b.id,
-                                dueDate: b.dueDate,
-                                totalAmount: b.totalAmount || null,
-                                minimumPaymentAmount: b.minimumPaymentAmount || null,
-                                status: b.status || 'UNKNOWN'
-                            })),
-                            billsUpdatedAt: new Date().toISOString()
-                        });
-
-                        billCount++;
-                        console.log(`Updated account ${account.id} with bill data. Current bill: R$${currentBill.totalAmount}, Due: ${currentBill.dueDate}`);
+                        mappedTx = {
+                            cardId: account.id,
+                            date: tx.date.split('T')[0],
+                            description: tx.description,
+                            amount: Math.abs(tx.amount),
+                            type: tx.amount > 0 ? 'expense' : 'income',
+                            category: tx.category || 'Uncategorized',
+                            status: 'completed',
+                            installments: tx.installments || 1,
+                            installmentNumber: 1,
+                            invoiceMonthKey,
+                            pluggyRaw: tx
+                        };
+                    } else {
+                        // Regular/Savings Transaction
+                        mappedTx = {
+                            providerId: tx.id,
+                            description: tx.description,
+                            amount: Math.abs(tx.amount),
+                            type: tx.amount < 0 ? 'expense' : 'income',
+                            date: tx.date.split('T')[0],
+                            accountId: tx.accountId,
+                            category: tx.category || 'Uncategorized',
+                            status: 'completed',
+                            updatedAt: syncTimestamp,
+                            isInvestment: isSavings,
+                            pluggyRaw: tx
+                        };
                     }
-                } catch (billErr) {
-                    console.error(`Failed to fetch bills for account ${account.id}:`, billErr.message);
+
+                    currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                    opCount++;
+                    txCount++;
+
+                    if (opCount >= 450) {
+                        batchPromises.push(currentBatch.commit());
+                        currentBatch = db.batch();
+                        opCount = 0;
+                    }
                 }
             }
 
+            if (opCount > 0) batchPromises.push(currentBatch.commit());
+
+            // Commit all batches in parallel
+            await Promise.all(batchPromises);
+
+            await jobDoc.update({ progress: 80, step: 'Buscando faturas...' });
+
+            // STEP 5: Fetch ALL credit card bills IN PARALLEL
+            const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+
+            const billPromises = creditAccounts.map(account =>
+                pluggyApi.get(`/bills?accountId=${account.id}`, { headers: { 'X-API-KEY': apiKey } })
+                    .then(resp => ({ account, bills: resp.data.results || [] }))
+                    .catch(() => ({ account, bills: [] }))
+            );
+
+            const allBillResults = await Promise.all(billPromises);
+
+            // Update all accounts with bills in parallel
+            const billUpdatePromises = allBillResults
+                .filter(({ bills }) => bills.length > 0)
+                .map(({ account, bills }) => {
+                    const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+                    const current = sorted[0];
+                    const previous = sorted[1] || null;
+
+                    return accountsRef.doc(account.id).update({
+                        currentBill: {
+                            id: current.id,
+                            dueDate: current.dueDate,
+                            totalAmount: current.totalAmount || null,
+                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            status: current.status || 'OPEN',
+                            closeDate: current.closeDate || null
+                        },
+                        previousBill: previous ? {
+                            id: previous.id,
+                            dueDate: previous.dueDate,
+                            totalAmount: previous.totalAmount || null
+                        } : null,
+                        bills: sorted.slice(0, 6).map(b => ({
+                            id: b.id,
+                            dueDate: b.dueDate,
+                            totalAmount: b.totalAmount || null,
+                            minimumPaymentAmount: b.minimumPaymentAmount || null,
+                            status: b.status || 'UNKNOWN'
+                        })),
+                        billsUpdatedAt: syncTimestamp
+                    });
+                });
+
+            await Promise.all(billUpdatePromises);
+
+            const duration = Date.now() - startTime;
             await jobDoc.update({
                 status: 'completed',
                 progress: 100,
-                message: `Synced ${txCount} transactions, ${billCount} card bills`
+                message: `${txCount} transações em ${(duration/1000).toFixed(1)}s`,
+                duration
             });
 
+            console.log(`[Sync] Completed in ${duration}ms: ${txCount} transactions`);
+
         } catch (err) {
-            console.error('Background Sync Failed:', err);
+            console.error('[Sync] Failed:', err.message);
             await jobDoc.update({ status: 'failed', error: err.message });
         }
     })();
 });
 
-// 5. Delete Item
+// 5. Delete Item (optimized)
 router.delete('/item/:itemId', withPluggyAuth, async (req, res) => {
-    const { itemId } = req.params;
     try {
-        await axios.delete(`${BASE_URL}/items/${itemId}`, {
-            headers: { 'X-API-KEY': req.pluggyApiKey }
-        });
+        await pluggyApi.delete(`/items/${req.params.itemId}`, { headers: { 'X-API-KEY': req.pluggyApiKey } });
         res.json({ success: true });
     } catch (error) {
-        console.error('Delete Item Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to delete item.' });
+        res.status(500).json({ error: 'Failed to delete item' });
     }
 });
 
-// 6. Get Item Status
+// 6. Get Item Status (optimized with retry)
 router.get('/items-status', async (req, res) => {
-    // Set no-cache headers to prevent stale responses
-    res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
-    res.set('Pragma', 'no-cache');
-
-    const fetchItems = async (apiKey) => {
-        const response = await axios.get(`${BASE_URL}/items`, {
-            headers: { 'X-API-KEY': apiKey }
-        });
-        return response.data.results || [];
-    };
+    res.set('Cache-Control', 'no-store');
 
     try {
-        console.log('Fetching items status from Pluggy...');
-
-        // First try with cached key
         let apiKey = await getApiKey(false);
-        let results;
+        let response;
 
         try {
-            results = await fetchItems(apiKey);
-        } catch (firstError) {
-            // If 401, retry with fresh key
-            if (firstError.response?.status === 401) {
-                console.log('[items-status] 401 with cached key, refreshing...');
+            response = await pluggyApi.get('/items', { headers: { 'X-API-KEY': apiKey } });
+        } catch (err) {
+            if (err.response?.status === 401) {
                 apiKey = await getApiKey(true);
-                results = await fetchItems(apiKey);
-            } else {
-                throw firstError;
-            }
+                response = await pluggyApi.get('/items', { headers: { 'X-API-KEY': apiKey } });
+            } else throw err;
         }
 
-        console.log('Items fetched:', results?.length);
-
-        const items = results.map(i => ({
+        const items = (response.data.results || []).map(i => ({
             id: i.id,
             status: i.status,
             lastUpdatedAt: i.lastUpdatedAt,
@@ -935,17 +624,7 @@ router.get('/items-status', async (req, res) => {
 
         res.json({ success: true, items });
     } catch (error) {
-        console.error('Failed to fetch items status:', error.message);
-
-        // Handle 401 gracefully - likely means API credentials issue
-        if (error.response?.status === 401) {
-            console.log('401 on /items even with fresh key - check credentials');
-            return res.json({ success: true, items: [], message: 'Authentication issue' });
-        }
-
-        // For other errors, still return empty to not break frontend
-        console.error('Pluggy API Error:', error.response?.data);
-        res.json({ success: true, items: [], error: 'Could not fetch items from Pluggy' });
+        res.json({ success: true, items: [], error: error.message });
     }
 });
 
@@ -1024,103 +703,28 @@ router.post('/fix-cc-signs/:userId', async (req, res) => {
     }
 });
 
-// 8. Webhook Worker (Cron Job Endpoint)
-// This endpoint is called by Vercel cron every minute to process pending sync jobs
+// 8. Webhook Worker (Cron Job - optimized)
 router.get('/webhook-worker', async (req, res) => {
+    if (!firebaseAdmin) return res.json({ success: true, message: 'Firebase not available' });
+
     try {
-        console.log('[Webhook Worker] Cron job triggered at:', new Date().toISOString());
-
-        if (!firebaseAdmin) {
-            console.log('[Webhook Worker] Firebase Admin not initialized');
-            return res.json({ success: true, message: 'Firebase Admin not available' });
-        }
-
-        // Force refresh API Key (cache doesn't persist in serverless)
         const apiKey = await getApiKey(true);
-        if (!apiKey) {
-            console.log('[Webhook Worker] Could not obtain API key');
-            return res.json({ success: true, message: 'No API key available' });
-        }
+        const response = await pluggyApi.get('/items', { headers: { 'X-API-KEY': apiKey } });
+        const items = response.data.results || [];
+        const updated = items.filter(i => i.status === 'UPDATED').length;
 
-        // Check for any items that might need sync (items in 'UPDATING' or 'UPDATED' status)
-        try {
-            const itemsResponse = await axios.get(`${BASE_URL}/items`, {
-                headers: { 'X-API-KEY': apiKey }
-            });
-
-            const items = itemsResponse.data.results || [];
-            const updatedItems = items.filter(i => i.status === 'UPDATED');
-
-            console.log(`[Webhook Worker] Found ${items.length} items, ${updatedItems.length} recently updated`);
-
-            res.json({
-                success: true,
-                message: 'Webhook worker executed',
-                itemsCount: items.length,
-                updatedCount: updatedItems.length,
-                timestamp: new Date().toISOString()
-            });
-        } catch (pluggyError) {
-            const status = pluggyError.response?.status;
-            const errData = pluggyError.response?.data;
-            console.error('[Webhook Worker] Pluggy API error:', pluggyError.message);
-            console.error('[Webhook Worker] Status:', status, 'Data:', JSON.stringify(errData));
-
-            // If 401, it means credentials are invalid
-            if (status === 401) {
-                console.error('[Webhook Worker] 401 Unauthorized - Check PLUGGY_CLIENT_ID and PLUGGY_CLIENT_SECRET in Vercel env vars');
-            }
-
-            res.json({
-                success: true,
-                message: 'Webhook worker ran but Pluggy API unavailable',
-                error: pluggyError.message,
-                status: status
-            });
-        }
+        res.json({ success: true, items: items.length, updated, ts: Date.now() });
     } catch (error) {
-        console.error('[Webhook Worker] Error:', error.message);
-        res.status(500).json({ error: 'Webhook worker failed', message: error.message });
+        res.json({ success: true, error: error.message });
     }
 });
 
-// 9. Webhook Receiver (Pluggy sends events here)
-// This endpoint receives webhook notifications from Pluggy
+// 9. Webhook Receiver (instant response)
 router.post('/webhook', async (req, res) => {
-    try {
-        const event = req.body;
-        console.log('[Pluggy Webhook] Received event:', JSON.stringify(event, null, 2));
+    res.json({ success: true, received: true }); // Immediate response
 
-        // Acknowledge receipt immediately
-        res.json({ success: true, received: true });
-
-        // Process the webhook in the background
-        if (event && event.event) {
-            const { event: eventType, itemId, data } = event;
-            console.log(`[Pluggy Webhook] Event type: ${eventType}, Item: ${itemId}`);
-
-            // Handle different event types
-            switch (eventType) {
-                case 'item/updated':
-                case 'item/created':
-                    console.log(`[Pluggy Webhook] Item ${itemId} was ${eventType === 'item/created' ? 'created' : 'updated'}`);
-                    // Could trigger a sync here if needed
-                    break;
-                case 'item/error':
-                    console.log(`[Pluggy Webhook] Item ${itemId} had an error:`, data);
-                    break;
-                case 'connector/status_updated':
-                    console.log(`[Pluggy Webhook] Connector status updated:`, data);
-                    break;
-                default:
-                    console.log(`[Pluggy Webhook] Unknown event type: ${eventType}`);
-            }
-        }
-    } catch (error) {
-        console.error('[Pluggy Webhook] Error processing webhook:', error.message);
-        // Still return 200 to acknowledge receipt
-        res.json({ success: true, error: error.message });
-    }
+    const { event: eventType, itemId } = req.body || {};
+    if (eventType) console.log(`[Webhook] ${eventType} - ${itemId}`);
 });
 
 export default router;
