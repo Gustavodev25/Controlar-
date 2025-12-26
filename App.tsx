@@ -3168,7 +3168,7 @@ const App: React.FC = () => {
           />
         )}
 
-        <div className={activeTab === 'chat' ? "flex-1 overflow-hidden relative" : "p-3 lg:p-6 max-w-7xl mx-auto"}>
+        <div className={activeTab === 'chat' ? "flex-1 overflow-hidden relative" : activeTab === 'credit_cards' || activeTab === 'table' ? "p-3 lg:p-6" : "p-3 lg:p-6 max-w-7xl mx-auto"}>
 
           {/* Subscription Page - High Priority Render */}
           {activeTab === 'subscription' && currentUser ? (

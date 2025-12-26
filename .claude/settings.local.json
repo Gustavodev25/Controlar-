@@ -24,7 +24,9 @@
       "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\")",
       "Bash(dir /b \"c:\\Users\\de\\Desktop\\Controlar+\\api\")",
       "Bash(netstat:*)",
-      "Bash(taskkill //F //PID 23844)"
+      "Bash(taskkill //F //PID 23844)",
+      "Bash(dir /b \"c:\\\\Users\\\\de\\\\Desktop\\\\Controlar-\")",
+      "Bash(powershell -Command:*)"
     ],
     "deny": [],
     "ask": []

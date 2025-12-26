@@ -1,33 +1,48 @@
-import React, { useState, useRef } from 'react';
-import { motion, useScroll, useMotionValueEvent, AnimatePresence } from 'framer-motion';
-import { Menu, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { 
+  motion, 
+  useScroll, 
+  useMotionValueEvent, 
+  useMotionTemplate, 
+  useMotionValue, 
+  useSpring, 
+  AnimatePresence 
+} from 'framer-motion';
+import { Menu, X, ArrowRight } from 'lucide-react';
 import logo from '../../assets/logo.png'; // ⚠️ Verifique o caminho
 
-// --- HOVER BUTTON ---
-const HoverButton = ({ children, className, ...props }: React.ButtonHTMLAttributes<HTMLButtonElement> & { className?: string }) => {
-  const [hovered, setHovered] = useState(false);
-  const buttonRef = useRef<HTMLButtonElement>(null);
-
+// --- NAV ITEM (Ajustado para ser uma luz difusa, não um bloco) ---
+const NavItem = ({ children, href, isActive, onClick }: any) => {
   return (
-    <button
-      ref={buttonRef}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      className={`
-        relative overflow-hidden rounded-full px-8 py-2.5 text-sm font-semibold text-white transition-all duration-300
-        bg-[#D97757]/20 border border-[#D97757]/30 hover:bg-[#D97757]/30 hover:border-[#D97757]/50
-        shadow-[0_0_20px_-5px_rgba(217,119,87,0.3)] hover:shadow-[0_0_25px_-5px_rgba(217,119,87,0.5)]
-        whitespace-nowrap flex-shrink-0 group ${className}
-      `}
-      {...props}
+    <a
+      href={href}
+      onClick={onClick}
+      className="relative px-5 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors duration-300 z-10 group"
     >
-      <span className="relative z-10 flex items-center justify-center gap-2">
-        {children}
-      </span>
-      <div
-        className={`absolute inset-0 bg-gradient-to-r from-[#D97757]/0 via-[#D97757]/40 to-[#D97757]/0 transition-transform duration-700 ease-in-out ${hovered ? 'translate-x-full' : '-translate-x-full'}`}
+      {/* MUDANÇA AQUI:
+        Em vez de um background sólido, usamos um gradiente radial com opacidade muito baixa (0.06 -> 0).
+        Adicionamos blur-lg para que as bordas não fiquem marcadas.
+        Isso cria o efeito de "luz fraca" e não de "caixa cinza".
+      */}
+      <div 
+        className="
+          absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500 ease-out
+          bg-[radial-gradient(circle_at_center,rgba(255,255,255,0.08)_0%,transparent_70%)]
+          blur-[6px]
+        " 
       />
-    </button>
+      
+      {/* Estado Ativo (Selecionado) também mais suave */}
+      {isActive && (
+        <motion.div
+          layoutId="nav-pill"
+          className="absolute inset-0 bg-white/[0.04] rounded-lg -z-10 shadow-[inset_0_0_10px_rgba(255,255,255,0.02)]"
+          transition={{ type: "spring", stiffness: 300, damping: 30 }}
+        />
+      )}
+      
+      <span className="relative z-10">{children}</span>
+    </a>
   );
 };
 
@@ -35,135 +50,186 @@ const HoverButton = ({ children, className, ...props }: React.ButtonHTMLAttribut
 export const Topbar: React.FC = () => {
   const [scrolled, setScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<string | null>(null); // Pode começar null ou com um valor
+  
   const { scrollY } = useScroll();
+  
+  // --- FÍSICA DO MOUSE ---
+  const mouseX = useMotionValue(0);
+  const mouseY = useMotionValue(0);
+
+  // Mantendo bem suave
+  const smoothX = useSpring(mouseX, { stiffness: 100, damping: 25, mass: 0.5 });
+  const smoothY = useSpring(mouseY, { stiffness: 100, damping: 25, mass: 0.5 });
+
+  function handleMouseMove({ currentTarget, clientX, clientY }: React.MouseEvent) {
+    const { left, top } = currentTarget.getBoundingClientRect();
+    mouseX.set(clientX - left);
+    mouseY.set(clientY - top);
+  }
 
   useMotionValueEvent(scrollY, "change", (latest) => {
-    setScrolled(latest > 50);
+    setScrolled(latest > 20);
   });
 
   const navLinks = [
     { name: 'Funcionalidades', href: '#features' },
     { name: 'Planos', href: '#pricing' },
     { name: 'Sobre', href: '#about' },
-    { name: 'Blog', href: '#blog' },
   ];
 
   return (
     <>
-      <div className="fixed top-0 left-0 right-0 z-50 flex justify-center items-start pt-6 px-4 pointer-events-none">
+      <div className="fixed top-0 left-0 right-0 z-50 flex justify-center pt-6 px-4 pointer-events-none">
+        
         <motion.nav
           initial={{ y: -100, opacity: 0 }}
-          animate={{
-            y: 0,
-            opacity: 1,
-            // CORREÇÃO DO PULO: A lógica de Max-Width agora é feita via animação, não via CSS Class.
-            // Quando no topo: min(100%, 1440px) -> Ocupa tudo, mas respeita o limite de 1440px.
-            // Quando scroll: min(95%, 1000px) -> Vira a pílula.
-            width: scrolled ? "min(95%, 1000px)" : "min(100%, 1440px)",
-
-            borderRadius: scrolled ? "24px" : "0px",
-            backgroundColor: scrolled ? "rgba(15, 15, 15, 0.65)" : "transparent",
-            backdropFilter: scrolled ? "blur(24px) saturate(180%)" : "blur(0px)",
-            borderColor: scrolled ? "rgba(255, 255, 255, 0.08)" : "transparent",
-            boxShadow: scrolled
-              ? "0 25px 50px -12px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15), inset 0 -1px 1px rgba(0,0,0,0.3)"
-              : "none",
-            padding: scrolled ? "0.75rem 1.5rem" : "1.5rem 2.5rem",
-            marginTop: scrolled ? "0rem" : "-1rem"
+          animate={{ 
+            y: 0, 
+            opacity: 1, 
+            width: scrolled ? "min(90%, 750px)" : "min(95%, 1000px)",
+            padding: scrolled ? "0.5rem" : "0.6rem 0.8rem",
           }}
-          // Layout dependency ajuda a suavizar mudanças de renderização
-          layout
-          transition={{ duration: 0.5, type: "spring", stiffness: 100, damping: 30 }}
-          className="pointer-events-auto flex items-center justify-between border border-transparent overflow-hidden relative"
+          transition={{ type: "spring", stiffness: 100, damping: 20 }}
+          onMouseMove={handleMouseMove}
+          className="
+            pointer-events-auto relative flex items-center justify-between 
+            rounded-[24px] 
+            border border-white/10 
+            shadow-[0_8px_32px_-8px_rgba(0,0,0,0.5),inset_0_1px_0_0_rgba(255,255,255,0.05)]
+            backdrop-blur-2xl overflow-hidden group
+          "
+          style={{
+            // Fundo um pouco mais transparente para ajudar na leveza
+            backgroundColor: scrolled ? "rgba(5, 5, 5, 0.6)" : "rgba(10, 10, 10, 0.4)",
+            backdropFilter: "blur(20px) saturate(160%)",
+          }}
         >
-          {/* Ambient Glows - Visible only when scrolled */}
-          <div className={`absolute top-0 left-0 w-[300px] h-[100px] bg-[#D97757]/20 blur-[60px] -translate-x-1/2 -translate-y-12 pointer-events-none transition-opacity duration-500 ${scrolled ? 'opacity-100' : 'opacity-0'}`} />
-          <div className={`absolute top-0 right-0 w-[300px] h-[100px] bg-[#D97757]/20 blur-[60px] translate-x-1/2 -translate-y-12 pointer-events-none transition-opacity duration-500 ${scrolled ? 'opacity-100' : 'opacity-0'}`} />
+          
+          <div className="absolute inset-0 opacity-[0.03] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] brightness-100 contrast-150" />
+
+          <motion.div
+            className="pointer-events-none absolute -inset-px rounded-[24px] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
+            style={{
+              background: useMotionTemplate`
+                radial-gradient(
+                  600px circle at ${smoothX}px ${smoothY}px,
+                  rgba(217, 119, 87, 0.04),
+                  transparent 80%
+                )
+              `,
+            }}
+          />
+          
+          <motion.div
+            className="pointer-events-none absolute -inset-px rounded-[24px] opacity-0 transition-opacity duration-700 group-hover:opacity-100"
+            style={{
+              background: useMotionTemplate`
+                radial-gradient(
+                  300px circle at ${smoothX}px ${smoothY}px,
+                  rgba(255, 255, 255, 0.08),
+                  transparent 80%
+                )
+              `,
+              maskImage: "linear-gradient(black, black) content-box, linear-gradient(black, black)",
+              WebkitMaskImage: "linear-gradient(black, black) content-box, linear-gradient(black, black)",
+              maskComposite: "exclude",
+              WebkitMaskComposite: "xor",
+              padding: "1px",
+            }}
+          />
 
           {/* LOGO */}
-          <a href="#" className="flex-shrink-0 flex items-center gap-3 group relative z-10 no-underline">
-            <img src={logo} alt="Controlar Logo" className="h-8 w-auto" />
-            <span className="text-xl font-bold tracking-tight text-white group-hover:text-gray-100 transition-colors">
-              Controlar<span className="text-[#D97757]">+</span>
-            </span>
-          </a>
+          <div className="pl-3 flex items-center gap-3 relative z-10">
+            <a href="#" className="flex items-center gap-2 group/logo">
+              <img src={logo} alt="Logo" className="h-6 w-auto relative opacity-90 group-hover/logo:opacity-100 transition-opacity" />
+              <div className={`flex flex-col overflow-hidden transition-all duration-500 ease-[cubic-bezier(0.23,1,0.32,1)] ${scrolled ? 'w-0 opacity-0' : 'w-24 opacity-100'}`}>
+                <span className="font-bold text-white text-sm leading-tight tracking-tight whitespace-nowrap">
+                  Controlar<span className="text-[#D97757]">+</span>
+                </span>
+              </div>
+            </a>
+          </div>
 
-          {/* DESKTOP NAV */}
-          <div className="hidden md:flex items-center gap-2 relative z-10">
+          {/* LINKS CENTRAIS */}
+          <div className="hidden md:flex items-center absolute left-1/2 -translate-x-1/2 z-10">
             {navLinks.map((link) => (
-              <a
-                key={link.name}
+            <NavItem 
+                key={link.name} 
                 href={link.href}
-                className="px-4 py-2 text-sm font-medium text-gray-300 hover:text-white hover:bg-white/10 transition-all rounded-full"
-              >
+                isActive={activeTab === link.name}
+                onClick={(e: any) => {
+                    e.preventDefault();
+                    setActiveTab(link.name);
+                }}
+            >
                 {link.name}
-              </a>
+            </NavItem>
             ))}
           </div>
 
-          {/* ACTIONS */}
-          <div className="hidden md:flex items-center gap-6 flex-shrink-0 relative z-10">
-            <HoverButton className="whitespace-nowrap">
-              Começar Agora
-            </HoverButton>
+          {/* AÇÕES DIREITA */}
+          <div className="pr-1 flex items-center gap-2 relative z-10">
+            <button className="hidden md:flex items-center gap-2 px-5 py-1.5 rounded-lg bg-[#D97757] hover:bg-[#c56a4d] text-white text-sm font-semibold transition-all shadow-[0_0_10px_-3px_rgba(217,119,87,0.3)] hover:shadow-[0_0_20px_-5px_rgba(217,119,87,0.5)] active:scale-[0.98]">
+              <span>Entrar</span>
+            </button>
+            
+            <button
+                className="md:hidden p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-lg transition-colors backdrop-blur-md"
+                onClick={() => setMobileMenuOpen(true)}
+            >
+                <Menu className="w-5 h-5" />
+            </button>
           </div>
 
-          {/* MOBILE TOGGLE */}
-          <button
-            className="md:hidden p-2 text-gray-300 hover:text-white transition-colors relative z-10"
-            onClick={() => setMobileMenuOpen(true)}
-          >
-            <Menu className="w-6 h-6" />
-          </button>
         </motion.nav>
       </div>
 
-      {/* MOBILE MENU */}
+      {/* MENU MOBILE */}
       <AnimatePresence>
         {mobileMenuOpen && (
           <motion.div
-            initial={{ opacity: 0, backdropFilter: "blur(0px)" }}
-            animate={{ opacity: 1, backdropFilter: "blur(20px)" }}
-            exit={{ opacity: 0, backdropFilter: "blur(0px)" }}
-            transition={{ duration: 0.3 }}
-            className="fixed inset-0 z-[60] bg-black/60 flex flex-col p-6"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex flex-col justify-end sm:justify-center items-center p-4"
           >
-            <div className="absolute inset-0 bg-[#0a0a0a]/90 -z-10" />
-            <div className="flex justify-between items-center mb-10">
-              <span className="text-xl font-bold text-white flex items-center gap-2">
-                <img src={logo} alt="Logo" className="h-6 w-auto opacity-80" />
-                Menu
-              </span>
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="p-2 text-gray-400 hover:text-white bg-white/5 rounded-full border border-white/10 hover:bg-white/10 transition-colors"
-              >
-                <X className="w-6 h-6" />
-              </button>
-            </div>
-            <div className="flex flex-col gap-6">
-              {navLinks.map((link, idx) => (
-                <motion.a
-                  key={link.name}
-                  href={link.href}
-                  initial={{ x: -20, opacity: 0 }}
-                  animate={{ x: 0, opacity: 1 }}
-                  transition={{ delay: 0.1 + idx * 0.1 }}
-                  className="text-2xl font-semibold text-gray-300 hover:text-[#D97757] transition-colors"
+            <div className="absolute inset-0 bg-black/60 backdrop-blur-md" onClick={() => setMobileMenuOpen(false)} />
+
+            <motion.div
+              initial={{ y: 20, scale: 0.95, opacity: 0 }}
+              animate={{ y: 0, scale: 1, opacity: 1 }}
+              exit={{ y: 20, scale: 0.95, opacity: 0 }}
+              className="relative w-full max-w-sm bg-[#0a0a0a] border border-white/10 rounded-2xl p-6 shadow-2xl overflow-hidden"
+            >
+              <div className="flex justify-between items-center mb-6 relative z-10">
+                <span className="text-lg font-bold text-white">Menu</span>
+                <button
                   onClick={() => setMobileMenuOpen(false)}
+                  className="p-2 bg-white/5 rounded-lg hover:bg-white/10 text-white transition-colors"
                 >
-                  {link.name}
-                </motion.a>
-              ))}
-            </div>
-            <div className="mt-auto flex flex-col gap-4">
-              <button className="w-full py-4 rounded-xl border border-white/10 text-white font-medium hover:bg-white/5 transition-colors">
-                Entrar
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-1 relative z-10">
+                {navLinks.map((link) => (
+                  <a
+                    key={link.name}
+                    href={link.href}
+                    className="flex items-center justify-between p-3 rounded-lg hover:bg-white/5 text-gray-400 hover:text-white transition-all group"
+                    onClick={() => setMobileMenuOpen(false)}
+                  >
+                    <span className="font-medium text-base">{link.name}</span>
+                    <ArrowRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-all text-[#D97757]" />
+                  </a>
+                ))}
+              </div>
+
+              <button className="w-full mt-6 py-3 rounded-lg bg-[#D97757] text-white font-bold">
+                Começar
               </button>
-              <button className="w-full py-4 rounded-xl bg-[#D97757] text-white font-bold shadow-lg shadow-[#D97757]/20 hover:bg-[#c56a4d] transition-colors">
-                Começar Agora
-              </button>
-            </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

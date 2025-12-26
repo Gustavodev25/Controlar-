@@ -336,42 +336,24 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             for (const account of accounts) {
                 try {
                     // Determine 'from' date for this account (Incremental Sync)
-                    let fromStr = defaultFromDateStr;
-                    let lastSyncTimestamp = null;
-                    const syncInfo = existingAccountsMap[account.id];
-
-                    if (syncInfo && syncInfo.lastSyncedAt) {
-                        try {
-                            const lastDate = new Date(syncInfo.lastSyncedAt);
-                            if (!isNaN(lastDate.getTime())) {
-                                fromStr = lastDate.toISOString().split('T')[0];
-                                lastSyncTimestamp = lastDate.getTime();
-                                console.log(`[Trigger-Sync] Incremental: Account ${account.name} last synced ${syncInfo.lastSyncedAt}. Fetching from ${fromStr}`);
-                            }
-                        } catch (err) {
-                            console.warn('[Trigger-Sync] Invalid lastSync date:', syncInfo.lastSyncedAt);
-                        }
-                    } else {
-                        console.log(`[Trigger-Sync] Full: Account ${account.name} (first sync). Fetching from ${fromStr}`);
-                    }
+                    // ALWAYS fetch the last 60 days to ensure we catch updates, corrections, and fix malformed data.
+                    // We rely on the write logic (merge: true) to prevent duplicates or overwrite with better data.
+                    // This avoids issues with Timezones (UTC vs Local) and ensures we re-process transactions 
+                    // that might have been saved with errors (like the previous 'installmnets' typo).
+                    const lookbackDate = new Date();
+                    lookbackDate.setDate(lookbackDate.getDate() - 60);
+                    let fromStr = lookbackDate.toISOString().split('T')[0];
+                    console.log(`[Trigger-Sync] Robust Sync: Fetching from ${fromStr} (ignoring strict lastSyncedAt)`);
 
                     const txResp = await axios.get(`${BASE_URL}/transactions?accountId=${account.id}&from=${fromStr}`, {
                         headers: { 'X-API-KEY': apiKey }
                     });
                     let transactions = txResp.data.results;
 
-                    // Filter out transactions that were already synced (by timestamp)
-                    if (lastSyncTimestamp && transactions.length > 0) {
-                        const originalCount = transactions.length;
-                        transactions = transactions.filter(tx => {
-                            const txDate = new Date(tx.date);
-                            return txDate.getTime() >= lastSyncTimestamp;
-                        });
-                        const filtered = originalCount - transactions.length;
-                        if (filtered > 0) {
-                            console.log(`[Trigger-Sync] Filtered ${filtered} already-synced transactions (kept ${transactions.length})`);
-                        }
-                    }
+                    // We do NOT filter by lastSyncTimestamp here anymore because we WANT to re-process 
+                    // recent transactions to fix potential data issues (missing keys, typos).
+                    // Firestore 'set' with merge will handle idempotency.
+                    console.log(`[Trigger-Sync] Fetched ${transactions.length} transactions needing processing`);
 
                     // Determine Target Collection
                     const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
@@ -383,6 +365,24 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                         let mappedTx = {};
 
                         if (isCredit) {
+                            // Calculate invoiceMonthKey based on closing day
+                            let invoiceMonthKey = null;
+                            if (account.creditData && account.creditData.balanceCloseDate) {
+                                const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                                const txDate = new Date(tx.date);
+                                const day = txDate.getDate();
+                                const invoiceDate = new Date(txDate);
+
+                                // If after closing day, it belongs to next month
+                                if (day > closingDay) {
+                                    invoiceDate.setMonth(invoiceDate.getMonth() + 1);
+                                }
+                                invoiceMonthKey = `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}`;
+                            } else {
+                                // Fallback: Use simple YYYY-MM
+                                invoiceMonthKey = tx.date.slice(0, 7);
+                            }
+
                             mappedTx = {
                                 cardId: account.id,
                                 date: tx.date.split('T')[0],
@@ -393,6 +393,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                                 status: 'completed',
                                 installments: tx.installments || 1,
                                 installmentNumber: 1,
+                                invoiceMonthKey,
                                 pluggyRaw: tx
                             };
                         } else {
@@ -718,6 +719,25 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                             // Credit Card Schema
                             // In Pluggy: POSITIVE amount = expense (you spent money)
                             //            NEGATIVE amount = income/refund (money returned)
+
+                            // Calculate invoiceMonthKey based on closing day
+                            let invoiceMonthKey = null;
+                            if (account.creditData && account.creditData.balanceCloseDate) {
+                                const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                                const txDate = new Date(tx.date);
+                                const day = txDate.getDate();
+                                const invoiceDate = new Date(txDate);
+
+                                // If after closing day, it belongs to next month
+                                if (day > closingDay) {
+                                    invoiceDate.setMonth(invoiceDate.getMonth() + 1);
+                                }
+                                invoiceMonthKey = `${invoiceDate.getFullYear()}-${String(invoiceDate.getMonth() + 1).padStart(2, '0')}`;
+                            } else {
+                                // Fallback: Use simple YYYY-MM
+                                invoiceMonthKey = tx.date.slice(0, 7);
+                            }
+
                             mappedTx = {
                                 cardId: account.id,
                                 date: tx.date.split('T')[0],
@@ -726,41 +746,13 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                                 type: tx.amount > 0 ? 'expense' : 'income',
                                 category: tx.category || 'Uncategorized',
                                 status: 'completed',
-                                installmnets: tx.installments || 1,
+                                installments: tx.installments || 1,
                                 installmentNumber: 1,
+                                invoiceMonthKey,
                                 pluggyRaw: tx
                             };
                         } else if (isSavings) {
                             // Investment/Savings Schema (Caixinha)
-                            // Needs `currentAmount` logic? No, this is transaction history.
-                            // `Investments.tsx` expects `Transaction` with `isInvestment: true`.
-                            // BUT we are saving to `investments` collection? 
-                            // Wait, `Investments.tsx` reads `investments` doc for the BALANCE, but `transactions` for history?
-                            // Re-reading user request: "salvar ... em cartao de credito em poupança colocar no caixinhas"
-                            // "Caixinhas" usually means we create an INVESTMENT DOC for the account, and maybe transactions go to main list?
-                            // Investments.tsx:300 `connectedInvestments` maps connected ACCOUNTS to investments.
-                            // So we just need to ensure the account is saved (done above).
-                            // AND the transactions should probably go to `transactions` or `investments` collection?
-                            // `Investments.tsx` uses `onAddTransaction` which adds to `transactions` collection with `isInvestment: true`.
-                            // So for Savings, we should save to `transactions` BUT mark correctly?
-                            // OR user meant "saving the ACCOUNT in caixinhas".
-
-                            // Let's assume User wants transactions to go to `transactions` collection but marked as investment?
-                            // Actually, if we look at `Investments.tsx` filtering:
-                            // `if (selectedInvestment.isConnected) { return t.accountId === selectedInvestment.id; }`
-                            // So safe bet: Save to `transactions` collection for Savings too, just ensuring `accountId` is correct.
-
-                            // Wait, user said: "poupança colocar no caixinhas". 
-                            // Maybe "caixinhas" IS `investments` collection? 
-                            // But `Investments` are *goals*. Connected accounts are *mapped* to investments in UI.
-                            // So saving the Account in `users/{userId}/accounts` is enough for it to show up as a Caixinha (if code maps it).
-                            // The TRANSACTIONS should go to `transactions`.
-
-                            // So:
-                            // Credit Card -> `creditCardTransactions`
-                            // Savings -> `transactions` (Account will show in Caixinhas tab)
-                            // Checking -> `transactions`
-
                             targetColl = txCollection;
                             mappedTx = {
                                 providerId: tx.id,
