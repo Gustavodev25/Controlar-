@@ -19,6 +19,29 @@ router.use(cors());
 router.use(express.urlencoded({ extended: false, limit: '50mb' }));
 router.use(express.json({ limit: '50mb' }));
 
+// Health Check / Diagnostics
+router.get('/status', async (req, res) => {
+  const status = {
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || 'development',
+    services: {
+      firebase: !!firebaseAdmin ? 'Connected' : 'Not Initialized',
+      pluggy: {
+        clientId: !!process.env.PLUGGY_CLIENT_ID ? 'Configured' : 'Missing',
+        clientSecret: !!process.env.PLUGGY_CLIENT_SECRET ? 'Configured' : 'Missing'
+      },
+      smtp: {
+        host: process.env.SMTP_HOST || 'Default',
+        user: !!process.env.SMTP_USER ? 'Configured' : 'Missing'
+      },
+      asaas: {
+        apiKey: !!process.env.ASAAS_API_KEY ? 'Configured' : 'Missing'
+      }
+    }
+  };
+  res.json(status);
+});
+
 // ===============================
 // AUTH & OTP SYSTEM
 // ===============================
