@@ -875,12 +875,19 @@ const App: React.FC = () => {
             createdAt: profile?.createdAt
           };
 
-          // Fix for old users without createdAt: Backfill with current time
+          // Fix for old users without createdAt: Backfill with oldest known access
           if (!baseProfile.createdAt) {
-            const now = new Date().toISOString();
-            baseProfile.createdAt = now;
+            // Try to find the oldest log (last in array for chronological add, or sort explicitly)
+            // Connection logs are typically prepended (newest first), so oldest is last.
+            const logs = baseProfile.connectionLogs || [];
+            const oldestLog = logs.length > 0 ? logs[logs.length - 1] : null;
+
+            // Use oldest log date OR current time if absolutely no history
+            const backfillDate = oldestLog?.timestamp || new Date().toISOString();
+
+            baseProfile.createdAt = backfillDate;
             // Update in DB (store in profile)
-            dbService.updateUserProfile(firebaseUser.uid, { createdAt: now }).catch(console.error);
+            dbService.updateUserProfile(firebaseUser.uid, { createdAt: backfillDate }).catch(console.error);
           }
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {

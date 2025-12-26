@@ -321,6 +321,47 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const randomTrend = () => Array.from({ length: 6 }, () => Math.floor(Math.random() * 100) + 50);
 
+    // --- CUMULATIVE USER GROWTH ---
+    const dailyCounts: Record<string, number> = {};
+    let minDate = new Date();
+
+    users.forEach(u => {
+      // Use createdAt (preferred) or subscription start date or fallback
+      const dateStr = u.createdAt || u.subscription?.startDate;
+      if (!dateStr) return;
+
+      const date = new Date(dateStr);
+      if (date < minDate) minDate = date;
+
+      const key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      dailyCounts[key] = (dailyCounts[key] || 0) + 1;
+    });
+
+    // Sort dates
+    const sortedDates = Object.keys(dailyCounts).sort();
+
+    // Create cumulative array
+    const cumulativeGrowth: { date: string, rawDate: string, total: number, daily: number }[] = [];
+    let runningTotal = 0;
+
+    // Fill in gaps? Ideally yes, but for now just points
+    sortedDates.forEach(dateKey => {
+      const count = dailyCounts[dateKey];
+      runningTotal += count;
+      const [y, m, d] = dateKey.split('-');
+      cumulativeGrowth.push({
+        date: `${d}/${m}`, // DD/MM format for x-axis
+        rawDate: dateKey,
+        total: runningTotal,
+        daily: count
+      });
+    });
+
+    // If empty, add at least one point
+    if (cumulativeGrowth.length === 0) {
+      cumulativeGrowth.push({ date: 'Hoje', rawDate: new Date().toISOString(), total: 0, daily: 0 });
+    }
+
     // Heatmap / Location Data (Top 5 States)
     const locationData: Record<string, number> = {};
     users.forEach(u => {
@@ -352,6 +393,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       chartData,
       planData,
       locationsChartData,
+      cumulativeGrowth, // Add to return object
       trends: {
         users: userGrowthData,
         mrr: mrrTrendData,
@@ -444,7 +486,165 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         />
       </div>
 
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Cumulative User Growth Chart */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <Users size={18} className="text-blue-400" />
+                Crescimento de Usuários
+              </h3>
+              <p className="text-gray-500 text-sm">Total acumulado de usuários por dia</p>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold text-white">{users.length}</span>
+              <p className="text-xs text-gray-500 uppercase">Total Atual</p>
+            </div>
+          </div>
 
-    </div >
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={stats.cumulativeGrowth}>
+                <defs>
+                  <linearGradient id="colorUsers" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.3} />
+                    <stop offset="95%" stopColor="#3B82F6" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={30} // Prevent overlapping dates
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Area
+                  type="monotone"
+                  dataKey="total"
+                  name="Usuários"
+                  stroke="#3B82F6"
+                  strokeWidth={3}
+                  fillOpacity={1}
+                  fill="url(#colorUsers)"
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Revenue Projection or Plan Distribution */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+            <DollarSign size={18} className="text-emerald-400" />
+            Projeção de Receita (12 Meses)
+          </h3>
+          <p className="text-gray-500 text-sm mb-6">Baseado nas assinaturas ativas atuais</p>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.chartData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#6b7280"
+                  fontSize={10}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  tickFormatter={(val) => `R$${val}`}
+                />
+                <Tooltip content={<CustomTooltip formatter={(val: number) => `R$ ${val.toFixed(2)}`} />} />
+                <Bar dataKey="value" name="Receita Projetada" fill="#10B981" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      {/* Row 2: Location & Plans */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <MapPin size={18} className="text-purple-400" />
+            Top Localizações
+          </h3>
+          <div className="space-y-4">
+            {stats.locationsChartData.map((item, index) => (
+              <div key={item.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500 font-mono text-sm w-4">{index + 1}</span>
+                  <span className="text-gray-300 font-medium">{item.name}</span>
+                </div>
+                <div className="flex items-center gap-4 flex-1 justify-end">
+                  <div className="h-2 bg-gray-800 rounded-full flex-1 max-w-[150px] overflow-hidden">
+                    <div
+                      className="h-full bg-purple-500 rounded-full"
+                      style={{ width: `${(item.value / users.length) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-bold text-white min-w-[30px] text-right">{item.value}</span>
+                </div>
+              </div>
+            ))}
+            {stats.locationsChartData.length === 0 && (
+              <p className="text-gray-500 text-center py-10">Nenhum dado de localização disponível</p>
+            )}
+          </div>
+        </div>
+
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 flex flex-col">
+          <h3 className="text-lg font-bold text-white mb-6">Distribuição de Planos</h3>
+          <div className="flex-1 flex items-center justify-center relative">
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={stats.planData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {stats.planData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.5)" />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Center Text */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-white">{users.length}</p>
+                <p className="text-xs text-gray-500 uppercase">Usuários</p>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-center gap-6 mt-4">
+            {stats.planData.map(entry => (
+              <div key={entry.name} className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
+                <span className="text-sm text-gray-300">{entry.name}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 };

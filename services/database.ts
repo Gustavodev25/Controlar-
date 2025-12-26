@@ -162,6 +162,16 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
       // IMPORTANT: subscription can be at root level (for family members) or inside profile
       const subscription = profile.subscription || data.subscription;
 
+      const connectionLogs = data.connectionLogs || profile.connectionLogs || [];
+      let createdAt = data.createdAt || profile.createdAt;
+
+      // Fallback: Use oldest connection log if createdAt is missing
+      if (!createdAt && connectionLogs.length > 0) {
+        // logs are typically Newest -> Oldest (prepended)
+        // So the last element is the oldest known access
+        createdAt = connectionLogs[connectionLogs.length - 1].timestamp;
+      }
+
       // Construct a user object
       return {
         id: doc.id,
@@ -170,9 +180,9 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
         // Include other necessary fields - use merged subscription
         subscription: subscription,
         isAdmin: data.isAdmin === true || profile.isAdmin === true,
-        connectionLogs: data.connectionLogs || profile.connectionLogs || [],
+        connectionLogs: connectionLogs,
         birthDate: profile.birthDate || data.birthDate,
-        createdAt: data.createdAt || profile.createdAt, // Include creation date
+        createdAt: createdAt, // Include creation date (or fallback)
         ...profile
       } as User & { id: string };
     });

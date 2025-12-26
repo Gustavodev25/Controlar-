@@ -235,6 +235,8 @@ export const AdminUsers: React.FC = () => {
     const getTimeSinceCreation = (createdAt?: string) => {
         if (!createdAt) return '-';
         const created = new Date(createdAt);
+        if (isNaN(created.getTime())) return '-';
+
         const now = new Date();
         const diffTime = Math.abs(now.getTime() - created.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
