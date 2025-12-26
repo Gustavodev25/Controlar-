@@ -207,7 +207,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
                     headers: { 'X-API-KEY': apiKey }
                 }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                  .catch(() => ({ account, transactions: [] }))
+                    .catch(() => ({ account, transactions: [] }))
             );
 
             const allTxResults = await Promise.all(txPromises);
@@ -334,7 +334,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 status: 'completed',
                 progress: 100,
                 updatedAt: syncTimestamp,
-                message: `${txCount} transações em ${(duration/1000).toFixed(1)}s`,
+                message: `${txCount} transações em ${(duration / 1000).toFixed(1)}s`,
                 duration
             });
 
@@ -347,6 +347,43 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     })();
 });
 
+
+// Helper: Wait for Pluggy item to be ready (UPDATED or LOGIN_ERROR)
+const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
+    const startTime = Date.now();
+    const pollInterval = 2000; // 2 seconds between polls
+    const readyStatuses = ['UPDATED', 'LOGIN_ERROR', 'OUTDATED'];
+
+    while (Date.now() - startTime < maxWaitMs) {
+        try {
+            const response = await pluggyApi.get(`/items/${itemId}`, {
+                headers: { 'X-API-KEY': apiKey }
+            });
+
+            const item = response.data;
+            console.log(`[Sync] Item ${itemId} status: ${item.status}`);
+
+            if (readyStatuses.includes(item.status)) {
+                return { ready: true, status: item.status, item };
+            }
+
+            if (item.status === 'LOGIN_ERROR' || item.status === 'WAITING_USER_INPUT') {
+                return { ready: false, status: item.status, error: 'Login failed or needs user input' };
+            }
+
+            // Still updating, wait and poll again
+            await new Promise(resolve => setTimeout(resolve, pollInterval));
+        } catch (err) {
+            console.error(`[Sync] Error polling item status:`, err.message);
+            // If we can't check status, try to proceed anyway
+            return { ready: true, status: 'UNKNOWN' };
+        }
+    }
+
+    // Timeout - try to proceed anyway (item might have accounts even if still updating)
+    console.log(`[Sync] Timeout waiting for item ${itemId}, proceeding anyway`);
+    return { ready: true, status: 'TIMEOUT' };
+};
 
 // 4. Manual Sync (Fetch & Save) - OPTIMIZED FOR VERCEL PRO
 // Ultra-fast parallel processing for all accounts
@@ -371,7 +408,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             ? { date: today, count: 1 }
             : { ...credits, count: credits.count + 1 };
         transaction.update(userRef, { dailyConnectionCredits: newCredits });
-    }).catch(() => {}); // Silent fail for credits
+    }).catch(() => { }); // Silent fail for credits
 
     // Create Job Doc and respond immediately
     const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
@@ -392,20 +429,52 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
 
         try {
+            // STEP 0: Wait for Pluggy item to be ready
+            await jobDoc.update({ progress: 5, step: 'Aguardando banco...' });
+
+            const itemStatus = await waitForItemReady(apiKey, itemId);
+            console.log(`[Sync] Item ready check: ${JSON.stringify(itemStatus)}`);
+
+            if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
+                await jobDoc.update({
+                    status: 'failed',
+                    error: 'O banco requer ação adicional. Tente reconectar.',
+                    needsReconnect: true
+                });
+                return;
+            }
+
             // STEP 1: Fetch accounts and existing data IN PARALLEL
+            await jobDoc.update({ progress: 10, step: 'Buscando contas...' });
+
             const [accountsResp, existingSnap] = await Promise.all([
                 pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
                 accountsRef.get()
             ]);
 
             const accounts = accountsResp.data.results || [];
+            console.log(`[Sync] Found ${accounts.length} accounts for item ${itemId}`);
+
+            // If no accounts found, the item may still be processing
+            if (accounts.length === 0) {
+                console.log('[Sync] No accounts found - item may still be updating');
+                await jobDoc.update({
+                    status: 'completed',
+                    progress: 100,
+                    message: '0 contas encontradas. O banco pode estar processando ainda.',
+                    accountsFound: 0,
+                    transactionsFound: 0
+                });
+                return;
+            }
+
             const existingMap = {};
             existingSnap.forEach(doc => {
                 const d = doc.data();
                 existingMap[doc.id] = { lastSyncedAt: d.lastSyncedAt, connectedAt: d.connectedAt };
             });
 
-            await jobDoc.update({ progress: 15, step: 'Buscando transações...' });
+            await jobDoc.update({ progress: 15, step: `Salvando ${accounts.length} contas...` });
 
             // STEP 2: Save accounts (quick batch)
             const accBatch = db.batch();
@@ -444,7 +513,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
                     headers: { 'X-API-KEY': apiKey }
                 }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                  .catch(() => ({ account, transactions: [] })) // Silent fail per account
+                    .catch(() => ({ account, transactions: [] })) // Silent fail per account
             );
 
             const allTxResults = await Promise.all(txPromises);
@@ -575,7 +644,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             await jobDoc.update({
                 status: 'completed',
                 progress: 100,
-                message: `${txCount} transações em ${(duration/1000).toFixed(1)}s`,
+                message: `${txCount} transações em ${(duration / 1000).toFixed(1)}s`,
                 duration
             });
 
