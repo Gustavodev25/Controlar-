@@ -12,7 +12,7 @@ import { Footer } from './Footer';
 
 export const NovaLanding: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
     return (
-        <div className="min-h-screen bg-[#050505] text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
+        <div className="min-h-screen bg-[#1a0f0a] text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
             <Topbar onLogin={onLogin} />
             <Hero onLogin={onLogin} />
             <FeaturesSectionWithHoverEffects />

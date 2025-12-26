@@ -63,7 +63,7 @@ export function FeaturesSectionWithHoverEffects() {
         },
     ];
     return (
-        <div id="features" className="w-full bg-[#262624] py-20">
+        <div id="features" className="w-full bg-[#1a0f0a] py-20">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 relative z-10 container mx-auto px-8">
                 {features.map((feature, index) => (
                     <Feature key={feature.title} {...feature} index={index} />
@@ -93,10 +93,10 @@ const Feature = ({
             )}
         >
             {index < 4 && (
-                <div className="opacity-0 group-hover/feature:opacity-100 transition duration-200 absolute inset-0 h-full w-full bg-gradient-to-t from-[#30302E] to-transparent pointer-events-none" />
+                <div className="opacity-0 group-hover/feature:opacity-100 transition duration-200 absolute inset-0 h-full w-full bg-gradient-to-t from-[#262624] to-transparent pointer-events-none" />
             )}
             {index >= 4 && (
-                <div className="opacity-0 group-hover/feature:opacity-100 transition duration-200 absolute inset-0 h-full w-full bg-gradient-to-b from-[#30302E] to-transparent pointer-events-none" />
+                <div className="opacity-0 group-hover/feature:opacity-100 transition duration-200 absolute inset-0 h-full w-full bg-gradient-to-b from-[#262624] to-transparent pointer-events-none" />
             )}
             <div className="mb-4 relative z-10 px-10 text-neutral-400">
                 {icon}

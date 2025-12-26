@@ -65,7 +65,7 @@ export const TestimonialsColumn = (props: {
                     ...new Array(2).fill(0).map((_, index) => (
                         <React.Fragment key={index}>
                             {props.testimonials.map(({ text, image, name, role }, i) => (
-                                <div className="bg-[#30302E] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6 max-w-xs w-full" key={i}>
+                                <div className="bg-[#262624] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6 max-w-xs w-full" key={i}>
                                     <div className="text-[#faf9f5] leading-relaxed text-sm">{text}</div>
                                     <div className="flex items-center gap-3">
                                         <img
@@ -90,13 +90,24 @@ export const TestimonialsColumn = (props: {
     );
 };
 
+import { AnimatedGridPattern } from '../AnimatedGridPattern';
+
 export function TestimonialsSection() {
     return (
-        <section id="testimonials" className="bg-[#262624] py-20 overflow-hidden relative">
+        <section id="testimonials" className="bg-[#1a0f0a] py-20 overflow-hidden relative">
+            <AnimatedGridPattern
+                width={60}
+                height={60}
+                numSquares={20}
+                maxOpacity={0.08}
+                duration={4}
+                repeatDelay={2}
+                className="[mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03] absolute inset-0 h-full w-full pointer-events-none"
+            />
 
             {/* Gradient Overlay Top/Bottom for smooth fading */}
-            <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-[#262624] to-transparent z-10 pointer-events-none"></div>
-            <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-[#262624] to-transparent z-10 pointer-events-none"></div>
+            <div className="absolute top-0 left-0 w-full h-20 bg-gradient-to-b from-[#1a0f0a] to-transparent z-10 pointer-events-none"></div>
+            <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-[#1a0f0a] to-transparent z-10 pointer-events-none"></div>
 
             <div className="container mx-auto px-8 mb-12 text-center relative z-20">
                 <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#faf9f5] mb-6">

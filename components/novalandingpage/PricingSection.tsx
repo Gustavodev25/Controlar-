@@ -10,6 +10,8 @@ import NumberFlow from '@number-flow/react';
 import quebraCabecaImg from '../../assets/quebra-cabeca.png';
 import fogueteImg from '../../assets/foguete.png';
 
+import { AnimatedGridPattern } from '../AnimatedGridPattern';
+
 export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
@@ -50,7 +52,16 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
     ];
 
     return (
-        <section id="pricing" className="w-full bg-[#262624] py-24 relative overflow-hidden">
+        <section id="pricing" className="w-full bg-[#1a0f0a] py-24 relative overflow-hidden">
+            <AnimatedGridPattern
+                width={60}
+                height={60}
+                numSquares={20}
+                maxOpacity={0.08}
+                duration={4}
+                repeatDelay={2}
+                className="[mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03] absolute inset-0 h-full w-full pointer-events-none"
+            />
             <div className="container mx-auto px-8 relative z-10">
                 <div className="text-center mb-12">
                     <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#faf9f5] mb-6">
@@ -62,7 +73,7 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
 
                     {/* Billing Toggle */}
                     <div className="flex justify-center">
-                        <div className="bg-[#30302E] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
+                        <div className="bg-[#262624] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
                             <button
                                 onClick={() => setBillingCycle('monthly')}
                                 className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
@@ -108,8 +119,8 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                                 className={`
                                     relative flex flex-col p-8 rounded-3xl border transition-all duration-300
                                     ${isPro
-                                        ? 'bg-[#30302E] border-[#d97757] shadow-2xl shadow-[#d97757]/10 z-10'
-                                        : 'bg-[#30302E] border-gray-800 hover:border-gray-700'}
+                                        ? 'bg-[#262624] border-[#d97757] shadow-2xl shadow-[#d97757]/10 z-10'
+                                        : 'bg-[#262624] border-gray-800 hover:border-gray-700'}
                                 `}
                             >
                                 {/* Etiqueta Mais Popular */}

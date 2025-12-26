@@ -109,6 +109,11 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
       // Use root isAdmin if it's true, otherwise use profile isAdmin
       profile.isAdmin = rootIsAdmin || profileIsAdmin;
 
+      // Include createdAt from root if available
+      if (data.createdAt && !profile.createdAt) {
+        profile.createdAt = data.createdAt;
+      }
+
       // IMPORTANT: subscription can be stored at root level (for family members)
       // or inside profile (for regular users). Check both locations.
       // Priority: root subscription (for family members via joinFamily) > profile subscription
@@ -211,9 +216,12 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
       if (data.dailyConnectionCredits) {
         profile.dailyConnectionCredits = data.dailyConnectionCredits;
       } else {
-        // Initialize with empty state if not present (user never used credits)
-        // This ensures the field is always defined
         profile.dailyConnectionCredits = { date: '', count: 0 };
+      }
+
+      // Include createdAt from root if available (Consistency with getUserProfile)
+      if (data.createdAt && !profile.createdAt) {
+        profile.createdAt = data.createdAt;
       }
 
 

@@ -5,7 +5,9 @@ import { ShiningText } from '../ShiningText';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 import { InfiniteSlider } from '../InfiniteSlider';
 import { BlurTextEffect } from '../BlurTextEffect';
+import { Sparkles, CheckCircle } from 'lucide-react';
 import dashboardImg from '../../assets/dashboard.png';
+import fogueteImg from '../../assets/foguete.png';
 
 // Bank logos
 import bancodobrasilLogo from '../../assets/bancos/bancodobrasil.png';
@@ -184,30 +186,30 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) => {
     }, [targetDate]);
 
     return (
-        <div className="flex items-center gap-4 text-white">
+        <div className="flex items-center gap-3 text-white">
             <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
                     <NumberFlow value={timeLeft.d} format={{ minimumIntegerDigits: 2 }} />
                 </span>
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Dias</span>
             </div>
-            <span className="text-2xl font-bold text-gray-600">:</span>
+            <span className="text-xl font-bold text-gray-600">:</span>
             <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
                     <NumberFlow value={timeLeft.h} format={{ minimumIntegerDigits: 2 }} />
                 </span>
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Horas</span>
             </div>
-            <span className="text-2xl font-bold text-gray-600">:</span>
+            <span className="text-xl font-bold text-gray-600">:</span>
             <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
                     <NumberFlow value={timeLeft.m} format={{ minimumIntegerDigits: 2 }} />
                 </span>
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Min</span>
             </div>
-            <span className="text-2xl font-bold text-gray-600">:</span>
+            <span className="text-xl font-bold text-gray-600">:</span>
             <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-3 py-2 text-[#D97757]">
+                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
                     <NumberFlow value={timeLeft.s} format={{ minimumIntegerDigits: 2 }} />
                 </span>
                 <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Seg</span>
@@ -288,7 +290,30 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                     variants={containerVariants}
                 >
                     {/* Left Side: Original Hero Text */}
-                    <div className="flex-1 space-y-8 text-center lg:text-left">
+                    <motion.div className="flex-1 space-y-8 text-center lg:text-left flex flex-col items-center lg:items-start">
+
+                        {/* New Premium Scarcity Badge */}
+                        <motion.div
+                            variants={itemVariants}
+                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#D97757]/10 border border-[#D97757]/20 backdrop-blur-md mb-2 cursor-default transition-colors hover:bg-[#D97757]/15"
+                        >
+                            <span className="flex h-2 w-2 relative">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-[#D97757] opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-2 w-2 bg-[#D97757]"></span>
+                            </span>
+                            <span className="text-xs font-bold text-[#D97757] tracking-wide uppercase">
+                                Restam apenas 68 vagas promocionais
+                            </span>
+                            <div className="w-16 h-1.5 bg-[#D97757]/20 rounded-full overflow-hidden ml-1">
+                                <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: "68%" }}
+                                    transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
+                                    className="h-full bg-[#D97757]"
+                                />
+                            </div>
+                        </motion.div>
+
                         <motion.h1 variants={itemVariants} className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
                             Desbloqueie o Potencial <br />
                             das suas <ShiningText text="Finanças." />
@@ -301,104 +326,151 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                         {/* Countdown Timer Featured */}
                         {/* Countdown Timer & CTA */}
                         <motion.div variants={itemVariants} className="flex flex-col items-center lg:items-start gap-6 pt-4">
-                            <div className="flex flex-col items-center lg:items-start gap-3">
-                                <p className="text-sm uppercase tracking-widest text-[#D97757] font-bold">Oferta de Ano Novo acaba em:</p>
-                                <CountdownTimer targetDate="2026-01-01T12:00:00" />
-                            </div>
-
                             <button onClick={onLogin} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
                                 Começar Agora
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
                             </button>
+
+                            {/* Trust & Social Proof */}
+                            <div className="flex flex-col items-center lg:items-start gap-4 mt-2">
+                                <div className="flex flex-wrap items-center justify-center lg:justify-start gap-x-4 gap-y-2 text-xs font-medium text-gray-400">
+                                    <span className="flex items-center gap-1.5">
+                                        <CheckCircle size={13} className="text-emerald-500" /> Pronto em 5 minutos
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <CheckCircle size={13} className="text-emerald-500" /> 100% seguro
+                                    </span>
+                                    <span className="flex items-center gap-1.5">
+                                        <CheckCircle size={13} className="text-emerald-500" /> Automatizado com IA
+                                    </span>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                    <div className="flex -space-x-3">
+                                        {[
+                                            "https://randomuser.me/api/portraits/women/44.jpg",
+                                            "https://randomuser.me/api/portraits/men/32.jpg",
+                                            "https://randomuser.me/api/portraits/women/65.jpg",
+                                            "https://randomuser.me/api/portraits/men/86.jpg"
+                                        ].map((src, i) => (
+                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#1a0f0a] flex items-center justify-center overflow-hidden bg-gray-800">
+                                                <img
+                                                    src={src}
+                                                    alt="User"
+                                                    className="w-full h-full object-cover"
+                                                />
+                                            </div>
+                                        ))}
+                                        <div className="w-8 h-8 rounded-full border-2 border-[#1a0f0a] bg-[#D97757] flex items-center justify-center text-[10px] font-bold text-white relative z-10">
+                                            +1k
+                                        </div>
+                                    </div>
+                                    <span className="text-sm text-gray-400">
+                                        <span className="text-white font-bold">+ de 1.000</span> usuários ativos
+                                    </span>
+                                </div>
+                            </div>
                         </motion.div>
-                    </div>
+                    </motion.div>
 
                     {/* Right Side: Promotion Card (Clean Style) */}
-                    <motion.div variants={itemVariants} className="w-full max-w-sm lg:max-w-md relative mt-12 lg:mt-0">
-                        <div className="relative bg-[#262624] border border-[#D97757] rounded-3xl p-8 shadow-2xl">
+                    <motion.div variants={itemVariants} className="w-full max-w-sm lg:max-w-md relative mt-12 lg:mt-0 flex flex-col items-center gap-6">
 
-                            {/* Floating Badge */}
-                            <div className="absolute -top-3 right-6">
-                                <span className="bg-[#D97757] text-white text-xs font-bold px-4 py-1.5 rounded-full uppercase tracking-wider shadow-lg">
-                                    Oferta de Ano Novo
+                        {/* Countdown Timer Above Card */}
+                        <div className="flex flex-col items-center gap-3">
+                            <p className="text-sm uppercase tracking-widest text-[#D97757] font-bold">Oferta de Ano Novo acaba em:</p>
+                            <CountdownTimer targetDate="2026-01-01T12:00:00" />
+                        </div>
+
+                        <motion.div
+                            animate={{ y: [0, -10, 0] }}
+                            transition={{
+                                duration: 5,
+                                repeat: Infinity,
+                                ease: "easeInOut"
+                            }}
+                            whileHover={{ scale: 1.02 }}
+                            className="relative bg-[#262624] border border-[#d97757] rounded-3xl p-6 flex flex-col shadow-2xl shadow-[#d97757]/10 w-full max-w-[320px]"
+                        >
+
+                            {/* Badge */}
+                            <div className="absolute top-0 right-0 bg-[#d97757] text-white text-[10px] font-bold px-2.5 py-0.5 rounded-bl-lg rounded-tr-2xl">
+                                MAIS POPULAR
+                            </div>
+
+                            {/* Image */}
+                            <div className="flex justify-center mb-2">
+                                <img src={fogueteImg} alt="Pro" className="w-12 h-12 object-contain" />
+                            </div>
+
+                            {/* Title */}
+                            <h3 className="text-lg font-bold text-white mb-1 flex items-center justify-center gap-2">
+                                Pro <Sparkles size={14} className="text-[#d97757]" />
+                            </h3>
+
+                            {/* Description */}
+                            <p className="text-gray-400 text-xs mb-4 text-center">
+                                Todos os recursos avançados.
+                            </p>
+
+                            {/* Price */}
+                            <div className="mb-4 text-center flex flex-col items-center">
+                                <span className="text-gray-500 line-through text-md mb-0.5">
+                                    De R$ 35,90
                                 </span>
-                            </div>
-
-                            {/* Card Header */}
-                            <div className="text-center mb-6 pt-2">
-                                <h3 className="text-2xl font-bold text-white leading-tight">
-                                    Pague R$ 5,00
-                                    <span className="block text-lg font-normal text-gray-400 mt-1">no primeiro mês!</span>
-                                </h3>
-                            </div>
-
-                            {/* Scarcity Badge */}
-                            <div className="text-center mb-6">
-                                <p className="text-[#ef4444] font-black text-xl tracking-widest uppercase filter drop-shadow-sm">APENAS 37/50 VAGAS</p>
-                                <p className="text-[11px] text-gray-500 font-medium mt-1 uppercase tracking-wide">Fecha 01/01</p>
-                            </div>
-
-                            {/* Price Section */}
-                            <div className="flex flex-col items-center justify-center mb-8">
-                                <span className="text-gray-500 line-through text-sm mb-1">De R$ 35,90</span>
-                                <div className="flex items-baseline gap-1">
-                                    <span className="text-2xl text-white font-bold">R$</span>
-                                    <span className="text-6xl font-bold text-white tracking-tighter">5,00</span>
-                                    <span className="text-xl text-gray-400">/mês</span>
-                                </div>
-                                <div className="mt-3 bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full text-xs font-bold uppercase border border-emerald-500/20">
-                                    Economize R$ 30,90
-                                </div>
-
-                                <div className="mt-4 flex flex-col items-center gap-2 animate-pulse">
-                                    <div className="flex items-center gap-2 px-3 py-1.5 bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-lg">
-                                        <span className="text-[10px] text-gray-400 uppercase tracking-wide">CUPOM:</span>
-                                        <span className="text-[#D97757] font-bold tracking-widest text-sm">DESCONTO05</span>
-                                        <span className="text-[10px] bg-[#D97757] text-white px-1.5 py-0.5 rounded font-bold ml-1">-5%</span>
-                                    </div>
+                                <div className="flex items-center gap-1">
+                                    <span className="text-3xl font-bold text-white">
+                                        <NumberFlow
+                                            value={5.00}
+                                            format={{ style: 'currency', currency: 'BRL' }}
+                                            locales="pt-BR"
+                                        />
+                                    </span>
+                                    <span className="text-gray-500 text-sm">/mês</span>
                                 </div>
                             </div>
 
-                            {/* Benefits */}
-                            <div className="space-y-4 mb-8">
-                                <BenefitsItem text="Acesso completo ao Controlar+" />
-                                <BenefitsItem text="Conexão Bancária Ilimitada" />
-                                <BenefitsItem text="IA Financeira Avançada" />
-                                <BenefitsItem text="Metas e Lembretes" />
-                            </div>
+                            {/* Features */}
+                            <ul className="space-y-2.5 mb-6 flex-1">
+                                <li className="flex items-center gap-2.5 text-xs text-white">
+                                    <CheckCircle size={14} className="text-[#d97757]" />
+                                    <span className="font-bold">IA Integrada ilimitada</span>
+                                </li>
+                                <li className="flex items-center gap-2.5 text-xs text-white">
+                                    <CheckCircle size={14} className="text-[#d97757]" />
+                                    <span>Lançamentos por Texto</span>
+                                </li>
+                                <li className="flex items-center gap-2.5 text-xs text-white">
+                                    <CheckCircle size={14} className="text-[#d97757]" />
+                                    <span>Consultor Financeiro IA</span>
+                                </li>
+                                <li className="flex items-center gap-2.5 text-xs text-white">
+                                    <CheckCircle size={14} className="text-[#d97757]" />
+                                    <span>Metas e Lembretes</span>
+                                </li>
+                                <li className="flex items-center gap-2.5 text-xs text-white">
+                                    <CheckCircle size={14} className="text-[#d97757]" />
+                                    <span>Contas Bancárias Ilimitadas</span>
+                                </li>
+                            </ul>
 
                             {/* CTA */}
-                            <button onClick={onLogin} className="w-full py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-xl font-bold text-lg transition-all transform hover:scale-[1.02] active:scale-[0.98]">
-                                Assinar Agora
+                            <button
+                                onClick={onLogin}
+                                className="w-full py-3 rounded-xl font-bold transition-colors bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/25"
+                            >
+                                Assinar Pro
                             </button>
 
-                            {/* Progress bar */}
-                            <div className="mt-6">
-                                <div className="flex justify-between text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wider">
-                                    <span>Vagas Preenchidas</span>
-                                    <span>68%</span>
-                                </div>
-                                <div className="w-full h-2 bg-gray-700/30 rounded-full overflow-hidden">
-                                    <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: "68%" }}
-                                        transition={{ duration: 1.5, ease: "easeOut" }}
-                                        className="h-full bg-[#D97757]"
-                                    />
-                                </div>
-                                <p className="text-center text-[10px] text-gray-500 mt-3 uppercase tracking-widest">
-                                    Oferta válida até 01/01
-                                </p>
-                            </div>
-                        </div>
+                        </motion.div>
                     </motion.div>
                 </motion.div>
             </section>
 
             {/* Infinite Slider - Bancos Parceiros */}
-            <section className="relative w-full py-8 bg-[#30302E] border-y border-white/5">
+            <section className="relative w-full py-8 bg-[#1a0f0a] border-y border-white/5">
                 <div className="flex items-center">
                     {/* Quadrado com texto */}
                     <div className="flex-shrink-0 px-8 py-4 border-r border-white/10">
@@ -427,7 +499,7 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
             </section>
 
             {/* Estatísticas do Sistema */}
-            <section className="relative w-full py-12 bg-[#262624]">
+            <section className="relative w-full py-12 bg-[#1a0f0a]">
                 <div className="container mx-auto px-8">
                     <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
                         {/* Texto Principal */}

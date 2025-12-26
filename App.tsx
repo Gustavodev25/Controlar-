@@ -871,8 +871,17 @@ const App: React.FC = () => {
             familyRole: profile?.familyRole,
             subscription: profile?.subscription,
             connectionLogs: profile?.connectionLogs || [],
-            dailyConnectionCredits: profile?.dailyConnectionCredits || { date: '', count: 0 }
+            dailyConnectionCredits: profile?.dailyConnectionCredits || { date: '', count: 0 },
+            createdAt: profile?.createdAt
           };
+
+          // Fix for old users without createdAt: Backfill with current time
+          if (!baseProfile.createdAt) {
+            const now = new Date().toISOString();
+            baseProfile.createdAt = now;
+            // Update in DB (store in profile)
+            dbService.updateUserProfile(firebaseUser.uid, { createdAt: now }).catch(console.error);
+          }
 
           if (profile?.twoFactorEnabled && profile?.twoFactorSecret) {
             setPendingTwoFactor({

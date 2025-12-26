@@ -52,8 +52,64 @@ interface TopbarProps {
 }
 
 export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
+  const navLinks = [
+    { name: 'Início', href: '#hero' },
+    { name: 'Funcionalidades', href: '#features' },
+    { name: 'Planos', href: '#pricing' },
+    { name: 'Depoimentos', href: '#testimonials' },
+    { name: 'FAQ', href: '#faq' },
+  ];
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<string>('Funcionalidades');
+  const [activeTab, setActiveTab] = useState<string>('Início');
+
+  // Helper to handle smooth scroll
+  const handleNavClick = (e: React.MouseEvent<HTMLAnchorElement>, href: string, name: string) => {
+    e.preventDefault();
+    setActiveTab(name);
+    setMobileMenuOpen(false); // Close mobile menu if open
+
+    const element = document.querySelector(href);
+    if (element) {
+      const offsetTop = element.getBoundingClientRect().top + window.scrollY - 100; // Offset for fixed header
+      window.scrollTo({
+        top: offsetTop,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const scrollPosition = window.scrollY + 200; // Offset to trigger a bit earlier
+
+      // Find the section active
+      let currentSection = 'Início';
+
+      navLinks.forEach((link) => {
+        const sectionId = link.href.substring(1);
+        const element = document.getElementById(sectionId);
+
+        if (element) {
+          const { offsetTop, offsetHeight } = element;
+          if (
+            scrollPosition >= offsetTop &&
+            scrollPosition < offsetTop + offsetHeight
+          ) {
+            currentSection = link.name;
+          }
+        }
+      });
+
+      if (currentSection !== activeTab) {
+        setActiveTab(currentSection);
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll);
+    handleScroll(); // Check on mount
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []); // Remove dependency on activeTab to avoid loop, let local var handle logic or set state only if changed
 
   const { scrollY } = useScroll();
 
@@ -80,14 +136,6 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
     mouseX.set(clientX - left);
     mouseY.set(clientY - top);
   }
-
-  const navLinks = [
-    { name: 'Início', href: '#hero' },
-    { name: 'Funcionalidades', href: '#features' },
-    { name: 'Planos', href: '#pricing' },
-    { name: 'Depoimentos', href: '#testimonials' },
-    { name: 'FAQ', href: '#faq' },
-  ];
 
   return (
     <>
@@ -149,10 +197,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
                   key={link.name}
                   href={link.href}
                   isActive={activeTab === link.name}
-                  onClick={(e) => {
-                    /* Default anchor behavior works for IDs, but we update active state */
-                    setActiveTab(link.name);
-                  }}
+                  onClick={(e) => handleNavClick(e, link.href, link.name)}
                 >
                   {link.name}
                 </NavItem>
@@ -215,7 +260,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
                     animate={{ x: 0, opacity: 1 }}
                     transition={{ delay: i * 0.05 }}
                     href={link.href}
-                    onClick={() => setMobileMenuOpen(false)}
+                    onClick={(e) => handleNavClick(e, link.href, link.name)}
                     className="
                       flex items-center justify-between p-3 rounded-xl 
                       text-gray-300 hover:text-white hover:bg-white/5 

@@ -24,11 +24,22 @@ const faqs = [
     }
 ];
 
+import { AnimatedGridPattern } from '../AnimatedGridPattern';
+
 export const FAQSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
     const [openIndex, setOpenIndex] = useState<number | null>(0);
 
     return (
-        <section id="faq" className="w-full bg-[#262624] py-24 relative overflow-hidden">
+        <section id="faq" className="w-full bg-[#1a0f0a] py-24 relative overflow-hidden">
+            <AnimatedGridPattern
+                width={60}
+                height={60}
+                numSquares={20}
+                maxOpacity={0.08}
+                duration={4}
+                repeatDelay={2}
+                className="[mask-image:radial-gradient(ellipse_60%_60%_at_50%_50%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03] absolute inset-0 h-full w-full pointer-events-none"
+            />
             <div className="container mx-auto px-8 relative z-10">
                 <div className="flex flex-col lg:flex-row gap-12 lg:gap-24">
 
@@ -61,7 +72,7 @@ export const FAQSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                                 <motion.div
                                     key={index}
                                     initial={false}
-                                    animate={{ backgroundColor: isOpen ? "#30302E" : "transparent" }}
+                                    animate={{ backgroundColor: isOpen ? "#262624" : "transparent" }}
                                     className={`rounded-3xl border border-neutral-700/50 overflow-hidden cursor-pointer transition-colors duration-300 ${!isOpen && 'hover:bg-white/5'}`}
                                     onClick={() => setOpenIndex(isOpen ? null : index)}
                                 >

@@ -5,7 +5,7 @@ import mockup2 from '../../assets/mockup2.png';
 
 export function ProgressSection() {
     return (
-        <div className="w-full bg-[#262624] py-20">
+        <div className="w-full bg-[#1a0f0a] py-20">
             <div className="container mx-auto px-8">
                 <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-12 gap-6">
                     <h2 className="text-3xl md:text-4xl lg:text-5xl font-bold text-[#faf9f5] max-w-xl leading-tight">
@@ -17,7 +17,7 @@ export function ProgressSection() {
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-stretch">
-                    <div className="bg-[#30302E] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
+                    <div className="bg-[#262624] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
                         <div className="flex-1 flex items-center justify-center bg-[#262624] rounded-xl overflow-hidden p-4">
                             <img
                                 src={mockup1}
@@ -35,7 +35,7 @@ export function ProgressSection() {
                         </div>
                     </div>
 
-                    <div className="bg-[#30302E] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
+                    <div className="bg-[#262624] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
                         <div className="flex-1 flex items-center justify-center bg-[#262624] rounded-xl overflow-hidden p-4">
                             <img
                                 src={mockup2}
