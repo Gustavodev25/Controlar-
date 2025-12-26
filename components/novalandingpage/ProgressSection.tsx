@@ -1,5 +1,7 @@
 import React from 'react';
 import { BlurTextEffect } from '../BlurTextEffect';
+import mockup1 from '../../assets/mockup1.png';
+import mockup2 from '../../assets/mockup2.png';
 
 export function ProgressSection() {
     return (
@@ -18,7 +20,7 @@ export function ProgressSection() {
                     <div className="bg-[#30302E] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
                         <div className="flex-1 flex items-center justify-center bg-[#262624] rounded-xl overflow-hidden p-4">
                             <img
-                                src="/assets/mockup1.png"
+                                src={mockup1}
                                 alt="Mockup de salário"
                                 className="w-full h-auto rounded-lg"
                             />
@@ -36,7 +38,7 @@ export function ProgressSection() {
                     <div className="bg-[#30302E] rounded-2xl p-6 border border-neutral-700 flex flex-col gap-6">
                         <div className="flex-1 flex items-center justify-center bg-[#262624] rounded-xl overflow-hidden p-4">
                             <img
-                                src="/assets/mockup2.png"
+                                src={mockup2}
                                 alt="Mockup de investimentos"
                                 className="w-full h-auto rounded-lg"
                             />
