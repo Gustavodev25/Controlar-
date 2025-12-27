@@ -8,6 +8,7 @@ import { ExcelTable } from './components/ExcelTable';
 import { CreditCardTable } from './components/CreditCardTable';
 import { AIModal } from './components/AIModal';
 import { AuthModal } from './components/AuthModal';
+import { LoginNew } from './components/LoginNew';
 import { LandingPage } from './components/LandingPage';
 import { PublicChangelog } from './components/PublicChangelog';
 import { SettingsModal } from './components/SettingsModal';
@@ -425,6 +426,13 @@ const App: React.FC = () => {
   const [showChangelog, setShowChangelog] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.location.pathname === '/changelog';
+    }
+    return false;
+  });
+
+  const [showNewLogin, setShowNewLogin] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.location.pathname === '/login';
     }
     return false;
   });
@@ -3028,6 +3036,10 @@ const App: React.FC = () => {
 
 
 
+  if (showNewLogin) {
+    return <LoginNew />;
+  }
+
   if (showChangelog) {
     return (
       <PublicChangelog
@@ -3073,18 +3085,7 @@ const App: React.FC = () => {
       <>
         <PixelPageViewTracker activeTab="auth" />
         <ToastContainer />
-        <AuthModal
-          onLogin={(u) => {
-            // Explicit trigger handled by AuthModal calling this, 
-            // but we rely on onAuthStateChanged for main logic. 
-            // This callback can be used for immediate UI feedback if needed.
-          }}
-          onBack={pendingTwoFactor ? undefined : () => setShowLanding(true)}
-          isTwoFactorPending={!!pendingTwoFactor}
-          onVerifyTwoFactor={handleVerifyTwoFactor}
-          onCancelTwoFactor={handleCancelTwoFactor}
-          inviteContext={pendingInvite ? { ...pendingInvite, ownerName: pendingInvite.ownerName || 'Alguém' } : null}
-        />
+        <LoginNew />
       </>
     );
   }
