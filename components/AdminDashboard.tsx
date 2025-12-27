@@ -132,6 +132,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'all' | 'pro' | 'starter'>('all');
+  const [filterFinance, setFilterFinance] = useState<'all' | 'monthly' | 'annual' | 'past_due' | 'refunded'>('all');
 
   const [connectedItems, setConnectedItems] = useState<any[]>([]);
 
@@ -225,6 +226,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       if (filterMode === 'starter') {
         return plan === 'starter';
       }
+
+      // Financial Filter
+      if (filterFinance !== 'all') {
+        const cycle = u.subscription?.billingCycle;
+        const status = u.subscription?.status;
+
+        if (filterFinance === 'monthly' && cycle !== 'monthly') return false;
+        if (filterFinance === 'annual' && cycle !== 'annual') return false;
+        if (filterFinance === 'past_due' && status !== 'past_due') return false;
+        if (filterFinance === 'refunded' && status !== 'refunded') return false;
+      }
+
       return true;
     });
 
@@ -497,7 +510,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         generic: randomTrend()
       }
     };
-  }, [users, coupons, filterMode, connectedItems]);
+  }, [users, coupons, filterMode, filterFinance, connectedItems]);
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-20">
@@ -512,6 +525,58 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <p className="text-gray-400">Visão geral financeira e métricas de saúde do sistema.</p>
         </div>
         <div className="flex items-center gap-2">
+
+          {/* Finance Filter */}
+          <Dropdown>
+            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2">
+              <DollarSign size={14} className="text-gray-400" />
+              <span>
+                {filterFinance === 'all' && 'Fin: Todos'}
+                {filterFinance === 'monthly' && 'Ciclo: Mensal'}
+                {filterFinance === 'annual' && 'Ciclo: Anual'}
+                {filterFinance === 'past_due' && 'Status: Inadimplente'}
+                {filterFinance === 'refunded' && 'Status: Reembolsado'}
+              </span>
+              <ChevronDown size={14} className="text-gray-500" />
+            </DropdownTrigger>
+            <DropdownContent align="right">
+              <DropdownLabel>CICLO DE COBRANÇA</DropdownLabel>
+              <DropdownItem onClick={() => setFilterFinance('all')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Todos</span>
+                  {filterFinance === 'all' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+              <DropdownItem onClick={() => setFilterFinance('monthly')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Mensal (MRR)</span>
+                  {filterFinance === 'monthly' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+              <DropdownItem onClick={() => setFilterFinance('annual')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Anual (Fluxo de Caixa)</span>
+                  {filterFinance === 'annual' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+
+              <DropdownSeparator />
+              <DropdownLabel>STATUS FINANCEIRO</DropdownLabel>
+
+              <DropdownItem onClick={() => setFilterFinance('past_due')}>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-red-400">Inadimplentes</span>
+                  {filterFinance === 'past_due' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+              <DropdownItem onClick={() => setFilterFinance('refunded')}>
+                <div className="flex items-center justify-between w-full">
+                  <span className="text-orange-400">Reembolsados</span>
+                  {filterFinance === 'refunded' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+            </DropdownContent>
+          </Dropdown>
 
           {/* Plan Filter */}
           <Dropdown>
