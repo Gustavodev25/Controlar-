@@ -14,7 +14,8 @@ import {
   getDocs,
   limit,
   writeBatch,
-  runTransaction
+  runTransaction,
+  collectionGroup
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup } from "../types";
@@ -2361,5 +2362,26 @@ export const getEmailDraft = async (userId: string) => {
   } catch (error) {
     console.error("Error fetching email draft:", error);
     return null;
+  }
+};
+
+// --- Helper for Admin Dashboard (Bank Connections) ---
+export const getAllConnectedAccounts = async (): Promise<any[]> => {
+  if (!db) return [];
+  try {
+    // Assuming 'items' is the subcollection name for Pluggy connections
+    // If it's different (e.g. 'connectedAccounts'), this needs to be updated.
+    // Based on API /api/pluggy/db-items, 'items' is the most likely name.
+    const itemsQuery = query(collectionGroup(db, "items"));
+    const snapshot = await getDocs(itemsQuery);
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      userId: doc.ref.parent.parent?.id,
+      ...doc.data()
+    }));
+  } catch (error) {
+    console.error("Error fetching all connected accounts:", error);
+    return [];
   }
 };

@@ -133,17 +133,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'all' | 'pro' | 'starter'>('all');
 
+  const [connectedItems, setConnectedItems] = useState<any[]>([]);
+
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [usersData, couponsData] = await Promise.all([
+        const [usersData, couponsData, itemsData] = await Promise.all([
           dbService.getAllUsers(),
-          dbService.getCoupons()
+          dbService.getCoupons(),
+          dbService.getAllConnectedAccounts()
         ]);
 
         // Load all users initially
         setUsers(usersData as SystemUser[]);
         setCoupons(couponsData);
+        setConnectedItems(itemsData);
       } catch (error) {
         console.error('Error loading admin dashboard data:', error);
       } finally {
@@ -434,6 +438,35 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       .sort((a, b) => b.value - a.value)
       .slice(0, 5); // Top 5
 
+    // --- Bank Connection Stats ---
+
+    // 1. Filter items based on filteredUsers
+    const filteredUserIds = new Set(filteredUsers.map(u => u.id));
+    const validItems = connectedItems.filter(item => filteredUserIds.has(item.userId));
+
+    // 2. Auto vs Manual
+    const usersWithAuto = new Set(validItems.map(item => item.userId));
+    const autoCount = usersWithAuto.size;
+    const manualCount = filteredUsers.length - autoCount;
+
+    const connectionTypeData = [
+      { name: 'Automático', value: autoCount, color: '#10B981' }, // Emerald
+      { name: 'Manual', value: manualCount, color: '#6B7280' }   // Gray
+    ].filter(d => d.value > 0);
+
+    // 3. Bank Ranking
+    const bankCounts: Record<string, number> = {};
+    validItems.forEach(item => {
+      // Use connector name or fallback
+      const bankName = item.connector?.name || 'Banco Desconhecido';
+      bankCounts[bankName] = (bankCounts[bankName] || 0) + 1;
+    });
+
+    const bankRankingData = Object.entries(bankCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5); // Top 5
+
     const chartData = Object.entries(projectionMap).map(([name, value]) => ({ name, value }));
     const planData = [
       { name: 'Starter', value: planCounts.starter, color: PLAN_COLORS.starter },
@@ -453,6 +486,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       chartData,
       planData,
       locationsChartData,
+      connectionTypeData,
+      bankRankingData,
       cumulativeGrowth, // Add to return object
       filteredCount: filteredUsers.length,
       trends: {
@@ -462,7 +497,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         generic: randomTrend()
       }
     };
-  }, [users, coupons, filterMode]);
+  }, [users, coupons, filterMode, connectedItems]);
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-20">
@@ -730,14 +765,92 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 <p className="text-xs text-gray-500 uppercase">Usuários</p>
               </div>
             </div>
+            {/* Legend */}
+            <div className="absolute bottom-0 w-full flex justify-center gap-4 text-xs font-medium">
+              {stats.planData.map(p => (
+                <div key={p.name} className="flex items-center gap-1.5 text-gray-400">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                  {p.name} ({Math.round(p.value / stats.filteredCount * 100)}%)
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="flex justify-center gap-6 mt-4">
-            {stats.planData.map(entry => (
-              <div key={entry.name} className="flex items-center gap-2">
-                <span className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }} />
-                <span className="text-sm text-gray-300">{entry.name}</span>
+        </div>
+      </div>
+
+      {/* Row 3: Bank Connections */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
+        {/* Connection Auto vs Manual */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 flex flex-col">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <TrendingUp size={18} className="text-[#10B981]" />
+            Status de Conexão
+          </h3>
+          <div className="flex-1 flex items-center justify-center relative">
+            <ResponsiveContainer width="100%" height={250}>
+              <PieChart>
+                <Pie
+                  data={stats.connectionTypeData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={60}
+                  outerRadius={80}
+                  paddingAngle={5}
+                  dataKey="value"
+                >
+                  {stats.connectionTypeData.map((entry: any, index: number) => (
+                    <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.5)" />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+              </PieChart>
+            </ResponsiveContainer>
+            {/* Center Text */}
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+              <div className="text-center">
+                <p className="text-3xl font-bold text-white">{stats.filteredCount}</p>
+                <p className="text-xs text-gray-500 uppercase">Total</p>
+              </div>
+            </div>
+            {/* Legend */}
+            <div className="absolute bottom-0 w-full flex justify-center gap-4 text-xs font-medium">
+              {stats.connectionTypeData.map((p: any) => (
+                <div key={p.name} className="flex items-center gap-1.5 text-gray-400">
+                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
+                  {p.name} ({Math.round(p.value / stats.filteredCount * 100)}%)
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Top Banks Ranking */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
+            <DollarSign size={18} className="text-[#D97757]" />
+            Top Bancos Conectados
+          </h3>
+          <div className="space-y-4">
+            {stats.bankRankingData.map((item: any, index: number) => (
+              <div key={item.name} className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-gray-500 font-mono text-sm w-4">{index + 1}</span>
+                  <span className="text-gray-300 font-medium truncate max-w-[150px]" title={item.name}>{item.name}</span>
+                </div>
+                <div className="flex items-center gap-4 flex-1 justify-end">
+                  <div className="h-2 bg-gray-800 rounded-full flex-1 max-w-[150px] overflow-hidden">
+                    <div
+                      className="h-full bg-[#D97757] rounded-full"
+                      style={{ width: `${(item.value / stats.filteredCount) * 100}%` }}
+                    />
+                  </div>
+                  <span className="text-sm font-bold text-white min-w-[30px] text-right">{item.value}</span>
+                </div>
               </div>
             ))}
+            {stats.bankRankingData.length === 0 && (
+              <p className="text-gray-500 text-center py-10">Nenhum banco conectado encontrado</p>
+            )}
           </div>
         </div>
       </div>
