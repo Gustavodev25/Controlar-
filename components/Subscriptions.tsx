@@ -21,6 +21,7 @@ import {
 import { EmptyState } from './EmptyState';
 import { CustomAutocomplete, CustomSelect, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
+import { UniversalModal } from './UniversalModal';
 import { parseSubscriptionFromText } from '../services/claudeService';
 import coinzinhaImg from '../assets/coinzinha.png';
 import NumberFlow from '@number-flow/react';
@@ -536,7 +537,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 <Settings size={18} className="sm:w-5 sm:h-5" />
               </button>
             </DropdownTrigger>
-            <DropdownContent align="right">
+            <DropdownContent align="left">
               <DropdownItem icon={RefreshCw} onClick={() => setSelectionMode(true)}>
                 Gerenciar Ciclos
               </DropdownItem>
@@ -544,7 +545,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
           </Dropdown>
 
           {/* Month Picker - Flex grow em mobile */}
-          <div className="flex-1 sm:flex-none sm:w-40 lg:w-48">
+          <div className="w-auto sm:w-40 lg:w-48">
             <CustomMonthPicker
               value={filterMonth}
               onChange={setFilterMonth}
@@ -766,252 +767,216 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         document.body
       )}
 
-      {/* Modal Reformulada (Visual Reminders) */}
-      {isVisible && createPortal(
-        <div
-          className={`
-                fixed inset-0 z-[9999] flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-                ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
-            `}
-        >
-          <div
-            className={`
-                bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] flex flex-col max-h-[85vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-            `}
-          >
-            {/* Background Glow */}
-            <div className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-15 ${modalMode === 'ai' ? 'bg-[#d97757]' : 'bg-gray-600'}`} />
-
-            {/* Header Modal - Tabs Compactas */}
-            <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
-              {!editingId ? (
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Plus size={14} className="text-[#d97757]" />
-                  Nova Assinatura
-                </h3>
-              ) : (
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Edit2 size={14} className="text-[#d97757]" />
-                  Editar Assinatura
-                </h3>
-              )}
-              <button onClick={handleClose} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all"><X size={16} /></button>
+      {/* Modal Reformulada (UniversalModal) */}
+      <UniversalModal
+        isOpen={isModalOpen}
+        onClose={handleClose}
+        title={editingId ? "Editar Assinatura" : "Nova Assinatura"}
+        icon={editingId ? <Edit2 size={24} /> : <Plus size={24} />}
+        footer={
+          modalMode === 'ai' && !editingId ? (
+            <div className="relative flex items-center gap-2 w-full">
+              <input
+                type="text"
+                value={aiInput}
+                onChange={(e) => setAiInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua assinatura... (ex: Netflix 55)"}
+                disabled={generationStatus !== 'idle' || isLimitReached}
+                className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
+                className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
+              >
+                <Send size={18} />
+              </button>
             </div>
+          ) : null
+        }
+      >
+        <div className="flex flex-col h-full">
+          {/* --- AI MODE (Chat Style) --- */}
+          {modalMode === 'ai' && !editingId && (
+            <div className="space-y-4 pb-2">
+              {chatMessages.map((msg) => (
+                <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
+                  <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                    {/* Avatar */}
+                    <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-[#373734] border-[#4a4a47]'}`}>
+                      {msg.role === 'user' ? (
+                        <User size={14} className="text-white" />
+                      ) : (
+                        <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                      )}
+                    </div>
 
-            {/* Content Modal */}
-            <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual Reminders) --- */}
-              {modalMode === 'ai' && !editingId && (
-                <>
-                  {/* Área de mensagens */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                    {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                        <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                          {/* Avatar */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-[#373734] border-[#4a4a47]'}`}>
-                            {msg.role === 'user' ? (
-                              <User size={14} className="text-white" />
-                            ) : (
-                              <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                            )}
+                    {/* Bubble */}
+                    <div>
+                      <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                        ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
+                        : 'bg-[#373734]/50 text-gray-200 rounded-bl-none border border-[#4a4a47]/50'
+                        }`}>
+                        {msg.content}
+                      </div>
+
+                      {/* Subscription Summary Card */}
+                      {msg.summaryData && (
+                        <div className="mt-3 w-full max-w-[280px] bg-[#272725] border border-[#373734] rounded-2xl overflow-hidden shadow-xl">
+                          <div className="bg-[#30302E]/80 px-4 py-2.5 border-b border-[#373734] flex items-center justify-between">
+                            <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                              <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
+                              Assinatura Criada
+                            </span>
                           </div>
-
-                          {/* Bubble */}
-                          <div>
-                            <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                              ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
-                              : 'bg-[#373734]/50 text-gray-200 rounded-bl-none border border-[#4a4a47]/50'
-                              }`}>
-                              {msg.content}
-                            </div>
-
-                            {/* Subscription Summary Card */}
-                            {msg.summaryData && (
-                              <div className="mt-3 w-full max-w-[280px] bg-[#272725] border border-[#373734] rounded-2xl overflow-hidden shadow-xl">
-                                <div className="bg-[#30302E]/80 px-4 py-2.5 border-b border-[#373734] flex items-center justify-between">
-                                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
-                                    Assinatura Criada
+                          <div className="p-3 hover:bg-white/5 transition-colors group">
+                            <div className="flex justify-between items-start gap-3">
+                              <div className="flex-1 min-w-0">
+                                <p className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                                  {msg.summaryData.name}
+                                </p>
+                                <div className="flex flex-wrap items-center gap-2 mt-1">
+                                  <span className="text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded flex items-center gap-1 border border-[#373734]/50">
+                                    <Tag size={10} /> {msg.summaryData.category}
+                                  </span>
+                                  <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                                    <RefreshCw size={10} /> {msg.summaryData.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}
                                   </span>
                                 </div>
-                                <div className="p-3 hover:bg-white/5 transition-colors group">
-                                  <div className="flex justify-between items-start gap-3">
-                                    <div className="flex-1 min-w-0">
-                                      <p className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
-                                        {msg.summaryData.name}
-                                      </p>
-                                      <div className="flex flex-wrap items-center gap-2 mt-1">
-                                        <span className="text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded flex items-center gap-1 border border-[#373734]/50">
-                                          <Tag size={10} /> {msg.summaryData.category}
-                                        </span>
-                                        <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                                          <RefreshCw size={10} /> {msg.summaryData.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div className="text-right">
-                                      <p className="text-sm font-bold text-emerald-400">
-                                        R$ {msg.summaryData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </div>
                               </div>
-                            )}
+                              <div className="text-right">
+                                <p className="text-sm font-bold text-emerald-400">
+                                  R$ {msg.summaryData.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </p>
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))}
-
-                    {/* Processing Bubble */}
-                    {generationStatus !== 'idle' && (
-                      <div className="flex w-full justify-start animate-fade-in-up">
-                        <div className="flex items-end gap-2 max-w-[85%]">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-[#373734] border-[#4a4a47]">
-                            <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                          </div>
-                          <div className="bg-[#373734]/50 text-gray-200 rounded-2xl rounded-bl-none border border-[#4a4a47]/50 p-3 shadow-sm flex items-center">
-                            <TextShimmer className='font-medium text-sm' duration={1.5}>
-                              {generationMessage}
-                            </TextShimmer>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div ref={messagesEndRef} />
-                  </div>
-
-                  {/* Limit Banner */}
-                  {isLimitReached && (
-                    <div className="mb-2 mx-4 px-2 flex items-center justify-between">
-                      <span className="text-xs text-gray-400">
-                        Limite de 5 mensagens atingido.
-                      </span>
-                      <button
-                        onClick={() => onUpgrade?.()}
-                        className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
-                      >
-                        Fazer Upgrade
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Input Area */}
-                  <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
-                    <div className="relative flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={aiInput}
-                        onChange={(e) => setAiInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                        placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua assinatura... (ex: Netflix 55)"}
-                        disabled={generationStatus !== 'idle' || isLimitReached}
-                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
-                      />
-                      <button
-                        onClick={handleSendMessage}
-                        disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
-                        className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
-                      >
-                        <Send size={18} />
-                      </button>
+                      )}
                     </div>
                   </div>
-                </>
+                </div>
+              ))}
+
+              {/* Processing Bubble */}
+              {generationStatus !== 'idle' && (
+                <div className="flex w-full justify-start animate-fade-in-up">
+                  <div className="flex items-end gap-2 max-w-[85%]">
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-[#373734] border-[#4a4a47]">
+                      <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                    </div>
+                    <div className="bg-[#373734]/50 text-gray-200 rounded-2xl rounded-bl-none border border-[#4a4a47]/50 p-3 shadow-sm flex items-center">
+                      <TextShimmer className='font-medium text-sm' duration={1.5}>
+                        {generationMessage}
+                      </TextShimmer>
+                    </div>
+                  </div>
+                </div>
               )}
 
+              <div ref={messagesEndRef} />
 
-
-              {/* MANUAL FORM */}
-              {(modalMode === 'manual' || editingId) && (
-                <form onSubmit={handleSubmit} className="p-6 overflow-y-auto custom-scrollbar space-y-5 animate-fade-in">
-
-                  {/* Name */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Nome do Serviço</label>
-                    <div className="relative group">
-                      <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
-                      <input
-                        required
-                        type="text"
-                        value={formData.name}
-                        onChange={e => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Ex: Netflix"
-                        className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-4">
-                    {/* Amount */}
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Valor (R$)</label>
-                      <div className="relative group">
-                        <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
-                        <input
-                          required
-                          type="number"
-                          step="0.01"
-                          value={formData.amount}
-                          onChange={e => setFormData({ ...formData, amount: e.target.value })}
-                          className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
-                          placeholder="0.00"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Cycle */}
-                    <div>
-                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Ciclo</label>
-                      <CustomSelect
-                        value={formData.billingCycle}
-                        onChange={(val) => setFormData({ ...formData, billingCycle: val as any })}
-                        options={[
-                          { value: 'monthly', label: 'Mensal' },
-                          { value: 'yearly', label: 'Anual' }
-                        ]}
-                        icon={<RefreshCw size={16} />}
-                        className="w-full text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Category */}
-                  <div>
-                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Categoria</label>
-                    <CustomAutocomplete
-                      value={formData.category}
-                      onChange={(val) => setFormData({ ...formData, category: val })}
-                      options={categories}
-                      icon={<Tag size={18} />}
-                      placeholder="Ex: Lazer, Tecnologia..."
-                    />
-                  </div>
-
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/30 transition-all flex items-center justify-center gap-2"
-                    >
-                      <Check size={20} strokeWidth={3} /> {editingId ? 'Atualizar Assinatura' : 'Salvar Assinatura'}
-                    </button>
-                  </div>
-                </form>
+              {/* Limit Banner */}
+              {isLimitReached && (
+                <div className="mb-2 mx-4 px-2 flex items-center justify-between">
+                  <span className="text-xs text-gray-400">
+                    Limite de 5 mensagens atingido.
+                  </span>
+                  <button
+                    onClick={() => onUpgrade?.()}
+                    className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                  >
+                    Fazer Upgrade
+                  </button>
+                </div>
               )}
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          )}
+
+          {/* MANUAL FORM */}
+          {(modalMode === 'manual' || editingId) && (
+            <form onSubmit={handleSubmit} className="space-y-5 animate-fade-in py-1">
+              {/* Name */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Nome do Serviço</label>
+                <div className="relative group">
+                  <FileText className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                  <input
+                    required
+                    type="text"
+                    value={formData.name}
+                    onChange={e => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Ex: Netflix"
+                    className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                {/* Amount */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Valor (R$)</label>
+                  <div className="relative group">
+                    <DollarSign className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      value={formData.amount}
+                      onChange={e => setFormData({ ...formData, amount: e.target.value })}
+                      className="w-full bg-[#272725] border border-[#373734] rounded-xl text-white pl-12 pr-4 py-3.5 text-sm focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 outline-none transition-all"
+                      placeholder="0.00"
+                    />
+                  </div>
+                </div>
+
+                {/* Cycle */}
+                <div>
+                  <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Ciclo</label>
+                  <CustomSelect
+                    value={formData.billingCycle}
+                    onChange={(val) => setFormData({ ...formData, billingCycle: val as any })}
+                    options={[
+                      { value: 'monthly', label: 'Mensal' },
+                      { value: 'yearly', label: 'Anual' }
+                    ]}
+                    icon={<RefreshCw size={16} />}
+                    className="w-full text-sm"
+                  />
+                </div>
+              </div>
+
+              {/* Category */}
+              <div>
+                <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider mb-2 block ml-1">Categoria</label>
+                <CustomAutocomplete
+                  value={formData.category}
+                  onChange={(val) => setFormData({ ...formData, category: val })}
+                  options={categories}
+                  icon={<Tag size={18} />}
+                  placeholder="Ex: Lazer, Tecnologia..."
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  className="w-full py-4 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/30 transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={20} strokeWidth={3} /> {editingId ? 'Atualizar Assinatura' : 'Salvar Assinatura'}
+                </button>
+              </div>
+            </form>
+          )}
+        </div>
+      </UniversalModal>
 
       {/* Delete Confirmation */}
       <ConfirmationBar

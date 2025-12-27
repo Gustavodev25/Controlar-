@@ -2053,6 +2053,13 @@ export interface Feedback {
   createdAt: string;
   resolvedAt?: string;
   adminNotes?: string;
+  votes?: FeedbackVote[];
+}
+
+export interface FeedbackVote {
+  userId: string;
+  userAvatar?: string;
+  userName?: string;
 }
 
 export const addFeedback = async (feedback: Omit<Feedback, 'id'>) => {
@@ -2074,6 +2081,40 @@ export const deleteFeedback = async (feedbackId: string) => {
   if (!db) return;
   const feedbackRef = doc(db, "feedbacks", feedbackId);
   await deleteDoc(feedbackRef);
+};
+
+export const toggleFeedbackVote = async (feedbackId: string, user: { id: string, name?: string, avatarUrl?: string }) => {
+  if (!db) return;
+  const feedbackRef = doc(db, "feedbacks", feedbackId);
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const sfDoc = await transaction.get(feedbackRef);
+      if (!sfDoc.exists()) {
+        throw "Document does not exist!";
+      }
+
+      const data = sfDoc.data() as Feedback;
+      const votes = data.votes || [];
+      const hasVoted = votes.some(v => v.userId === user.id);
+
+      let newVotes;
+      if (hasVoted) {
+        newVotes = votes.filter(v => v.userId !== user.id);
+      } else {
+        // Add vote
+        newVotes = [...votes, {
+          userId: user.id,
+          userAvatar: (user.avatarUrl || user.name?.slice(0, 2).toUpperCase()) ?? '?',
+          userName: user.name
+        }];
+      }
+
+      transaction.update(feedbackRef, { votes: newVotes });
+    });
+  } catch (e) {
+    console.error("Transaction failed: ", e);
+  }
 };
 
 export const getFeedbacks = async (): Promise<Feedback[]> => {

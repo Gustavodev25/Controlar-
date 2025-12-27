@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
-import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock } from './Icons';
+import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock, Ticket } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
@@ -51,6 +51,7 @@ interface StatsCardsProps {
     expense?: string;
     savings?: string;
   };
+  onPromoClick?: () => void;
 }
 
 export const StatsCards: React.FC<StatsCardsProps> = ({
@@ -68,7 +69,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
   userPlan = 'starter',
   onUpgradeClick,
   hideCards = false,
-  labels
+  labels,
+  onPromoClick
 }) => {
   // Helper function to detect credit card payment transactions
   const isCreditCardPayment = useCallback((description: string, category?: string): boolean => {
@@ -845,6 +847,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   return (
     <div className="space-y-4 mb-6 animate-fade-in">
+
+
       {/* Account Balances & Toggles Row */}
       {!hideCards && accountBalances && toggles && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

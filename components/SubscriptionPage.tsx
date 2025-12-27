@@ -16,11 +16,19 @@ interface SubscriptionPageProps {
     user: User;
     onBack: () => void;
     onUpdateUser: (user: User) => Promise<void>;
+    initialCouponCode?: string;
+    initialPlanId?: 'starter' | 'pro' | 'family';
 }
 
-export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack, onUpdateUser }) => {
+export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
+    user,
+    onBack,
+    onUpdateUser,
+    initialCouponCode,
+    initialPlanId
+}) => {
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
-    const [view, setView] = useState<'plans' | 'checkout'>('plans');
+    const [view, setView] = useState<'plans' | 'checkout'>(initialPlanId ? 'checkout' : 'plans');
     const [selectedPlan, setSelectedPlan] = useState<{ id: 'starter' | 'pro' | 'family', name: string, price: number } | null>(null);
     const [isLoading, setIsLoading] = useState(false);
     const toast = useToasts();
@@ -60,6 +68,19 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
             popular: true
         }
     ];
+
+    // Initialize selected plan from prop if available
+    React.useEffect(() => {
+        if (initialPlanId) {
+            const plan = plans.find(p => p.id === initialPlanId);
+            if (plan) {
+                // Determine price based on billing cycle (default monthly)
+                // Note: billingCycle state might be 'monthly' initially
+                const price = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
+                setSelectedPlan({ id: plan.id as any, name: plan.name, price });
+            }
+        }
+    }, [initialPlanId]); // Only run once on mount (or if prop changes, though likely static)
 
     const handleSelectClick = async (planId: 'starter' | 'pro' | 'family', name: string, price: number) => {
         if (planId === 'starter') {
@@ -482,6 +503,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({ user, onBack
                         onSubmit={handleCheckoutSubmit}
                         onBack={() => setView('plans')}
                         isLoading={isLoading}
+                        initialCouponCode={initialCouponCode}
                     />
                 )}
             </div>

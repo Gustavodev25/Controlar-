@@ -5,6 +5,7 @@ import { Reminder } from '../types';
 import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2, Send, User, Clock, ChevronLeft, ChevronRight } from './Icons';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
+import { UniversalModal } from './UniversalModal';
 import { parseReminderFromText, AIParsedReminder, parseMessageIntent } from '../services/claudeService';
 import { EmptyState } from './EmptyState';
 import coinzinhaImg from '../assets/coinzinha.png';
@@ -202,9 +203,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false, userPlan = 'starter', onUpgrade }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  // Modal Animation & State
-  const [isVisible, setIsVisible] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
+
   const [modalMode, setModalMode] = useState<ModalMode>('manual');
   const [editingReminder, setEditingReminder] = useState<Reminder | null>(null);
 
@@ -263,8 +262,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
   const [shouldRenderBottomBar, setShouldRenderBottomBar] = useState(false);
 
-  const [isDateModalVisible, setIsDateModalVisible] = useState(false);
-  const [shouldRenderDateModal, setShouldRenderDateModal] = useState(false);
+
 
   useEffect(() => {
     if (selectionMode) {
@@ -279,17 +277,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     }
   }, [selectionMode]);
 
-  useEffect(() => {
-    if (showBulkEditModal) {
-      setShouldRenderDateModal(true);
-      const timer = setTimeout(() => setIsDateModalVisible(true), 10);
-      return () => clearTimeout(timer);
-    } else {
-      setIsDateModalVisible(false);
-      const timer = setTimeout(() => setShouldRenderDateModal(false), 500);
-      return () => clearTimeout(timer);
-    }
-  }, [showBulkEditModal]);
+
 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -302,20 +290,11 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   ];
 
   useEffect(() => {
-    let timeoutId: ReturnType<typeof setTimeout>;
     if (isModalOpen) {
-      setIsVisible(true);
-
       // Sync from storage
       const savedCount = localStorage.getItem('coinzinha_starter_count');
       if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
 
-      // Não forçar mais modo manual no modo Auto - AI liberada
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setIsAnimating(true);
-        });
-      });
       // Inicializar mensagem de boas-vindas do chat
       if (chatMessages.length === 0) {
         setChatMessages([{
@@ -324,13 +303,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
           content: 'Olá! Sou o Coinzinha. Diga o que você quer lembrar de pagar ou receber. Ex: "Luz 100 reais dia 10"'
         }]);
       }
-    } else {
-      setIsAnimating(false);
-      timeoutId = setTimeout(() => {
-        setIsVisible(false);
-      }, 300);
     }
-    return () => clearTimeout(timeoutId);
   }, [isModalOpen, isProMode]);
 
   // Scroll automático para novas mensagens
@@ -583,7 +556,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
           </div>
 
           {/* Controles - Em linha para mobile */}
-          <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
             {/* Dropdown de Opções */}
             <Dropdown className="flex items-center">
               <DropdownTrigger className="flex items-center">
@@ -594,7 +567,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   <Settings size={18} className="sm:w-5 sm:h-5" />
                 </button>
               </DropdownTrigger>
-              <DropdownContent align="right">
+              <DropdownContent align="left">
                 <DropdownItem
                   icon={CalendarClock}
                   onClick={() => setSelectionMode(true)}
@@ -605,33 +578,34 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
             </Dropdown>
 
             {/* Filter Type Toggles */}
-            <div className="flex bg-[#272725] p-1 rounded-lg border border-[#373734] shrink-0">
+            <div className="flex bg-[#272725] p-1 rounded-lg border border-[#373734] shrink-0 overflow-x-auto max-w-[200px] sm:max-w-none no-scrollbar">
               <button
                 onClick={() => setFilterType('all')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'all' ? 'bg-[#373734] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${filterType === 'all' ? 'bg-[#373734] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Todos
               </button>
               <button
                 onClick={() => setFilterType('expense')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'expense' ? 'bg-red-500/10 text-red-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${filterType === 'expense' ? 'bg-red-500/10 text-red-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Pagar
               </button>
               <button
                 onClick={() => setFilterType('income')}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${filterType === 'income' ? 'bg-emerald-500/10 text-emerald-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all whitespace-nowrap ${filterType === 'income' ? 'bg-emerald-500/10 text-emerald-500 shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
               >
                 Receber
               </button>
             </div>
 
             {/* Month Picker - Flex grow em mobile */}
-            <div className="flex-1 sm:flex-none sm:w-40 lg:w-48">
+            <div className="flex-1 min-w-[120px] sm:flex-none sm:w-40 lg:w-48">
               <CustomMonthPicker
                 value={filterMonth}
                 onChange={setFilterMonth}
                 placeholder="Mês"
+                portal={true}
               />
             </div>
 
@@ -750,418 +724,369 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
       )}
 
       {/* --- MODAL REFORMULADA (Visual igual ConfirmationCard) --- */}
-      {isVisible && createPortal(
-        <div className={`
-            fixed inset-0 z-[9999] flex items-center justify-center p-4 
-            transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-            ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}
-        `}>
-          <div className={`
-                bg-[#30302E] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-[#373734] 
-                flex flex-col max-h-[85vh] relative 
-                transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)]
-                ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-          `}>
+      {/* --- MODAL REFORMULADA COM UNIVERSAL MODAL --- */}
+      <UniversalModal
+        isOpen={isModalOpen}
+        onClose={handleClose}
+        title={editingReminder ? "Editar Lembrete" : "Novo Lembrete"}
+        subtitle={modalMode === 'ai' ? "Diga o que você quer lembrar" : "Preencha os dados abaixo"}
+        icon={editingReminder ? <Edit2 size={20} /> : <Plus size={20} />}
+        width="max-w-md"
+        themeColor={newReminder.type === 'income' ? '#10b981' : '#d97757'}
+      >
+        <div className="flex flex-col h-[60vh] sm:h-auto">
+          {/* --- AI MODE (Chat Style igual AIModal) --- */}
+          {modalMode === 'ai' && (
+            <>
+              {/* Área de mensagens */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+                {chatMessages.map((msg) => (
+                  <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
+                    <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                      {/* Avatar */}
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-[#373734] border-[#4a4a47]'}`}>
+                        {msg.role === 'user' ? (
+                          <User size={14} className="text-white" />
+                        ) : (
+                          <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                        )}
+                      </div>
 
-            {/* Background Glow */}
-            <div className={`absolute top-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-15 ${modalMode === 'ai' ? 'bg-[#d97757]' : 'bg-gray-600'}`} />
+                      {/* Bubble */}
+                      <div>
+                        <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                          ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
+                          : 'bg-[#373734]/50 text-gray-200 rounded-bl-none border border-[#4a4a47]/50'
+                          }`}>
+                          {msg.content}
+                        </div>
 
-            {/* Header Modal - Tabs Compactas */}
-            <div className="px-4 py-3 border-b border-[#373734]/50 flex justify-between items-center relative z-10">
-              {!editingReminder ? (
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Plus size={14} className="text-[#d97757]" />
-                  Novo Lembrete
-                </h3>
-              ) : (
-                <h3 className="text-sm font-semibold text-white flex items-center gap-2">
-                  <Edit2 size={14} className="text-[#d97757]" />
-                  Editar Lembrete
-                </h3>
-              )}
-              <button onClick={handleClose} className="text-gray-500 hover:text-white p-1.5 hover:bg-[#373734]/50 rounded-md transition-all">
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Content Modal */}
-            <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-              {/* --- AI MODE (Chat Style igual AIModal) --- */}
-              {modalMode === 'ai' && (
-                <>
-                  {/* Área de mensagens */}
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                    {chatMessages.map((msg) => (
-                      <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                        <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                          {/* Avatar */}
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-[#373734] border-[#4a4a47]'}`}>
-                            {msg.role === 'user' ? (
-                              <User size={14} className="text-white" />
-                            ) : (
-                              <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                            )}
-                          </div>
-
-                          {/* Bubble */}
-                          <div>
-                            <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                              ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
-                              : 'bg-[#373734]/50 text-gray-200 rounded-bl-none border border-[#4a4a47]/50'
-                              }`}>
-                              {msg.content}
+                        {/* Reminder Summary Card */}
+                        {msg.summaryData && msg.summaryData.length > 0 && (
+                          <div className="mt-3 w-full max-w-[280px] bg-[#272725] border border-[#373734] rounded-2xl overflow-hidden shadow-xl">
+                            <div className="bg-[#30302E]/80 px-4 py-2.5 border-b border-[#373734] flex items-center justify-between">
+                              <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
+                                <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
+                                {msg.summaryData.length === 1 ? 'Lembrete Criado' : `${msg.summaryData.length} Lembretes`}
+                              </span>
                             </div>
-
-                            {/* Reminder Summary Card */}
-                            {msg.summaryData && msg.summaryData.length > 0 && (
-                              <div className="mt-3 w-full max-w-[280px] bg-[#272725] border border-[#373734] rounded-2xl overflow-hidden shadow-xl">
-                                <div className="bg-[#30302E]/80 px-4 py-2.5 border-b border-[#373734] flex items-center justify-between">
-                                  <span className="text-[10px] font-bold text-gray-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
-                                    {msg.summaryData.length === 1 ? 'Lembrete Criado' : `${msg.summaryData.length} Lembretes`}
-                                  </span>
-                                </div>
-                                <div className="divide-y divide-[#373734]/50">
-                                  {msg.summaryData.map((r, idx) => (
-                                    <div key={idx} className="p-3 hover:bg-white/5 transition-colors group">
-                                      <div className="flex justify-between items-start gap-3">
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
-                                            {r.description}
-                                          </p>
-                                          <div className="flex flex-wrap items-center gap-2 mt-1">
-                                            <span className="text-[10px] text-gray-500 bg-[#373734] px-1.5 py-0.5 rounded flex items-center gap-1 border border-[#4a4a47]/50">
-                                              <Tag size={10} /> {r.category}
-                                            </span>
-                                            <span className="text-[10px] text-gray-500 flex items-center gap-1">
-                                              <Calendar size={10} /> {r.dueDate.split('-').reverse().slice(0, 2).join('/')}
-                                            </span>
-                                          </div>
-                                        </div>
-                                        <div className="text-right">
-                                          <p className={`text-sm font-bold ${r.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
-                                            {r.type === 'expense' ? '- ' : '+ '}
-                                            R$ {r.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                          </p>
-                                          {r.isRecurring && (
-                                            <span className="text-[10px] text-gray-500 flex items-center justify-end gap-1 mt-0.5">
-                                              <Clock size={10} /> Recorrente
-                                            </span>
-                                          )}
-                                        </div>
+                            <div className="divide-y divide-[#373734]/50">
+                              {msg.summaryData.map((r, idx) => (
+                                <div key={idx} className="p-3 hover:bg-white/5 transition-colors group">
+                                  <div className="flex justify-between items-start gap-3">
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-sm font-medium text-gray-200 truncate group-hover:text-white transition-colors">
+                                        {r.description}
+                                      </p>
+                                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                                        <span className="text-[10px] text-gray-500 bg-[#373734] px-1.5 py-0.5 rounded flex items-center gap-1 border border-[#4a4a47]/50">
+                                          <Tag size={10} /> {r.category}
+                                        </span>
+                                        <span className="text-[10px] text-gray-500 flex items-center gap-1">
+                                          <Calendar size={10} /> {r.dueDate.split('-').reverse().slice(0, 2).join('/')}
+                                        </span>
                                       </div>
                                     </div>
-                                  ))}
+                                    <div className="text-right">
+                                      <p className={`text-sm font-bold ${r.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                                        {r.type === 'expense' ? '- ' : '+ '}
+                                        R$ {r.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                      </p>
+                                      {r.isRecurring && (
+                                        <span className="text-[10px] text-gray-500 flex items-center justify-end gap-1 mt-0.5">
+                                          <Clock size={10} /> Recorrente
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        )}
                       </div>
-                    ))}
-
-                    {/* Processing Bubble */}
-                    {generationStatus !== 'idle' && (
-                      <div className="flex w-full justify-start animate-fade-in-up">
-                        <div className="flex items-end gap-2 max-w-[85%]">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-[#373734] border-[#4a4a47]">
-                            <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                          </div>
-                          <div className="bg-[#373734]/50 text-gray-200 rounded-2xl rounded-bl-none border border-[#4a4a47]/50 p-3 shadow-sm flex items-center">
-                            <TextShimmer className='font-medium text-sm' duration={1.5}>
-                              {generationMessage}
-                            </TextShimmer>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    <div ref={messagesEndRef} />
-                  </div>
-
-                  {/* Limit Banner */}
-                  {isLimitReached && (
-                    <div className="mb-2 mx-4 px-2 flex items-center justify-between">
-                      <span className="text-xs text-gray-400">
-                        Limite de 5 mensagens atingido.
-                      </span>
-                      <button
-                        onClick={() => onUpgrade?.()}
-                        className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
-                      >
-                        Fazer Upgrade
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Input Area */}
-                  <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
-                    <div className="relative flex items-center gap-2">
-                      <input
-                        type="text"
-                        value={aiInput}
-                        onChange={(e) => setAiInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && !e.shiftKey) {
-                            e.preventDefault();
-                            handleSendMessage();
-                          }
-                        }}
-                        placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
-                        disabled={generationStatus !== 'idle' || isLimitReached}
-                        className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
-                      />
-                      <button
-                        onClick={handleSendMessage}
-                        disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
-                        className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
-                      >
-                        <Send size={18} />
-                      </button>
                     </div>
                   </div>
-                </>
+                ))}
+
+                {/* Processing Bubble */}
+                {generationStatus !== 'idle' && (
+                  <div className="flex w-full justify-start animate-fade-in-up">
+                    <div className="flex items-end gap-2 max-w-[85%]">
+                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-[#373734] border-[#4a4a47]">
+                        <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                      </div>
+                      <div className="bg-[#373734]/50 text-gray-200 rounded-2xl rounded-bl-none border border-[#4a4a47]/50 p-3 shadow-sm flex items-center">
+                        <TextShimmer className='font-medium text-sm' duration={1.5}>
+                          {generationMessage}
+                        </TextShimmer>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <div ref={messagesEndRef} />
+              </div>
+
+              {/* Limit Banner */}
+              {isLimitReached && (
+                <div className="mb-2 mx-4 px-2 flex items-center justify-between">
+                  <span className="text-xs text-gray-400">
+                    Limite de 5 mensagens atingido.
+                  </span>
+                  <button
+                    onClick={() => onUpgrade?.()}
+                    className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                  >
+                    Fazer Upgrade
+                  </button>
+                </div>
               )}
 
-              {/* --- MANUAL MODE --- */}
-              {modalMode === 'manual' && (
-                <form onSubmit={handleManualSubmit} className="p-4 overflow-y-auto custom-scrollbar space-y-3 animate-fade-in">
+              {/* Input Area */}
+              <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
+                <div className="relative flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={aiInput}
+                    onChange={(e) => setAiInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault();
+                        handleSendMessage();
+                      }
+                    }}
+                    placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
+                    disabled={generationStatus !== 'idle' || isLimitReached}
+                    className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
+                  />
+                  <button
+                    onClick={handleSendMessage}
+                    disabled={!aiInput.trim() || generationStatus !== 'idle' || isLimitReached}
+                    className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
+                  >
+                    <Send size={18} />
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
 
-                  {/* Tipo Segmentado - Compacto */}
-                  <div className="flex p-0.5 bg-[#272725]/50 rounded-lg">
-                    <button
-                      type="button"
-                      onClick={() => setNewReminder({ ...newReminder, type: 'expense' })}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'expense' ? 'bg-red-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                      <TrendingDown size={12} /> Despesa
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setNewReminder({ ...newReminder, type: 'income' })}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'income' ? 'bg-emerald-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                      <TrendingUp size={12} /> Receita
-                    </button>
-                  </div>
+          {/* --- MANUAL MODE --- */}
+          {modalMode === 'manual' && (
+            <form onSubmit={handleManualSubmit} className="p-4 overflow-y-auto custom-scrollbar space-y-3 animate-fade-in">
 
-                  {/* Descrição - Compacto */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Descrição</label>
-                    <div className="relative">
-                      <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
-                      <input
-                        required
-                        type="text"
-                        value={newReminder.description}
-                        onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
-                        className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600"
-                        placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Internet"}
-                      />
-                    </div>
-                  </div>
+              {/* Tipo Segmentado - Compacto */}
+              <div className="flex p-0.5 bg-[#272725]/50 rounded-lg">
+                <button
+                  type="button"
+                  onClick={() => setNewReminder({ ...newReminder, type: 'expense' })}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'expense' ? 'bg-red-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  <TrendingDown size={12} /> Despesa
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setNewReminder({ ...newReminder, type: 'income' })}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'income' ? 'bg-emerald-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  <TrendingUp size={12} /> Receita
+                </button>
+              </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    {/* Valor */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Valor (R$)</label>
-                      <div className="relative">
-                        <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
-                        <input
-                          required
-                          type="number"
-                          step="0.01"
-                          value={newReminder.amount}
-                          onChange={e => setNewReminder({ ...newReminder, amount: e.target.value })}
-                          className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600 font-mono"
-                          placeholder="0,00"
-                        />
-                      </div>
-                    </div>
+              {/* Descrição - Compacto */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Descrição</label>
+                <div className="relative">
+                  <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                  <input
+                    required
+                    type="text"
+                    value={newReminder.description}
+                    onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
+                    className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600"
+                    placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Internet"}
+                  />
+                </div>
+              </div>
 
-                    {/* Data */}
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Data</label>
-                      <CustomDatePicker
-                        value={newReminder.dueDate}
-                        onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
-                      />
-                    </div>
-                  </div>
-
-                  {/* Categoria */}
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Categoria</label>
-                    <CustomAutocomplete
-                      value={newReminder.category}
-                      onChange={(val) => setNewReminder({ ...newReminder, category: val })}
-                      options={categories}
-                      icon={<Tag size={14} />}
-                      placeholder="Selecione ou digite..."
+              <div className="grid grid-cols-2 gap-2">
+                {/* Valor */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Valor (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                    <input
+                      required
+                      type="number"
+                      step="0.01"
+                      value={newReminder.amount}
+                      onChange={e => setNewReminder({ ...newReminder, amount: e.target.value })}
+                      className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600 font-mono"
+                      placeholder="0,00"
                     />
                   </div>
+                </div>
 
-                  {/* Recorrência - Compacto */}
-                  <div className="flex items-center justify-between py-2 border-t border-[#373734]/30">
-                    <div className="flex items-center gap-2">
-                      <RefreshCw size={13} className={`transition-colors ${newReminder.isRecurring ? 'text-[#d97757]' : 'text-gray-600'}`} />
-                      <div>
-                        <span className="block text-[13px] font-medium text-gray-300">Recorrência</span>
-                        <span className="block text-[9px] text-gray-500">Repetir este lembrete</span>
-                      </div>
-                    </div>
-
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={newReminder.isRecurring}
-                        onChange={e => setNewReminder({ ...newReminder, isRecurring: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-[18px] bg-[#373734] rounded-full peer peer-checked:after:translate-x-[18px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-500 after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#d97757] peer-checked:after:bg-white"></div>
-                    </label>
-                  </div>
-
-                  {newReminder.isRecurring && (
-                    <div className="animate-fade-in -mt-1">
-                      <CustomSelect
-                        value={newReminder.frequency}
-                        onChange={(val) => setNewReminder({ ...newReminder, frequency: val as any })}
-                        options={frequencies}
-                        className="text-[13px]"
-                        placeholder="Selecione a frequência"
-                      />
-                    </div>
-                  )}
-
-                  <button
-                    type="submit"
-                    className={`w-full py-2.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 text-[13px] ${newReminder.type === 'income'
-                      ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
-                      : 'bg-[#d97757] hover:bg-[#e08868] text-white'
-                      }`}
-                  >
-                    <Check size={16} strokeWidth={2.5} />
-                    {editingReminder
-                      ? `Atualizar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
-                      : `Confirmar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
-                    }
-                  </button>
-                </form>
-              )}
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* NEW MINIMALIST FLOATING BOTTOM BAR (ACTIONS) */}
-      {shouldRenderBottomBar && createPortal(
-        <div
-          className={`
-                fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] 
-                transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
-                ${isBottomBarVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-24 opacity-0 scale-90'}
-            `}
-        >
-          <div className={`bg-[#30302E] border border-[#373734] shadow-2xl flex items-center px-4 py-2.5 gap-4 relative overflow-hidden transition-all duration-300 ${showBulkEditModal ? 'rounded-b-2xl rounded-t-none border-t-0 w-[420px] justify-center' : 'rounded-2xl'}`}>
-            {/* Decorative Glow */}
-            <div className="absolute top-0 right-0 w-24 h-24 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none"></div>
-
-            <div className="flex items-center gap-3 relative z-10">
-              <div className="bg-[#d97757] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-lg shadow-[#d97757]/30">
-                {selectedReminders.length}
+                {/* Data */}
+                <div className="space-y-1">
+                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Data</label>
+                  <CustomDatePicker
+                    value={newReminder.dueDate}
+                    onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
+                  />
+                </div>
               </div>
-              <span className="text-sm font-bold text-white">Selecionados</span>
-            </div>
 
-            <div className="flex items-center gap-2 relative z-10">
-              <button
-                onClick={handleSelectAll}
-                className="px-3 py-2 hover:bg-[#373734] rounded-xl text-gray-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider"
-                title="Selecionar Todos"
-              >
-                {allSelected ? 'Limpar' : 'Todos'}
-              </button>
-
-              <button
-                onClick={() => setShowBulkEditModal(true)}
-                disabled={selectedReminders.length === 0}
-                className="px-4 py-2 bg-white text-black hover:bg-gray-200 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-              >
-                <Calendar size={14} strokeWidth={2.5} />
-                Alterar Data
-              </button>
-
-              <button
-                onClick={resetBulkSelection}
-                className="p-2 hover:bg-[#373734] rounded-xl text-gray-500 hover:text-red-400 transition-colors"
-                title="Cancelar"
-              >
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        </div>,
-        document.body
-      )}
-
-      {/* NEW MINIMALIST BULK EDIT MODAL - CONNECTED TO BOTTOM BAR */}
-      {shouldRenderDateModal && createPortal(
-        <div
-          className={`
-                fixed bottom-6 left-1/2 -translate-x-1/2 z-[99] w-[420px]
-                transition-all duration-400 ease-[cubic-bezier(0.34,1.56,0.64,1)]
-                ${isDateModalVisible
-              ? '-translate-y-[52px] opacity-100'
-              : 'translate-y-0 opacity-0 pointer-events-none'
-            }
-            `}
-        >
-          <div className="bg-[#30302E] border border-[#373734] border-b-0 rounded-t-2xl shadow-2xl relative overflow-hidden">
-            {/* Decorative Glow */}
-            <div className="absolute top-0 right-0 w-32 h-32 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-10 pointer-events-none"></div>
-
-            {/* Header */}
-            <div className="px-5 pt-4 pb-2 flex justify-between items-center relative z-10">
-              <div>
-                <h3 className="text-base font-bold text-white tracking-tight">Nova Data</h3>
-                <p className="text-[11px] font-medium text-gray-400">Para {selectedReminders.length} itens selecionados</p>
-              </div>
-              <button
-                onClick={() => setShowBulkEditModal(false)}
-                className="w-7 h-7 flex items-center justify-center rounded-full bg-[#373734]/50 text-gray-400 hover:bg-[#373734] hover:text-white transition-colors"
-                title="Fechar"
-              >
-                <X size={14} />
-              </button>
-            </div>
-
-            <div className="p-5 pt-0 space-y-4 relative z-10">
-              {/* Content - Single Date Picker only */}
-              <div className="pt-2">
-                <CustomDatePicker
-                  value={bulkDate}
-                  onChange={setBulkDate}
-                  className="w-full text-sm"
-                  dropdownMode="relative"
+              {/* Categoria */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Categoria</label>
+                <CustomAutocomplete
+                  value={newReminder.category}
+                  onChange={(val) => setNewReminder({ ...newReminder, category: val })}
+                  options={categories}
+                  icon={<Tag size={14} />}
+                  placeholder="Selecione ou digite..."
                 />
               </div>
 
-              {/* Actions */}
+              {/* Recorrência - Compacto */}
+              <div className="flex items-center justify-between py-2 border-t border-[#373734]/30">
+                <div className="flex items-center gap-2">
+                  <RefreshCw size={13} className={`transition-colors ${newReminder.isRecurring ? 'text-[#d97757]' : 'text-gray-600'}`} />
+                  <div>
+                    <span className="block text-[13px] font-medium text-gray-300">Recorrência</span>
+                    <span className="block text-[9px] text-gray-500">Repetir este lembrete</span>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={newReminder.isRecurring}
+                    onChange={e => setNewReminder({ ...newReminder, isRecurring: e.target.checked })}
+                    className="sr-only peer"
+                  />
+                  <div className="w-9 h-[18px] bg-[#373734] rounded-full peer peer-checked:after:translate-x-[18px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-500 after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#d97757] peer-checked:after:bg-white"></div>
+                </label>
+              </div>
+
+              {newReminder.isRecurring && (
+                <div className="animate-fade-in -mt-1">
+                  <CustomSelect
+                    value={newReminder.frequency}
+                    onChange={(val) => setNewReminder({ ...newReminder, frequency: val as any })}
+                    options={frequencies}
+                    className="text-[13px]"
+                    placeholder="Selecione a frequência"
+                  />
+                </div>
+              )}
+
               <button
-                onClick={handleBulkApplyDates}
-                disabled={applyDisabled}
-                className="w-full h-10 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 text-sm"
+                type="submit"
+                className={`w-full py-2.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 text-[13px] ${newReminder.type === 'income'
+                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                  : 'bg-[#d97757] hover:bg-[#e08868] text-white'
+                  }`}
               >
-                <Check size={18} strokeWidth={3} />
-                Aplicar Mudanças
+                <Check size={16} strokeWidth={2.5} />
+                {editingReminder
+                  ? `Atualizar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
+                  : `Confirmar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
+                }
               </button>
+            </form>
+          )}
+        </div>
+      </UniversalModal>
+
+      {/* NEW MINIMALIST FLOATING BOTTOM BAR (ACTIONS) */}
+      {
+        shouldRenderBottomBar && createPortal(
+          <div
+            className={`
+                fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] 
+                transition-all duration-500 ease-[cubic-bezier(0.175,0.885,0.32,1.275)]
+                ${isBottomBarVisible ? 'translate-y-0 opacity-100 scale-100' : 'translate-y-24 opacity-0 scale-90'}
+                 w-full max-w-[420px] px-4
+            `}
+          >
+            <div className={`bg-[#30302E] border border-[#373734] shadow-2xl flex items-center px-4 py-2.5 gap-4 relative overflow-hidden transition-all duration-300 ring-1 ring-[#373734] ${showBulkEditModal ? 'rounded-b-2xl rounded-t-none border-t-0 w-full justify-center' : 'rounded-2xl w-full'}`}>
+              {/* Decorative Glow */}
+              <div className="absolute top-0 right-0 w-24 h-24 bg-[#d97757] rounded-full blur-3xl -mr-10 -mt-10 opacity-20 pointer-events-none"></div>
+
+              <div className="flex items-center gap-3 relative z-10">
+                <div className="bg-[#d97757] text-white text-[11px] font-bold px-2.5 py-0.5 rounded-full shadow-lg shadow-[#d97757]/30">
+                  {selectedReminders.length}
+                </div>
+                <span className="text-sm font-bold text-white">Selecionados</span>
+              </div>
+
+              <div className="flex items-center gap-2 relative z-10">
+                <button
+                  onClick={handleSelectAll}
+                  className="px-3 py-2 hover:bg-[#373734] rounded-xl text-gray-400 hover:text-white transition-colors text-xs font-bold uppercase tracking-wider"
+                  title="Selecionar Todos"
+                >
+                  {allSelected ? 'Limpar' : 'Todos'}
+                </button>
+
+                <button
+                  onClick={() => setShowBulkEditModal(true)}
+                  disabled={selectedReminders.length === 0}
+                  className="px-4 py-2 bg-white text-black hover:bg-gray-200 rounded-xl font-bold text-sm transition-all flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                >
+                  <Calendar size={14} strokeWidth={2.5} />
+                  Alterar Data
+                </button>
+
+                <button
+                  onClick={resetBulkSelection}
+                  className="p-2 hover:bg-[#373734] rounded-xl text-gray-500 hover:text-red-400 transition-colors"
+                  title="Cancelar"
+                >
+                  <X size={18} />
+                </button>
+              </div>
             </div>
+          </div>,
+          document.body
+        )
+      }
+
+      {/* NEW MINIMALIST BULK EDIT MODAL - CONNECTED TO BOTTOM BAR */}
+      {/* BULK EDIT MODAL WITH UNIVERSAL MODAL */}
+      <UniversalModal
+        isOpen={showBulkEditModal}
+        onClose={() => setShowBulkEditModal(false)}
+        title="Nova Data"
+        subtitle={`Para ${selectedReminders.length} itens selecionados`}
+        icon={<Calendar size={20} />}
+        width="max-w-sm"
+      >
+        <div className="space-y-4">
+          {/* Content - Single Date Picker only */}
+          <div className="pt-2">
+            <CustomDatePicker
+              value={bulkDate}
+              onChange={setBulkDate}
+              className="w-full text-sm"
+              dropdownMode="relative"
+            />
           </div>
-        </div>,
-        document.body
-      )}
+
+          {/* Actions */}
+          <button
+            onClick={handleBulkApplyDates}
+            disabled={applyDisabled}
+            className="w-full h-10 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold shadow-lg shadow-[#d97757]/20 transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95 text-sm"
+          >
+            <Check size={18} strokeWidth={3} />
+            Aplicar Mudanças
+          </button>
+        </div>
+      </UniversalModal>
 
       {/* Delete Confirmation */}
       <ConfirmationBar
@@ -1178,6 +1103,6 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         cancelText="Cancelar"
         isDestructive={true}
       />
-    </div>
+    </div >
   );
 };

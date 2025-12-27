@@ -29,6 +29,7 @@ interface CheckoutFormProps {
   onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number) => Promise<void>;
   onBack: () => void;
   isLoading: boolean;
+  initialCouponCode?: string;
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -37,7 +38,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   billingCycle = 'monthly',
   onSubmit,
   onBack,
-  isLoading
+  isLoading,
+  initialCouponCode
 }) => {
   const [cardData, setCardData] = useState<CreditCardData>({
     holderName: '',
@@ -59,9 +61,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [installments, setInstallments] = useState(1);
 
   // Coupon State
-  const [couponCode, setCouponCode] = useState('');
+  const [couponCode, setCouponCode] = useState(initialCouponCode || '');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  React.useEffect(() => {
+    if (initialCouponCode) {
+      handleApplyCoupon(initialCouponCode);
+    }
+  }, [initialCouponCode]);
 
   const toast = useToasts();
 
@@ -176,8 +184,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     setHolderInfo(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleApplyCoupon = async () => {
-    if (!couponCode) return;
+  const handleApplyCoupon = async (codeToValidate?: string) => {
+    const code = codeToValidate || couponCode;
+    if (!code) return;
 
     setIsValidatingCoupon(true);
     try {
@@ -354,6 +363,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       onChange={(value) => setCardData(prev => ({ ...prev, expiryMonth: value }))}
                       options={monthOptions}
                       placeholder="MM"
+                      portal={true}
                     />
                   </div>
 
@@ -364,6 +374,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       onChange={(value) => setCardData(prev => ({ ...prev, expiryYear: value }))}
                       options={yearOptions}
                       placeholder="AAAA"
+                      portal={true}
                     />
                   </div>
 
@@ -441,6 +452,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       onChange={(v) => setInstallments(Number(v))}
                       options={installmentOptions}
                       placeholder="Selecione o parcelamento"
+                      portal={true}
                     />
                   </div>
                 )}
@@ -513,7 +525,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={handleApplyCoupon}
+                        onClick={() => handleApplyCoupon()}
                         disabled={!couponCode || isValidatingCoupon}
                         className="bg-gray-700 hover:bg-gray-600 text-white px-3 rounded-lg font-medium text-sm disabled:opacity-50 transition-colors"
                       >

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { X } from './components/Icons';
+import { X, Ticket, ChevronRight } from './components/Icons';
 import { MessageCircle } from 'lucide-react';
 import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount, PromoPopup as PromoPopupType } from './types';
 import { PromoPopup, PromoPopupData } from './components/PromoPopup';
@@ -64,6 +64,7 @@ import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 import { UAParser } from 'ua-parser-js';
 import { API_BASE } from './config/api';
+import foguete from './assets/foguete.png';
 
 // Removed FilterMode type definition as it is imported from components/Header
 
@@ -396,6 +397,7 @@ const App: React.FC = () => {
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
+  const [subscriptionInitialState, setSubscriptionInitialState] = useState<{ planId?: 'starter' | 'pro' | 'family', couponCode?: string } | undefined>(undefined);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
@@ -3192,10 +3194,15 @@ const App: React.FC = () => {
             <div className="fixed inset-0 z-[60] bg-gray-950 overflow-y-auto">
               <SubscriptionPage
                 user={currentUser}
-                onBack={() => setActiveTab('dashboard')}
+                onBack={() => {
+                  setActiveTab('dashboard');
+                  setSubscriptionInitialState(undefined);
+                }}
                 onUpdateUser={async (u) => {
                   if (userId) await dbService.updateUserProfile(userId, u);
                 }}
+                initialPlanId={subscriptionInitialState?.planId}
+                initialCouponCode={subscriptionInitialState?.couponCode}
               />
             </div>
           ) : activeTab === 'admin_overview' ? (
@@ -3218,6 +3225,43 @@ const App: React.FC = () => {
             <>
               {activeTab === 'dashboard' && (
                 <>
+
+                  {/* Promo Banner - New Year */}
+                  {effectivePlan === 'starter' && (
+                    <div
+                      onClick={() => {
+                        setSubscriptionInitialState({ planId: 'pro', couponCode: 'DESCONTO05' });
+                        setActiveTab('subscription');
+                      }}
+                      className="relative overflow-hidden rounded-xl bg-[#30302E] border border-[#373734] p-4 mb-6 cursor-pointer group hover:border-gray-600 transition-colors"
+                    >
+                      <div className="absolute top-0 right-0 -mt-2 -mr-2 opacity-20">
+                        <Ticket size={100} className="rotate-12 text-white" />
+                      </div>
+
+                      <div className="relative flex flex-col sm:flex-row items-center justify-between h-full">
+                        <div className="flex items-center gap-4 w-full">
+                          <div className="bg-[#d97757]/10 p-3 rounded-xl text-[#d97757] group-hover:scale-110 transition-transform duration-300 shrink-0">
+                            <img src={foguete} alt="Foguete" className="w-6 h-6 object-contain" />
+                          </div>
+                          <div className="flex-1">
+                            <h3 className="font-bold text-white flex flex-wrap items-center gap-2 text-sm sm:text-base">
+                              Promoção de Ano Novo <span className="bg-[#d97757] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Desconto05</span>
+                            </h3>
+                            <p className="text-gray-400 text-xs sm:text-sm mt-1 leading-snug">
+                              Comece 2026 com o pé direito! Assine o plano Pro por apenas <span className="text-emerald-400 font-bold">R$ 5,00</span> no primeiro mês.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="hidden sm:flex items-center gap-1 pl-4 border-l border-gray-800 ml-4 shrink-0">
+                          <span className="text-sm font-bold text-[#d97757] group-hover:text-orange-400 transition-colors whitespace-nowrap">Resgatar Oferta</span>
+                          <ChevronRight size={16} className="text-[#d97757] group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Only show Salary Manager in Monthly mode where it makes sense */}
                   {filterMode === 'month' && !dashboardCategory && (
                     <SalaryManager
@@ -3293,6 +3337,10 @@ const App: React.FC = () => {
                     onActivateProMode={() => setIsProMode(true)}
                     userPlan={effectivePlan}
                     onUpgradeClick={() => setActiveTab('subscription')}
+                    onPromoClick={() => {
+                      setSubscriptionInitialState({ planId: 'pro', couponCode: 'DESCONTO05' });
+                      setActiveTab('subscription');
+                    }}
                   />                    <div className="animate-fade-in space-y-6">
                     <DashboardCharts
                       transactions={filteredDashboardTransactions}
@@ -3433,7 +3481,7 @@ const App: React.FC = () => {
 
               {activeTab === 'roadmap' && (
                 <div className="flex-1 p-4 lg:p-8 overflow-y-auto custom-scrollbar animate-fade-in">
-                  <Roadmap />
+                  <Roadmap currentUser={currentUser} userId={userId} />
                 </div>
               )}
             </>

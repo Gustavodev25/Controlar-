@@ -425,11 +425,11 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
 
                             {/* Price */}
                             <div className="mb-4 text-center flex flex-col items-center">
-                                <span className="text-gray-500 line-through text-md mb-0.5">
-                                    De R$ 35,90
+                                <span className="text-gray-500 line-through text-xl opacity-60 mb-0.5">
+                                    R$ 35,90
                                 </span>
                                 <div className="flex items-center gap-1">
-                                    <span className="text-3xl font-bold text-white">
+                                    <span className="text-4xl font-bold text-white">
                                         <NumberFlow
                                             value={5.00}
                                             format={{ style: 'currency', currency: 'BRL' }}
@@ -439,12 +439,30 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                     <span className="text-gray-500 text-sm">/mês</span>
                                 </div>
                                 <div className="mt-4 w-full px-2">
-                                    <div className="relative flex items-center justify-center bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-xl py-2 px-4 transition-all hover:bg-[#D97757]/20 hover:scale-105 cursor-pointer group">
+                                    <div
+                                        onClick={() => {
+                                            navigator.clipboard.writeText("DESCONTO05");
+                                            // Optional: You might want to add a toast or state change here to indicate copy
+                                            const el = document.getElementById('coupon-text');
+                                            if (el) {
+                                                const original = el.innerText;
+                                                el.innerText = "COPIADO!";
+                                                setTimeout(() => el.innerText = original, 2000);
+                                            }
+                                        }}
+                                        className="relative flex items-center justify-center bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-xl py-2 px-4 transition-all hover:bg-[#D97757]/20 hover:scale-105 active:scale-95 cursor-pointer group"
+                                    >
                                         <div className="flex flex-col items-center">
                                             <span className="text-[10px] uppercase font-bold text-[#D97757]/70 leading-none mb-1">Promoção de Ano Novo</span>
-                                            <span className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                            <span id="coupon-text" className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                        </div>
+                                        <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity text-[#D97757]">
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
                                         </div>
                                     </div>
+                                    <p className="text-[10px] text-gray-500 mt-2 text-center cursor-pointer hover:text-gray-300 transition-colors" onClick={() => navigator.clipboard.writeText("DESCONTO05")}>
+                                        Clique para copiar o cupom
+                                    </p>
                                 </div>
                             </div>
 
