@@ -16,7 +16,7 @@ export const NovaLanding: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
             <Topbar onLogin={onLogin} />
             <Hero onLogin={onLogin} />
             <FeaturesSectionWithHoverEffects />
-            <ProgressSection />
+
             <TestimonialsSection />
             <PricingSection onLogin={onLogin} />
             <FAQSection onLogin={onLogin} />

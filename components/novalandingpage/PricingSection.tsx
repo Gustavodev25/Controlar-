@@ -156,16 +156,45 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
 
                                 {/* Preço */}
                                 <div className="text-center mb-8">
+                                    {isPro && billingCycle === 'monthly' ? (
+                                        <motion.span
+                                            initial={{ opacity: 0, height: 0 }}
+                                            animate={{ opacity: 1, height: 'auto' }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="text-gray-500 line-through text-md mb-0.5 block"
+                                        >
+                                            De R$ 35,90
+                                        </motion.span>
+                                    ) : null}
+
                                     <div className="flex items-center justify-center gap-1">
                                         <span className="text-4xl font-bold text-white">
                                             <NumberFlow
-                                                value={price}
+                                                value={isPro && billingCycle === 'monthly' ? 5.00 : price}
                                                 format={{ style: 'currency', currency: 'BRL' }}
                                                 locales="pt-BR"
                                             />
                                         </span>
                                         <span className="text-gray-500 font-medium">/mês</span>
                                     </div>
+
+                                    <AnimatePresence>
+                                        {isPro && billingCycle === 'monthly' && (
+                                            <motion.div
+                                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
+                                                animate={{ opacity: 1, height: 'auto', marginTop: 16 }}
+                                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
+                                                className="w-full px-2 overflow-hidden"
+                                            >
+                                                <div className="relative flex items-center justify-center bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-xl py-2 px-4 transition-all hover:bg-[#D97757]/20 hover:scale-105 cursor-pointer group">
+                                                    <div className="flex flex-col items-center">
+                                                        <span className="text-[10px] uppercase font-bold text-[#D97757]/70 leading-none mb-1">Promoção de Ano Novo</span>
+                                                        <span className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                                    </div>
+                                                </div>
+                                            </motion.div>
+                                        )}
+                                    </AnimatePresence>
 
                                     <div className="h-6 mt-1">
                                         <AnimatePresence mode="wait">

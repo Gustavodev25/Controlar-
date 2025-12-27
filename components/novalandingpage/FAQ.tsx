@@ -72,7 +72,7 @@ export const FAQSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                                 <motion.div
                                     key={index}
                                     initial={false}
-                                    animate={{ backgroundColor: isOpen ? "#262624" : "transparent" }}
+                                    animate={{ backgroundColor: isOpen ? "#1a0f0a" : "transparent" }}
                                     className={`rounded-3xl border border-neutral-700/50 overflow-hidden cursor-pointer transition-colors duration-300 ${!isOpen && 'hover:bg-white/5'}`}
                                     onClick={() => setOpenIndex(isOpen ? null : index)}
                                 >

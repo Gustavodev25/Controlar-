@@ -385,13 +385,21 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                         </div>
 
                         <motion.div
-                            animate={{ y: [0, -10, 0] }}
+                            animate={{
+                                rotate: [0, -1, 1, -1, 1, 0],
+                                scale: [1, 1.02, 1],
+                                boxShadow: [
+                                    "0 25px 50px -12px rgba(217, 119, 87, 0.1)",
+                                    "0 0 40px 10px rgba(217, 119, 87, 0.4)",
+                                    "0 25px 50px -12px rgba(217, 119, 87, 0.1)"
+                                ]
+                            }}
                             transition={{
-                                duration: 5,
+                                duration: 1.5,
                                 repeat: Infinity,
+                                repeatDelay: 4.5,
                                 ease: "easeInOut"
                             }}
-                            whileHover={{ scale: 1.02 }}
                             className="relative bg-[#262624] border border-[#d97757] rounded-3xl p-6 flex flex-col shadow-2xl shadow-[#d97757]/10 w-full max-w-[320px]"
                         >
 
@@ -429,6 +437,14 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                         />
                                     </span>
                                     <span className="text-gray-500 text-sm">/mês</span>
+                                </div>
+                                <div className="mt-4 w-full px-2">
+                                    <div className="relative flex items-center justify-center bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-xl py-2 px-4 transition-all hover:bg-[#D97757]/20 hover:scale-105 cursor-pointer group">
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-[10px] uppercase font-bold text-[#D97757]/70 leading-none mb-1">Promoção de Ano Novo</span>
+                                            <span className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
 
@@ -480,8 +496,8 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                     {/* Slider */}
                     <div className="relative flex-1 overflow-hidden">
                         {/* Fade nas laterais */}
-                        <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#30302E] to-transparent z-10 pointer-events-none" />
-                        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#30302E] to-transparent z-10 pointer-events-none" />
+                        <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#1a0f0a] to-transparent z-10 pointer-events-none" />
+                        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#1a0f0a] to-transparent z-10 pointer-events-none" />
 
                         <InfiniteSlider gap={48} duration={30}>
                             {banks.map((bank) => (
