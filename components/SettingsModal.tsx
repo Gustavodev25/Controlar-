@@ -1148,7 +1148,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       // Check for progressive coupon with 100% first month
       if (usedCoupon.type === 'progressive') {
          const firstMonthDiscount = usedCoupon.progressiveDiscounts?.find(d => d.month === 1);
-         if (firstMonthDiscount?.discount === 100) {
+         // Only consider 100% free if it's a percentage type with 100% value
+         if (firstMonthDiscount?.discountType !== 'fixed' && firstMonthDiscount?.discount === 100) {
             return true;
          }
       }
@@ -1218,8 +1219,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             if (usedCoupon.type === 'progressive') {
                // Progressive coupon: different discount per month
                const rule = usedCoupon.progressiveDiscounts?.find(d => d.month === monthIndex);
-               discountPercent = rule?.discount || 0;
-               finalAmount = Math.max(0, baseAmount * (1 - discountPercent / 100));
+               if (rule) {
+                  if (rule.discountType === 'fixed') {
+                     // Fixed discount
+                     finalAmount = Math.max(0, baseAmount - rule.discount);
+                     discountPercent = Math.round((rule.discount / baseAmount) * 100);
+                  } else {
+                     // Percentage discount (default)
+                     discountPercent = rule.discount || 0;
+                     finalAmount = Math.max(0, baseAmount * (1 - discountPercent / 100));
+                  }
+               }
             } else if (usedCoupon.type === 'percentage') {
                discountPercent = usedCoupon.value;
                finalAmount = Math.max(0, baseAmount * (1 - usedCoupon.value / 100));

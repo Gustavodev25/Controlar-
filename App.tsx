@@ -69,24 +69,29 @@ import foguete from './assets/foguete.png';
 
 // Removed FilterMode type definition as it is imported from components/Header
 
-// Helper to capture connection details
+// Helper to capture connection details (runs in background, non-blocking)
 const captureDeviceDetails = async (uid: string) => {
   try {
     const parser = new UAParser();
     const result = parser.getResult();
 
-    // Fetch IP and Location
+    // Fetch IP and Location with timeout to avoid blocking
     let ip = 'Unknown';
     let location = 'Unknown';
     try {
-      const res = await fetch('https://ipapi.co/json/');
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // 3s timeout
+
+      const res = await fetch('https://ipapi.co/json/', { signal: controller.signal });
+      clearTimeout(timeoutId);
+
       if (res.ok) {
         const data = await res.json();
         ip = data.ip || 'Unknown';
         location = `${data.city || 'Desconhecido'}, ${data.region_code || ''}`;
       }
     } catch {
-      // silently ignore IP fetch failures
+      // silently ignore IP fetch failures or timeouts
     }
 
     const log = {
@@ -918,14 +923,13 @@ const App: React.FC = () => {
           setPendingTwoFactor(null);
           setUserId(firebaseUser.uid);
           setIsLoadingData(true);
-
-          // Log connection and update local state
-          const updatedLogs = await captureDeviceDetails(firebaseUser.uid);
-          if (updatedLogs && Array.isArray(updatedLogs)) {
-            baseProfile.connectionLogs = updatedLogs;
-          }
-
           setCurrentUser(baseProfile);
+
+          // PERFORMANCE: Set loading false IMMEDIATELY so user sees the app
+          setIsLoadingAuth(false);
+
+          // Log connection in background (non-blocking) - updates will come via listener
+          captureDeviceDetails(firebaseUser.uid).catch(console.error);
         } catch (err) {
           console.error("Erro ao carregar perfil:", err);
           toast.warning("Não foi possível carregar o perfil (offline). Dados locais serão usados.");
@@ -938,6 +942,7 @@ const App: React.FC = () => {
             baseSalary: 0,
             isAdmin: adminFromClaims
           });
+          setIsLoadingAuth(false); // PERFORMANCE: Also set loading false on error
         }
       } else {
         setPendingTwoFactor(null);
@@ -948,7 +953,10 @@ const App: React.FC = () => {
         setMembers([]);
         setBudgets([]);
       }
-      setIsLoadingAuth(false);
+      // Only set loading false here for logout case (login case handles it earlier)
+      if (!firebaseUser) {
+        setIsLoadingAuth(false);
+      }
     });
 
     return () => unsubscribe();

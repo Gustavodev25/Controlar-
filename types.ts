@@ -331,8 +331,8 @@ export interface Coupon {
   expirationDate?: string; // ISO Date
   createdAt: string;
   // Progressive discount: different discount per billing month
-  // Example: [{month: 1, discount: 100}, {month: 2, discount: 50}, {month: 3, discount: 0}]
-  progressiveDiscounts?: { month: number; discount: number }[];
+  // Example: [{month: 1, discount: 100, discountType: 'percentage'}, {month: 2, discount: 50, discountType: 'fixed'}]
+  progressiveDiscounts?: { month: number; discount: number; discountType?: 'percentage' | 'fixed' }[];
   partnership?: {
     partnerName: string;
     commissionType: 'percentage' | 'fixed';

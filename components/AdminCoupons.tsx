@@ -35,7 +35,7 @@ export const AdminCoupons: React.FC = () => {
     expirationDate: '',
     validityMode: 'none' as 'none' | 'date' | 'months',
     validityMonths: '' as string | number,
-    progressiveDiscounts: [{ month: 1, discount: 100 }] as { month: number; discount: number }[],
+    progressiveDiscounts: [{ month: 1, discount: 100, discountType: 'percentage' as 'percentage' | 'fixed' }] as { month: number; discount: number; discountType: 'percentage' | 'fixed' }[],
     // Partnership fields
     isPartnership: false,
     partnerName: '',
@@ -101,7 +101,7 @@ export const AdminCoupons: React.FC = () => {
         expirationDate: coupon.expirationDate || '',
         validityMode: coupon.expirationDate ? 'date' : 'none',
         validityMonths: '',
-        progressiveDiscounts: coupon.progressiveDiscounts || [{ month: 1, discount: 100 }],
+        progressiveDiscounts: (coupon.progressiveDiscounts || [{ month: 1, discount: 100, discountType: 'percentage' }]).map(d => ({ ...d, discountType: d.discountType || 'percentage' })) as { month: number; discount: number; discountType: 'percentage' | 'fixed' }[],
         isPartnership: !!coupon.partnership,
         partnerName: coupon.partnership?.partnerName || '',
         partnerCommissionType: coupon.partnership?.commissionType || 'percentage',
@@ -119,7 +119,7 @@ export const AdminCoupons: React.FC = () => {
         expirationDate: '',
         validityMode: 'none',
         validityMonths: '',
-        progressiveDiscounts: [{ month: 1, discount: 100 }],
+        progressiveDiscounts: [{ month: 1, discount: 100, discountType: 'percentage' as 'percentage' | 'fixed' }],
         isPartnership: false,
         partnerName: '',
         partnerCommissionType: 'percentage',
@@ -143,7 +143,7 @@ export const AdminCoupons: React.FC = () => {
         expirationDate: '',
         validityMode: 'none',
         validityMonths: '',
-        progressiveDiscounts: [{ month: 1, discount: 100 }],
+        progressiveDiscounts: [{ month: 1, discount: 100, discountType: 'percentage' as 'percentage' | 'fixed' }],
         isPartnership: false,
         partnerName: '',
         partnerCommissionType: 'percentage',
@@ -476,7 +476,7 @@ export const AdminCoupons: React.FC = () => {
                           </td>
                           <td className="p-4 text-gray-300">
                             {coupon.type === 'progressive' ? (
-                              <span className="text-[#d97757]" title={coupon.progressiveDiscounts?.map(d => `Mês ${d.month}: ${d.discount}%`).join(', ')}>
+                              <span className="text-[#d97757]" title={coupon.progressiveDiscounts?.map(d => `Mês ${d.month}: ${d.discountType === 'fixed' ? `R$ ${d.discount.toFixed(2)}` : `${d.discount}%`}`).join(', ')}>
                                 Progressivo
                               </span>
                             ) : coupon.type === 'percentage' ? `${coupon.value}%` : `R$ ${coupon.value.toFixed(2)}`}
@@ -709,8 +709,8 @@ export const AdminCoupons: React.FC = () => {
                         )}
                         <input
                           type="number"
-                          value={formData.value}
-                          onChange={(e) => setFormData(prev => ({ ...prev, value: Number(e.target.value) }))}
+                          value={formData.value || ''}
+                          onChange={(e) => setFormData(prev => ({ ...prev, value: e.target.value === '' ? 0 : Number(e.target.value) }))}
                           className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
                           placeholder="0"
                         />
@@ -735,7 +735,7 @@ export const AdminCoupons: React.FC = () => {
                             : 1;
                           setFormData(prev => ({
                             ...prev,
-                            progressiveDiscounts: [...prev.progressiveDiscounts, { month: nextMonth, discount: 0 }]
+                            progressiveDiscounts: [...prev.progressiveDiscounts, { month: nextMonth, discount: 0, discountType: 'percentage' as 'percentage' | 'fixed' }]
                           }));
                         }}
                         className="text-[10px] text-[#d97757] hover:text-white font-bold uppercase flex items-center gap-1 transition-colors bg-[#d97757]/10 hover:bg-[#d97757]/20 px-2 py-1 rounded-lg"
@@ -749,6 +749,7 @@ export const AdminCoupons: React.FC = () => {
                       {formData.progressiveDiscounts.map((rule, idx) => (
                         <div key={idx} className="flex items-center gap-2">
                           <div className="flex-1 grid grid-cols-2 gap-2">
+                            {/* Mês */}
                             <div className="relative">
                               <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-xs">Mês</span>
                               <input
@@ -763,20 +764,37 @@ export const AdminCoupons: React.FC = () => {
                                 className="w-full bg-gray-900/40 border border-gray-800/60 rounded-lg text-white pl-12 pr-3 py-2 text-sm focus:border-gray-700 outline-none transition-all font-mono"
                               />
                             </div>
-                            <div className="relative">
-                              <Percent className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500" size={12} />
+                            {/* Valor + Toggle de Tipo */}
+                            <div className="relative flex items-center">
+                              {/* Toggle % / R$ */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const newRules = [...formData.progressiveDiscounts];
+                                  newRules[idx].discountType = (rule.discountType || 'percentage') === 'percentage' ? 'fixed' : 'percentage';
+                                  setFormData(prev => ({ ...prev, progressiveDiscounts: newRules }));
+                                }}
+                                className="absolute left-0 h-full px-2.5 bg-gray-800/80 border-r border-gray-700/50 rounded-l-lg text-xs font-bold text-gray-400 hover:text-white hover:bg-gray-700/80 transition-colors z-10"
+                                title="Clique para alternar entre % e R$"
+                              >
+                                {(rule.discountType || 'percentage') === 'percentage' ? '%' : 'R$'}
+                              </button>
                               <input
                                 type="number"
                                 min="0"
-                                max="100"
-                                value={rule.discount}
+                                max={(rule.discountType || 'percentage') === 'percentage' ? 100 : undefined}
+                                step={(rule.discountType || 'percentage') === 'fixed' ? 0.01 : 1}
+                                value={rule.discount || ''}
                                 onChange={(e) => {
                                   const newRules = [...formData.progressiveDiscounts];
-                                  newRules[idx].discount = Math.min(100, Math.max(0, Number(e.target.value)));
+                                  const val = e.target.value === '' ? 0 : Number(e.target.value);
+                                  newRules[idx].discount = (rule.discountType || 'percentage') === 'percentage'
+                                    ? Math.min(100, Math.max(0, val))
+                                    : Math.max(0, val);
                                   setFormData(prev => ({ ...prev, progressiveDiscounts: newRules }));
                                 }}
-                                className="w-full bg-gray-900/40 border border-gray-800/60 rounded-lg text-white px-3 py-2 text-sm focus:border-gray-700 outline-none transition-all font-mono pr-8"
-                                placeholder="Desconto"
+                                className="w-full bg-gray-900/40 border border-gray-800/60 rounded-lg text-white pl-10 pr-3 py-2 text-sm focus:border-gray-700 outline-none transition-all font-mono"
+                                placeholder={(rule.discountType || 'percentage') === 'percentage' ? '0-100' : '0.00'}
                               />
                             </div>
                           </div>
@@ -933,8 +951,8 @@ export const AdminCoupons: React.FC = () => {
                             )}
                             <input
                               type="number"
-                              value={formData.partnerCommissionValue}
-                              onChange={(e) => setFormData(prev => ({ ...prev, partnerCommissionValue: Number(e.target.value) }))}
+                              value={formData.partnerCommissionValue || ''}
+                              onChange={(e) => setFormData(prev => ({ ...prev, partnerCommissionValue: e.target.value === '' ? 0 : Number(e.target.value) }))}
                               className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
                               placeholder="0"
                             />

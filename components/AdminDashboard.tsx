@@ -202,7 +202,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         if (coupon && price > 0) {
           if (coupon.type === 'progressive') {
             const rule = coupon.progressiveDiscounts?.find(d => d.month === monthIndex);
-            if (rule) price = Math.max(0, price * (1 - rule.discount / 100));
+            if (rule) {
+              if (rule.discountType === 'fixed') {
+                price = Math.max(0, price - rule.discount);
+              } else {
+                price = Math.max(0, price * (1 - rule.discount / 100));
+              }
+            }
           } else if (coupon.type === 'percentage') {
             price = Math.max(0, price * (1 - coupon.value / 100));
           } else if (coupon.type === 'fixed') {

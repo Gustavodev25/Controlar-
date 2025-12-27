@@ -302,7 +302,11 @@ export const AdminSubscriptions: React.FC = () => {
                     // If no rule matches (e.g. we are past the discount period), price remains full
                     // If rule matches, apply discount
                     if (rule) {
-                        price = Math.max(0, price * (1 - rule.discount / 100));
+                        if (rule.discountType === 'fixed') {
+                            price = Math.max(0, price - rule.discount);
+                        } else {
+                            price = Math.max(0, price * (1 - rule.discount / 100));
+                        }
                     }
                 } else if (coupon.type === 'percentage') {
                     price = Math.max(0, price * (1 - coupon.value / 100));
@@ -445,8 +449,13 @@ export const AdminSubscriptions: React.FC = () => {
                 if (coupon.type === 'progressive') {
                     const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === monthIndex);
                     if (rule) {
-                        finalPrice = Math.max(0, finalPrice * (1 - rule.discount / 100));
-                        discountInfo = `${rule.discount}% (Mês ${monthIndex})`;
+                        if (rule.discountType === 'fixed') {
+                            finalPrice = Math.max(0, finalPrice - rule.discount);
+                            discountInfo = `R$ ${rule.discount.toFixed(2)} (Mês ${monthIndex})`;
+                        } else {
+                            finalPrice = Math.max(0, finalPrice * (1 - rule.discount / 100));
+                            discountInfo = `${rule.discount}% (Mês ${monthIndex})`;
+                        }
                     }
                 } else if (coupon.type === 'percentage') {
                     finalPrice = Math.max(0, finalPrice * (1 - coupon.value / 100));
