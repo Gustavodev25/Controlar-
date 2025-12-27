@@ -22,8 +22,12 @@ import {
   Users,
   TrendingUp,
   DollarSign,
-  MapPin
+  MapPin,
+  Filter,
+  ChevronDown,
+  Check
 } from 'lucide-react';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 
 interface AdminDashboardProps {
   user: User;
@@ -127,6 +131,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [users, setUsers] = useState<SystemUser[]>([]);
   const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [filterMode, setFilterMode] = useState<'all' | 'pro' | 'starter'>('all');
 
   useEffect(() => {
     const loadData = async () => {
@@ -136,9 +141,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           dbService.getCoupons()
         ]);
 
-        // Filter users with some subscription interaction
-        const relevantUsers = usersData.filter(u => u.subscription?.plan);
-        setUsers(relevantUsers as SystemUser[]);
+        // Load all users initially
+        setUsers(usersData as SystemUser[]);
         setCoupons(couponsData);
       } catch (error) {
         console.error('Error loading admin dashboard data:', error);
@@ -204,23 +208,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       return price;
     };
 
-    users.forEach(u => {
-      if (!u.subscription) return;
+    // Filter users based on selected mode
+    const filteredUsers = users.filter((u) => {
+      if (filterMode === 'all') return true;
+      const plan = (u.subscription?.plan || 'starter').toLowerCase();
+
+      if (filterMode === 'pro') {
+        // "Pro" filter includes 'pro' and 'family' (paid plans)
+        return plan === 'pro' || plan === 'family';
+      }
+
+      if (filterMode === 'starter') {
+        return plan === 'starter';
+      }
+      return true;
+    });
+
+    filteredUsers.forEach(u => {
+      // Logic continues with filteredUsers instead of all users
+      // Note: Some global stats (like total plan counts) might need to be calculated on ALL users 
+      // if we want to show distribution regardless of filter, but user likely wants stats for the filtered set.
+      // We will perform calculations on filteredUsers for charts/MRR, 
+      // but keep plan counts on ALL users if needed for the Pie chart?
+      // User request implies filtering everything ("escolher entre pro e starter")
+
+      if (!u.subscription && filterMode === 'pro') return;
 
       // Normalize plan
-      const plan = (u.subscription.plan || 'starter').toLowerCase();
+      const plan = (u.subscription?.plan || 'starter').toLowerCase();
+      // Default status for users without subscription object is 'active' (free tier) if we decide to count them
+      // OR we can default to undefined/null checks.
+      // If subscription is missing, let's treat it as no status unless we want to assume active starter.
+      // However, usually detailed stats rely on subscription object.
+      // Let's use optional chaining.
+      const status = u.subscription?.status;
 
       // 1. Plan Counts (All Plan Types)
-      if (u.subscription.status === 'active' || u.subscription.status === 'past_due' || u.subscription.status === 'pending_payment') {
+      // If no subscription object, we assume they are Starter (if we consider them 'active' enough to count)
+      // or we strictly check status.
+      // Let's assume if they exist in the system, they count as Starter unless status says otherwise.
+      const isActiveOrPastDue = status === 'active' || status === 'past_due' || status === 'pending_payment';
+
+      // If no subscription object, we count as Starter (Active) ?
+      // Or we can just look at the 'plan' derived above.
+      // Let's trigger count if status is present OR if no subscription (defaults to starter active?)
+      // Safe bet: safely check status. If missing, maybe they are just a lead.
+      // But 'totalFree' logic relied on status 'active'.
+
+      if (isActiveOrPastDue) {
         if (plan === 'pro') planCounts.pro++;
         else if (plan === 'family') planCounts.family++;
         else planCounts.starter++;
+      } else if (!u.subscription || !status) {
+        // User without subscription data -> assume Active Starter?
+        // In original code, we filtered `u.subscription?.plan`. 
+        // Since we now load ALL users, some might be raw signups.
+        // Let's count them as Starter.
+        planCounts.starter++;
       }
 
-      if (u.subscription.status === 'active') {
+      if (status === 'active' || (!u.subscription)) {
         if (plan === 'starter') {
           totalFree++;
-        } else {
+        } else if (status === 'active') { // Explicit active check for paid
           activeUsers++; // Only count Pro/Family as "Active Paying Subscribers"
         }
       }
@@ -228,18 +278,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       // 2. MRR (Active Only)
       // Check current month price
       // Estimate "subscription age in months" to apply progressive coupons correctly for MRR
-      let startDate = u.subscription.startDate ? new Date(u.subscription.startDate) : new Date();
+      let startDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : new Date();
       const monthDiff = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth()) + 1;
       const currentMonthIndex = Math.max(1, monthDiff);
 
-      if (u.subscription.status === 'active') {
+      if (status === 'active') {
         const currentPrice = calculateSubscriptionPrice(u.subscription, currentMonthIndex);
         totalMRR += currentPrice;
       }
 
       // 3. Lifetime Revenue Estimation
-      if (u.subscription.startDate) {
-        const endCalcDate = u.subscription.status === 'canceled' ? new Date() : new Date();
+      if (u.subscription?.startDate) {
+        const endCalcDate = status === 'canceled' ? new Date() : new Date();
         const monthsActive = Math.max(1, (endCalcDate.getFullYear() - startDate.getFullYear()) * 12 + (endCalcDate.getMonth() - startDate.getMonth()));
 
         for (let m = 1; m <= monthsActive; m++) {
@@ -248,7 +298,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
 
       // 4. Projections (Next 12 Months)
-      if (u.subscription.status === 'active' && plan !== 'starter') {
+      if (status === 'active' && plan !== 'starter') {
         for (let i = 0; i < 12; i++) {
           const futureDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
           const futureDiff = (futureDate.getFullYear() - startDate.getFullYear()) * 12 + (futureDate.getMonth() - startDate.getMonth()) + 1;
@@ -262,15 +312,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
     });
 
-    const totalSubscribedUsers = activeUsers + totalFree + (users.filter(u => u.subscription?.status === 'canceled').length);
-    const conversionRate = users.length > 0 ? (activeUsers / users.length) * 100 : 0;
+    const totalSubscribedUsers = activeUsers + totalFree + (filteredUsers.filter(u => u.subscription?.status === 'canceled').length);
+    // Conversion Rate: Active Paying / Total Users (Global) - or should it be filtered?
+    // User asked to "show everything" and "filter between pro and starter".
+    // If filtered to Pro, conversion rate is 100%? Let's keep it global if filter is 'all', 
+    // but maybe just use filtered set count if specific filter.
+    // Actually, "Conversion Rate" usually implies Total Visitors/Free -> Paid.
+    // If filter is 'pro', showing 100% is redundant.
+    // Let's stick to using `filteredUsers` for everything to reflect the "view".
+    const conversionRate = filteredUsers.length > 0 ? (activeUsers / filteredUsers.length) * 100 : 0;
 
     // ARPU (Ticket Médio)
     const arpu = activeUsers > 0 ? totalMRR / activeUsers : 0;
 
     // Pending Revenue
     let pendingRevenue = 0;
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       if (u.subscription && (u.subscription.status === 'past_due' || u.subscription.status === 'pending_payment')) {
         const price = calculateSubscriptionPrice(u.subscription);
         pendingRevenue += price;
@@ -280,7 +337,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     // New Users (Last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const newUsers = users.filter(u => {
+    const newUsers = filteredUsers.filter(u => {
       const joinDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : null;
       return joinDate && joinDate >= thirtyDaysAgo;
     }).length;
@@ -292,7 +349,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     for (let i = 5; i >= 0; i--) {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
-      const count = users.filter(u => {
+      const count = filteredUsers.filter(u => {
         const start = u.subscription?.startDate ? new Date(u.subscription.startDate) : new Date(0);
         return start <= endOfMonth;
       }).length;
@@ -307,10 +364,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       const endOfMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0);
       let mrrAtPoint = 0;
-      users.forEach(u => {
+      filteredUsers.forEach(u => {
         if (!u.subscription || !u.subscription.startDate) return;
         const start = new Date(u.subscription.startDate);
         const plan = (u.subscription.plan || 'starter').toLowerCase();
+
+        // Strict MRR calculation matching filter logic implicitly by using filteredUsers
+        // But MRR only makes sense for paid plans.
         if (start <= endOfMonth && plan !== 'starter') {
           mrrAtPoint += calculateSubscriptionPrice(u.subscription, 1);
         }
@@ -325,7 +385,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const dailyCounts: Record<string, number> = {};
     let minDate = new Date();
 
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       // Use createdAt (preferred) or subscription start date or fallback
       const dateStr = u.createdAt || u.subscription?.startDate;
       if (!dateStr) return;
@@ -364,7 +424,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     // Heatmap / Location Data (Top 5 States)
     const locationData: Record<string, number> = {};
-    users.forEach(u => {
+    filteredUsers.forEach(u => {
       const state = u.address?.state?.toUpperCase() || 'N/A';
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
@@ -394,6 +454,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       planData,
       locationsChartData,
       cumulativeGrowth, // Add to return object
+      filteredCount: filteredUsers.length,
       trends: {
         users: userGrowthData,
         mrr: mrrTrendData,
@@ -401,7 +462,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         generic: randomTrend()
       }
     };
-  }, [users, coupons]);
+  }, [users, coupons, filterMode]);
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-20">
@@ -411,10 +472,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           <p className="text-gray-400">Visão geral financeira e métricas de saúde do sistema.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="px-3 py-1 bg-green-500/10 border border-green-500/20 rounded-full flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span className="text-xs font-medium text-green-400">Sistema Operacional</span>
-          </div>
+
+          {/* Plan Filter */}
+          <Dropdown>
+            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2">
+              <Filter size={14} className="text-gray-400" />
+              <span>
+                {filterMode === 'all' && 'Plano: Todos'}
+                {filterMode === 'pro' && 'Plano: Pro'}
+                {filterMode === 'starter' && 'Plano: Starter'}
+              </span>
+              <ChevronDown size={14} className="text-gray-500" />
+            </DropdownTrigger>
+            <DropdownContent align="right">
+              <DropdownLabel>FILTRAR POR PLANO</DropdownLabel>
+              <DropdownItem onClick={() => setFilterMode('all')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Todos</span>
+                  {filterMode === 'all' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+              <DropdownItem onClick={() => setFilterMode('pro')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Pro</span>
+                  {filterMode === 'pro' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+              <DropdownItem onClick={() => setFilterMode('starter')}>
+                <div className="flex items-center justify-between w-full">
+                  <span>Starter</span>
+                  {filterMode === 'starter' && <Check size={14} className="text-emerald-400" />}
+                </div>
+              </DropdownItem>
+            </DropdownContent>
+          </Dropdown>
         </div>
       </div>
 
@@ -498,7 +589,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               <p className="text-gray-500 text-sm">Total acumulado de usuários por dia</p>
             </div>
             <div className="text-right">
-              <span className="text-2xl font-bold text-white">{users.length}</span>
+              <span className="text-2xl font-bold text-white">{stats.filteredCount}</span>
               <p className="text-xs text-gray-500 uppercase">Total Atual</p>
             </div>
           </div>
@@ -579,7 +670,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
           <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <MapPin size={18} className="text-purple-400" />
+            <MapPin size={18} className="text-[#D97757]" />
             Top Localizações
           </h3>
           <div className="space-y-4">
@@ -592,8 +683,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
                 <div className="flex items-center gap-4 flex-1 justify-end">
                   <div className="h-2 bg-gray-800 rounded-full flex-1 max-w-[150px] overflow-hidden">
                     <div
-                      className="h-full bg-purple-500 rounded-full"
-                      style={{ width: `${(item.value / users.length) * 100}%` }}
+                      className="h-full bg-[#D97757] rounded-full"
+                      style={{ width: `${(item.value / stats.filteredCount) * 100}%` }}
                     />
                   </div>
                   <span className="text-sm font-bold text-white min-w-[30px] text-right">{item.value}</span>
@@ -630,7 +721,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
             {/* Center Text */}
             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               <div className="text-center">
-                <p className="text-3xl font-bold text-white">{users.length}</p>
+                <p className="text-3xl font-bold text-white">{stats.filteredCount}</p>
                 <p className="text-xs text-gray-500 uppercase">Usuários</p>
               </div>
             </div>
@@ -645,6 +736,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           </div>
         </div>
       </div>
-    </div>
+    </div >
   );
 };
