@@ -50,7 +50,6 @@ const planTabs: { value: PlanFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
     { value: 'starter', label: 'Starter' },
     { value: 'pro', label: 'Pro' },
-    { value: 'family', label: 'Família' },
 ];
 
 export const AdminUsers: React.FC = () => {
@@ -328,7 +327,7 @@ export const AdminUsers: React.FC = () => {
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-4">
                     <p className="text-xs text-gray-500 uppercase font-bold tracking-wide">Total</p>
                     <p className="text-2xl font-bold text-white mt-1 animate-[pulse_3s_ease-in-out_infinite]" style={{ animationDuration: '4s' }}>
@@ -345,12 +344,6 @@ export const AdminUsers: React.FC = () => {
                     <p className="text-xs text-[#d97757] uppercase font-bold tracking-wide">Pro</p>
                     <p className="text-2xl font-bold text-white mt-1 animate-[pulse_3s_ease-in-out_infinite]" style={{ animationDuration: '4s' }}>
                         <NumberFlow value={stats.pro} />
-                    </p>
-                </div>
-                <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-4">
-                    <p className="text-xs text-purple-400 uppercase font-bold tracking-wide">Família</p>
-                    <p className="text-2xl font-bold text-white mt-1 animate-[pulse_3s_ease-in-out_infinite]" style={{ animationDuration: '4s' }}>
-                        <NumberFlow value={stats.family} />
                     </p>
                 </div>
                 <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-4">

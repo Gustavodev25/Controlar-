@@ -26,6 +26,7 @@ export interface User {
     asaasPaymentId?: string; // ID do último pagamento para estorno
     couponUsed?: string;
     startDate?: string;
+    firstMonthOverridePrice?: number; // Override price for month 1 (manual fix)
     autoRenew?: boolean;
   };
   paymentMethodDetails?: {

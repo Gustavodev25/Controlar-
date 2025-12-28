@@ -581,13 +581,25 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   };
 
   const handleManualSync = async (itemId: string, force = false) => {
-    if (!userId || isSyncingItem[itemId]) return;
+    // Early return if no user or already syncing this item
+    if (!userId) {
+      console.log('[handleManualSync] No userId, aborting');
+      return;
+    }
+
+    if (isSyncingItem[itemId]) {
+      console.log('[handleManualSync] Already syncing item:', itemId);
+      return;
+    }
 
     // Admins bypass all sync restrictions
     if (!force && !isAdmin) {
       // Check if already synced or connected today
+      // IMPORTANT: Only check timer if it exists (has been calculated)
       const itemTimer = timers[itemId];
-      if (itemTimer?.syncedToday) {
+
+      // If timer exists and shows synced today, block with message
+      if (itemTimer && itemTimer.syncedToday) {
         const message = itemTimer.connectedToday
           ? `Banco conectado hoje. Sincronização liberada à meia-noite (${itemTimer.auto.h}h ${itemTimer.auto.m}m).`
           : `Já sincronizado hoje. Próxima sincronização em ${itemTimer.auto.h}h ${itemTimer.auto.m}m.`;
@@ -597,7 +609,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
       // Check if user has credits available
       if (!hasCredit) {
-        toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários.Aguarde até meia - noite.`);
+        toast.error(`Você já usou seus ${MAX_CREDITS_PER_DAY} créditos diários. Aguarde até meia-noite.`);
         return;
       }
     }

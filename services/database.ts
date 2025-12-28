@@ -89,6 +89,18 @@ export const setAdminStatus = async (userId: string, isAdmin: boolean) => {
   });
 };
 
+// Set first month override price for a user (for coupon correction)
+export const setFirstMonthOverridePrice = async (userId: string, price: number) => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+  // Try to update in profile.subscription first (where most subscriptions are stored)
+  // Also update at root level subscription for family members
+  await updateDoc(userRef, {
+    "profile.subscription.firstMonthOverridePrice": price,
+    "subscription.firstMonthOverridePrice": price
+  });
+};
+
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
   if (!db) return null;
   try {

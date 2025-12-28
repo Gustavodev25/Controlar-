@@ -227,6 +227,8 @@ export const AdminSubscriptions: React.FC = () => {
         return diffDays <= 7;
     };
 
+
+
     // Filter users
     const filteredUsers = useMemo(() => {
         return users.filter(user => {
@@ -291,6 +293,11 @@ export const AdminSubscriptions: React.FC = () => {
                 price = isAnnual ? (749.00 / 12) : 69.90;
             } else if (sub.plan === 'pro') {
                 price = isAnnual ? (399.00 / 12) : 35.90;
+            }
+
+            // Check for manual first month override
+            if (monthIndex === 1 && sub.firstMonthOverridePrice !== undefined) {
+                return sub.firstMonthOverridePrice;
             }
 
             // Apply Coupons
@@ -445,7 +452,11 @@ export const AdminSubscriptions: React.FC = () => {
             let finalPrice = planPrice;
             let discountInfo = null;
 
-            if (coupon && finalPrice > 0) {
+            // Check for manual first month override
+            if (monthIndex === 1 && sub.firstMonthOverridePrice !== undefined) {
+                finalPrice = sub.firstMonthOverridePrice;
+                discountInfo = 'Cupom Primeiro Mês';
+            } else if (coupon && finalPrice > 0) {
                 if (coupon.type === 'progressive') {
                     const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === monthIndex);
                     if (rule) {
