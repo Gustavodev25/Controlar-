@@ -53,6 +53,22 @@ export const SyncProgressToast: React.FC<SyncProgressToastProps> = ({ progress, 
               <p className="text-xs text-gray-400 mt-1 leading-relaxed">
                 {hasError ? progress.error : progress.step}
               </p>
+
+              {/* Progress Bar - Only show when syncing */}
+              {!isComplete && !hasError && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] text-gray-500 font-medium uppercase tracking-wider">Progresso</span>
+                    <span className="text-[10px] text-[#d97757] font-bold">{percentage}%</span>
+                  </div>
+                  <div className="h-1.5 w-full bg-gray-800 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#d97757] rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${percentage}%` }}
+                    />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

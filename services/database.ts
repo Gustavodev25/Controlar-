@@ -633,10 +633,25 @@ export const listenToTransactions = (userId: string, callback: (transactions: Tr
     snapshot.forEach(doc => {
       transactions.push({ id: doc.id, ...doc.data() } as Transaction);
     });
-    // Sort client-side
-    transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     callback(transactions);
   });
+};
+
+export const getTransactions = async (userId: string, minYear: number = 2025): Promise<Transaction[]> => {
+  if (!db) return [];
+  const txRef = collection(db, "users", userId, "transactions");
+  const minDate = `${minYear}-01-01`;
+  const q = query(txRef, where("date", ">=", minDate));
+
+  const snapshot = await getDocs(q);
+  const transactions: Transaction[] = [];
+  snapshot.forEach(doc => {
+    transactions.push({ id: doc.id, ...doc.data() } as Transaction);
+  });
+
+  // Sort client-side
+  transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  return transactions;
 };
 
 // --- Credit Card Transactions Services ---
@@ -788,6 +803,27 @@ export const findCreditCardTransactionId = async (userId: string, providerId: st
   } catch (err) {
     console.error("Error checking credit card transaction:", err);
     return null;
+  }
+};
+
+export const getCreditCardTransactions = async (userId: string): Promise<CreditCardTransaction[]> => {
+  if (!db) return [];
+  try {
+    const txRef = collection(db, "users", userId, "creditCardTransactions");
+    // Limit to recent to avoid huge fetches if necessary, or just fetch all for now
+    // For now fetching all as the listener does (listener fetches all?)
+    // Actually the listener doesn't have a query limit in the code snippet I saw earlier? 
+    // Let's check listenToCreditCardTransactions implementation if I can.
+    // Assuming fetch all is fine for now as per other patterns.
+    const snapshot = await getDocs(txRef);
+    const transactions: CreditCardTransaction[] = [];
+    snapshot.forEach(doc => {
+      transactions.push({ id: doc.id, ...doc.data() } as CreditCardTransaction);
+    });
+    return transactions;
+  } catch (error) {
+    console.error("Error fetching CC transactions:", error);
+    return [];
   }
 };
 
@@ -2321,12 +2357,13 @@ export const listenToSyncJobs = (userId: string, callback: (jobs: SyncJob[]) => 
   if (!db) return () => { };
 
   const jobsRef = collection(db, "users", userId, "sync_jobs");
-  // Query for active jobs (not completed)
+  // Query for active jobs - we need 'completed' to detect the status CHANGE from processing->completed
+  // The frontend filters out old jobs to prevent phantom toasts on page load
   const q = query(
     jobsRef,
-    where('status', 'in', ['pending', 'processing', 'retrying', 'failed']),
+    where('status', 'in', ['pending', 'processing', 'retrying', 'completed']),
     orderBy('createdAt', 'desc'),
-    limit(10)
+    limit(5) // Reduced limit to minimize old job processing
   );
 
   return onSnapshot(q, (snapshot) => {
@@ -2438,3 +2475,156 @@ export const getAllConnectedAccounts = async (): Promise<any[]> => {
     return [];
   }
 };
+
+// --- Support Services ---
+
+export interface SupportMessage {
+  id?: string;
+  text: string;
+  senderId: string;
+  senderType: 'user' | 'admin';
+  createdAt: string;
+  read?: boolean;
+}
+
+export interface SupportTicket {
+  id?: string;
+  userId: string;
+  userEmail: string;
+  userName?: string;
+  status: 'open' | 'closed' | 'in_progress';
+  createdAt: string;
+  lastMessageAt: string;
+  unreadCount?: number;
+  assignedTo?: string; // Admin ID
+  assignedByName?: string; // Admin Name
+}
+
+export const createSupportTicket = async (userId: string, userEmail: string, userName: string) => {
+  if (!db) return null;
+  const ticketsRef = collection(db, "support_tickets");
+
+  // Check if open ticket exists
+  const q = query(ticketsRef, where("userId", "==", userId), where("status", "in", ["open", "in_progress"]), limit(1));
+  const snap = await getDocs(q);
+
+  if (!snap.empty) {
+    return snap.docs[0].id;
+  }
+
+  const newTicket: SupportTicket = {
+    userId,
+    userEmail,
+    userName,
+    status: 'open',
+    createdAt: new Date().toISOString(),
+    lastMessageAt: new Date().toISOString(),
+    unreadCount: 0
+  };
+
+  const docRef = await addDoc(ticketsRef, newTicket);
+  return docRef.id;
+};
+
+export const sendSupportMessage = async (ticketId: string, message: Omit<SupportMessage, 'id'>) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  const messagesRef = collection(ticketRef, "messages");
+
+  await addDoc(messagesRef, {
+    ...message,
+    read: false
+  });
+
+  await updateDoc(ticketRef, {
+    lastMessageAt: message.createdAt
+  });
+};
+
+export const markMessagesAsRead = async (ticketId: string, role: 'user' | 'admin') => {
+  if (!db) return;
+  const messagesRef = collection(db, "support_tickets", ticketId, "messages");
+  // Query messages not read and SENT BY THE OTHER PARTY
+  // If I am user, I want to mark messages sent by 'admin' as read
+  // If I am admin, I want to mark messages sent by 'user' as read
+  const senderTypeTarget = role === 'user' ? 'admin' : 'user';
+
+  const q = query(messagesRef, where("senderType", "==", senderTypeTarget), where("read", "==", false));
+  const snap = await getDocs(q);
+
+  if (snap.empty) return;
+
+  const batch = writeBatch(db);
+  snap.docs.forEach(doc => {
+    batch.update(doc.ref, { read: true });
+  });
+  await batch.commit();
+};
+
+export const listenToTicketMessages = (ticketId: string, callback: (messages: SupportMessage[]) => void) => {
+  if (!db) return () => { };
+  const messagesRef = collection(db, "support_tickets", ticketId, "messages");
+  const q = query(messagesRef, orderBy("createdAt", "asc"));
+
+  return onSnapshot(q, (snapshot) => {
+    const msgs = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as SupportMessage));
+    callback(msgs);
+  });
+};
+
+export const getUserActiveTicket = (userId: string, callback: (ticketId: string | null) => void) => {
+  if (!db) return () => { };
+  const ticketsRef = collection(db, "support_tickets");
+  // Check for open OR in_progress
+  const q = query(ticketsRef, where("userId", "==", userId), where("status", "in", ["open", "in_progress"]), limit(1));
+  return onSnapshot(q, (snap) => {
+    if (!snap.empty) {
+      callback(snap.docs[0].id);
+    } else {
+      callback(null);
+    }
+  });
+}
+
+export const listenToAllOpenTickets = (callback: (tickets: SupportTicket[]) => void) => {
+  if (!db) return () => { };
+  const ticketsRef = collection(db, "support_tickets");
+  // Listen to both open and in_progress
+  // Removed orderBy to avoid index requirement. Sorting client-side.
+  const q = query(ticketsRef, where("status", "in", ["open", "in_progress"]));
+  return onSnapshot(q, (snap) => {
+    const tickets = snap.docs.map(d => ({ id: d.id, ...d.data() } as SupportTicket));
+    // Client-side sort
+    tickets.sort((a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime());
+    callback(tickets);
+  });
+};
+
+export const closeSupportTicket = async (ticketId: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await updateDoc(ticketRef, { status: 'closed' });
+};
+
+export const acceptSupportTicket = async (ticketId: string, adminId: string, adminName: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await updateDoc(ticketRef, {
+    status: 'in_progress',
+    assignedTo: adminId,
+    assignedByName: adminName
+  });
+};
+
+export const listenToTicket = (ticketId: string, callback: (ticket: SupportTicket | null) => void) => {
+  if (!db) return () => { };
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  return onSnapshot(ticketRef, (docSnap) => {
+    if (docSnap.exists()) {
+      callback({ id: docSnap.id, ...docSnap.data() } as SupportTicket);
+    } else {
+      callback(null);
+    }
+  });
+};
+

@@ -13,8 +13,9 @@ export const SYNC_PROGRESS_EVENT = 'bank-sync-progress';
 export const SYNC_PROGRESS_CLEAR_EVENT = 'bank-sync-progress-clear';
 
 // Returns true when the stored progress is still recent enough to show in the UI
-export const isRecentSyncProgress = (progress: SyncProgress | null, maxAgeMs = 5 * 60 * 1000) => {
-  if (!progress?.timestamp) return true;
+export const isRecentSyncProgress = (progress: SyncProgress | null, maxAgeMs = 3 * 60 * 1000) => {
+  // If no timestamp, assume it's stale (safer than assuming recent)
+  if (!progress?.timestamp) return false;
   return Date.now() - progress.timestamp < maxAgeMs;
 };
 

@@ -53,6 +53,8 @@ import { Roadmap } from './components/Roadmap';
 import { AdminUsers } from './components/AdminUsers';
 import { AdminSubscriptions } from './components/AdminSubscriptions';
 import { AdminControl } from './components/AdminControl';
+import { SupportChat } from './components/SupportChat';
+import { AdminSupport } from './components/AdminSupport';
 import AdminEmailMessage from './components/AdminEmailMessage';
 import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
@@ -654,6 +656,7 @@ const App: React.FC = () => {
 
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isSupportChatOpen, setIsSupportChatOpen] = useState(false);
   const [settingsInitialTab, setSettingsInitialTab] = useState<'profile' | 'plan' | 'badges' | 'data' | 'finance'>('profile');
 
   // Pro Onboarding State
@@ -733,6 +736,41 @@ const App: React.FC = () => {
       localStorage.setItem('finances_active_member_id', activeMemberId);
     }
   }, [activeMemberId]);
+
+  const [hasUnreadSupport, setHasUnreadSupport] = useState(false);
+
+  // Monitor unread support messages
+  useEffect(() => {
+    if (!currentUser || activeTab === 'admin_support') return;
+
+    // Only for users (or admins acting as users, though rarely needed)
+    // If Admin is chatting, they see it in AdminSupport
+    // We want to notify regular users when Admin replies.
+
+    // 1. Get active ticket
+    const unsubTicket = dbService.getUserActiveTicket(currentUser.id || '', (ticketId) => {
+      if (!ticketId) {
+        setHasUnreadSupport(false);
+        return;
+      }
+
+      // 2. Listen to messages for that ticket
+      const unsubMessages = dbService.listenToTicketMessages(ticketId, (msgs) => {
+        // Check if there are any unread messages from 'admin'
+        // If I am user, senderType === 'admin' && !read
+        const hasUnread = msgs.some(m => m.senderType === 'admin' && !m.read);
+
+        // If chat is OPEN, we assume they are being read (handled by SupportChat component),
+        // but here we just reflect the state.
+        // Ideally, if chat is open, they are marked read instantly, so hasUnread becomes false.
+        setHasUnreadSupport(hasUnread);
+      });
+
+      return () => unsubMessages();
+    });
+
+    return () => unsubTicket();
+  }, [currentUser?.id, activeTab]);
 
   const syncMemberId = useMemo(() => {
     if (activeMemberId !== 'FAMILY_OVERVIEW') return activeMemberId;
@@ -874,6 +912,7 @@ const App: React.FC = () => {
 
 
           const baseProfile: User = {
+            id: firebaseUser.uid,
             name: firebaseUser.displayName || profile?.name || 'Usuário',
             email: firebaseUser.email || '',
             baseSalary: profile?.baseSalary || 0,
@@ -1136,6 +1175,7 @@ const App: React.FC = () => {
     const unsubCreditCardTxs = dbService.listenToCreditCardTransactions(userId, (data) => {
       setSeparateCreditCardTxs(data);
     });
+
 
     return () => {
       unsubTx();
@@ -3136,6 +3176,8 @@ const App: React.FC = () => {
         overdueRemindersCount={overdueRemindersCount}
         onOpenAIModal={() => handleOpenAIModal('transaction')}
         onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+        onOpenSupport={() => setIsSupportChatOpen(true)}
+        hasUnreadSupport={hasUnreadSupport}
         isProMode={isProMode}
       />
 
@@ -3226,6 +3268,8 @@ const App: React.FC = () => {
             <AdminPixels />
           ) : activeTab === 'admin_feedbacks' ? (
             <AdminFeedbacks />
+          ) : activeTab === 'admin_support' ? (
+            <AdminSupport currentUser={currentUser} />
           ) : activeTab === 'admin_control' || activeTab === 'admin_users' || activeTab === 'admin_subscriptions' ? (
             <AdminControl />
           ) : (
@@ -3461,6 +3505,31 @@ const App: React.FC = () => {
                 <div className="flex-1 space-y-6 animate-fade-in">
                   <ConnectedAccounts
                     accounts={enrichedConnectedAccounts}
+                    onRefresh={async () => {
+                      if (!userId) return;
+                      // Force a manual fetch to ensure we have the absolute latest data
+                      // Listeners sometimes have a slight delay or race condition with the "completed" status
+                      try {
+                        const [newTxs, newCcTxs, newAccounts] = await Promise.all([
+                          dbService.getTransactions(userId),
+                          dbService.getCreditCardTransactions(userId),
+                          dbService.getConnectedAccounts(userId)
+                        ]);
+
+                        setTransactions(newTxs);
+                        setSeparateCreditCardTxs(newCcTxs);
+                        setConnectedAccounts(newAccounts);
+
+                        // Also re-fetch item statuses just in case
+                        // (Already handled by ConnectedAccounts internally, but good to be safe if moved)
+
+                        setTimeout(() => {
+                          toast.success("Dados atualizados!");
+                        }, 500);
+                      } catch (err) {
+                        console.error("Error manual refresh:", err);
+                      }
+                    }}
                     lastSynced={lastSyncMap}
                     userId={userId}
                     isProMode={isProMode}
@@ -3579,6 +3648,15 @@ const App: React.FC = () => {
       <WhatsAppConnect
         isOpen={isWhatsAppOpen}
         onClose={() => setIsWhatsAppOpen(false)}
+      />
+
+      <SupportChat
+        isOpen={isSupportChatOpen}
+        onClose={() => setIsSupportChatOpen(false)}
+        userId={userId || ''}
+        userEmail={currentUser?.email || ''}
+        userName={currentUser?.name || 'User'}
+        sidebarOpen={isSidebarOpen}
       />
 
       <FeedbackModal

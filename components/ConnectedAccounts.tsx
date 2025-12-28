@@ -7,6 +7,7 @@ import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
 import { EmptyState } from "./EmptyState";
+import { saveSyncProgress, clearSyncProgress } from "../utils/syncProgress";
 import * as dbService from "../services/database";
 import { useToasts } from "./Toast";
 import { TooltipIcon } from "./UIComponents";
@@ -385,6 +386,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       // Map jobs by itemId for easy lookup
       const jobMap: Record<string, dbService.SyncJob> = {};
       const newStatuses: Record<string, string> = {};
+      let hasActiveJob = false;
 
       jobs.forEach((job) => {
         // Only keep the most recent job per itemId
@@ -414,28 +416,83 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
           isRecent = (now - jobTime) < 45000; // 45 seconds tolerance
         }
 
+        // Update progress toast for active jobs - ONLY if job is recent (< 3 min old)
+        // This prevents showing toast for stale/zombie jobs on page load
+        if (currentStatus === 'processing' || currentStatus === 'pending' || currentStatus === 'retrying') {
+          // Check if job is recent enough to show progress
+          const jobUpdatedStr = job.updatedAt || job.createdAt;
+          let jobAge = Infinity;
+          if (jobUpdatedStr) {
+            const jobUpdatedTime = (typeof jobUpdatedStr === 'object' && 'seconds' in jobUpdatedStr)
+              ? (jobUpdatedStr as any).seconds * 1000
+              : new Date(jobUpdatedStr).getTime();
+            jobAge = now - jobUpdatedTime;
+          }
+
+          // Only show progress toast if job was updated in the last 3 minutes
+          const MAX_JOB_AGE_MS = 3 * 60 * 1000; // 3 minutes
+          if (jobAge < MAX_JOB_AGE_MS) {
+            hasActiveJob = true;
+            const progress = job.progress;
+            if (progress && typeof progress === 'object') {
+              saveSyncProgress({
+                step: progress.step || 'Sincronizando...',
+                current: progress.current || 0,
+                total: progress.total || 100,
+                startedAt: Date.now()
+              });
+            } else {
+              // Fallback for legacy format
+              saveSyncProgress({
+                step: 'Processando...',
+                current: typeof progress === 'number' ? progress : 0,
+                total: 100,
+                startedAt: Date.now()
+              });
+            }
+          }
+        }
+
         // Trigger if: Status changed OR (It's the first load of a done job AND it's fresh)
         if ((currentStatus !== previousStatus && !isFirstLoadOfTerminalState) || (isFirstLoadOfTerminalState && isRecent)) {
           if (currentStatus === 'completed') {
-            sonnerToast.success('Sincronização concluída!', {
-              id: `sync-job- ${job.id} `,
-              duration: 3000
+            // Show completion in progress toast
+            const message = job.message || 'Dados sincronizados!';
+            saveSyncProgress({
+              step: message,
+              current: 100,
+              total: 100,
+              isComplete: true,
+              startedAt: Date.now()
             });
-            if (onRefresh) onRefresh();
+            // Delay refresh to ensure Firestore propagation
+            setTimeout(() => {
+              fetchItemStatuses();
+              if (onRefresh) onRefresh();
+            }, 3000);
           } else if (currentStatus === 'failed') {
-            const message = job.creditRefunded
+            const errorMessage = job.creditRefunded
               ? 'Sincronização falhou. Crédito reembolsado.'
-              : 'Sincronização falhou.';
-            sonnerToast.error(message, {
-              id: `sync-job- ${job.id} `,
-              duration: 5000
+              : (job.lastError || 'Sincronização falhou.');
+            saveSyncProgress({
+              step: 'Erro',
+              current: 0,
+              total: 100,
+              error: errorMessage,
+              startedAt: Date.now()
             });
+            fetchItemStatuses(); // Also update statuses on failure
           }
         }
 
         // Update status for next run
         newStatuses[job.id] = currentStatus;
       });
+
+      // Clear progress toast if no active jobs
+      if (!hasActiveJob && jobs.length === 0) {
+        // Don't clear immediately - let the completion/error toast show
+      }
 
       setSyncJobs(jobMap);
 
@@ -448,7 +505,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return () => {
       unsubscribeJobs();
     };
-  }, [userId, onRefresh]);
+  }, [userId, onRefresh, fetchItemStatuses]);
 
   // Global Timer Display Logic - Updates every second for smooth animation
   const [globalTimerDisplay, setGlobalTimerDisplay] = useState({ h: 0, m: 0, s: 0 });
@@ -619,7 +676,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       const response = await fetch(`/api/pluggy/trigger-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, userId })
+        body: JSON.stringify({ itemId, userId, force })
       });
       const data = await response.json();
 
@@ -827,15 +884,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             </button>
           </TooltipIcon>
 
-          {onRefresh && accounts.length > 0 && (
-            <button
-              onClick={onRefresh}
-              className="bg-gray-900 hover:bg-gray-800 text-white px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all border border-gray-800 hover:border-gray-700 shadow-lg"
-            >
-              <RotateCcw size={18} />
-              <span className="hidden sm:inline font-bold text-sm">Atualizar</span>
-            </button>
-          )}
+          {/* Button removed as per user request for automatic updates */}
         </div>
       </div>
 

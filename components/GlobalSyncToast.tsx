@@ -72,7 +72,11 @@ export const GlobalSyncToast: React.FC = () => {
   useEffect(() => {
     const initial = readSyncProgress();
     if (initial) {
-      if (isRecentSyncProgress(initial)) {
+      // Prevent showing "Completed" or "Error" toasts on page reload
+      // Only restore state if it is strictly still IN PROGRESS
+      if (initial.isComplete || initial.error) {
+        clearSyncProgress();
+      } else if (isRecentSyncProgress(initial)) {
         setProgress(initial);
       } else {
         clearSyncProgress(); // Clean up stale initial data

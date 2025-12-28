@@ -143,17 +143,53 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
         const txCollection = db.collection('users').doc(userId).collection('transactions');
         const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
 
-        try {
-            // Trigger Pluggy refresh (don't wait for result)
-            pluggyApi.patch(`/items/${itemId}`, { webhookUrl: process.env.PLUGGY_WEBHOOK_URL }, {
-                headers: { 'X-API-KEY': apiKey }
-            }).catch(err => {
-                if (err.response?.status === 404) {
-                    jobDoc.update({ status: 'failed', error: 'Item not found', needsReconnect: true });
-                }
-            });
+        // Helper to update job progress in consistent format
+        const updateProgress = (current, step) => jobDoc.update({
+            progress: { current, total: 100, step },
+            updatedAt: new Date().toISOString()
+        });
 
-            await jobDoc.update({ progress: 10, step: 'Buscando contas...' });
+        try {
+            // Trigger Pluggy refresh
+            await updateProgress(5, 'Atualizando conexão...');
+
+            try {
+                await pluggyApi.patch(`/items/${itemId}`, { webhookUrl: process.env.PLUGGY_WEBHOOK_URL }, {
+                    headers: { 'X-API-KEY': apiKey }
+                });
+            } catch (err) {
+                if (err.response?.status === 404) {
+                    await jobDoc.update({ status: 'failed', error: 'Item not found', needsReconnect: true });
+                    return;
+                }
+                // Other errors - continue anyway, item might still be valid
+                console.log('[Trigger-Sync] Patch warning:', err.message);
+            }
+
+            // CRITICAL: Wait for Pluggy to finish fetching data from bank
+            await updateProgress(10, 'Aguardando dados do banco...');
+            const itemStatus = await waitForItemReady(apiKey, itemId, 45000);
+            console.log(`[Trigger-Sync] Item ready check: ${itemStatus.status}`);
+
+            if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
+                await jobDoc.update({
+                    status: 'failed',
+                    error: 'O banco requer ação adicional. Tente reconectar.',
+                    needsReconnect: true
+                });
+                return;
+            }
+
+            if (itemStatus.status === 'LOGIN_ERROR') {
+                await jobDoc.update({
+                    status: 'failed',
+                    error: 'Erro de login no banco. Reconecte sua conta.',
+                    needsReconnect: true
+                });
+                return;
+            }
+
+            await updateProgress(20, 'Buscando contas...');
 
             // STEP 1: Fetch accounts and existing data IN PARALLEL
             const [accountsResp, existingSnap] = await Promise.all([
@@ -165,7 +201,10 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             const existingMap = {};
             existingSnap.forEach(doc => {
                 const d = doc.data();
-                existingMap[doc.id] = { connectedAt: d.connectedAt };
+                existingMap[doc.id] = {
+                    connectedAt: d.connectedAt,
+                    lastSyncedAt: d.lastSyncedAt // Track last sync for incremental fetching
+                };
             });
 
             // STEP 2: Save accounts (quick batch)
@@ -196,22 +235,46 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             }
             await accBatch.commit();
 
-            await jobDoc.update({ progress: 30, step: 'Buscando transações...' });
+            await updateProgress(30, 'Buscando novas transações...');
 
-            // STEP 3: Fetch ALL transactions IN PARALLEL
-            const fromDate = new Date();
-            fromDate.setDate(fromDate.getDate() - 60);
-            const fromStr = fromDate.toISOString().split('T')[0];
+            // STEP 3: Fetch transactions IN PARALLEL (INCREMENTAL - only new transactions)
+            // For each account, use lastSyncedAt as "from" date to avoid re-fetching old transactions
+            // This saves Firebase costs and improves performance
+            const defaultFromDate = new Date();
+            defaultFromDate.setDate(defaultFromDate.getDate() - 60); // 60 days fallback for new accounts
+            const defaultFromStr = defaultFromDate.toISOString().split('T')[0];
 
-            const txPromises = accounts.map(account =>
-                pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
+            const txPromises = accounts.map(account => {
+                const existing = existingMap[account.id];
+                let fromStr = defaultFromStr;
+
+                // If account was synced before, only fetch transactions since last sync
+                if (existing?.lastSyncedAt) {
+                    const lastSync = new Date(existing.lastSyncedAt);
+                    // Subtract 1 day as safety margin for timezone/timing issues
+                    lastSync.setDate(lastSync.getDate() - 1);
+                    fromStr = lastSync.toISOString().split('T')[0];
+                }
+
+                return pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
                     headers: { 'X-API-KEY': apiKey }
-                }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                    .catch(() => ({ account, transactions: [] }))
-            );
+                }).then(resp => ({ account, transactions: resp.data.results || [], fromDate: fromStr }))
+                    .catch(() => ({ account, transactions: [], fromDate: fromStr }));
+            });
 
             const allTxResults = await Promise.all(txPromises);
-            await jobDoc.update({ progress: 50, step: 'Salvando transações...' });
+
+            // Log incremental fetch results
+            let totalNewTx = 0;
+            allTxResults.forEach(({ account, transactions, fromDate }) => {
+                totalNewTx += transactions.length;
+                if (transactions.length > 0) {
+                    console.log(`[Trigger-Sync] Account ${account.id}: ${transactions.length} transactions since ${fromDate}`);
+                }
+            });
+            console.log(`[Trigger-Sync] Total new transactions to save: ${totalNewTx}`);
+
+            await updateProgress(50, `Salvando ${totalNewTx} transações...`);
 
             // STEP 4: Process and batch write all transactions
             let txCount = 0;
@@ -282,7 +345,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             if (opCount > 0) batchPromises.push(currentBatch.commit());
             await Promise.all(batchPromises);
 
-            await jobDoc.update({ progress: 70, step: 'Buscando faturas...' });
+            await updateProgress(70, 'Buscando faturas...');
 
             // STEP 5: Fetch ALL credit card bills IN PARALLEL
             const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
@@ -332,7 +395,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             const duration = Date.now() - startTime;
             await jobDoc.update({
                 status: 'completed',
-                progress: 100,
+                progress: { current: 100, total: 100, step: 'Sincronização concluída!' },
                 updatedAt: syncTimestamp,
                 message: `${txCount} transações em ${(duration / 1000).toFixed(1)}s`,
                 duration
@@ -488,18 +551,33 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         await accBatch.commit();
         console.log(`[Sync] Accounts saved`);
 
-        // STEP 3: Fetch ALL transactions IN PARALLEL
-        const fromDate = new Date();
-        fromDate.setDate(fromDate.getDate() - 60); // 60 days lookback
-        const fromStr = fromDate.toISOString().split('T')[0];
+        // STEP 3: Fetch transactions IN PARALLEL (INCREMENTAL - only new transactions)
+        // For each account, use lastSyncedAt as "from" date to avoid re-fetching old transactions
+        const defaultFromDate = new Date();
+        defaultFromDate.setDate(defaultFromDate.getDate() - 60); // 60 days fallback for new accounts
+        const defaultFromStr = defaultFromDate.toISOString().split('T')[0];
 
-        console.log(`[Sync] Fetching transactions from ${fromStr}...`);
-        const txPromises = accounts.map(account =>
-            pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
+        console.log(`[Sync] Fetching transactions (incremental mode)...`);
+        const txPromises = accounts.map(account => {
+            const existing = existingMap[account.id];
+            let fromStr = defaultFromStr;
+
+            // If account was synced before, only fetch transactions since last sync
+            if (existing?.lastSyncedAt) {
+                const lastSync = new Date(existing.lastSyncedAt);
+                // Subtract 1 day as safety margin for timezone/timing issues
+                lastSync.setDate(lastSync.getDate() - 1);
+                fromStr = lastSync.toISOString().split('T')[0];
+                console.log(`[Sync] Account ${account.id}: fetching from ${fromStr} (last sync: ${existing.lastSyncedAt})`);
+            } else {
+                console.log(`[Sync] Account ${account.id}: first sync, fetching from ${fromStr} (60 days)`);
+            }
+
+            return pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
                 headers: { 'X-API-KEY': apiKey }
             }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                .catch(() => ({ account, transactions: [] })) // Silent fail per account
-        );
+                .catch(() => ({ account, transactions: [] })); // Silent fail per account
+        });
 
         const allTxResults = await Promise.all(txPromises);
 

@@ -22,7 +22,7 @@ import coinzinhaImg from '../assets/coinzinha.png';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire' | 'roadmap'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'chat';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'chat';
 
 // --- NAVITEM: Item Individual ---
 // --- NAVITEM: Item Individual ---
@@ -311,12 +311,14 @@ interface SidebarProps {
   overdueRemindersCount?: number;
   onOpenAIModal: () => void;
   onOpenFeedback: () => void;
+  onOpenSupport: () => void;
   isProMode?: boolean;
+  hasUnreadSupport?: boolean; // New prop
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, activeTab, setActiveTab, isAdminMode, activeMemberId, members,
-  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback, isProMode = false
+  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback, onOpenSupport, isProMode = false, hasUnreadSupport
 }) => {
   const [isMobile, setIsMobile] = useState(false);
 
@@ -438,6 +440,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     label="Feedbacks"
                     isOpen={isOpen}
                   />
+                  <NavItem
+                    active={activeTab === 'admin_support'}
+                    onClick={() => handleNavClick('admin_support')}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>}
+                    label="Suporte"
+                    isOpen={isOpen}
+                  />
                 </>) : (
                 <>
                   <NavItem id="sidebar-nav-overview" active={activeTab === 'dashboard'} onClick={() => handleNavClick('dashboard')} icon={<LayoutDashboard size={20} />} label="Visão Geral" isOpen={isOpen} />
@@ -513,9 +522,38 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           </div>
 
-          {/* Feedback Button - Fora do separador */}
+          {/* Support & Feedback Buttons */}
           {!isAdminMode && (
-            <div className={`${isOpen ? 'px-3 pb-2' : 'px-2 pb-2'}`}>
+            <div className={`${isOpen ? 'px-3 pb-2 space-y-1' : 'px-2 pb-2 space-y-1'}`}>
+
+              {/* Support Button - New */}
+              <button
+                onClick={onOpenSupport}
+                className={`
+                    relative flex items-center outline-none group transition-all duration-300 w-full
+                    ${isOpen ? 'gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
+                    text-gray-500 hover:bg-gray-800/50 hover:text-gray-300
+                  `}
+              >
+                <div className="relative flex items-center justify-center shrink-0">
+                  {hasUnreadSupport && (
+                    <div className="absolute -right-1 -top-1 w-2 h-2 bg-[#d97757] rounded-full animate-pulse" />
+                  )}
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-300 group-hover:scale-110"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>
+                </div>
+
+                <AnimatePresence>
+                  {isOpen && (
+                    <motion.span
+                      initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
+                      className="font-medium text-sm text-gray-400 group-hover:text-gray-300"
+                    >
+                      Suporte
+                    </motion.span>
+                  )}
+                </AnimatePresence>
+              </button>
+
               <button
                 onClick={onOpenFeedback}
                 className={`
