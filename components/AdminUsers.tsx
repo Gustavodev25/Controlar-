@@ -58,6 +58,8 @@ export const AdminUsers: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [planFilter, setPlanFilter] = useState<PlanFilter>('all');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
     const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
     const [sortOption, setSortOption] = useState<SortOption>('newest');
@@ -94,8 +96,8 @@ export const AdminUsers: React.FC = () => {
                 (user.email || '').toLowerCase().includes(searchLower);
 
             // Plan filter
-            const userPlan = user.subscription?.plan || 'starter';
-            const matchesPlan = planFilter === 'all' || userPlan === planFilter;
+            const userPlan = (user.subscription?.plan || 'starter').toLowerCase();
+            const matchesPlan = planFilter === 'all' || userPlan === planFilter.toLowerCase();
 
             // Status filter
             const userStatus = user.subscription?.status || 'active';
@@ -127,12 +129,24 @@ export const AdminUsers: React.FC = () => {
         });
     }, [users, searchTerm, planFilter, statusFilter, roleFilter, sortOption]);
 
+    // Pagination
+    const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+    const paginatedUsers = filteredUsers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, planFilter, statusFilter, roleFilter, sortOption]);
+
     // Stats
     const stats = useMemo(() => ({
         total: users.length,
-        starter: users.filter(u => (u.subscription?.plan || 'starter') === 'starter').length,
-        pro: users.filter(u => u.subscription?.plan === 'pro').length,
-        family: users.filter(u => u.subscription?.plan === 'family').length,
+        starter: users.filter(u => (u.subscription?.plan || 'starter').toLowerCase() === 'starter').length,
+        pro: users.filter(u => (u.subscription?.plan || '').toLowerCase() === 'pro').length,
+        family: users.filter(u => (u.subscription?.plan || '').toLowerCase() === 'family').length,
         admins: users.filter(u => u.isAdmin).length,
     }), [users]);
 
@@ -539,108 +553,144 @@ export const AdminUsers: React.FC = () => {
                         minHeight="min-h-[300px]"
                     />
                 ) : (
-                    <div className="overflow-x-auto">
-                        <table className="w-full">
-                            <thead className="bg-[#333431] text-xs uppercase tracking-wider text-gray-500">
-                                <tr>
-                                    <th className="px-4 py-3 text-left">Usuário</th>
-                                    <th className="px-4 py-3 text-left">Email</th>
-                                    <th className="px-4 py-3 text-left">Membro Há</th>
-                                    <th className="px-4 py-3 text-left">Idade</th>
-                                    <th className="px-4 py-3 text-left">Plano</th>
-                                    <th className="px-4 py-3 text-left">Status</th>
-                                    <th className="px-4 py-3 text-left">Ciclo</th>
-                                    <th className="px-4 py-3 text-left">Último Acesso</th>
-                                    <th className="px-4 py-3 text-left">Próx. Cobrança</th>
-                                    <th className="px-4 py-3 text-center">Ações</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-[#373734]">
-                                {filteredUsers.map((user) => (
-                                    <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
-                                                    {user.avatarUrl ? (
-                                                        <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
-                                                    ) : (
-                                                        getInitials(user.name || 'U')
-                                                    )}
-                                                </div>
-                                                <div className="flex items-center gap-2">
-                                                    <span className="text-white font-medium text-sm">{user.name || 'Sem nome'}</span>
-                                                    {user.isAdmin && (
-                                                        <span className="p-1 rounded bg-amber-500/10 text-amber-500" title="Admin">
-                                                            <Shield size={12} />
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-sm block truncate max-w-[150px]" title={user.email}>{user.email}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex flex-col">
-                                                <span className="text-white text-sm">{formatDate(user.createdAt)}</span>
-                                                <span className="text-gray-500 text-xs">{getTimeSinceCreation(user.createdAt)}</span>
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {getPlanBadge(user.subscription?.plan)}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            {getStatusBadge(user.subscription?.status)}
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-xs uppercase">
-                                                {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
-                                                <Clock size={12} />
-                                                {getLastLogin(user)}
-                                            </div>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <span className="text-gray-400 text-xs font-mono">
-                                                {formatDate(user.subscription?.nextBillingDate)}
-                                            </span>
-                                        </td>
-                                        <td className="px-4 py-3">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button
-                                                    onClick={() => setAdminToggleId(user.id)}
-                                                    className={`p-2 rounded-lg transition-colors ${user.isAdmin ? 'text-[#d97757] hover:bg-[#d97757]/10' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
-                                                    title={user.isAdmin ? "Remover Admin" : "Tornar Admin"}
-                                                >
-                                                    <Shield size={16} className={user.isAdmin ? "fill-current" : ""} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setSelectedUser(user)}
-                                                    className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
-                                                    title="Visualizar"
-                                                >
-                                                    <Eye size={16} />
-                                                </button>
-                                                <button
-                                                    onClick={() => setDeleteId(user.id)}
-                                                    className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
-                                                    title="Excluir"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
-                                        </td>
+                    <>
+                        <div className="overflow-x-auto">
+                            <table className="w-full">
+                                <thead className="bg-[#333431] text-xs uppercase tracking-wider text-gray-500">
+                                    <tr>
+                                        <th className="px-4 py-3 text-left">Usuário</th>
+                                        <th className="px-4 py-3 text-left">Email</th>
+                                        <th className="px-4 py-3 text-left">Membro Há</th>
+                                        <th className="px-4 py-3 text-left">Idade</th>
+                                        <th className="px-4 py-3 text-left">Plano</th>
+                                        <th className="px-4 py-3 text-left">Status</th>
+                                        <th className="px-4 py-3 text-left">Ciclo</th>
+                                        <th className="px-4 py-3 text-left">Último Acesso</th>
+                                        <th className="px-4 py-3 text-left">Próx. Cobrança</th>
+                                        <th className="px-4 py-3 text-center">Ações</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                </thead>
+                                <tbody className="divide-y divide-[#373734]">
+                                    {paginatedUsers.map((user) => (
+                                        <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-3">
+                                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
+                                                        {user.avatarUrl ? (
+                                                            <img src={user.avatarUrl} alt="" className="w-8 h-8 rounded-full object-cover" />
+                                                        ) : (
+                                                            getInitials(user.name || 'U')
+                                                        )}
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-white font-medium text-sm">{user.name || 'Sem nome'}</span>
+                                                        {user.isAdmin && (
+                                                            <span className="p-1 rounded bg-amber-500/10 text-amber-500" title="Admin">
+                                                                <Shield size={12} />
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-gray-400 text-sm block truncate max-w-[150px]" title={user.email}>{user.email}</span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex flex-col">
+                                                    <span className="text-white text-sm">{formatDate(user.createdAt)}</span>
+                                                    <span className="text-gray-500 text-xs">{getTimeSinceCreation(user.createdAt)}</span>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {getPlanBadge(user.subscription?.plan)}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                {getStatusBadge(user.subscription?.status)}
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-gray-400 text-xs uppercase">
+                                                    {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
+                                                    <Clock size={12} />
+                                                    {getLastLogin(user)}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <span className="text-gray-400 text-xs font-mono">
+                                                    {formatDate(user.subscription?.nextBillingDate)}
+                                                </span>
+                                            </td>
+                                            <td className="px-4 py-3">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => setAdminToggleId(user.id)}
+                                                        className={`p-2 rounded-lg transition-colors ${user.isAdmin ? 'text-[#d97757] hover:bg-[#d97757]/10' : 'text-gray-500 hover:text-white hover:bg-gray-800'}`}
+                                                        title={user.isAdmin ? "Remover Admin" : "Tornar Admin"}
+                                                    >
+                                                        <Shield size={16} className={user.isAdmin ? "fill-current" : ""} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setSelectedUser(user)}
+                                                        className="p-2 text-gray-500 hover:text-white hover:bg-gray-800 rounded-lg transition-colors"
+                                                        title="Visualizar"
+                                                    >
+                                                        <Eye size={16} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setDeleteId(user.id)}
+                                                        className="p-2 text-gray-500 hover:text-red-500 hover:bg-red-500/10 rounded-lg transition-colors"
+                                                        title="Excluir"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* Pagination Controls */}
+                        {totalPages > 1 && (
+                            <div className="flex items-center justify-between px-4 py-3 border-t border-[#373734] bg-[#333431]">
+                                <div className="text-sm text-gray-400">
+                                    Mostrando <span className="text-white font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="text-white font-medium">{Math.min(currentPage * itemsPerPage, filteredUsers.length)}</span> de <span className="text-white font-medium">{filteredUsers.length}</span> resultados
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                        disabled={currentPage === 1}
+                                        className="p-1 px-2 rounded-lg text-xs font-medium bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        Anterior
+                                    </button>
+                                    {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                        <button
+                                            key={page}
+                                            onClick={() => setCurrentPage(page)}
+                                            className={`w-6 h-6 rounded-lg text-xs font-medium transition-colors ${currentPage === page ? 'bg-[#d97757] text-white' : 'bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white'}`}
+                                        >
+                                            {page}
+                                        </button>
+                                    )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
+                                    <button
+                                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                        disabled={currentPage === totalPages}
+                                        className="p-1 px-2 rounded-lg text-xs font-medium bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                    >
+                                        Próximo
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </>
                 )}
             </div>
 

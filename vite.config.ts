@@ -40,7 +40,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: ['noble-microlecithal-adriene.ngrok-free.dev', 'www.controlarmais.com.br'],
+      allowedHosts: ['dynamoelectric-interpretably-malia.ngrok-free.dev'],
     },
     plugins: [react(), expressPlugin()],
     resolve: {

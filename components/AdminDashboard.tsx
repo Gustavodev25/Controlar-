@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Coupon } from '../types';
 import * as dbService from '../services/database';
 import NumberFlow from '@number-flow/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   BarChart,
   Bar,
@@ -25,9 +26,20 @@ import {
   MapPin,
   Filter,
   ChevronDown,
-  Check
+  Check,
+  X,
+  Calendar,
+  ShieldAlert,
+  Info
 } from 'lucide-react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
+import { CustomDatePicker } from './UIComponents';
+
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import { scaleLinear } from 'd3-scale';
+
+const geoUrl = "https://raw.githubusercontent.com/codeforgermany/click_that_hood/master/public/data/brazil-states.geojson";
+
 
 interface AdminDashboardProps {
   user: User;
@@ -133,22 +145,53 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'all' | 'pro' | 'starter'>('all');
   const [filterFinance, setFilterFinance] = useState<'all' | 'monthly' | 'annual' | 'past_due' | 'refunded'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [excludeAdmins, setExcludeAdmins] = useState(() => {
+    const saved = localStorage.getItem('admin_dashboard_exclude_admins');
+    return saved ? JSON.parse(saved) : false;
+  });
+  const [isDateFilterOpen, setIsDateFilterOpen] = useState(false);
+  const dateFilterRef = useRef<HTMLDivElement>(null);
+  const [tooltipContent, setTooltipContent] = useState("");
 
-  const [connectedItems, setConnectedItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    localStorage.setItem('admin_dashboard_exclude_admins', JSON.stringify(excludeAdmins));
+  }, [excludeAdmins]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dateFilterRef.current && !dateFilterRef.current.contains(event.target as Node)) {
+        // Check if click is inside a DatePicker portal (calendar popup)
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-datepicker-portal]')) return;
+
+        setIsDateFilterOpen(false);
+      }
+    };
+
+    if (isDateFilterOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isDateFilterOpen]);
+
+
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [usersData, couponsData, itemsData] = await Promise.all([
+        const [usersData, couponsData] = await Promise.all([
           dbService.getAllUsers(),
-          dbService.getCoupons(),
-          dbService.getAllConnectedAccounts()
+          dbService.getCoupons()
         ]);
 
         // Load all users initially
         setUsers(usersData as SystemUser[]);
         setCoupons(couponsData);
-        setConnectedItems(itemsData);
       } catch (error) {
         console.error('Error loading admin dashboard data:', error);
       } finally {
@@ -221,19 +264,30 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     // Filter users based on selected mode
     const filteredUsers = users.filter((u) => {
-      if (filterMode === 'all') return true;
+      // 1. Date Filter
+      if (startDate) {
+        const start = new Date(startDate + 'T00:00:00');
+        const uDate = new Date(u.createdAt || 0);
+        if (uDate < start) return false;
+      }
+      if (endDate) {
+        const end = new Date(endDate + 'T23:59:59');
+        const uDate = new Date(u.createdAt || 0);
+        if (uDate > end) return false;
+      }
+
+      // 2. Plan Filter
       const plan = (u.subscription?.plan || 'starter').toLowerCase();
-
-      if (filterMode === 'pro') {
-        // "Pro" filter includes 'pro' and 'family' (paid plans)
-        return plan === 'pro' || plan === 'family';
+      if (filterMode !== 'all') {
+        if (filterMode === 'pro') {
+          // "Pro" filter includes 'pro' and 'family' (paid plans)
+          if (plan !== 'pro' && plan !== 'family') return false;
+        } else if (filterMode === 'starter') {
+          if (plan !== 'starter') return false;
+        }
       }
 
-      if (filterMode === 'starter') {
-        return plan === 'starter';
-      }
-
-      // Financial Filter
+      // 3. Financial Filter
       if (filterFinance !== 'all') {
         const cycle = u.subscription?.billingCycle;
         const status = u.subscription?.status;
@@ -243,6 +297,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         if (filterFinance === 'past_due' && status !== 'past_due') return false;
         if (filterFinance === 'refunded' && status !== 'refunded') return false;
       }
+
+      // 4. Admin Filter
+      if (excludeAdmins && u.isAdmin) return false;
 
       return true;
     });
@@ -361,7 +418,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const newUsers = filteredUsers.filter(u => {
-      const joinDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : null;
+      const joinDate = u.createdAt ? new Date(u.createdAt) : (u.subscription?.startDate ? new Date(u.subscription.startDate) : null);
       return joinDate && joinDate >= thirtyDaysAgo;
     }).length;
 
@@ -416,7 +473,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const date = new Date(dateStr);
       if (date < minDate) minDate = date;
 
-      const key = date.toISOString().split('T')[0]; // YYYY-MM-DD
+      // Use Local Time for grouping (Fixes UTC-3 showing as next day)
+      // 'sv-SE' locale formats as YYYY-MM-DD which is sortable
+      const key = date.toLocaleDateString('sv-SE');
       dailyCounts[key] = (dailyCounts[key] || 0) + 1;
     });
 
@@ -454,37 +513,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     });
     const locationsChartData = Object.entries(locationData)
       .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5); // Top 5
+      .sort((a, b) => b.value - a.value);
 
-    // --- Bank Connection Stats ---
 
-    // 1. Filter items based on filteredUsers
-    const filteredUserIds = new Set(filteredUsers.map(u => u.id));
-    const validItems = connectedItems.filter(item => filteredUserIds.has(item.userId));
-
-    // 2. Auto vs Manual
-    const usersWithAuto = new Set(validItems.map(item => item.userId));
-    const autoCount = usersWithAuto.size;
-    const manualCount = filteredUsers.length - autoCount;
-
-    const connectionTypeData = [
-      { name: 'Automático', value: autoCount, color: '#10B981' }, // Emerald
-      { name: 'Manual', value: manualCount, color: '#6B7280' }   // Gray
-    ].filter(d => d.value > 0);
-
-    // 3. Bank Ranking
-    const bankCounts: Record<string, number> = {};
-    validItems.forEach(item => {
-      // Use connector name or fallback
-      const bankName = item.connector?.name || 'Banco Desconhecido';
-      bankCounts[bankName] = (bankCounts[bankName] || 0) + 1;
-    });
-
-    const bankRankingData = Object.entries(bankCounts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 5); // Top 5
 
     const chartData = Object.entries(projectionMap).map(([name, value]) => ({ name, value }));
     const planData = [
@@ -505,8 +536,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       chartData,
       planData,
       locationsChartData,
-      connectionTypeData,
-      bankRankingData,
+
       cumulativeGrowth, // Add to return object
       filteredCount: filteredUsers.length,
       trends: {
@@ -516,7 +546,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         generic: randomTrend()
       }
     };
-  }, [users, coupons, filterMode, filterFinance, connectedItems]);
+  }, [users, coupons, filterMode, filterFinance, startDate, endDate, excludeAdmins]);
 
   return (
     <div className="p-6 space-y-8 animate-fade-in pb-20">
@@ -525,16 +555,102 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         .recharts-surface:focus { outline: none !important; }
         .recharts-layer { outline: none !important; }
       `}</style>
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Painel Administrativo</h1>
           <p className="text-gray-400">Visão geral financeira e métricas de saúde do sistema.</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+
+          {/* Date Range Dropdown */}
+          <div className="relative" ref={dateFilterRef}>
+            <button
+              onClick={() => setIsDateFilterOpen(!isDateFilterOpen)}
+              className={`
+                px-3 py-2 bg-[#30302E] border rounded-lg text-sm font-medium transition-colors flex items-center gap-2 h-11
+                ${isDateFilterOpen || startDate || endDate ? 'border-[#d97757] text-white' : 'border-[#373734] text-gray-300 hover:bg-[#3d3d3b]'}
+              `}
+            >
+              <Calendar size={14} className={startDate || endDate ? 'text-[#d97757]' : 'text-gray-400'} />
+              <span>
+                {startDate && endDate
+                  ? `${new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')} - ${new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                  : (startDate
+                    ? `A partir de ${new Date(startDate + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                    : (endDate
+                      ? `Até ${new Date(endDate + 'T12:00:00').toLocaleDateString('pt-BR')}`
+                      : 'Período'))
+                }
+              </span>
+              <ChevronDown size={14} className={`text-gray-500 transition-transform ${isDateFilterOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            <AnimatePresence>
+              {isDateFilterOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                  transition={{ duration: 0.2 }}
+                  className="absolute z-40 top-full mt-2 right-0 w-72 bg-[#30302E] border border-[#373734] rounded-xl shadow-2xl p-4 flex flex-col gap-4"
+                >
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider pl-1">Data Inicial</label>
+                    <CustomDatePicker
+                      value={startDate}
+                      onChange={setStartDate}
+                      placeholder="Selecione data inicial"
+                      dropdownMode="fixed"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-wider pl-1">Data Final</label>
+                    <CustomDatePicker
+                      value={endDate}
+                      onChange={setEndDate}
+                      placeholder="Selecione data final"
+                      dropdownMode="fixed"
+                    />
+                  </div>
+
+                  {(startDate || endDate) && (
+                    <div className="pt-2 border-t border-[#373734] flex justify-end">
+                      <button
+                        onClick={() => {
+                          setStartDate('');
+                          setEndDate('');
+                          setIsDateFilterOpen(false);
+                        }}
+                        className="text-xs text-red-400 hover:text-red-300 transition-colors font-medium flex items-center gap-1"
+                      >
+                        <X size={12} />
+                        Limpar Filtros
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
+          {/* Admin Filter */}
+          <button
+            onClick={() => setExcludeAdmins(!excludeAdmins)}
+            className={`
+              px-3 py-2 border rounded-lg text-sm font-medium transition-colors flex items-center gap-2 h-11
+              ${excludeAdmins ? 'bg-[#d97757]/10 border-[#d97757] text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white hover:bg-[#3d3d3b]'}
+            `}
+            title={excludeAdmins ? "Admins Ocultos" : "Ocultar Admins"}
+          >
+            <ShieldAlert size={14} />
+            <span className="hidden sm:inline">Admins</span>
+            {excludeAdmins && <Check size={14} className="ml-1" />}
+          </button>
 
           {/* Finance Filter */}
           <Dropdown>
-            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2">
+            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2 h-11">
               <DollarSign size={14} className="text-gray-400" />
               <span>
                 {filterFinance === 'all' && 'Fin: Todos'}
@@ -586,7 +702,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
           {/* Plan Filter */}
           <Dropdown>
-            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2">
+            <DropdownTrigger className="px-3 py-2 bg-[#30302E] border border-solid border-[#373734] rounded-lg text-sm text-gray-300 font-medium hover:bg-[#3d3d3b] transition-colors flex items-center gap-2 h-11">
               <Filter size={14} className="text-gray-400" />
               <span>
                 {filterMode === 'all' && 'Plano: Todos'}
@@ -777,33 +893,134 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         </div>
       </div>
 
+      {/* Daily New Users Chart */}
+      <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+          <TrendingUp size={18} className="text-emerald-400" />
+          Novos Usuários por Dia
+        </h3>
+        <p className="text-gray-500 text-sm mb-6">Quantidade de novos usuários cadastrados diariamente</p>
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats.cumulativeGrowth}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+              <XAxis
+                dataKey="date"
+                stroke="#6b7280"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                minTickGap={30}
+              />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar
+                dataKey="daily"
+                name="Novos Usuários"
+                fill="#10B981"
+                radius={[4, 4, 0, 0]}
+                barSize={30}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
       {/* Row 2: Location & Plans */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <MapPin size={18} className="text-[#D97757]" />
-            Top Localizações
-          </h3>
-          <div className="space-y-4">
-            {stats.locationsChartData.map((item, index) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-500 font-mono text-sm w-4">{index + 1}</span>
-                  <span className="text-gray-300 font-medium">{item.name}</span>
-                </div>
-                <div className="flex items-center gap-4 flex-1 justify-end">
-                  <div className="h-2 bg-gray-800 rounded-full flex-1 max-w-[150px] overflow-hidden">
-                    <div
-                      className="h-full bg-[#D97757] rounded-full"
-                      style={{ width: `${(item.value / stats.filteredCount) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-bold text-white min-w-[30px] text-right">{item.value}</span>
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 relative overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between mb-4 z-10 relative">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <MapPin size={18} className="text-[#D97757]" />
+              Top Localizações
+            </h3>
+
+            <div className="relative group">
+              <div
+                className="p-1.5 rounded-full hover:bg-white/10 text-gray-400 hover:text-white transition-colors cursor-help"
+              >
+                <Info size={16} />
+              </div>
+
+              {/* Hover Card */}
+              <div className="absolute right-0 top-full mt-2 w-48 opacity-0 group-hover:opacity-100 invisible group-hover:visible transition-all duration-300 z-50 transform group-hover:translate-y-0 translate-y-2">
+                <div className="bg-[#1c1c1a] border border-[#373734] rounded-xl shadow-xl p-3 flex flex-col gap-2 max-h-60 overflow-y-auto custom-scrollbar">
+                  <p className="text-[10px] uppercase font-bold text-gray-500 mb-1 sticky top-0 bg-[#1c1c1a] pb-1 z-10">Ranking por Estado</p>
+                  {stats.locationsChartData.length > 0 ? (
+                    stats.locationsChartData.map((item, index) => (
+                      <div key={item.name} className="flex items-center justify-between text-xs">
+                        <div className="flex items-center gap-2">
+                          <span className="text-[#D97757] font-bold w-4 text-right">{index + 1}.</span>
+                          <span className="text-gray-300">{item.name}</span>
+                        </div>
+                        <span className="font-bold text-white">{item.value}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-xs text-gray-500 text-center py-2">Sem dados</p>
+                  )}
                 </div>
               </div>
-            ))}
-            {stats.locationsChartData.length === 0 && (
-              <p className="text-gray-500 text-center py-10">Nenhum dado de localização disponível</p>
+            </div>
+          </div>
+
+          <div className="flex-1 w-full relative min-h-[300px]">
+            <ComposableMap
+              projection="geoMercator"
+              projectionConfig={{
+                scale: 800,
+                center: [-54, -15]
+              }}
+              className="w-full h-full"
+            >
+              <Geographies geography={geoUrl}>
+                {({ geographies }) =>
+                  geographies.map((geo) => {
+                    // Support both TopoJSON (BR-XX) and GeoJSON (properties.sigla) formats
+                    const stateCode = geo.properties?.sigla || (geo.id ? geo.id.replace('BR-', '') : 'NA');
+                    const count = stats.locationsChartData.find(d => d.name === stateCode)?.value || 0;
+                    // Calculate max for scale
+                    const maxVal = Math.max(...stats.locationsChartData.map(d => d.value), 1);
+
+                    const colorScale = scaleLinear<string>()
+                      .domain([0, maxVal])
+                      .range(["#404040", "#D97757"]);
+
+                    return (
+                      <Geography
+                        key={geo.rsmKey}
+                        geography={geo}
+                        fill={count > 0 ? colorScale(count) : "#404040"}
+                        stroke="#30302E"
+                        strokeWidth={0.5}
+                        style={{
+                          default: { outline: "none", transition: "all 250ms" },
+                          hover: { fill: "#F97316", outline: "none", cursor: 'pointer' },
+                          pressed: { outline: "none" }
+                        }}
+                        onMouseEnter={() => {
+                          setTooltipContent(`${geo.properties.name}: ${count} usuários`);
+                        }}
+                        onMouseLeave={() => {
+                          setTooltipContent("");
+                        }}
+                      />
+                    );
+                  })
+                }
+              </Geographies>
+            </ComposableMap>
+
+            {tooltipContent && (
+              <div className="absolute top-4 right-4 bg-black/80 text-white text-xs px-2 py-1 rounded pointer-events-none border border-gray-700 backdrop-blur-sm z-50">
+                {tooltipContent}
+              </div>
             )}
           </div>
         </div>
@@ -849,82 +1066,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Row 3: Bank Connections */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 pb-20">
-        {/* Connection Auto vs Manual */}
-        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 flex flex-col">
-          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <TrendingUp size={18} className="text-[#10B981]" />
-            Status de Conexão
-          </h3>
-          <div className="flex-1 flex items-center justify-center relative">
-            <ResponsiveContainer width="100%" height={250}>
-              <PieChart>
-                <Pie
-                  data={stats.connectionTypeData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={80}
-                  paddingAngle={5}
-                  dataKey="value"
-                >
-                  {stats.connectionTypeData.map((entry: any, index: number) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} stroke="rgba(0,0,0,0.5)" />
-                  ))}
-                </Pie>
-                <Tooltip content={<CustomTooltip />} />
-              </PieChart>
-            </ResponsiveContainer>
-            {/* Center Text */}
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="text-center">
-                <p className="text-3xl font-bold text-white">{stats.filteredCount}</p>
-                <p className="text-xs text-gray-500 uppercase">Total</p>
-              </div>
-            </div>
-            {/* Legend */}
-            <div className="absolute bottom-0 w-full flex justify-center gap-4 text-xs font-medium">
-              {stats.connectionTypeData.map((p: any) => (
-                <div key={p.name} className="flex items-center gap-1.5 text-gray-400">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: p.color }} />
-                  {p.name} ({Math.round(p.value / stats.filteredCount * 100)}%)
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
 
-        {/* Top Banks Ranking */}
-        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-          <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-            <DollarSign size={18} className="text-[#D97757]" />
-            Top Bancos Conectados
-          </h3>
-          <div className="space-y-4">
-            {stats.bankRankingData.map((item: any, index: number) => (
-              <div key={item.name} className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <span className="text-gray-500 font-mono text-sm w-4">{index + 1}</span>
-                  <span className="text-gray-300 font-medium truncate max-w-[150px]" title={item.name}>{item.name}</span>
-                </div>
-                <div className="flex items-center gap-4 flex-1 justify-end">
-                  <div className="h-2 bg-gray-800 rounded-full flex-1 max-w-[150px] overflow-hidden">
-                    <div
-                      className="h-full bg-[#D97757] rounded-full"
-                      style={{ width: `${(item.value / stats.filteredCount) * 100}%` }}
-                    />
-                  </div>
-                  <span className="text-sm font-bold text-white min-w-[30px] text-right">{item.value}</span>
-                </div>
-              </div>
-            ))}
-            {stats.bankRankingData.length === 0 && (
-              <p className="text-gray-500 text-center py-10">Nenhum banco conectado encontrado</p>
-            )}
-          </div>
-        </div>
-      </div>
     </div >
   );
 };

@@ -104,5 +104,8 @@ service cloud.firestore {
     match /{path=**}/connected_accounts/{accountId} {
       allow read: if request.auth != null && isUserAdmin();
     }
+    match /{path=**}/accounts/{accountId} {
+      allow read: if request.auth != null && isUserAdmin();
+    }
   }
 }

@@ -150,9 +150,9 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
 
       // IMPORTANT: subscription can be stored at root level (for family members)
       // or inside profile (for regular users). Check both locations.
-      // Priority: root subscription (for family members via joinFamily) > profile subscription
-      if (data.subscription && !profile.subscription) {
-        profile.subscription = data.subscription;
+      // Priority: root subscription (Server Side / Asaas) > profile subscription
+      if (data.subscription) {
+        profile.subscription = { ...profile.subscription, ...data.subscription };
       }
 
 
@@ -207,8 +207,9 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
       // Merge root data with profile data, prioritizing profile if structure varies
       const profile = data.profile || {};
 
-      // IMPORTANT: subscription can be at root level (for family members) or inside profile
-      const subscription = profile.subscription || data.subscription;
+      // IMPORTANT: subscription can be at root level (for family members/Asaas) or inside profile
+      // Prioritize root data.subscription as it is updated by server/webhooks
+      const subscription = data.subscription ? { ...profile.subscription, ...data.subscription } : profile.subscription;
 
       const connectionLogs = data.connectionLogs || profile.connectionLogs || [];
       let createdAt = data.createdAt || profile.createdAt;
@@ -264,9 +265,9 @@ export const listenToUserProfile = (userId: string, callback: (data: Partial<Use
 
       // IMPORTANT: subscription can be stored at root level (for family members)
       // or inside profile (for regular users). Check both locations.
-      // Priority: root subscription (for family members via joinFamily) > profile subscription
-      if (data.subscription && !profile.subscription) {
-        profile.subscription = data.subscription;
+      // Priority: root subscription (Server Side / Asaas) > profile subscription
+      if (data.subscription) {
+        profile.subscription = { ...profile.subscription, ...data.subscription };
       }
 
       // Map dailyConnectionCredits from root if present
@@ -660,7 +661,7 @@ export const listenToTransactions = (userId: string, callback: (transactions: Tr
   const txRef = collection(db, "users", userId, "transactions");
 
   // Filtrar apenas transações de 2025+ para reduzir custos do Firestore
-  const minDate = `${minYear}-01-01`;
+  const minDate = minYear + "-01-01";
   const q = query(txRef, where("date", ">=", minDate));
 
   return onSnapshot(q, (snapshot) => {
@@ -675,7 +676,7 @@ export const listenToTransactions = (userId: string, callback: (transactions: Tr
 export const getTransactions = async (userId: string, minYear: number = 2025): Promise<Transaction[]> => {
   if (!db) return [];
   const txRef = collection(db, "users", userId, "transactions");
-  const minDate = `${minYear}-01-01`;
+  const minDate = minYear + "-01-01";
   const q = query(txRef, where("date", ">=", minDate));
 
   const snapshot = await getDocs(q);
@@ -826,7 +827,7 @@ export const findCreditCardTransactionId = async (userId: string, providerId: st
             const tolerance = Math.max(existingAmount, targetAmount) * 0.01;
 
             if (amountDiff <= Math.max(tolerance, 0.02)) { // At least 2 cents tolerance
-              console.log(`[CC Duplicate] Found fuzzy match: ${txData.description} | existing: ${existingAmount} vs new: ${targetAmount}`);
+              console.log("[CC Duplicate] Found fuzzy match: " + txData.description + " | existing: " + existingAmount + " vs new: " + targetAmount + " ");
               return docSnap.id;
             }
           }
@@ -872,7 +873,7 @@ const deleteProjectedInstallments = async (userId: string, baseProviderId: strin
   try {
     const txRef = collection(db, "users", userId, "creditCardTransactions");
     // Projected installments usually have format: baseId_installment_X
-    const prefix = `${baseProviderId}_installment_`;
+    const prefix = baseProviderId + " _installment_";
 
     // Firestore range query for prefix
     const q = query(
@@ -894,7 +895,7 @@ const deleteProjectedInstallments = async (userId: string, baseProviderId: strin
 
     if (count > 0) {
       await batch.commit();
-      console.log(`[DB] Deleted ${count} old projected installments for ${baseProviderId}`);
+      console.log("[DB] Deleted " + count + " old projected installments for " + baseProviderId);
     }
   } catch (err) {
     console.error("Error deleting projected installments:", err);
@@ -1037,7 +1038,7 @@ export const cleanupDuplicateCreditCardTransactions = async (userId: string) => 
       // For installments, group by month + description (allows date variation within month)
       // For regular transactions, group by exact date + description
       const dateKey = isInstallment(tx.description || '') ? getMonthKey(tx.date) : tx.date;
-      const fuzzyKey = `${dateKey}|${normDesc}`;
+      const fuzzyKey = dateKey + "| " + normDesc + " ";
       const list = fuzzyGroups.get(fuzzyKey) || [];
       list.push(tx);
       fuzzyGroups.set(fuzzyKey, list);
@@ -1125,7 +1126,7 @@ export const cleanupDuplicateCreditCardTransactions = async (userId: string) => 
       await batch.commit();
     }
 
-    console.log(`Cleaned up ${deletedCount} duplicate credit card transactions.`);
+    console.log("Cleaned up " + deletedCount + " duplicate credit card transactions.");
     return deletedCount;
   } catch (err) {
     console.error("Error cleaning up duplicates:", err);
@@ -1152,7 +1153,7 @@ export const listenToCreditCardTransactions = (userId: string, callback: (transa
   const txRef = collection(db, "users", userId, "creditCardTransactions");
 
   // Filtrar apenas transações de 2025+ para reduzir custos do Firestore
-  const minDate = `${minYear}-01-01`;
+  const minDate = minYear + "-01-01";
   const q = query(txRef, where("date", ">=", minDate));
 
   return onSnapshot(q, (snapshot) => {
@@ -1193,7 +1194,7 @@ export const deleteAllCreditCardTransactions = async (userId: string) => {
       await batch.commit();
     }
 
-    console.log(`Deleted ${totalDeleted} credit card transactions for user ${userId}`);
+    console.log("Deleted " + totalDeleted + " credit card transactions for user " + userId);
     return totalDeleted;
   } catch (error) {
     console.error("Error deleting credit card transactions:", error);
@@ -1283,13 +1284,13 @@ export const deleteInvalidInvestments = async (userId: string) => {
       if (isAmountInvalid || isNameInvalid) {
         batch.delete(docSnapshot.ref);
         deletedCount++;
-        console.log(`[deleteInvalidInvestments] Marking for deletion: ${docSnapshot.id}, currentAmount: ${currentAmount}, name: ${name}`);
+        console.log("[deleteInvalidInvestments] Marking for deletion: " + docSnapshot.id + ", currentAmount: " + currentAmount + ", name: " + name + " ");
       }
     });
 
     if (deletedCount > 0) {
       await batch.commit();
-      console.log(`Deleted ${deletedCount} invalid investments for user ${userId}`);
+      console.log("Deleted " + deletedCount + " invalid investments for user " + userId);
     }
 
     return deletedCount;
@@ -1372,7 +1373,7 @@ export const updateConnectedAccountMode = async (userId: string, accountId: stri
       updateData.balance = initialBalance;
     }
     await updateDoc(accountRef, updateData);
-    console.log(`Account ${accountId} mode updated to ${mode}`);
+    console.log("Account " + accountId + " mode updated to " + mode + " ");
   } catch (error) {
     console.error("Error updating account mode:", error);
     throw error;
@@ -1419,7 +1420,7 @@ export const deleteImportedTransactionsForAccount = async (userId: string, accou
 
     if (deletedCount > 0) {
       await batch.commit();
-      console.log(`Deleted ${deletedCount} imported transactions for account ${accountId}`);
+      console.log("Deleted " + deletedCount + " imported transactions for account " + accountId);
     }
   } catch (error) {
     console.error("Error deleting imported transactions:", error);
@@ -1462,7 +1463,7 @@ export const deleteAllImportedTransactions = async (userId: string) => {
       await batch.commit();
     }
 
-    console.log(`Deleted ${totalDeleted} total imported transactions for user ${userId}`);
+    console.log("Deleted " + totalDeleted + " total imported transactions for user " + userId);
     return totalDeleted;
   } catch (error) {
     console.error("Error deleting all imported transactions:", error);
@@ -1501,7 +1502,7 @@ export const deleteAllManualTransactions = async (userId: string) => {
       await batch.commit();
     }
 
-    console.log(`Deleted ${totalDeleted} total manual transactions for user ${userId}`);
+    console.log("Deleted " + totalDeleted + " total manual transactions for user " + userId);
     return totalDeleted;
   } catch (error) {
     console.error("Error deleting all manual transactions:", error);
@@ -1535,7 +1536,7 @@ export const deleteAllUserTransactions = async (userId: string) => {
       await batch.commit();
     }
 
-    console.log(`Deleted ${totalDeleted} transactions (ALL) for user ${userId}`);
+    console.log("Deleted " + totalDeleted + " transactions(ALL) for user " + userId);
     return totalDeleted;
   } catch (error) {
     console.error("Error deleting all user transactions:", error);
@@ -1556,6 +1557,14 @@ export const resetAccountData = async (userId: string, accountId: string, initia
     console.error("Error resetting account data:", error);
     throw error;
   }
+};
+
+// Get Connected Accounts (One-time fetch)
+export const getConnectedAccounts = async (userId: string): Promise<ConnectedAccount[]> => {
+  if (!db) return [];
+  const accountsRef = collection(db, "users", userId, "accounts");
+  const snapshot = await getDocs(accountsRef);
+  return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ConnectedAccount));
 };
 
 // Listen to Connected Accounts (Real-time)
@@ -1653,7 +1662,7 @@ export const deleteAllConnectedAccounts = async (userId: string) => {
     });
 
     await batch.commit();
-    console.log(`Deleted ${snapshot.size} connected accounts for user ${userId}`);
+    console.log("Deleted " + snapshot.size + " connected accounts for user " + userId);
   } catch (error) {
     console.error("Error deleting all connected accounts:", error);
     throw error;
@@ -1683,13 +1692,13 @@ export const deleteInvalidAccounts = async (userId: string) => {
       if (isInvalid) {
         batch.delete(docSnapshot.ref);
         deletedCount++;
-        console.log(`[deleteInvalidAccounts] Marking for deletion: ${docSnapshot.id}, balance: ${balance}`);
+        console.log("[deleteInvalidAccounts] Marking for deletion: " + docSnapshot.id + ", balance: " + balance + " ");
       }
     });
 
     if (deletedCount > 0) {
       await batch.commit();
-      console.log(`Deleted ${deletedCount} invalid accounts for user ${userId}`);
+      console.log("Deleted " + deletedCount + " invalid accounts for user " + userId);
     }
 
     return deletedCount;
@@ -1755,7 +1764,7 @@ export const addAuditLog = async (userId: string, entry: Omit<AuditLogEntry, 'id
   if (!db) return "";
   const auditRef = collection(db, "users", userId, "auditLogs");
   const docRef = await addDoc(auditRef, entry);
-  console.log(`[Audit] ${entry.action} - Account: ${entry.accountName || 'Global'} - Details:`, entry.details);
+  console.log("[Audit] " + entry.action + " - Account: " + (entry.accountName || 'Global') + " - Details: ", entry.details);
   return docRef.id;
 };
 
@@ -1981,14 +1990,14 @@ export const deleteUserAccount = async (userId: string) => {
     ];
 
     for (const sub of subcollections) {
-      await deleteCollectionBatch(`users/${userId}/${sub}`);
+      await deleteCollectionBatch("users/" + userId + "/" + sub);
     }
 
     // 2. Delete the user document itself
     const userRef = doc(db, "users", userId);
     await deleteDoc(userRef);
 
-    console.log(`User account ${userId} fully deleted from Firestore.`);
+    console.log("User account " + userId + " fully deleted from Firestore.");
   } catch (error) {
     console.error("Error deleting user account from Firestore:", error);
     throw error;
@@ -2086,7 +2095,7 @@ const translateCategoryMigration = (category: string | undefined | null): string
 
 export const fixCategoriesForUser = async (userId: string) => {
   if (!db) return 0;
-  console.log(`[Migration] Starting category fix for user ${userId}...`);
+  console.log("[Migration] Starting category fix for user " + userId + "...");
   let updatedCount = 0;
   let batch = writeBatch(db);
   let opCount = 0;
@@ -2120,7 +2129,7 @@ export const fixCategoriesForUser = async (userId: string) => {
     await batch.commit();
   }
 
-  console.log(`[Migration] User ${userId}: Updated ${updatedCount} transactions.`);
+  console.log("[Migration] User " + userId + ": Updated " + updatedCount + " transactions.");
   return updatedCount;
 };
 
@@ -2490,26 +2499,7 @@ export const getEmailDraft = async (userId: string) => {
   }
 };
 
-// --- Helper for Admin Dashboard (Bank Connections) ---
-export const getAllConnectedAccounts = async (): Promise<any[]> => {
-  if (!db) return [];
-  try {
-    // Assuming 'items' is the subcollection name for Pluggy connections
-    // If it's different (e.g. 'connectedAccounts'), this needs to be updated.
-    // Based on API /api/pluggy/db-items, 'items' is the most likely name.
-    const itemsQuery = query(collectionGroup(db, "items"));
-    const snapshot = await getDocs(itemsQuery);
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      userId: doc.ref.parent.parent?.id,
-      ...doc.data()
-    }));
-  } catch (error) {
-    console.error("Error fetching all connected accounts:", error);
-    return [];
-  }
-};
 
 // --- Support Services ---
 
@@ -2661,5 +2651,30 @@ export const listenToTicket = (ticketId: string, callback: (ticket: SupportTicke
       callback(null);
     }
   });
+};
+
+export const getAllConnectedAccounts = async (): Promise<ConnectedAccount[]> => {
+  try {
+    if (!db) return [];
+    // Use collectionGroup to query all 'accounts' subcollections across all users
+    const accountsQuery = query(collectionGroup(db, 'accounts'));
+    const querySnapshot = await getDocs(accountsQuery);
+
+    const accounts: ConnectedAccount[] = [];
+    querySnapshot.forEach((doc) => {
+      const data = doc.data();
+      // We can optionally add userId here if needed for debugging or grouping
+      // const userId = doc.ref.parent.parent?.id; 
+      accounts.push({
+        id: doc.id,
+        ...data
+      } as ConnectedAccount);
+    });
+
+    return accounts;
+  } catch (error) {
+    console.error("Error fetching all connected accounts:", error);
+    return [];
+  }
 };
 

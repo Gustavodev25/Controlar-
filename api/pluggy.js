@@ -544,6 +544,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                 accountNumber: acc.number || null,
                 itemId,
+                connector: itemStatus.item?.connector || null, // Save connector details provided by waitForItemReady
                 lastSyncedAt: syncTimestamp,
                 updatedAt: syncTimestamp
             }, { merge: true });

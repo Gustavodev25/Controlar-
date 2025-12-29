@@ -815,6 +815,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          data-datepicker-portal
           initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
           animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
           exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}

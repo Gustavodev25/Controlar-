@@ -71,8 +71,12 @@ export const AdminSubscriptions: React.FC = () => {
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+
     const [planFilter, setPlanFilter] = useState<'all' | 'starter' | 'pro' | 'family'>('all');
     const [couponFilter, setCouponFilter] = useState<string>('all');
+    const [showAdmins, setShowAdmins] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [userPayments, setUserPayments] = useState<AsaasPayment[]>([]);
     const [isLoadingPayments, setIsLoadingPayments] = useState(false);
@@ -90,8 +94,19 @@ export const AdminSubscriptions: React.FC = () => {
             try {
                 // Load users
                 const data = await dbService.getAllUsers();
-                // Filter only users with subscription info or Asaas ID
-                const subUsers = data.filter(u => u.subscription || u.subscription?.asaasCustomerId);
+                // Filter only "Real" subscribers (Pro, Family, or with Asaas ID)
+                const subUsers = data.filter(u => {
+                    const sub = u.subscription;
+                    if (!sub) return false;
+
+                    const plan = (sub.plan || 'starter').toLowerCase();
+                    const isPaidPlan = plan === 'pro' || plan === 'family';
+                    const hasHistory = !!sub.asaasCustomerId;
+
+                    // Include if they are on a paid plan OR have payment history (even if currently Starter/Canceled)
+                    return isPaidPlan || hasHistory;
+                });
+
                 subUsers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
                 setUsers(subUsers as SystemUser[]);
 
@@ -256,12 +271,32 @@ export const AdminSubscriptions: React.FC = () => {
                 (couponFilter === 'none' && !user.subscription?.couponUsed) ||
                 userCoupon === couponFilter;
 
-            return matchesSearch && matchesStatus && matchesPlan && matchesCoupon;
+            // Admin filter
+            const matchesAdmin = showAdmins ? true : !user.isAdmin;
+
+            return matchesSearch && matchesStatus && matchesPlan && matchesCoupon && matchesAdmin;
         });
-    }, [users, searchTerm, statusFilter, planFilter, couponFilter]);
+    }, [users, searchTerm, statusFilter, planFilter, couponFilter, showAdmins]);
+
+    // Pagination
+    const totalPages = Math.ceil(filteredUsers.length / itemsPerPage);
+    const paginatedUsers = filteredUsers.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, statusFilter, planFilter, couponFilter, showAdmins]);
 
     // Stats
     const stats = useMemo(() => {
+        // Filter users for stats based on admin visibility
+        // If showAdmins is FALSE, we exclude admins from these KPIs to show "Real Business Numbers"
+        // If showAdmins is TRUE, we include them to reflect the current view
+        const statsUsers = showAdmins ? users : users.filter(u => !u.isAdmin);
+
         const calculateUserMRR = (user: SystemUser) => {
             // Only count active subscriptions for MRR
             if (user.subscription?.status !== 'active') return 0;
@@ -288,10 +323,11 @@ export const AdminSubscriptions: React.FC = () => {
             // Base Price
             let price = 0;
             const isAnnual = sub.billingCycle === 'annual';
+            const plan = (sub.plan || 'starter').toLowerCase();
 
-            if (sub.plan === 'family') {
+            if (plan === 'family') {
                 price = isAnnual ? (749.00 / 12) : 69.90;
-            } else if (sub.plan === 'pro') {
+            } else if (plan === 'pro') {
                 price = isAnnual ? (399.00 / 12) : 35.90;
             }
 
@@ -326,12 +362,12 @@ export const AdminSubscriptions: React.FC = () => {
         };
 
         return {
-            total: users.length,
-            active: users.filter(u => u.subscription?.status === 'active').length,
-            pastDue: users.filter(u => u.subscription?.status === 'past_due').length,
-            mrr: users.reduce((acc, u) => acc + calculateUserMRR(u), 0)
+            total: statsUsers.length,
+            active: statsUsers.filter(u => u.subscription?.status === 'active').length,
+            pastDue: statsUsers.filter(u => u.subscription?.status === 'past_due').length,
+            mrr: statsUsers.reduce((acc, u) => acc + calculateUserMRR(u), 0)
         };
-    }, [users, coupons]);
+    }, [users, coupons, showAdmins]);
 
     const getStatusBadge = (status: string | undefined) => {
         switch (status) {
@@ -668,13 +704,25 @@ export const AdminSubscriptions: React.FC = () => {
                         </DropdownContent>
                     </Dropdown>
 
-                    {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all') && (
+                    {/* Show Admins Toggle */}
+                    <button
+                        onClick={() => setShowAdmins(!showAdmins)}
+                        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap ${showAdmins ? 'bg-[#d97757]/10 border-[#d97757]/30 text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white'}`}
+                        title={showAdmins ? "Ocultar Administradores" : "Mostrar Administradores"}
+                    >
+                        <Shield size={16} />
+                        <span className="hidden sm:inline">Admins</span>
+                        {showAdmins && <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]" />}
+                    </button>
+
+                    {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all' || showAdmins) && (
                         <button
                             onClick={() => {
                                 setSearchTerm('');
                                 setStatusFilter('all');
                                 setPlanFilter('all');
                                 setCouponFilter('all');
+                                setShowAdmins(false);
                             }}
                             className="p-2.5 text-gray-500 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
                             title="Limpar Filtros"
@@ -697,7 +745,7 @@ export const AdminSubscriptions: React.FC = () => {
                         description="Nenhum usuário com assinatura foi encontrado com os filtros atuais."
                         minHeight="min-h-[300px]"
                     />
-                ) : (
+                ) : (<>
                     <div className={`overflow-x-auto ${viewMode === 'projection' ? 'custom-scrollbar' : ''}`}>
                         <table className="w-full">
                             <thead className="bg-[#333431] text-xs uppercase tracking-wider text-gray-500">
@@ -736,7 +784,7 @@ export const AdminSubscriptions: React.FC = () => {
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-[#373734]">
-                                {filteredUsers.map((user) => {
+                                {paginatedUsers.map((user) => {
                                     // Calculate projections if needed
                                     const projections = viewMode === 'projection' ? calculateProjection(user) : [];
 
@@ -877,162 +925,198 @@ export const AdminSubscriptions: React.FC = () => {
                             )}
                         </table>
                     </div>
-                )
-                }
+
+                    {/* Pagination Controls */}
+                    {totalPages > 1 && (
+                        <div className="flex items-center justify-between px-4 py-3 border-t border-[#373734] bg-[#333431]">
+                            <div className="text-sm text-gray-400">
+                                Mostrando <span className="text-white font-medium">{(currentPage - 1) * itemsPerPage + 1}</span> a <span className="text-white font-medium">{Math.min(currentPage * itemsPerPage, filteredUsers.length)}</span> de <span className="text-white font-medium">{filteredUsers.length}</span> resultados
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                                    disabled={currentPage === 1}
+                                    className="p-1 px-2 rounded-lg text-xs font-medium bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Anterior
+                                </button>
+                                {Array.from({ length: totalPages }, (_, i) => i + 1).map(page => (
+                                    <button
+                                        key={page}
+                                        onClick={() => setCurrentPage(page)}
+                                        className={`w-6 h-6 rounded-lg text-xs font-medium transition-colors ${currentPage === page ? 'bg-[#d97757] text-white' : 'bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white'}`}
+                                    >
+                                        {page}
+                                    </button>
+                                )).slice(Math.max(0, currentPage - 3), Math.min(totalPages, currentPage + 2))}
+                                <button
+                                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                                    disabled={currentPage === totalPages}
+                                    className="p-1 px-2 rounded-lg text-xs font-medium bg-[#30302E] border border-[#373734] text-gray-400 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                >
+                                    Próximo
+                                </button>
+                            </div>
+                        </div>
+                    )}
+                </>
+                )}
             </div>
 
             {/* Detail Modal (Payments) */}
-            {createPortal(
-                <AnimatePresence>
-                    {selectedUser && (
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
-                            exit={{ opacity: 0 }}
-                            transition={{ duration: 0.3 }}
-                            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60"
-                            onClick={() => setSelectedUser(null)}
-                        >
+            {
+                createPortal(
+                    <AnimatePresence>
+                        {selectedUser && (
                             <motion.div
-                                initial={{ opacity: 0, y: 20, scale: 0.95 }}
-                                animate={{ opacity: 1, y: 0, scale: 1 }}
-                                exit={{ opacity: 0, y: 10, scale: 0.95 }}
-                                transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
-                                onClick={(e) => e.stopPropagation()}
-                                className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1, backdropFilter: 'blur(8px)' }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.3 }}
+                                className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/60"
+                                onClick={() => setSelectedUser(null)}
                             >
-                                <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                                    transition={{ duration: 0.3, ease: [0.25, 1, 0.5, 1] }}
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="bg-gray-950 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative"
+                                >
+                                    <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl pointer-events-none -translate-y-1/2 translate-x-1/2 opacity-20 bg-[#d97757]" />
 
-                                <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
-                                    <h3 className="text-base font-semibold text-white flex items-center gap-2">
-                                        <div className="p-1.5 rounded-lg bg-[#d97757]/10 text-[#d97757]">
-                                            <CreditCard size={16} />
-                                        </div>
-                                        Faturas e Pagamentos
-                                    </h3>
-                                    <button
-                                        onClick={() => setSelectedUser(null)}
-                                        className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
-                                    >
-                                        <X size={18} />
-                                    </button>
-                                </div>
-
-                                <div className="p-6 overflow-y-auto custom-scrollbar relative z-10 flex-1">
-                                    <div className="flex items-center gap-4 mb-6">
-                                        <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${selectedUser.avatarUrl ? 'bg-gray-800' : getAvatarColors(selectedUser.name || '').bg} ${selectedUser.avatarUrl ? 'text-white' : getAvatarColors(selectedUser.name || '').text}`}>
-                                            {selectedUser.avatarUrl ? (
-                                                <img src={selectedUser.avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
-                                            ) : (
-                                                getInitials(selectedUser.name || 'U')
-                                            )}
-                                        </div>
-                                        <div>
-                                            <p className="text-lg font-bold text-white">{selectedUser.name}</p>
-                                            <p className="text-sm text-gray-400 flex items-center gap-2">
-                                                ID Asaas: <span className="font-mono text-xs text-gray-500 bg-gray-900 px-1.5 py-0.5 rounded">{selectedUser.subscription?.asaasCustomerId || 'N/A'}</span>
-                                            </p>
-                                        </div>
+                                    <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+                                        <h3 className="text-base font-semibold text-white flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-[#d97757]/10 text-[#d97757]">
+                                                <CreditCard size={16} />
+                                            </div>
+                                            Faturas e Pagamentos
+                                        </h3>
+                                        <button
+                                            onClick={() => setSelectedUser(null)}
+                                            className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all"
+                                        >
+                                            <X size={18} />
+                                        </button>
                                     </div>
 
-                                    {isLoadingPayments ? (
-                                        <div className="flex items-center justify-center py-12">
-                                            <Loader2 className="animate-spin text-[#d97757]" size={24} />
+                                    <div className="p-6 overflow-y-auto custom-scrollbar relative z-10 flex-1">
+                                        <div className="flex items-center gap-4 mb-6">
+                                            <div className={`w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold shadow-md ${selectedUser.avatarUrl ? 'bg-gray-800' : getAvatarColors(selectedUser.name || '').bg} ${selectedUser.avatarUrl ? 'text-white' : getAvatarColors(selectedUser.name || '').text}`}>
+                                                {selectedUser.avatarUrl ? (
+                                                    <img src={selectedUser.avatarUrl} alt="" className="w-12 h-12 rounded-full object-cover" />
+                                                ) : (
+                                                    getInitials(selectedUser.name || 'U')
+                                                )}
+                                            </div>
+                                            <div>
+                                                <p className="text-lg font-bold text-white">{selectedUser.name}</p>
+                                                <p className="text-sm text-gray-400 flex items-center gap-2">
+                                                    ID Asaas: <span className="font-mono text-xs text-gray-500 bg-gray-900 px-1.5 py-0.5 rounded">{selectedUser.subscription?.asaasCustomerId || 'N/A'}</span>
+                                                </p>
+                                            </div>
                                         </div>
-                                    ) : userPayments.length === 0 ? (
-                                        <div className="text-center py-12 text-gray-500">
-                                            <p>Nenhuma fatura encontrada para este usuário.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-3">
-                                            {userPayments.map((payment) => (
-                                                <div key={payment.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors">
-                                                    <div className="flex justify-between items-start mb-2">
-                                                        <div>
-                                                            <p className="text-sm font-medium text-white">
-                                                                {payment.description || 'Assinatura Controlar+'}
-                                                            </p>
-                                                            <p className="text-xs text-gray-500 font-mono mt-0.5">
-                                                                #{payment.id}
-                                                            </p>
-                                                        </div>
-                                                        <div className="text-right">
-                                                            <p className="text-sm font-bold text-white">
-                                                                {formatCurrency(payment.value)}
-                                                            </p>
-                                                            {/* Show original value if different */}
-                                                            {payment.originalValue && payment.originalValue !== payment.value && (
-                                                                <p className="text-xs text-gray-500 line-through">
-                                                                    {formatCurrency(payment.originalValue)}
+
+                                        {isLoadingPayments ? (
+                                            <div className="flex items-center justify-center py-12">
+                                                <Loader2 className="animate-spin text-[#d97757]" size={24} />
+                                            </div>
+                                        ) : userPayments.length === 0 ? (
+                                            <div className="text-center py-12 text-gray-500">
+                                                <p>Nenhuma fatura encontrada para este usuário.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-3">
+                                                {userPayments.map((payment) => (
+                                                    <div key={payment.id} className="bg-gray-900/50 border border-gray-800 rounded-xl p-4 hover:border-gray-700 transition-colors">
+                                                        <div className="flex justify-between items-start mb-2">
+                                                            <div>
+                                                                <p className="text-sm font-medium text-white">
+                                                                    {payment.description || 'Assinatura Controlar+'}
                                                                 </p>
-                                                            )}
-                                                            <div className="mt-1">
-                                                                {getPaymentStatusBadge(payment.status)}
+                                                                <p className="text-xs text-gray-500 font-mono mt-0.5">
+                                                                    #{payment.id}
+                                                                </p>
                                                             </div>
-                                                        </div>
-                                                    </div>
-
-                                                    {/* Discount Info */}
-                                                    {payment.discount && payment.discount.value > 0 && (
-                                                        <div className="bg-green-500/5 border border-green-500/10 rounded-lg px-2 py-1 mb-2 inline-flex items-center gap-1.5">
-                                                            <span className="text-[10px] text-green-500 font-medium">
-                                                                Desconto aplicado:
-                                                                {payment.discount.type === 'PERCENTAGE'
-                                                                    ? ` ${payment.discount.value}%`
-                                                                    : ` R$ ${payment.discount.value.toFixed(2)}`}
-                                                            </span>
-                                                        </div>
-                                                    )}
-
-                                                    <div className="flex items-center justify-between pt-3 border-t border-gray-800 mt-2 text-xs text-gray-400">
-                                                        <div className="flex gap-4">
-                                                            <div className="flex items-center gap-1.5">
-                                                                <Calendar size={12} />
-                                                                <span>Venc: {formatDate(payment.dueDate)}</span>
-                                                            </div>
-                                                            {payment.paymentDate && (
-                                                                <div className="flex items-center gap-1.5 text-emerald-400/70">
-                                                                    <CheckCircle size={12} />
-                                                                    <span>Pago: {formatDate(payment.paymentDate)}</span>
+                                                            <div className="text-right">
+                                                                <p className="text-sm font-bold text-white">
+                                                                    {formatCurrency(payment.value)}
+                                                                </p>
+                                                                {/* Show original value if different */}
+                                                                {payment.originalValue && payment.originalValue !== payment.value && (
+                                                                    <p className="text-xs text-gray-500 line-through">
+                                                                        {formatCurrency(payment.originalValue)}
+                                                                    </p>
+                                                                )}
+                                                                <div className="mt-1">
+                                                                    {getPaymentStatusBadge(payment.status)}
                                                                 </div>
-                                                            )}
+                                                            </div>
                                                         </div>
 
-                                                        <div className="flex items-center gap-3">
-                                                            {isEligibleForRefund(payment) && (
-                                                                <button
-                                                                    onClick={() => setRefundPaymentId(payment.id)}
-                                                                    className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors"
-                                                                    title="Estornar pagamento (dentro de 7 dias)"
-                                                                >
-                                                                    <Undo2 size={12} />
-                                                                    Estornar
-                                                                </button>
-                                                            )}
+                                                        {/* Discount Info */}
+                                                        {payment.discount && payment.discount.value > 0 && (
+                                                            <div className="bg-green-500/5 border border-green-500/10 rounded-lg px-2 py-1 mb-2 inline-flex items-center gap-1.5">
+                                                                <span className="text-[10px] text-green-500 font-medium">
+                                                                    Desconto aplicado:
+                                                                    {payment.discount.type === 'PERCENTAGE'
+                                                                        ? ` ${payment.discount.value}%`
+                                                                        : ` R$ ${payment.discount.value.toFixed(2)}`}
+                                                                </span>
+                                                            </div>
+                                                        )}
 
-                                                            {payment.invoiceUrl && (
-                                                                <a
-                                                                    href={payment.invoiceUrl}
-                                                                    target="_blank"
-                                                                    rel="noreferrer"
-                                                                    className="flex items-center gap-1 text-[#d97757] hover:underline"
-                                                                >
-                                                                    Fatura <ExternalLink size={10} />
-                                                                </a>
-                                                            )}
+                                                        <div className="flex items-center justify-between pt-3 border-t border-gray-800 mt-2 text-xs text-gray-400">
+                                                            <div className="flex gap-4">
+                                                                <div className="flex items-center gap-1.5">
+                                                                    <Calendar size={12} />
+                                                                    <span>Venc: {formatDate(payment.dueDate)}</span>
+                                                                </div>
+                                                                {payment.paymentDate && (
+                                                                    <div className="flex items-center gap-1.5 text-emerald-400/70">
+                                                                        <CheckCircle size={12} />
+                                                                        <span>Pago: {formatDate(payment.paymentDate)}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <div className="flex items-center gap-3">
+                                                                {isEligibleForRefund(payment) && (
+                                                                    <button
+                                                                        onClick={() => setRefundPaymentId(payment.id)}
+                                                                        className="flex items-center gap-1 text-red-400 hover:text-red-300 transition-colors"
+                                                                        title="Estornar pagamento (dentro de 7 dias)"
+                                                                    >
+                                                                        <Undo2 size={12} />
+                                                                        Estornar
+                                                                    </button>
+                                                                )}
+
+                                                                {payment.invoiceUrl && (
+                                                                    <a
+                                                                        href={payment.invoiceUrl}
+                                                                        target="_blank"
+                                                                        rel="noreferrer"
+                                                                        className="flex items-center gap-1 text-[#d97757] hover:underline"
+                                                                    >
+                                                                        Fatura <ExternalLink size={10} />
+                                                                    </a>
+                                                                )}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    )}
-                                </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </motion.div>
                             </motion.div>
-                        </motion.div>
-                    )}
-                </AnimatePresence>,
-                document.body
-            )}
+                        )}
+                    </AnimatePresence>,
+                    document.body
+                )
+            }
 
             {/* Cancel Confirmation */}
             {/* Confirmation Bar for Cancel or Refund */}
@@ -1051,7 +1135,7 @@ export const AdminSubscriptions: React.FC = () => {
                 cancelText="Voltar"
                 isDestructive={true}
             />
-        </div>
+        </div >
     );
 };
 
