@@ -593,6 +593,16 @@ const ASAAS_API_URL = ASAAS_API_KEY && ASAAS_API_KEY.includes('hmlg')
   ? 'https://sandbox.asaas.com/api/v3'
   : 'https://www.asaas.com/api/v3';
 
+// Helper to get client IP from request (works with proxies/serverless)
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // x-forwarded-for can contain multiple IPs: client, proxy1, proxy2, etc.
+    return forwarded.split(',')[0].trim();
+  }
+  return req.headers['x-real-ip'] || req.ip || req.connection?.remoteAddress || '127.0.0.1';
+};
+
 const asaasRequest = async (method, endpoint, data = null) => {
   const config = {
     method,
@@ -695,7 +705,7 @@ router.post('/asaas/validate-card', async (req, res) => {
         addressNumber: creditCardHolderInfo.addressNumber,
         phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
       },
-      remoteIp: req.ip
+      remoteIp: getClientIp(req)
     };
 
     const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', tokenData);
@@ -869,7 +879,7 @@ router.post('/asaas/subscription', async (req, res) => {
           addressNumber: creditCardHolderInfo.addressNumber,
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
         },
-        remoteIp: req.ip,
+        remoteIp: getClientIp(req),
         externalReference: `${planId}_annual_${Date.now()}`
       };
 
@@ -926,7 +936,7 @@ router.post('/asaas/subscription', async (req, res) => {
           addressNumber: creditCardHolderInfo.addressNumber,
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
         },
-        remoteIp: req.ip,
+        remoteIp: getClientIp(req),
         externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
       };
 

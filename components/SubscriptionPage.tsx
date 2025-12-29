@@ -6,6 +6,7 @@ import { useToasts } from './Toast';
 import quebraCabecaImg from '../assets/quebra-cabeca.png';
 import fogueteImg from '../assets/foguete.png';
 import { toLocalISODate } from '../utils/dateUtils';
+import { API_ENDPOINTS } from '../config/api';
 
 import NumberFlow from '@number-flow/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -187,7 +188,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
             // NORMAL FLOW: Value >= R$ 5, proceed with Asaas payment
             // 1. Create or update customer in Asaas
             console.log('>>> Creating customer in Asaas...');
-            const customerResponse = await fetch('/api/asaas/customer', {
+            const customerResponse = await fetch(API_ENDPOINTS.asaas.customer, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -214,7 +215,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
 
             // 2. Create subscription/payment in Asaas
             console.log('>>> Creating subscription in Asaas...');
-            const subscriptionResponse = await fetch('/api/asaas/subscription', {
+            const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
