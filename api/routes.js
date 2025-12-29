@@ -1040,18 +1040,29 @@ router.post('/asaas/subscription', async (req, res) => {
           externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}` // [MODIFIED] Include userId
         };
 
-        const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
-        console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
+        // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.
+        let subscription = null;
+        try {
+          subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
+          console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
+        } catch (subError) {
+          console.error(`>>> WARNING: Payment succeeded but Subscription failed:`, subError.message);
+          console.error('>>> The plan will be ACTIVATED to honor the payment. Admin must fix subscription manually.');
 
-        // [NEW] Activate on Server
-        await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription.id);
+          // Mock a partial subscription object for the activation logs
+          subscription = { id: 'manual_recheck_needed_' + Date.now() };
+        }
+
+        // [NEW] Activate on Server (Even if subscription failed, because Payment was CONFIRMED)
+        await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription?.id);
 
         return res.json({
           success: true,
-          subscription,
           payment: firstPayment,
+          // If subscription failed, we return success but maybe checking status logs
+          subscription: subscription,
           status: 'CONFIRMED',
-          message: 'Pagamento confirmado e assinatura criada!'
+          message: 'Pagamento confirmado! Plano ativado.'
         });
       }
 
