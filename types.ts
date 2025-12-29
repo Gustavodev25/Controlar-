@@ -56,6 +56,12 @@ export interface User {
   createdAt?: string;
   hasSeenProTutorial?: boolean;
   connectionLogs?: ConnectionLog[];
+  dataViewMode?: 'AUTO' | 'MANUAL'; // Preferência de visualização: Auto (Open Finance) ou Manual
+  // Preferências de dashboard que devem persistir entre sessões
+  dashboardPreferences?: {
+    includeOpenFinanceInStats?: boolean;
+    cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
+  };
 }
 
 export interface ConnectionLog {

@@ -284,7 +284,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       {/* Filters Row */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
         {/* Search - Left */}
-        <div className="relative w-72 group">
+        <div className="relative w-full sm:w-72 group order-1">
           <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
           <input
             type="text"
@@ -295,13 +295,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           />
         </div>
 
-        {/* Spacer */}
-        <div className="flex-1" />
+        {/* Spacer - hidden on mobile */}
+        <div className="hidden sm:block flex-1 order-2" />
 
-        {/* Card Filter Dropdown - Right */}
-        <div className="relative z-50">
+        {/* Card Filter Dropdown */}
+        <div className="relative z-50 w-full sm:w-auto order-3 sm:order-2">
           <Dropdown>
-            <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between min-w-[180px]">
+            <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
               <div className="flex items-center gap-2 truncate">
                 <Filter size={16} className="text-[#d97757] flex-shrink-0" />
                 <span className="truncate">{getSelectedCardLabel()}</span>
@@ -331,31 +331,34 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         </div>
 
         {/* Start Date */}
-        <div className="w-36">
+        <div className="w-[calc(50%-6px)] sm:w-36 order-4 sm:order-3">
           <CustomDatePicker
             value={startDate}
             onChange={setStartDate}
             placeholder="Início"
+            dropdownMode="fixed"
           />
         </div>
 
         {/* End Date */}
-        <div className="w-36">
+        <div className="w-[calc(50%-6px)] sm:w-36 order-5 sm:order-4">
           <CustomDatePicker
             value={endDate}
             onChange={setEndDate}
             placeholder="Fim"
+            dropdownMode="fixed"
           />
         </div>
 
         {/* Year Selector */}
-        <div className="w-28">
+        <div className="w-[calc(50%-6px)] sm:w-28 order-6 sm:order-5">
           <CustomSelect
             value={selectedYear}
             onChange={(val) => setSelectedYear(Number(val))}
             options={yearOptions}
             placeholder="Ano"
             className="h-11 bg-[#232322] border-[#373734] rounded-xl text-sm w-full"
+            portal
           />
         </div>
 
@@ -363,7 +366,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedCardId !== 'all') && (
           <button
             onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedCardId('all'); }}
-            className="h-11 px-4 flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider"
+            className="h-11 px-4 w-[calc(50%-6px)] sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider order-7 sm:order-6"
           >
             <X size={14} /> Limpar
           </button>
@@ -372,9 +375,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
       {/* Table Card */}
       <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden">
-        {/* Grid */}
-        <div className="overflow-auto flex-1 custom-scrollbar z-0">
-          <table className="hidden lg:table min-w-full border-collapse text-sm text-left h-full">
+        {/* Desktop Grid */}
+        <div className="hidden lg:block overflow-auto flex-1 custom-scrollbar z-0">
+          <table className="min-w-full border-collapse text-sm text-left h-full">
             <thead className="bg-[#333432] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
               <tr>
                 <th className="px-6 py-4 border-b border-r border-[#373734] w-40 first:rounded-tl-xl">
@@ -563,9 +566,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               )}
             </tbody>
           </table>
+        </div>
 
-          {/* Mobile */}
-          <div className="lg:hidden p-4 space-y-4 flex flex-col pb-24">
+        {/* Mobile */}
+        <div className="lg:hidden flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
+          <div className="p-4 space-y-4 flex flex-col pb-24">
             {filteredTransactions.map((t) => (
               <div key={t.id} className="bg-transparent border-b border-[#373734] p-4 relative group shrink-0 last:border-0">
                 <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>

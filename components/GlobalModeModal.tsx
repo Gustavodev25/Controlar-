@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Settings, AlertCircle, ShieldCheck, RefreshCw, History, Check, Trash2 } from './Icons';
 import { UniversalModal, ModalSection, ModalDivider } from './UniversalModal';
+import { Button } from './Button';
 
 interface GlobalModeModalProps {
   isOpen: boolean;
@@ -98,12 +99,9 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
           </ModalSection>
 
           <div className="mt-6">
-            <button
-              onClick={() => setStep('manual_config')}
-              className="w-full px-6 py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20"
-            >
+            <Button onClick={() => setStep('manual_config')} fullWidth>
               Continuar
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -152,16 +150,12 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
           </button>
 
           <div className="flex gap-3 mt-2">
-            <button onClick={() => setStep('select')} className="flex-1 py-3 bg-gray-800 text-gray-400 rounded-xl font-bold text-sm hover:bg-gray-700 border border-gray-700">
+            <Button onClick={() => setStep('select')} variant="ghost" className="flex-1">
               Voltar
-            </button>
-            <button
-              onClick={handleConfirmManualAction}
-              disabled={isProcessing}
-              className="flex-1 py-3 bg-[#d97757] text-white rounded-xl font-bold text-sm hover:bg-[#c56a4d] disabled:opacity-50 disabled:cursor-not-allowed shadow-lg shadow-[#d97757]/20"
-            >
-              {isProcessing ? 'Processando...' : 'Confirmar'}
-            </button>
+            </Button>
+            <Button onClick={handleConfirmManualAction} isLoading={isProcessing} className="flex-1">
+              Confirmar
+            </Button>
           </div>
         </div>
       )}
@@ -206,13 +200,9 @@ export const GlobalModeModal: React.FC<GlobalModeModalProps> = ({
           </ModalSection>
 
           <div className="mt-6">
-            <button
-              onClick={handleConfirmAutoAction}
-              disabled={isProcessing}
-              className="w-full px-6 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl transition-colors text-sm font-bold shadow-lg shadow-emerald-900/20"
-            >
-              {isProcessing ? 'Sincronizando...' : 'Confirmar'}
-            </button>
+            <Button onClick={handleConfirmAutoAction} isLoading={isProcessing} variant="success" fullWidth>
+              Confirmar
+            </Button>
           </div>
         </div>
       )}

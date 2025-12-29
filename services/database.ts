@@ -101,6 +101,27 @@ export const setFirstMonthOverridePrice = async (userId: string, price: number) 
   });
 };
 
+// Save user's data view mode preference (Auto/Manual toggle)
+export const saveDataViewMode = async (userId: string, mode: 'AUTO' | 'MANUAL') => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+  await updateDoc(userRef, {
+    dataViewMode: mode
+  });
+};
+
+// Save user's dashboard preferences (includeOpenFinance, cardInvoiceTypes, etc.)
+export const saveDashboardPreferences = async (userId: string, preferences: {
+  includeOpenFinanceInStats?: boolean;
+  cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
+}) => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+  await updateDoc(userRef, {
+    dashboardPreferences: preferences
+  });
+};
+
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
   if (!db) return null;
   try {
@@ -145,6 +166,20 @@ export const getUserProfile = async (userId: string): Promise<Partial<User> | nu
         profile.dailyConnectionCredits = data.dailyConnectionCredits;
       } else {
         profile.dailyConnectionCredits = { date: '', count: 0 };
+      }
+
+      // Load dataViewMode preference (Auto/Manual toggle)
+      if (data.dataViewMode) {
+        profile.dataViewMode = data.dataViewMode;
+      } else if (data.profile?.dataViewMode) {
+        profile.dataViewMode = data.profile.dataViewMode;
+      }
+
+      // Load dashboard preferences (includeOpenFinance, cardInvoiceTypes)
+      if (data.dashboardPreferences) {
+        profile.dashboardPreferences = data.dashboardPreferences;
+      } else if (data.profile?.dashboardPreferences) {
+        profile.dashboardPreferences = data.profile.dashboardPreferences;
       }
 
       // If there was no profile at all but we have root isAdmin, still return it

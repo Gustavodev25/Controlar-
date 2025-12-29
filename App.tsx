@@ -529,7 +529,13 @@ const App: React.FC = () => {
     }
     // Auto-enable Pro Mode for Pro/Family users if they haven't explicitly set a preference
     else if (isProOrFamily && !isProMode) {
-      // Check if user has explicitly turned it off before. If never set (null), default to TRUE for Pro.
+      // Priority: Firebase preference > localStorage > default to Auto
+      // If user has dataViewMode set in Firebase, that was already loaded on login
+      if (currentUser.dataViewMode) {
+        // Firebase preference already applied on login, don't override
+        return;
+      }
+      // Check if user has explicitly turned it off before via localStorage
       const saved = localStorage.getItem('finances_pro_mode');
       if (saved === null) {
         setIsProMode(true);
@@ -619,8 +625,18 @@ const App: React.FC = () => {
     localStorage.setItem('finances_cc_use_full_limit', JSON.stringify(creditCardUseFullLimit));
   }, [creditCardUseFullLimit]);
 
+  // Track if initial preferences were loaded from Firebase (to avoid saving on first load)
+  const hasLoadedPreferencesRef = React.useRef(false);
+
   useEffect(() => {
     localStorage.setItem('finances_include_open_finance', JSON.stringify(includeOpenFinanceInStats));
+    // Save to Firebase only after initial load and if user is logged in
+    if (hasLoadedPreferencesRef.current && userId) {
+      dbService.saveDashboardPreferences(userId, {
+        includeOpenFinanceInStats,
+        cardInvoiceTypes
+      }).catch(console.error);
+    }
   }, [includeOpenFinanceInStats]);
 
   useEffect(() => {
@@ -629,6 +645,13 @@ const App: React.FC = () => {
 
   useEffect(() => {
     localStorage.setItem('finances_card_invoice_types', JSON.stringify(cardInvoiceTypes));
+    // Save to Firebase only after initial load and if user is logged in
+    if (hasLoadedPreferencesRef.current && userId) {
+      dbService.saveDashboardPreferences(userId, {
+        includeOpenFinanceInStats,
+        cardInvoiceTypes
+      }).catch(console.error);
+    }
   }, [cardInvoiceTypes]);
 
   // Member Management State
@@ -926,8 +949,32 @@ const App: React.FC = () => {
             subscription: profile?.subscription,
             connectionLogs: profile?.connectionLogs || [],
             dailyConnectionCredits: profile?.dailyConnectionCredits || { date: '', count: 0 },
-            createdAt: profile?.createdAt
+            createdAt: profile?.createdAt,
+            dataViewMode: profile?.dataViewMode
           };
+
+          // Load user's saved data view mode preference from Firebase
+          if (profile?.dataViewMode) {
+            const savedMode = profile.dataViewMode === 'AUTO';
+            setIsProMode(savedMode);
+            localStorage.setItem('finances_pro_mode', JSON.stringify(savedMode));
+          }
+
+          // Load user's dashboard preferences from Firebase
+          if (profile?.dashboardPreferences) {
+            if (profile.dashboardPreferences.includeOpenFinanceInStats !== undefined) {
+              setIncludeOpenFinanceInStats(profile.dashboardPreferences.includeOpenFinanceInStats);
+              localStorage.setItem('finances_include_open_finance', JSON.stringify(profile.dashboardPreferences.includeOpenFinanceInStats));
+            }
+            if (profile.dashboardPreferences.cardInvoiceTypes) {
+              setCardInvoiceTypes(profile.dashboardPreferences.cardInvoiceTypes);
+              localStorage.setItem('finances_card_invoice_types', JSON.stringify(profile.dashboardPreferences.cardInvoiceTypes));
+            }
+          }
+          // Mark that initial preferences were loaded (to enable saving on subsequent changes)
+          setTimeout(() => {
+            hasLoadedPreferencesRef.current = true;
+          }, 1000);
 
           // Fix for old users without createdAt: Backfill with oldest known access
           if (!baseProfile.createdAt) {
@@ -1282,6 +1329,8 @@ const App: React.FC = () => {
         });
 
         setIsProMode(false);
+        // Save preference to Firebase for persistence across sessions
+        await dbService.saveDataViewMode(userId, 'MANUAL');
         setShowGlobalModeModal(null);
         toast.success("Modo Manual ativado. Histórico e conexões apagados. Começando do zero.");
         return; // EXIT HERE
@@ -1311,6 +1360,8 @@ const App: React.FC = () => {
         });
       }
       setIsProMode(false);
+      // Save preference to Firebase for persistence across sessions
+      await dbService.saveDataViewMode(userId, 'MANUAL');
       setShowGlobalModeModal(null);
       toast.success(keepHistory
         ? "Modo Manual ativado. Histórico mantido."
@@ -1327,6 +1378,8 @@ const App: React.FC = () => {
     try {
       localStorage.setItem('finances_pro_mode', 'true');
       setIsProMode(true); // Set immediately to prevent auto-recreation of manual data
+      // Save preference to Firebase for persistence across sessions
+      await dbService.saveDataViewMode(userId, 'AUTO');
 
       // 1. Delete ALL manual transactions (Global wipe of manual data)
       await dbService.deleteAllManualTransactions(userId);

@@ -10,6 +10,7 @@ import { AnimatedGridPattern } from './AnimatedGridPattern';
 import { TestimonialsColumn } from './novalandingpage/Testimonials';
 import { UniversalModal } from './UniversalModal';
 import { CustomDatePicker } from './UIComponents';
+import { Button } from './Button';
 
 
 
@@ -746,24 +747,18 @@ export const LoginNew: React.FC = () => {
                             )}
                         </AnimatePresence>
 
-                        <motion.button
-                            layout
+                        <Button
                             type="submit"
-                            disabled={isLoading}
-                            className="w-full bg-[#D97757] hover:bg-[#ff8660] text-white font-bold py-3.5 rounded-xl shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10 transition-all active:scale-[0.98] flex items-center justify-center gap-2 group mt-4 relative z-20"
+                            isLoading={isLoading}
+                            fullWidth
+                            size="lg"
+                            className="mt-4 relative z-20"
                         >
-                            {isLoading ? <Loader2 className="animate-spin" size={18} /> : (
-                                <>
-                                    <span className="text-sm">
-                                        {isResettingPassword
-                                            ? (recoveryStep === 1 ? 'Enviar Código' : recoveryStep === 2 ? 'Verificar Código' : 'Redefinir Senha')
-                                            : (isLogin ? 'Entrar' : (step === 1 ? 'Continuar' : 'Finalizar'))
-                                        }
-                                    </span>
-                                    <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                                </>
-                            )}
-                        </motion.button>
+                            {isResettingPassword
+                                ? (recoveryStep === 1 ? 'Enviar Código' : recoveryStep === 2 ? 'Verificar Código' : 'Redefinir Senha')
+                                : (isLogin ? 'Entrar' : (step === 1 ? 'Continuar' : 'Finalizar'))
+                            }
+                        </Button>
                     </form>
 
                     <motion.p layout className="mt-8 text-left text-xs text-gray-500">
