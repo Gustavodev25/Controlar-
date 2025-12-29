@@ -30,6 +30,7 @@ export const API_ENDPOINTS = {
     asaas: {
         subscription: `${API_BASE}/asaas/subscription`,
         cancelSubscription: `${API_BASE}/asaas/cancel-subscription`,
+        validateCard: `${API_BASE}/asaas/validate-card`,
     },
     // Email
     email: {

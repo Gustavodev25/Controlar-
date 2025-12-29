@@ -616,6 +616,118 @@ const asaasRequest = async (method, endpoint, data = null) => {
   }
 };
 
+// Validate credit card before purchase
+router.post('/asaas/validate-card', async (req, res) => {
+  const { creditCard, creditCardHolderInfo, customerId, customerData } = req.body;
+
+  if (!creditCard || !creditCardHolderInfo) {
+    return res.status(400).json({
+      valid: false,
+      error: 'Dados do cartão incompletos.'
+    });
+  }
+
+  try {
+    let customerIdToUse = customerId;
+
+    // If no customerId provided, create/update customer first
+    if (!customerIdToUse && customerData) {
+      console.log('>>> Creating/updating customer for card validation...');
+
+      // Search for existing customer by CPF
+      const searchResult = await asaasRequest(
+        'GET',
+        `/customers?cpfCnpj=${customerData.cpfCnpj.replace(/\D/g, '')}`
+      );
+
+      if (searchResult.data && searchResult.data.length > 0) {
+        // Update existing customer
+        const existingCustomer = searchResult.data[0];
+        const updateData = {
+          name: customerData.name,
+          email: customerData.email,
+          phone: customerData.phone?.replace(/\D/g, '') || undefined,
+          postalCode: customerData.postalCode?.replace(/\D/g, '') || undefined,
+          addressNumber: customerData.addressNumber || undefined
+        };
+        await asaasRequest('PUT', `/customers/${existingCustomer.id}`, updateData);
+        customerIdToUse = existingCustomer.id;
+        console.log('>>> Updated existing customer:', customerIdToUse);
+      } else {
+        // Create new customer
+        const newCustomerData = {
+          name: customerData.name,
+          email: customerData.email,
+          cpfCnpj: customerData.cpfCnpj.replace(/\D/g, ''),
+          phone: customerData.phone?.replace(/\D/g, '') || undefined,
+          postalCode: customerData.postalCode?.replace(/\D/g, '') || undefined,
+          addressNumber: customerData.addressNumber || undefined,
+          notificationDisabled: false
+        };
+        const newCustomer = await asaasRequest('POST', '/customers', newCustomerData);
+        customerIdToUse = newCustomer.id;
+        console.log('>>> Created new customer:', customerIdToUse);
+      }
+    }
+
+    if (!customerIdToUse) {
+      return res.status(400).json({
+        valid: false,
+        error: 'Dados do cliente incompletos para validação.'
+      });
+    }
+
+    // Use Asaas tokenization to validate the card
+    const tokenData = {
+      customer: customerIdToUse,
+      creditCard: {
+        holderName: creditCard.holderName,
+        number: creditCard.number.replace(/\s/g, ''),
+        expiryMonth: creditCard.expiryMonth,
+        expiryYear: creditCard.expiryYear,
+        ccv: creditCard.ccv
+      },
+      creditCardHolderInfo: {
+        name: creditCardHolderInfo.name,
+        email: creditCardHolderInfo.email,
+        cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+        postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+        addressNumber: creditCardHolderInfo.addressNumber,
+        phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+      },
+      remoteIp: req.ip
+    };
+
+    const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', tokenData);
+
+    if (tokenResult.creditCardToken) {
+      return res.json({
+        valid: true,
+        customerId: customerIdToUse,
+        token: tokenResult.creditCardToken,
+        brand: tokenResult.creditCardBrand,
+        lastDigits: tokenResult.creditCardNumber
+      });
+    } else {
+      return res.status(400).json({
+        valid: false,
+        error: 'Não foi possível validar o cartão. Verifique os dados e tente novamente.'
+      });
+    }
+  } catch (error) {
+    const asaasError = error.response?.data?.errors?.[0];
+    const errorMessage = asaasError?.description || 'Cartão inválido ou não autorizado para esta transação.';
+
+    console.error('>>> Card validation error:', asaasError || error.message);
+
+    return res.status(400).json({
+      valid: false,
+      error: errorMessage,
+      code: asaasError?.code
+    });
+  }
+});
+
 router.post('/asaas/customer', async (req, res) => {
   const { name, email, cpfCnpj, phone, postalCode, addressNumber } = req.body;
 

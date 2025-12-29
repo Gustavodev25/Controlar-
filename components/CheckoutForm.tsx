@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Lock, Loader2, Ticket, X, Check } from 'lucide-react';
+import { Lock, Loader2, Ticket, X, Check, CreditCard, AlertCircle } from 'lucide-react';
 import { useToasts } from './Toast';
 import { CustomSelect } from './UIComponents';
 import * as dbService from '../services/database';
 import { Coupon } from '../types';
+import { API_ENDPOINTS } from '../config/api';
 
 interface CreditCardData {
   holderName: string;
@@ -26,10 +27,12 @@ interface CheckoutFormProps {
   planName: string;
   price: number;
   billingCycle?: 'monthly' | 'annual';
-  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number) => Promise<void>;
+  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number, validatedCustomerId?: string) => Promise<void>;
   onBack: () => void;
   isLoading: boolean;
   initialCouponCode?: string;
+  customerId?: string;
+  userEmail?: string;
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -39,7 +42,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   onSubmit,
   onBack,
   isLoading,
-  initialCouponCode
+  initialCouponCode,
+  customerId,
+  userEmail
 }) => {
   const [cardData, setCardData] = useState<CreditCardData>({
     holderName: '',
@@ -64,6 +69,16 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [couponCode, setCouponCode] = useState(initialCouponCode || '');
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
+
+  // Card validation state
+  const [isValidatingCard, setIsValidatingCard] = useState(false);
+  const [cardValidation, setCardValidation] = useState<{
+    validated: boolean;
+    valid: boolean;
+    error?: string;
+    brand?: string;
+    customerId?: string;
+  }>({ validated: false, valid: false });
 
   React.useEffect(() => {
     if (initialCouponCode) {
@@ -169,6 +184,56 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     return value.replace(/\W/gi, '').replace(/(.{4})/g, '$1 ').trim();
   };
 
+  // Detect card brand from number
+  const detectCardBrand = (number: string): { brand: string; color: string } | null => {
+    const cleaned = number.replace(/\s/g, '');
+    if (cleaned.length < 1) return null;
+
+    // Visa: starts with 4
+    if (/^4/.test(cleaned)) {
+      return { brand: 'VISA', color: 'bg-blue-600' };
+    }
+
+    // Mastercard: 51-55 or 2221-2720
+    if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) {
+      return { brand: 'MASTER', color: 'bg-red-600' };
+    }
+
+    // American Express: 34 or 37
+    if (/^3[47]/.test(cleaned)) {
+      return { brand: 'AMEX', color: 'bg-sky-600' };
+    }
+
+    // Elo: Brazilian card with specific ranges
+    if (/^(636368|636297|504175|438935|451416|636369|5067|4576|4011|509)/.test(cleaned)) {
+      return { brand: 'ELO', color: 'bg-yellow-500' };
+    }
+
+    // Hipercard
+    if (/^(606282|3841)/.test(cleaned)) {
+      return { brand: 'HIPER', color: 'bg-orange-600' };
+    }
+
+    // Diners Club: 300-305, 36, 38
+    if (/^3(?:0[0-5]|[68])/.test(cleaned)) {
+      return { brand: 'DINERS', color: 'bg-gray-600' };
+    }
+
+    // Discover: 6011, 65, 644-649
+    if (/^6(?:011|5|4[4-9])/.test(cleaned)) {
+      return { brand: 'DISCOVER', color: 'bg-orange-500' };
+    }
+
+    // JCB: 35
+    if (/^35/.test(cleaned)) {
+      return { brand: 'JCB', color: 'bg-green-600' };
+    }
+
+    return null;
+  };
+
+  const detectedBrand = detectCardBrand(cardData.number);
+
   const handleCardChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     // Limites de caracteres
@@ -209,6 +274,79 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponCode('');
+  };
+
+  // Validate card with Asaas before proceeding
+  const validateCardWithAsaas = async (): Promise<{ valid: boolean; customerId?: string }> => {
+    setIsValidatingCard(true);
+    setCardValidation({ validated: false, valid: false });
+
+    try {
+      const emailToUse = userEmail || holderInfo.email;
+
+      const response = await fetch(API_ENDPOINTS.asaas.validateCard, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customerId,
+          // Send customer data so the API can create/update customer if needed
+          customerData: !customerId ? {
+            name: cardData.holderName,
+            email: emailToUse,
+            cpfCnpj: holderInfo.cpfCnpj,
+            phone: holderInfo.phone,
+            postalCode: holderInfo.postalCode,
+            addressNumber: holderInfo.addressNumber
+          } : undefined,
+          creditCard: {
+            holderName: cardData.holderName,
+            number: cardData.number,
+            expiryMonth: cardData.expiryMonth,
+            expiryYear: cardData.expiryYear,
+            ccv: cardData.ccv
+          },
+          creditCardHolderInfo: {
+            name: cardData.holderName,
+            email: emailToUse,
+            cpfCnpj: holderInfo.cpfCnpj,
+            postalCode: holderInfo.postalCode,
+            addressNumber: holderInfo.addressNumber,
+            phone: holderInfo.phone
+          }
+        })
+      });
+
+      const result = await response.json();
+
+      if (response.ok && result.valid) {
+        setCardValidation({
+          validated: true,
+          valid: true,
+          brand: result.brand,
+          customerId: result.customerId
+        });
+        return { valid: true, customerId: result.customerId };
+      } else {
+        setCardValidation({
+          validated: true,
+          valid: false,
+          error: result.error || 'Cartão não autorizado para esta transação.'
+        });
+        toast.error(result.error || 'Cartão não autorizado. Verifique os dados ou tente outro cartão.');
+        return { valid: false };
+      }
+    } catch (error) {
+      console.error('Card validation error:', error);
+      setCardValidation({
+        validated: true,
+        valid: false,
+        error: 'Erro ao validar cartão. Tente novamente.'
+      });
+      toast.error('Erro ao validar cartão. Tente novamente.');
+      return { valid: false };
+    } finally {
+      setIsValidatingCard(false);
+    }
   };
 
   const calculateTotal = () => {
@@ -284,12 +422,18 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       return;
     }
 
+    // Validate card with Asaas before proceeding
+    const validationResult = await validateCardWithAsaas();
+    if (!validationResult.valid) {
+      return; // Stop if card validation failed
+    }
+
     // If coupon used, increment usage
     if (appliedCoupon) {
       dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
 
-    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice);
+    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice, validationResult.customerId);
   };
 
   const inputStyle = "w-full bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] rounded-xl px-4 h-11 text-[#faf9f5] text-sm placeholder-gray-500 focus:outline-none focus:border-[#d97757] focus:bg-[rgba(58,59,57,0.8)] hover:border-gray-500 transition-all";
@@ -343,9 +487,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       }}
                       className={inputStyle}
                     />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">
-                      VISA
-                    </div>
+                    {detectedBrand && (
+                      <div className={`absolute right-3 top-1/2 -translate-y-1/2 ${detectedBrand.color} text-white text-xs font-bold px-2 py-0.5 rounded transition-all`}>
+                        {detectedBrand.brand}
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -575,12 +721,35 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
+              {/* Card Validation Status */}
+              {cardValidation.validated && !cardValidation.valid && (
+                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2">
+                  <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-red-400 text-sm font-medium">Cartão não autorizado</p>
+                    <p className="text-red-400/70 text-xs mt-0.5">{cardValidation.error}</p>
+                  </div>
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || isValidatingCard}
                 className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
               >
-                {isLoading ? <Loader2 size={18} className="animate-spin" /> : "Confirmar Pagamento"}
+                {isValidatingCard ? (
+                  <>
+                    <CreditCard size={18} className="animate-pulse" />
+                    Validando cartão...
+                  </>
+                ) : isLoading ? (
+                  <>
+                    <Loader2 size={18} className="animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  "Confirmar Pagamento"
+                )}
               </button>
             </div>
           </div>
