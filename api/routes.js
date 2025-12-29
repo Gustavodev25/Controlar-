@@ -954,30 +954,39 @@ router.post('/asaas/subscription', async (req, res) => {
 
       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
 
-      // Check the first payment status
-      const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
-      const firstPayment = payments.data?.[0];
+      console.log(`>>> Subscription created: ${subscription.id}, status: ${subscription.status}`);
 
-      if (firstPayment && (firstPayment.status === 'CONFIRMED' || firstPayment.status === 'RECEIVED')) {
+      // If subscription is ACTIVE, it means the card was validated and first payment is processing
+      if (subscription.status === 'ACTIVE') {
+        // Try to get payment info for response
+        let firstPayment = null;
+        try {
+          const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
+          firstPayment = payments.data?.[0];
+          console.log(`>>> First payment status: ${firstPayment?.status || 'not found yet'}`);
+        } catch (e) {
+          console.log('>>> Could not fetch payment details, but subscription is ACTIVE');
+        }
+
+        // Subscription is ACTIVE = success (payment will be confirmed async)
         return res.json({
           success: true,
           subscription,
           payment: firstPayment,
           status: 'CONFIRMED',
-          message: 'Assinatura criada e pagamento confirmado!'
+          message: 'Assinatura criada com sucesso!'
         });
-      } else {
-        const paymentStatus = firstPayment?.status || 'NO_PAYMENT';
-        const errorMsg = paymentStatus === 'PENDING'
-          ? 'Pagamento não pôde ser processado. Verifique os dados do cartão e tente novamente.'
-          : paymentStatus === 'REFUSED'
-            ? 'Cartão recusado. Verifique os dados ou tente outro cartão.'
-            : `Não foi possível processar o pagamento (${paymentStatus}). Verifique os dados do cartão.`;
+      }
 
-        // Cancel the subscription since payment failed
+      // If subscription is not ACTIVE, check payments for more details
+      const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
+      const firstPayment = payments.data?.[0];
+
+      // Check if payment was explicitly refused
+      if (firstPayment?.status === 'REFUSED') {
+        console.log(`>>> Payment REFUSED, cancelling subscription`);
         try {
           await asaasRequest('DELETE', `/subscriptions/${subscription.id}`);
-          console.log(`>>> Subscription ${subscription.id} cancelled due to failed payment`);
         } catch (cancelError) {
           console.error('>>> Error cancelling subscription:', cancelError.message);
         }
@@ -985,10 +994,20 @@ router.post('/asaas/subscription', async (req, res) => {
         return res.status(400).json({
           success: false,
           subscription,
-          status: paymentStatus,
-          error: errorMsg
+          status: 'REFUSED',
+          error: 'Cartão recusado. Verifique os dados ou tente outro cartão.'
         });
       }
+
+      // For other statuses (PENDING, etc), still consider success if subscription exists
+      // The webhook will handle the final confirmation
+      return res.json({
+        success: true,
+        subscription,
+        payment: firstPayment,
+        status: firstPayment?.status || subscription.status,
+        message: 'Assinatura criada! Pagamento sendo processado.'
+      });
     }
   } catch (error) {
     console.error('>>> Subscription error:', error.response?.data || error.message);
