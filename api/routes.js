@@ -910,14 +910,16 @@ router.post('/asaas/subscription', async (req, res) => {
     } else {
       // CASE 2: Subscription (Monthly or Yearly recurring)
 
-      // FIX: Create the subscription with the DISCOUNTED value first.
-      // This ensures the first charge (immediate) uses the discount.
-      // Then, we update the subscription to the full price for the next cycles.
+      // Calculate discount for first payment if coupon was applied
+      const discountAmount = value < recurringValue ? (recurringValue - value) : 0;
+      const hasDiscount = discountAmount > 0;
+
+      console.log(`>>> Creating subscription: value=${recurringValue}, discount=${discountAmount}, hasDiscount=${hasDiscount}`);
 
       const subscriptionData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: value, // START WITH DISCOUNTED VALUE
+        value: recurringValue, // Always use FULL price for subscription
         nextDueDate: dueDateStr,
         cycle: cycle,
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
@@ -940,27 +942,17 @@ router.post('/asaas/subscription', async (req, res) => {
         externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
       };
 
-      const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
-
-      // Handle Discount Logic: Restore Full Price for Future
-      // If the current value (discounted) is less than the recurring price (baseValue),
-      // we update the subscription to use the baseValue for NEXT cycles.
-      if (value < recurringValue) {
-        console.log(`>>> Coupon used. Initial charge: ${value}. Updating future cycles to: ${recurringValue}`);
-        try {
-          // Update the subscription via PUT to set the correct recurring value
-          // This does NOT affect the first payment which was already generated/processed upon creation
-          await asaasRequest('PUT', `/subscriptions/${subscription.id}`, {
-            value: recurringValue,
-            updatePendingPayments: false // IMPORTANT: Do NOT update the current pending payment (the first one)
-          });
-          console.log(`>>> Subscription ${subscription.id} updated to full price ${recurringValue} for next cycles`);
-        } catch (updateError) {
-          console.error('>>> Error restoring full price for subscription:', updateError.message);
-          // If this fails, the user might keep the discount forever.
-          // In a strict system, we might want to alert admin.
-        }
+      // Add discount to first payment if coupon was used
+      if (hasDiscount) {
+        subscriptionData.discount = {
+          value: discountAmount,
+          dueDateLimitDays: 0, // Apply only to first payment
+          type: 'FIXED' // Fixed amount discount
+        };
+        console.log(`>>> Applying first-payment discount of R$ ${discountAmount}`);
       }
+
+      const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
 
       // Check the first payment status
       const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
