@@ -910,16 +910,116 @@ router.post('/asaas/subscription', async (req, res) => {
     } else {
       // CASE 2: Subscription (Monthly or Yearly recurring)
 
-      // Calculate discount for first payment if coupon was applied
-      const discountAmount = value < recurringValue ? (recurringValue - value) : 0;
-      const hasDiscount = discountAmount > 0;
+      // Check if coupon was applied (discounted value)
+      const hasDiscount = value < recurringValue;
 
-      console.log(`>>> Creating subscription: value=${recurringValue}, discount=${discountAmount}, hasDiscount=${hasDiscount}`);
+      console.log(`>>> Creating subscription: originalValue=${recurringValue}, discountedValue=${value}, hasDiscount=${hasDiscount}`);
 
+      // Calculate next month date for subscription start (if using coupon)
+      const getNextMonthDate = () => {
+        const next = new Date();
+        if (cycle === 'YEARLY') {
+          next.setFullYear(next.getFullYear() + 1);
+        } else {
+          next.setMonth(next.getMonth() + 1);
+        }
+        const y = next.getFullYear();
+        const m = String(next.getMonth() + 1).padStart(2, '0');
+        const d = String(next.getDate()).padStart(2, '0');
+        return `${y}-${m}-${d}`;
+      };
+
+      // If coupon applied: Create single payment first, then subscription starting next month
+      if (hasDiscount) {
+        console.log(`>>> Coupon detected! Creating single payment of R$ ${value} + subscription starting next month`);
+
+        // 1. Create single payment with discounted value
+        const paymentData = {
+          customer: customerId,
+          billingType: 'CREDIT_CARD',
+          value: value, // Discounted value from coupon
+          dueDate: dueDateStr,
+          description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: creditCard.number.replace(/\s/g, ''),
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          },
+          remoteIp: getClientIp(req),
+          externalReference: `${planId}_first_${Date.now()}`
+        };
+
+        const firstPayment = await asaasRequest('POST', '/payments', paymentData);
+        console.log(`>>> First payment created: ${firstPayment.id}, status: ${firstPayment.status}`);
+
+        // Check if first payment was successful
+        if (firstPayment.status !== 'CONFIRMED' && firstPayment.status !== 'RECEIVED') {
+          const errorMsg = firstPayment.status === 'REFUSED'
+            ? 'Cartão recusado. Verifique os dados ou tente outro cartão.'
+            : 'Pagamento não aprovado. Verifique os dados do cartão.';
+
+          return res.status(400).json({
+            success: false,
+            payment: firstPayment,
+            status: firstPayment.status,
+            error: errorMsg
+          });
+        }
+
+        // 2. Create subscription starting next month with full value
+        const subscriptionData = {
+          customer: customerId,
+          billingType: 'CREDIT_CARD',
+          value: recurringValue, // Full price for future months
+          nextDueDate: getNextMonthDate(), // Starts next month
+          cycle: cycle,
+          description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: creditCard.number.replace(/\s/g, ''),
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          },
+          remoteIp: getClientIp(req),
+          externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
+        };
+
+        const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
+        console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
+
+        return res.json({
+          success: true,
+          subscription,
+          payment: firstPayment,
+          status: 'CONFIRMED',
+          message: 'Pagamento confirmado e assinatura criada!'
+        });
+      }
+
+      // No coupon: Create normal subscription starting today
       const subscriptionData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: recurringValue, // Always use FULL price for subscription
+        value: recurringValue,
         nextDueDate: dueDateStr,
         cycle: cycle,
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
@@ -942,33 +1042,20 @@ router.post('/asaas/subscription', async (req, res) => {
         externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
       };
 
-      // Add discount to first payment if coupon was used
-      if (hasDiscount) {
-        subscriptionData.discount = {
-          value: discountAmount,
-          dueDateLimitDays: 0, // Apply only to first payment
-          type: 'FIXED' // Fixed amount discount
-        };
-        console.log(`>>> Applying first-payment discount of R$ ${discountAmount}`);
-      }
-
       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
-
       console.log(`>>> Subscription created: ${subscription.id}, status: ${subscription.status}`);
 
-      // If subscription is ACTIVE, it means the card was validated and first payment is processing
+      // If subscription is ACTIVE, success
       if (subscription.status === 'ACTIVE') {
-        // Try to get payment info for response
         let firstPayment = null;
         try {
           const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
           firstPayment = payments.data?.[0];
-          console.log(`>>> First payment status: ${firstPayment?.status || 'not found yet'}`);
+          console.log(`>>> First payment status: ${firstPayment?.status || 'processing'}`);
         } catch (e) {
           console.log('>>> Could not fetch payment details, but subscription is ACTIVE');
         }
 
-        // Subscription is ACTIVE = success (payment will be confirmed async)
         return res.json({
           success: true,
           subscription,
@@ -978,11 +1065,10 @@ router.post('/asaas/subscription', async (req, res) => {
         });
       }
 
-      // If subscription is not ACTIVE, check payments for more details
+      // Check for refused payment
       const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);
       const firstPayment = payments.data?.[0];
 
-      // Check if payment was explicitly refused
       if (firstPayment?.status === 'REFUSED') {
         console.log(`>>> Payment REFUSED, cancelling subscription`);
         try {
@@ -999,8 +1085,7 @@ router.post('/asaas/subscription', async (req, res) => {
         });
       }
 
-      // For other statuses (PENDING, etc), still consider success if subscription exists
-      // The webhook will handle the final confirmation
+      // For other statuses, consider success
       return res.json({
         success: true,
         subscription,
