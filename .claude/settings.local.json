@@ -26,7 +26,12 @@
       "Bash(netstat:*)",
       "Bash(taskkill //F //PID 23844)",
       "Bash(dir /b \"c:\\\\Users\\\\de\\\\Desktop\\\\Controlar-\")",
-      "Bash(powershell -Command:*)"
+      "Bash(powershell -Command:*)",
+      "Bash(dir /b)",
+      "Bash(dir /s /b \"c:\\\\Users\\\\de\\\\Desktop\\\\Controlar-\")",
+      "Bash(vercel:*)",
+      "Bash(npx vercel --prod)",
+      "Bash(npx vercel:*)"
     ],
     "deny": [],
     "ask": []

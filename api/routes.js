@@ -821,6 +821,7 @@ router.get('/asaas/customer', async (req, res) => {
 
 router.post('/asaas/subscription', async (req, res) => {
   const {
+    userId, // [NEW] User ID for server-side activation
     customerId,
     planId,
     billingCycle,
@@ -828,12 +829,44 @@ router.post('/asaas/subscription', async (req, res) => {
     baseValue,
     creditCard,
     creditCardHolderInfo,
-    installmentCount
+    installmentCount,
+    couponId // [NEW] Track coupon
   } = req.body;
 
   if (!customerId || !value || !creditCard || !creditCardHolderInfo) {
     return res.status(400).json({ error: 'Dados incompletos para criar assinatura.' });
   }
+
+  // Helper to activate plan in Firestore
+  const activatePlanOnServer = async (uid, plan, cycle, paymentId, subId, status = 'active') => {
+    if (!uid || !firebaseAdmin) return;
+    try {
+      const db = firebaseAdmin.firestore();
+      const now = new Date();
+
+      const nextDate = new Date();
+      if (cycle === 'YEARLY' || cycle === 'annual') {
+        nextDate.setFullYear(nextDate.getFullYear() + 1);
+      } else {
+        nextDate.setMonth(nextDate.getMonth() + 1);
+      }
+
+      await db.collection('users').doc(uid).update({
+        'subscription.plan': plan,
+        'subscription.status': status,
+        'subscription.billingCycle': cycle === 'YEARLY' ? 'annual' : 'monthly',
+        'subscription.nextBillingDate': nextDate.toISOString().split('T')[0],
+        'subscription.paymentMethod': 'CREDIT_CARD',
+        'subscription.asaasCustomerId': customerId,
+        'subscription.asaasSubscriptionId': subId || paymentId, // Can be payment ID for annual installments
+        'subscription.couponUsed': couponId || null,
+        'subscription.updatedAt': now.toISOString()
+      });
+      console.log(`>>> [SERVER] User ${uid} plan ACTIVATED: ${plan} (${cycle})`);
+    } catch (e) {
+      console.error(`>>> [SERVER] Failed to activate plan for ${uid}:`, e);
+    }
+  };
 
   try {
     const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
@@ -880,12 +913,16 @@ router.post('/asaas/subscription', async (req, res) => {
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
         },
         remoteIp: getClientIp(req),
-        externalReference: `${planId}_annual_${Date.now()}`
+        externalReference: `${userId || 'anon'}:${planId}_annual_${Date.now()}` // [MODIFIED] Include userId
       };
 
       const payment = await asaasRequest('POST', '/payments', paymentData);
 
       if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {
+
+        // [NEW] Activate on Server
+        await activatePlanOnServer(userId, planId, cycle, payment.id, null);
+
         return res.json({
           success: true,
           payment,
@@ -956,7 +993,7 @@ router.post('/asaas/subscription', async (req, res) => {
             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
           },
           remoteIp: getClientIp(req),
-          externalReference: `${planId}_first_${Date.now()}`
+          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}` // [MODIFIED] Include userId
         };
 
         const firstPayment = await asaasRequest('POST', '/payments', paymentData);
@@ -1000,11 +1037,14 @@ router.post('/asaas/subscription', async (req, res) => {
             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
           },
           remoteIp: getClientIp(req),
-          externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
+          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}` // [MODIFIED] Include userId
         };
 
         const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
         console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
+
+        // [NEW] Activate on Server
+        await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription.id);
 
         return res.json({
           success: true,
@@ -1039,7 +1079,7 @@ router.post('/asaas/subscription', async (req, res) => {
           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
         },
         remoteIp: getClientIp(req),
-        externalReference: `${planId}_${cycle.toLowerCase()}_${Date.now()}`
+        externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}` // [MODIFIED] Include userId
       };
 
       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
@@ -1055,6 +1095,9 @@ router.post('/asaas/subscription', async (req, res) => {
         } catch (e) {
           console.log('>>> Could not fetch payment details, but subscription is ACTIVE');
         }
+
+        // [NEW] Activate on Server
+        await activatePlanOnServer(userId, planId, cycle, firstPayment?.id, subscription.id);
 
         return res.json({
           success: true,
@@ -1085,7 +1128,10 @@ router.post('/asaas/subscription', async (req, res) => {
         });
       }
 
-      // For other statuses, consider success
+      // For other statuses, consider success (pending processing)
+      // [NEW] We should probably NOT activate here if it's not confirmed yet, 
+      // but usually 'ACTIVE' subscription means payment was at least initiated successfully.
+
       return res.json({
         success: true,
         subscription,
@@ -1112,6 +1158,12 @@ router.post('/asaas/subscription', async (req, res) => {
 });
 
 router.post('/asaas/webhook', async (req, res) => {
+  // Ignore webhooks on Vercel to prevent double processing/conflicts
+  if (process.env.VERCEL || process.env.VERCEL_URL) {
+    console.log('>>> Asaas Webhook ignored on Vercel.');
+    return res.status(200).json({ received: true, ignored: true, environment: 'Vercel' });
+  }
+
   const event = req.body;
   const incomingToken = req.headers['asaas-access-token'];
   const configuredToken = process.env.ASAAS_WEBHOOK_TOKEN;

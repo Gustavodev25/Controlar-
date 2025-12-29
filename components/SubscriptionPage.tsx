@@ -241,6 +241,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                         phone: holderInfo.phone,
                     },
                     couponId,
+                    userId: user.id, // [NEW] Send User ID for server-side activation
                 }),
             });
 
