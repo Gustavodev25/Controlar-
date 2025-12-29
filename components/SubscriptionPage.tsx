@@ -111,7 +111,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
         setView('checkout');
     };
 
-    const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number, validatedCustomerId?: string) => {
+    const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number) => {
         const planToBuy = selectedPlan?.id;
         const cycleToBuy = billingCycle;
 
@@ -185,39 +185,32 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
             }
 
             // NORMAL FLOW: Value >= R$ 5, proceed with Asaas payment
-            let customerIdToUse = validatedCustomerId;
+            // 1. Create or update customer in Asaas
+            console.log('>>> Creating customer in Asaas...');
+            const customerResponse = await fetch('/api/asaas/customer', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name: holderInfo.name || cardData.holderName,
+                    email: user.email,
+                    cpfCnpj: holderInfo.cpfCnpj,
+                    phone: holderInfo.phone,
+                    postalCode: holderInfo.postalCode,
+                    addressNumber: holderInfo.addressNumber,
+                }),
+            });
 
-            // 1. Create or update customer in Asaas (only if not already validated)
-            if (!customerIdToUse) {
-                console.log('>>> Creating customer in Asaas...');
-                const customerResponse = await fetch('/api/asaas/customer', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        name: holderInfo.name || cardData.holderName,
-                        email: user.email,
-                        cpfCnpj: holderInfo.cpfCnpj,
-                        phone: holderInfo.phone,
-                        postalCode: holderInfo.postalCode,
-                        addressNumber: holderInfo.addressNumber,
-                    }),
-                });
+            const customerData = await customerResponse.json();
 
-                const customerData = await customerResponse.json();
-
-                if (!customerResponse.ok || !customerData.success) {
-                    // Combine main error with detailed description if available
-                    const detail = customerData.details || '';
-                    const mainError = customerData.error || 'Erro ao criar cliente no Asaas.';
-                    const combinedError = detail ? `${mainError} ${detail}` : mainError;
-                    throw new Error(combinedError);
-                }
-
-                customerIdToUse = customerData.customer.id;
-                console.log('>>> Customer created:', customerIdToUse);
-            } else {
-                console.log('>>> Using pre-validated customer:', customerIdToUse);
+            if (!customerResponse.ok || !customerData.success) {
+                // Combine main error with detailed description if available
+                const detail = customerData.details || '';
+                const mainError = customerData.error || 'Erro ao criar cliente no Asaas.';
+                const combinedError = detail ? `${mainError} ${detail}` : mainError;
+                throw new Error(combinedError);
             }
+
+            console.log('>>> Customer created:', customerData.customer.id);
 
             // 2. Create subscription/payment in Asaas
             console.log('>>> Creating subscription in Asaas...');
@@ -225,7 +218,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    customerId: customerIdToUse,
+                    customerId: customerData.customer.id,
                     planId: planToBuy,
                     billingCycle: cycleToBuy,
                     value: finalValue,
@@ -511,7 +504,6 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                         onBack={() => setView('plans')}
                         isLoading={isLoading}
                         initialCouponCode={initialCouponCode}
-                        userEmail={user.email}
                     />
                 )}
             </div>

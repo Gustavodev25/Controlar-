@@ -7,11 +7,10 @@ interface PricingModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentPlan?: User['subscription']['plan'];
-  onSelectPlan: (plan: 'starter' | 'pro' | 'family', cycle: 'monthly' | 'annual', cardData?: any, holderInfo?: any, validatedCustomerId?: string) => Promise<void>;
-  userEmail?: string;
+  onSelectPlan: (plan: 'starter' | 'pro' | 'family', cycle: 'monthly' | 'annual', cardData?: any, holderInfo?: any) => Promise<void>;
 }
 
-export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, currentPlan = 'starter', onSelectPlan, userEmail }) => {
+export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, currentPlan = 'starter', onSelectPlan }) => {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
   const [view, setView] = useState<'plans' | 'checkout'>('plans');
   const [selectedPlan, setSelectedPlan] = useState<{ id: 'starter' | 'pro' | 'family', name: string, price: number } | null>(null);
@@ -68,11 +67,11 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
     setView('checkout');
   };
 
-  const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number, validatedCustomerId?: string) => {
+  const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number) => {
     if (!selectedPlan) return;
     setIsLoading(true);
     try {
-      await onSelectPlan(selectedPlan.id, billingCycle, cardData, holderInfo, validatedCustomerId);
+      await onSelectPlan(selectedPlan.id, billingCycle, cardData, holderInfo);
     } finally {
       setIsLoading(false);
     }
@@ -192,7 +191,6 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
             onSubmit={handleCheckoutSubmit}
             onBack={() => setView('plans')}
             isLoading={isLoading}
-            userEmail={userEmail}
           />
         </div>
       )}

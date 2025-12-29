@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, Loader2, Ticket, X, Check, CreditCard, AlertCircle } from 'lucide-react';
+import { Lock, Loader2, Ticket, X, Check } from 'lucide-react';
 import { useToasts } from './Toast';
 import { CustomSelect } from './UIComponents';
 import * as dbService from '../services/database';
 import { Coupon } from '../types';
-import { API_ENDPOINTS } from '../config/api';
 
 interface CreditCardData {
   holderName: string;
@@ -27,12 +26,10 @@ interface CheckoutFormProps {
   planName: string;
   price: number;
   billingCycle?: 'monthly' | 'annual';
-  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number, validatedCustomerId?: string) => Promise<void>;
+  onSubmit: (cardData: CreditCardData, holderInfo: HolderInfo, installments?: number, couponId?: string, finalPrice?: number) => Promise<void>;
   onBack: () => void;
   isLoading: boolean;
   initialCouponCode?: string;
-  customerId?: string;
-  userEmail?: string;
 }
 
 export const CheckoutForm: React.FC<CheckoutFormProps> = ({
@@ -42,9 +39,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   onSubmit,
   onBack,
   isLoading,
-  initialCouponCode,
-  customerId,
-  userEmail
+  initialCouponCode
 }) => {
   const [cardData, setCardData] = useState<CreditCardData>({
     holderName: '',
@@ -70,16 +65,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-  // Card validation state
-  const [isValidatingCard, setIsValidatingCard] = useState(false);
-  const [cardValidation, setCardValidation] = useState<{
-    validated: boolean;
-    valid: boolean;
-    error?: string;
-    brand?: string;
-    customerId?: string;
-  }>({ validated: false, valid: false });
-
+  
   React.useEffect(() => {
     if (initialCouponCode) {
       handleApplyCoupon(initialCouponCode);
@@ -276,79 +262,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     setCouponCode('');
   };
 
-  // Validate card with Asaas before proceeding
-  const validateCardWithAsaas = async (): Promise<{ valid: boolean; customerId?: string }> => {
-    setIsValidatingCard(true);
-    setCardValidation({ validated: false, valid: false });
-
-    try {
-      const emailToUse = userEmail || holderInfo.email;
-
-      const response = await fetch(API_ENDPOINTS.asaas.validateCard, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          customerId,
-          // Send customer data so the API can create/update customer if needed
-          customerData: !customerId ? {
-            name: cardData.holderName,
-            email: emailToUse,
-            cpfCnpj: holderInfo.cpfCnpj,
-            phone: holderInfo.phone,
-            postalCode: holderInfo.postalCode,
-            addressNumber: holderInfo.addressNumber
-          } : undefined,
-          creditCard: {
-            holderName: cardData.holderName,
-            number: cardData.number,
-            expiryMonth: cardData.expiryMonth,
-            expiryYear: cardData.expiryYear,
-            ccv: cardData.ccv
-          },
-          creditCardHolderInfo: {
-            name: cardData.holderName,
-            email: emailToUse,
-            cpfCnpj: holderInfo.cpfCnpj,
-            postalCode: holderInfo.postalCode,
-            addressNumber: holderInfo.addressNumber,
-            phone: holderInfo.phone
-          }
-        })
-      });
-
-      const result = await response.json();
-
-      if (response.ok && result.valid) {
-        setCardValidation({
-          validated: true,
-          valid: true,
-          brand: result.brand,
-          customerId: result.customerId
-        });
-        return { valid: true, customerId: result.customerId };
-      } else {
-        setCardValidation({
-          validated: true,
-          valid: false,
-          error: result.error || 'Cartão não autorizado para esta transação.'
-        });
-        toast.error(result.error || 'Cartão não autorizado. Verifique os dados ou tente outro cartão.');
-        return { valid: false };
-      }
-    } catch (error) {
-      console.error('Card validation error:', error);
-      setCardValidation({
-        validated: true,
-        valid: false,
-        error: 'Erro ao validar cartão. Tente novamente.'
-      });
-      toast.error('Erro ao validar cartão. Tente novamente.');
-      return { valid: false };
-    } finally {
-      setIsValidatingCard(false);
-    }
-  };
-
   const calculateTotal = () => {
     let finalPrice = price;
     let discount = 0;
@@ -422,18 +335,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       return;
     }
 
-    // Validate card with Asaas before proceeding
-    const validationResult = await validateCardWithAsaas();
-    if (!validationResult.valid) {
-      return; // Stop if card validation failed
-    }
-
     // If coupon used, increment usage
     if (appliedCoupon) {
       dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
 
-    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice, validationResult.customerId);
+    await onSubmit(cardData, { ...holderInfo, name: cardData.holderName }, installments, appliedCoupon?.id, finalPrice);
   };
 
   const inputStyle = "w-full bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] rounded-xl px-4 h-11 text-[#faf9f5] text-sm placeholder-gray-500 focus:outline-none focus:border-[#d97757] focus:bg-[rgba(58,59,57,0.8)] hover:border-gray-500 transition-all";
@@ -721,28 +628,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
-              {/* Card Validation Status */}
-              {cardValidation.validated && !cardValidation.valid && (
-                <div className="mb-4 p-3 bg-red-500/10 border border-red-500/20 rounded-lg flex items-start gap-2">
-                  <AlertCircle size={18} className="text-red-500 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-red-400 text-sm font-medium">Cartão não autorizado</p>
-                    <p className="text-red-400/70 text-xs mt-0.5">{cardValidation.error}</p>
-                  </div>
-                </div>
-              )}
-
               <button
                 type="submit"
-                disabled={isLoading || isValidatingCard}
+                disabled={isLoading}
                 className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
               >
-                {isValidatingCard ? (
-                  <>
-                    <CreditCard size={18} className="animate-pulse" />
-                    Validando cartão...
-                  </>
-                ) : isLoading ? (
+                {isLoading ? (
                   <>
                     <Loader2 size={18} className="animate-spin" />
                     Processando...
