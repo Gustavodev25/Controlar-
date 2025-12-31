@@ -3492,6 +3492,11 @@ const App: React.FC = () => {
                     isSyncing={isSyncingCards}
                     isManualMode={!isProMode}
                     onAdd={handleAddTransaction}
+                    onUpdateAccount={async (accountId, updates) => {
+                      if (!userId) return;
+                      await dbService.updateConnectedAccount(userId, accountId, updates);
+                    }}
+                    onOpenFeedback={() => setIsFeedbackModalOpen(true)}
                   />
                 </div>
               )}

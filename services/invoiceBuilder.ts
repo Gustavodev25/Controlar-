@@ -1,0 +1,862 @@
+/**
+ * Invoice Builder - Sistema de construção de faturas de cartão de crédito
+ *
+ * A API da Pluggy NÃO entrega "fatura pronta" como um banco mostra no app.
+ * Ela entrega transações + metadados do cartão.
+ * Quem monta fatura atual, fechada e futura é ESTE MÓDULO.
+ *
+ * Conceito base:
+ * - Fatura fecha todo mês no billingDay (closingDay)
+ * - Tudo que cair entre dois fechamentos pertence à mesma fatura
+ * - Parcelas futuras são projetadas automaticamente
+ */
+
+import {
+  Transaction,
+  ConnectedAccount,
+  Invoice,
+  InvoiceItem,
+  InvoiceStatus,
+  InvoiceForecast,
+  InstallmentSeries,
+  FinanceCharges,
+  InvoicePeriods,
+  PurchaseWithInstallments,
+  Installment
+} from '../types';
+
+import {
+  processTransactionsToInstallments,
+  getInstallmentsForMonth,
+  installmentToInvoiceItem,
+  generateInstallmentForecast as generateInstForecast,
+  calculateFutureCommitment,
+  isInstallmentTransaction
+} from './installmentService';
+
+// ============================================================
+// HELPERS - Funções utilitárias
+// ============================================================
+
+/**
+ * Valida e normaliza o dia de fechamento (1-28)
+ */
+export const validateClosingDay = (day: number | null | undefined): number => {
+  if (!day || typeof day !== 'number') return 10; // Default
+  return Math.max(1, Math.min(28, day));
+};
+
+/**
+ * Converte string YYYY-MM-DD para Date
+ */
+export const parseDate = (dateStr: string): Date => {
+  if (!dateStr) return new Date();
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d || 1, 12, 0, 0);
+};
+
+/**
+ * Converte Date para string YYYY-MM-DD
+ */
+export const toDateStr = (date: Date): string => {
+  return date.toISOString().split('T')[0];
+};
+
+/**
+ * Cria monthKey (YYYY-MM) a partir de uma data
+ */
+export const toMonthKey = (date: Date): string => {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+};
+
+/**
+ * Cria data de fechamento segura (evita problemas com meses curtos)
+ */
+const getClosingDate = (year: number, month: number, day: number): Date => {
+  const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+  const safeDay = Math.min(day, lastDayOfMonth);
+  return new Date(year, month, safeDay, 23, 59, 59);
+};
+
+/**
+ * Normaliza descrição para agrupar parcelas da mesma compra
+ */
+const normalizeDescription = (desc: string): string => {
+  return (desc || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')  // Remove "1/10" no final
+    .replace(/\s*\d+\/\d+\s*/g, '')          // Remove "1/10" no meio
+    .replace(/\s*parcela\s*\d+\s*/gi, '')    // Remove "parcela 1"
+    .replace(/\s+/g, ' ')
+    .trim();
+};
+
+/**
+ * Extrai número de parcela da descrição (ex: "COMPRA 3/10")
+ */
+const extractInstallmentFromDesc = (desc: string): { current: number; total: number } | null => {
+  const match = (desc || '').match(/(\d+)\s*\/\s*(\d+)/);
+  if (match) {
+    return { current: parseInt(match[1]), total: parseInt(match[2]) };
+  }
+  return null;
+};
+
+/**
+ * Verifica se uma transação é pagamento de fatura
+ */
+export const isCreditCardPayment = (tx: Transaction): boolean => {
+  const d = (tx.description || '').toLowerCase();
+  const c = (tx.category || '').toLowerCase();
+  return (
+    c.includes('credit card payment') ||
+    c === 'pagamento de fatura' ||
+    d.includes('pagamento de fatura') ||
+    d.includes('pagamento fatura') ||
+    d.includes('pagamento recebido') ||
+    d.includes('credit card payment') ||
+    d.includes('pag fatura') ||
+    d.includes('pgto fatura') ||
+    d === 'pgto' ||
+    (tx.type === 'income' && tx.accountType === 'CREDIT_CARD')
+  );
+};
+
+// ============================================================
+// CÁLCULO DE PERÍODOS
+// ============================================================
+
+export interface InvoicePeriodDates {
+  closingDay: number;
+  dueDay: number;
+
+  // Datas de fechamento
+  beforeLastClosingDate: Date;
+  lastClosingDate: Date;
+  currentClosingDate: Date;
+  nextClosingDate: Date;
+
+  // Datas de início de cada período
+  lastInvoiceStart: Date;
+  currentInvoiceStart: Date;
+  nextInvoiceStart: Date;
+
+  // Datas de vencimento
+  lastDueDate: Date;
+  currentDueDate: Date;
+  nextDueDate: Date;
+
+  // Month keys
+  lastMonthKey: string;
+  currentMonthKey: string;
+  nextMonthKey: string;
+}
+
+/**
+ * Calcula todas as datas relevantes para faturas de um cartão
+ */
+export const calculateInvoicePeriodDates = (
+  closingDayRaw: number | null | undefined,
+  dueDay: number | null | undefined,
+  today: Date = new Date()
+): InvoicePeriodDates => {
+  const closingDay = validateClosingDay(closingDayRaw);
+
+  // Calcular fechamento da fatura ATUAL (próximo fechamento a partir de hoje)
+  let currentClosingDate: Date;
+  if (today.getDate() <= closingDay) {
+    currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+  } else {
+    const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+    const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+  }
+
+  // ÚLTIMA fatura (um mês antes da atual)
+  const lastClosingMonth = currentClosingDate.getMonth() === 0 ? 11 : currentClosingDate.getMonth() - 1;
+  const lastClosingYear = currentClosingDate.getMonth() === 0 ? currentClosingDate.getFullYear() - 1 : currentClosingDate.getFullYear();
+  const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
+
+  // ANTES DA ÚLTIMA (dois meses antes da atual)
+  const beforeLastMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
+  const beforeLastYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
+  const beforeLastClosingDate = getClosingDate(beforeLastYear, beforeLastMonth, closingDay);
+
+  // PRÓXIMA fatura (um mês após a atual)
+  const nextClosingMonth = currentClosingDate.getMonth() === 11 ? 0 : currentClosingDate.getMonth() + 1;
+  const nextClosingYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
+  const nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
+
+  // Datas de INÍCIO de cada período (dia após fechamento anterior)
+  const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000);
+  const currentInvoiceStart = new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000);
+  const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24 * 60 * 60 * 1000);
+
+  // Datas de VENCIMENTO
+  const safeDueDay = dueDay || closingDay + 10;
+
+  const calculateDueDate = (closingDate: Date): Date => {
+    const dueMonth = closingDate.getMonth() === 11 ? 0 : closingDate.getMonth() + 1;
+    const dueYear = closingDate.getMonth() === 11 ? closingDate.getFullYear() + 1 : closingDate.getFullYear();
+    const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+    return new Date(dueYear, dueMonth, Math.min(safeDueDay, lastDayOfDueMonth));
+  };
+
+  const lastDueDate = calculateDueDate(lastClosingDate);
+  const currentDueDate = calculateDueDate(currentClosingDate);
+  const nextDueDate = calculateDueDate(nextClosingDate);
+
+  return {
+    closingDay,
+    dueDay: safeDueDay,
+    beforeLastClosingDate,
+    lastClosingDate,
+    currentClosingDate,
+    nextClosingDate,
+    lastInvoiceStart,
+    currentInvoiceStart,
+    nextInvoiceStart,
+    lastDueDate,
+    currentDueDate,
+    nextDueDate,
+    lastMonthKey: toMonthKey(lastClosingDate),
+    currentMonthKey: toMonthKey(currentClosingDate),
+    nextMonthKey: toMonthKey(nextClosingDate)
+  };
+};
+
+/**
+ * Calcula o monthKey da fatura para uma transação
+ * Regra: Se dia da transação > closingDay → pertence ao MÊS SEGUINTE
+ */
+export const getTransactionInvoiceMonthKey = (txDate: string, closingDay: number): string => {
+  const validClosingDay = validateClosingDay(closingDay);
+  const date = parseDate(txDate);
+
+  if (date.getDate() > validClosingDay) {
+    date.setMonth(date.getMonth() + 1);
+  }
+
+  return toMonthKey(date);
+};
+
+// ============================================================
+// PROCESSAMENTO DE PARCELAS
+// ============================================================
+
+interface ProcessedInstallment {
+  series: InstallmentSeries[];
+  nonInstallmentTxs: Transaction[];
+}
+
+/**
+ * Processa e agrupa transações parceladas
+ */
+export const processInstallments = (
+  transactions: Transaction[],
+  cardId: string
+): ProcessedInstallment => {
+  const installmentMap: Record<string, { firstInstDate: Date; transactions: Transaction[] }> = {};
+  const nonInstallmentTxs: Transaction[] = [];
+
+  transactions.forEach(tx => {
+    if (!tx.date) return;
+    if (isCreditCardPayment(tx)) return; // Ignora pagamentos
+
+    // Filtra por cartão
+    const txCardId = tx.cardId || tx.accountId || '';
+    if (cardId !== 'all' && txCardId !== cardId) return;
+
+    const descInstallment = extractInstallmentFromDesc(tx.description || '');
+    const installmentNumber = tx.installmentNumber || descInstallment?.current || 1;
+    const totalInstallments = tx.totalInstallments || (tx as any).installments || descInstallment?.total || 0;
+
+    if (totalInstallments > 1) {
+      const normalizedDesc = normalizeDescription(tx.description || '');
+      const seriesKey = `${txCardId}-${normalizedDesc}-${totalInstallments}`;
+
+      if (!installmentMap[seriesKey]) {
+        installmentMap[seriesKey] = { firstInstDate: new Date(9999, 0, 1), transactions: [] };
+      }
+
+      const txWithInstallment = {
+        ...tx,
+        installmentNumber,
+        totalInstallments
+      };
+      installmentMap[seriesKey].transactions.push(txWithInstallment);
+
+      const txDate = parseDate(tx.date);
+
+      if (installmentNumber === 1) {
+        installmentMap[seriesKey].firstInstDate = txDate;
+      } else if (installmentMap[seriesKey].firstInstDate.getFullYear() === 9999) {
+        const firstInstDate = new Date(txDate);
+        firstInstDate.setMonth(firstInstDate.getMonth() - (installmentNumber - 1));
+        installmentMap[seriesKey].firstInstDate = firstInstDate;
+      }
+    } else {
+      nonInstallmentTxs.push(tx);
+    }
+  });
+
+  // Converte para InstallmentSeries
+  const series: InstallmentSeries[] = Object.entries(installmentMap).map(([seriesKey, data]) => {
+    const baseTx = data.transactions[0];
+    const totalInstallments = baseTx.totalInstallments || 1;
+    const paidInstallments = data.transactions.length;
+    const installmentAmount = Math.abs(baseTx.amount);
+
+    // Calcula data da última parcela
+    const lastInstDate = new Date(data.firstInstDate);
+    lastInstDate.setMonth(lastInstDate.getMonth() + totalInstallments - 1);
+
+    return {
+      seriesKey,
+      description: normalizeDescription(baseTx.description || ''),
+      originalAmount: installmentAmount * totalInstallments,
+      installmentAmount,
+      totalInstallments,
+      paidInstallments,
+      remainingInstallments: totalInstallments - paidInstallments,
+      firstInstallmentDate: toDateStr(data.firstInstDate),
+      lastInstallmentDate: toDateStr(lastInstDate),
+      cardId: baseTx.cardId || baseTx.accountId || '',
+      items: data.transactions.map(tx => transactionToInvoiceItem(tx))
+    };
+  });
+
+  return { series, nonInstallmentTxs };
+};
+
+// ============================================================
+// CONVERSÃO DE TRANSAÇÕES PARA INVOICE ITEMS
+// ============================================================
+
+/**
+ * Converte uma Transaction para InvoiceItem
+ */
+export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
+  return {
+    id: tx.id,
+    transactionId: tx.id,
+    description: tx.description,
+    amount: Math.abs(tx.amount),
+    date: tx.date,
+    category: tx.category,
+    type: tx.type,
+    installmentNumber: tx.installmentNumber,
+    totalInstallments: tx.totalInstallments,
+    isProjected,
+    isPayment: isCreditCardPayment(tx),
+    pluggyRaw: tx.pluggyRaw
+  };
+};
+
+/**
+ * Cria um InvoiceItem projetado para parcela futura
+ */
+export const createProjectedInstallment = (
+  baseTx: Transaction,
+  installmentNumber: number,
+  installmentDate: Date
+): InvoiceItem => {
+  return {
+    id: `proj_${baseTx.id}_${installmentNumber}`,
+    transactionId: baseTx.id,
+    description: baseTx.description,
+    amount: Math.abs(baseTx.amount),
+    date: toDateStr(installmentDate),
+    category: baseTx.category,
+    type: baseTx.type,
+    installmentNumber,
+    totalInstallments: baseTx.totalInstallments,
+    originalDate: baseTx.date,
+    originalAmount: Math.abs(baseTx.amount) * (baseTx.totalInstallments || 1),
+    isProjected: true
+  };
+};
+
+// ============================================================
+// CONSTRUÇÃO DE FATURAS
+// ============================================================
+
+export interface InvoiceBuildResult {
+  closedInvoice: Invoice;     // Última fatura (fechada)
+  currentInvoice: Invoice;    // Fatura atual (em aberto)
+  futureInvoices: Invoice[];  // Faturas futuras (parcelas projetadas)
+  allFutureTotal: number;     // Total comprometido futuro
+  periods: InvoicePeriodDates;
+}
+
+/**
+ * Determina o status de uma fatura
+ */
+const determineInvoiceStatus = (
+  isClosedInvoice: boolean,
+  dueDate: Date,
+  paidAmount: number,
+  total: number,
+  billStatus?: string
+): InvoiceStatus => {
+  const today = new Date();
+
+  if (isClosedInvoice) {
+    // Fatura fechada
+    if (billStatus === 'CLOSED' || (paidAmount > 0 && paidAmount >= total * 0.95)) {
+      return 'PAID';
+    }
+    if (dueDate < today) {
+      return 'OVERDUE';
+    }
+    return 'CLOSED';
+  }
+
+  return 'OPEN';
+};
+
+/**
+ * Constrói todas as faturas de um cartão
+ *
+ * Este é o método principal que implementa toda a lógica de faturas.
+ *
+ * PRIORIDADE de datas:
+ * 1. Datas manuais (manualLastClosingDate / manualCurrentClosingDate) - usuário define
+ * 2. invoicePeriods do backend (calculado no sync)
+ * 3. Cálculo automático baseado no closingDay
+ */
+export const buildInvoices = (
+  card: ConnectedAccount | undefined,
+  transactions: Transaction[],
+  cardId: string = 'all'
+): InvoiceBuildResult => {
+  const today = new Date();
+
+  // Usa invoicePeriods do backend se disponível, senão calcula
+  const invoicePeriods = card?.invoicePeriods;
+  const closingDay = invoicePeriods?.closingDay || card?.closingDay || 10;
+  const dueDay = invoicePeriods?.dueDay || card?.dueDay || closingDay + 10;
+
+  // ========================================
+  // PRIORIDADE 1: Datas manuais definidas pelo usuário
+  // ========================================
+  let periods: InvoicePeriodDates;
+
+  if (card?.manualLastClosingDate && card?.manualCurrentClosingDate) {
+    // Parse das datas manuais
+    const lastClosingDate = parseDate(card.manualLastClosingDate);
+    const currentClosingDate = parseDate(card.manualCurrentClosingDate);
+
+    // IMPORTANTE: Extrair o dia de fechamento da data manual
+    // Isso garante que parcelas sejam alocadas corretamente
+    const manualClosingDay = currentClosingDate.getDate();
+
+    console.log('[InvoiceBuilder] Usando datas MANUAIS:', {
+      manualLast: card.manualLastClosingDate,
+      manualCurrent: card.manualCurrentClosingDate,
+      manualClosingDay,
+      originalClosingDay: closingDay
+    });
+
+    // Inferir próximo fechamento (current + 1 mês, mantendo o dia)
+    const nextClosingDate = new Date(currentClosingDate);
+    nextClosingDate.setMonth(nextClosingDate.getMonth() + 1);
+
+    // Inferir fechamento anterior ao último (last - 1 mês, mantendo o dia)
+    const beforeLastClosingDate = new Date(lastClosingDate);
+    beforeLastClosingDate.setMonth(beforeLastClosingDate.getMonth() - 1);
+
+    // Calcular inícios dos períodos (dia seguinte ao fechamento anterior)
+    const lastInvoiceStart = new Date(beforeLastClosingDate);
+    lastInvoiceStart.setDate(lastInvoiceStart.getDate() + 1);
+
+    const currentInvoiceStart = new Date(lastClosingDate);
+    currentInvoiceStart.setDate(currentInvoiceStart.getDate() + 1);
+
+    const nextInvoiceStart = new Date(currentClosingDate);
+    nextInvoiceStart.setDate(nextInvoiceStart.getDate() + 1);
+
+    // Calcular datas de vencimento
+    const calculateDueDateManual = (closingDate: Date): Date => {
+      const dueDateCalc = new Date(closingDate);
+      dueDateCalc.setMonth(dueDateCalc.getMonth() + 1);
+      dueDateCalc.setDate(Math.min(dueDay, 28));
+      return dueDateCalc;
+    };
+
+    periods = {
+      closingDay: manualClosingDay, // USA O DIA EXTRAÍDO DA DATA MANUAL!
+      dueDay,
+      beforeLastClosingDate,
+      lastClosingDate,
+      currentClosingDate,
+      nextClosingDate,
+      lastInvoiceStart,
+      currentInvoiceStart,
+      nextInvoiceStart,
+      lastDueDate: calculateDueDateManual(lastClosingDate),
+      currentDueDate: calculateDueDateManual(currentClosingDate),
+      nextDueDate: calculateDueDateManual(nextClosingDate),
+      lastMonthKey: toMonthKey(lastClosingDate),
+      currentMonthKey: toMonthKey(currentClosingDate),
+      nextMonthKey: toMonthKey(nextClosingDate)
+    };
+  } else {
+    // ========================================
+    // PRIORIDADE 2/3: Backend ou cálculo automático
+    // ========================================
+    periods = calculateInvoicePeriodDates(closingDay, dueDay, today);
+  }
+
+  // Filtra transações do cartão
+  const cardTransactions = cardId === 'all'
+    ? transactions
+    : transactions.filter(t => {
+      const txCardId = t.cardId ? String(t.cardId) : '';
+      const txAccountId = t.accountId ? String(t.accountId) : '';
+      return txCardId === cardId || txAccountId === cardId;
+    });
+
+  // Separa pagamentos das demais transações
+  const paymentTxs = cardTransactions.filter(isCreditCardPayment);
+  const nonPaymentTxs = cardTransactions.filter(t => !isCreditCardPayment(t));
+
+  // ============================================================
+  // NOVO SISTEMA DE PARCELAS - Usa installmentService.ts
+  // Processa transações parceladas de forma robusta e independente
+  // ============================================================
+  const purchasesWithInstallments = processTransactionsToInstallments(
+    nonPaymentTxs,
+    periods.closingDay,
+    periods.dueDay
+  );
+
+  console.log('[InvoiceBuilder] Parcelas processadas:', {
+    totalPurchases: purchasesWithInstallments.length,
+    purchases: purchasesWithInstallments.map(p => ({
+      desc: p.purchase.description.slice(0, 30),
+      total: p.purchase.totalInstallments,
+      firstMonth: p.purchase.firstBillingMonth,
+      installments: p.installments.length
+    }))
+  });
+
+  // Separa transações simples (não parceladas)
+  const processedTxIds = new Set<string>();
+  purchasesWithInstallments.forEach(({ installments }) => {
+    installments.forEach(inst => {
+      if (inst.transactionId) {
+        processedTxIds.add(inst.transactionId);
+      }
+    });
+  });
+
+  const simpleTxs = nonPaymentTxs.filter(tx =>
+    !isInstallmentTransaction(tx) && !processedTxIds.has(tx.id)
+  );
+
+  // Inicializa containers para cada fatura
+  const closedItems: InvoiceItem[] = [];
+  const currentItems: InvoiceItem[] = [];
+  const futureItemsByMonth: Record<string, InvoiceItem[]> = {};
+
+  let closedTotal = 0;
+  let currentTotal = 0;
+  let allFutureTotal = 0;
+
+  // Helper para comparação de datas (numero YYYYMMDD)
+  const dateToNumber = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
+
+  const lastStartNum = dateToNumber(periods.lastInvoiceStart);
+  const lastEndNum = dateToNumber(periods.lastClosingDate);
+  const currentStartNum = dateToNumber(periods.currentInvoiceStart);
+  const currentEndNum = dateToNumber(periods.currentClosingDate);
+
+  // ============================================================
+  // 1. Processa transações simples (não parceladas) por DATA
+  // ============================================================
+  simpleTxs.forEach(tx => {
+    if (!tx.date) return;
+
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+    const item = transactionToInvoiceItem(tx);
+    const signedAmt = tx.type === 'income' ? -item.amount : item.amount;
+
+    if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
+      closedItems.push(item);
+      closedTotal += signedAmt;
+    } else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) {
+      currentItems.push(item);
+      currentTotal += signedAmt;
+    } else if (txDateNum > currentEndNum) {
+      const monthKey = toMonthKey(txDate);
+      if (!futureItemsByMonth[monthKey]) {
+        futureItemsByMonth[monthKey] = [];
+      }
+      futureItemsByMonth[monthKey].push(item);
+      allFutureTotal += signedAmt;
+    }
+  });
+
+  // ============================================================
+  // 2. Processa parcelas por REFERENCE MONTH (não por data!)
+  // Cada parcela já sabe em qual fatura deve cair
+  // ============================================================
+  purchasesWithInstallments.forEach(({ purchase, installments }) => {
+    installments.forEach(inst => {
+      const item = installmentToInvoiceItem(inst);
+      const signedAmt = item.amount; // Parcelas são sempre despesas
+
+      // Aloca baseado no referenceMonth da parcela (calculado corretamente pelo installmentService)
+      if (inst.referenceMonth === periods.lastMonthKey) {
+        closedItems.push(item);
+        closedTotal += signedAmt;
+      } else if (inst.referenceMonth === periods.currentMonthKey) {
+        currentItems.push(item);
+        currentTotal += signedAmt;
+      } else if (inst.referenceMonth > periods.currentMonthKey) {
+        // Parcela futura
+        if (!futureItemsByMonth[inst.referenceMonth]) {
+          futureItemsByMonth[inst.referenceMonth] = [];
+        }
+        futureItemsByMonth[inst.referenceMonth].push(item);
+        allFutureTotal += signedAmt;
+      }
+      // Parcelas de meses anteriores são ignoradas (já foram pagas)
+    });
+  });
+
+  // ============================================================
+  // 3. Processa pagamentos (distribuídos por data)
+  // ============================================================
+  paymentTxs.forEach(tx => {
+    if (!tx.date) return;
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+
+    const item: InvoiceItem = {
+      ...transactionToInvoiceItem(tx),
+      isPayment: true
+    };
+    const amount = Math.abs(item.amount);
+
+    if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
+      // Pagamento no período da fatura FECHADA
+      closedItems.push(item);
+      // NÃO subtraímos do total da fatura (que representa os gastos a pagar)
+      // O pagamento quita a fatura, não reduz seu valor original de gastos.
+    } else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) {
+      // Pagamento no período da fatura ATUAL
+      currentItems.push(item);
+      // NÃO subtraímos do total. O pagamento da fatura anterior não deve reduzir
+      // o valor dos novos gastos desta fatura.
+    } else if (txDateNum < lastStartNum) {
+      // Pagamento antigo
+      closedItems.push(item);
+    } else {
+      // Pagamento futuro
+      currentItems.push(item);
+    }
+  });
+
+  // Pega valor da última fatura da API se disponível
+  const billTotalFromAPI = card?.currentBill?.totalAmount;
+  const billStatus = card?.currentBill?.status;
+  const paidAmount = card?.currentBill?.paidAmount || 0;
+
+  // ============================================================
+  // DEFINIÇÃO DOS TOTAIS
+  // ============================================================
+  // REGRA DE OURO: Fatura = Soma de Transações do Período
+  // Não usamos usedCreditLimit ou balance pois são dados instáveis na API Pluggy.
+  // ============================================================
+
+  // Totais já calculados anteriormente pela soma dos itens:
+  // closedTotal (já calculado na iteração de simpleTxs e parcelas)
+  // currentTotal (já calculado na iteração de simpleTxs e parcelas)
+  // allFutureTotal (já calculado na iteração de simpleTxs e parcelas)
+
+  console.log('[InvoiceBuilder] TOTAIS CALCULADOS (SOMA DE TRANSAÇÕES):', {
+    closedTotal,
+    currentTotal,
+    allFutureTotal
+  });
+
+  // Constrói Invoice da fatura fechada
+  const closedInvoice: Invoice = {
+    id: `${cardId}_${periods.lastMonthKey}`,
+    creditCardId: cardId,
+    referenceMonth: periods.lastMonthKey,
+    status: determineInvoiceStatus(true, periods.lastDueDate, paidAmount, billTotalFromAPI || closedTotal, billStatus),
+    billingDate: toDateStr(periods.lastClosingDate),
+    dueDate: toDateStr(periods.lastDueDate),
+    periodStart: toDateStr(periods.lastInvoiceStart),
+    periodEnd: toDateStr(periods.lastClosingDate),
+    total: billTotalFromAPI || closedTotal, // Mantém API para fechada se disponível
+    totalExpenses: closedItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
+    totalIncomes: closedItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
+    minimumPayment: card?.currentBill?.minimumPaymentAmount,
+    paidAmount,
+    financeCharges: card?.currentBill?.financeCharges,
+    items: closedItems.sort((a, b) => b.date.localeCompare(a.date))
+  };
+
+  // Constrói Invoice da fatura atual (SOMA PURA)
+  const currentInvoice: Invoice = {
+    id: `${cardId}_${periods.currentMonthKey}`,
+    creditCardId: cardId,
+    referenceMonth: periods.currentMonthKey,
+    status: 'OPEN',
+    billingDate: toDateStr(periods.currentClosingDate),
+    dueDate: toDateStr(periods.currentDueDate),
+    periodStart: toDateStr(periods.currentInvoiceStart),
+    periodEnd: toDateStr(periods.currentClosingDate),
+    total: currentTotal, // SEMPRE a soma das transações
+    totalExpenses: currentItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
+    totalIncomes: currentItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
+    projectedInstallments: currentItems.filter(i => i.isProjected).length,
+    items: currentItems.sort((a, b) => b.date.localeCompare(a.date)),
+    usedLimitBasedCalculation: false
+  } as Invoice & { usedLimitBasedCalculation?: boolean };
+
+  // Constrói faturas futuras
+  const futureInvoices: Invoice[] = Object.entries(futureItemsByMonth)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([monthKey, items]) => {
+      const [year, month] = monthKey.split('-').map(Number);
+      const billingDate = getClosingDate(year, month - 1, closingDay);
+      const dueDate = new Date(billingDate);
+      dueDate.setMonth(dueDate.getMonth() + 1);
+      dueDate.setDate(Math.min(dueDay, 28));
+
+      const total = items.reduce((s, i) => s + (i.type === 'income' ? -i.amount : i.amount), 0);
+
+      return {
+        id: `${cardId}_${monthKey}`,
+        creditCardId: cardId,
+        referenceMonth: monthKey,
+        status: 'FUTURE' as InvoiceStatus,
+        billingDate: toDateStr(billingDate),
+        dueDate: toDateStr(dueDate),
+        periodStart: toDateStr(new Date(billingDate.getTime() - 30 * 24 * 60 * 60 * 1000)),
+        periodEnd: toDateStr(billingDate),
+        total,
+        totalExpenses: items.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
+        totalIncomes: items.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
+        projectedInstallments: items.filter(i => i.isProjected).length,
+        items: items.sort((a, b) => b.date.localeCompare(a.date))
+      };
+    });
+
+  return {
+    closedInvoice,
+    currentInvoice,
+    futureInvoices,
+    allFutureTotal: allFutureTotal,
+    periods
+  };
+};
+
+// ============================================================
+// FUNÇÕES DE FORECAST (Visão de longo prazo)
+// ============================================================
+
+/**
+ * Gera previsão de faturas para os próximos N meses
+ */
+export const generateInvoiceForecast = (
+  buildResult: InvoiceBuildResult,
+  monthsAhead: number = 12
+): InvoiceForecast[] => {
+  const forecasts: InvoiceForecast[] = [];
+  const today = new Date();
+
+  // Adiciona fatura atual
+  forecasts.push({
+    monthKey: buildResult.currentInvoice.referenceMonth,
+    total: buildResult.currentInvoice.total,
+    installmentsCount: buildResult.currentInvoice.items.filter(i => i.totalInstallments && i.totalInstallments > 1).length,
+    newPurchasesCount: buildResult.currentInvoice.items.filter(i => !i.totalInstallments || i.totalInstallments === 1).length,
+    items: buildResult.currentInvoice.items
+  });
+
+  // Adiciona faturas futuras
+  buildResult.futureInvoices.forEach(inv => {
+    forecasts.push({
+      monthKey: inv.referenceMonth,
+      total: inv.total,
+      installmentsCount: inv.items.filter(i => i.totalInstallments && i.totalInstallments > 1).length,
+      newPurchasesCount: inv.items.filter(i => !i.totalInstallments || i.totalInstallments === 1).length,
+      items: inv.items
+    });
+  });
+
+  // Preenche meses vazios
+  for (let i = 0; i < monthsAhead; i++) {
+    const futureDate = new Date(today);
+    futureDate.setMonth(futureDate.getMonth() + i);
+    const monthKey = toMonthKey(futureDate);
+
+    if (!forecasts.find(f => f.monthKey === monthKey)) {
+      forecasts.push({
+        monthKey,
+        total: 0,
+        installmentsCount: 0,
+        newPurchasesCount: 0,
+        items: []
+      });
+    }
+  }
+
+  return forecasts.sort((a, b) => a.monthKey.localeCompare(b.monthKey)).slice(0, monthsAhead);
+};
+
+/**
+ * Calcula o impacto no limite futuro
+ */
+export const calculateFutureLimitImpact = (
+  card: ConnectedAccount | undefined,
+  buildResult: InvoiceBuildResult
+): { available: number; committed: number; afterClosed: number } => {
+  const creditLimit = card?.creditLimit || card?.manualCreditLimit || 0;
+  const usedLimit = card?.usedCreditLimit || Math.abs(card?.balance || 0);
+
+  return {
+    available: creditLimit - usedLimit,
+    committed: buildResult.allFutureTotal,
+    afterClosed: creditLimit - buildResult.currentInvoice.total - buildResult.allFutureTotal
+  };
+};
+
+// ============================================================
+// EXPORTS AUXILIARES
+// ============================================================
+
+/**
+ * Formata monthKey para exibição (ex: "JAN/2025")
+ */
+export const formatMonthKey = (monthKey: string): string => {
+  if (!monthKey) return '';
+  const MONTH_NAMES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+  const [year, month] = monthKey.split('-');
+  const monthIndex = parseInt(month) - 1;
+  return `${MONTH_NAMES[monthIndex]}/${year}`;
+};
+
+/**
+ * Formata valor como moeda BRL
+ */
+export const formatCurrency = (value: number): string => {
+  return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+};
+
+/**
+ * Formata data YYYY-MM-DD para DD/MM/YYYY
+ */
+export const formatDate = (dateStr: string): string => {
+  if (!dateStr) return '';
+  const [y, m, d] = dateStr.split('-');
+  return `${d}/${m}/${y}`;
+};

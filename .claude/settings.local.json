@@ -31,7 +31,8 @@
       "Bash(dir /s /b \"c:\\\\Users\\\\de\\\\Desktop\\\\Controlar-\")",
       "Bash(vercel:*)",
       "Bash(npx vercel --prod)",
-      "Bash(npx vercel:*)"
+      "Bash(npx vercel:*)",
+      "Bash(find:*)"
     ],
     "deny": [],
     "ask": []

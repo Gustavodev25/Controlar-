@@ -504,6 +504,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       cumulativeGrowth.push({ date: 'Hoje', rawDate: new Date().toISOString(), total: 0, daily: 0 });
     }
 
+    // --- DAILY NEW SUBSCRIBERS (PAID) ---
+    const dailySubCounts: Record<string, number> = {};
+
+    filteredUsers.forEach(u => {
+      // Only count PAID plans (Pro/Family)
+      const plan = (u.subscription?.plan || 'starter').toLowerCase();
+      if (plan === 'starter') return;
+
+      const dateStr = u.subscription?.startDate;
+      if (!dateStr) return;
+
+      const date = new Date(dateStr);
+      // 'sv-SE' for YYYY-MM-DD
+      const key = date.toLocaleDateString('sv-SE');
+      dailySubCounts[key] = (dailySubCounts[key] || 0) + 1;
+    });
+
+    const sortedSubDates = Object.keys(dailySubCounts).sort();
+    const newSubscribersGrowth: { date: string, rawDate: string, daily: number }[] = [];
+
+    sortedSubDates.forEach(dateKey => {
+      const count = dailySubCounts[dateKey];
+      const [y, m, d] = dateKey.split('-');
+      newSubscribersGrowth.push({
+        date: `${d}/${m}`,
+        rawDate: dateKey,
+        daily: count
+      });
+    });
+
+    if (newSubscribersGrowth.length === 0) {
+      newSubscribersGrowth.push({ date: 'Hoje', rawDate: new Date().toISOString(), daily: 0 });
+    }
+
     // Heatmap / Location Data (Top 5 States)
     const locationData: Record<string, number> = {};
     filteredUsers.forEach(u => {
@@ -538,6 +572,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       locationsChartData,
 
       cumulativeGrowth, // Add to return object
+      newSubscribersGrowth, // New chart data
       filteredCount: filteredUsers.length,
       trends: {
         users: userGrowthData,
@@ -893,42 +928,83 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Daily New Users Chart */}
-      <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-          <TrendingUp size={18} className="text-emerald-400" />
-          Novos Usuários por Dia
-        </h3>
-        <p className="text-gray-500 text-sm mb-6">Quantidade de novos usuários cadastrados diariamente</p>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.cumulativeGrowth}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
-              <XAxis
-                dataKey="date"
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                minTickGap={30}
-              />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                allowDecimals={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="daily"
-                name="Novos Usuários"
-                fill="#10B981"
-                radius={[4, 4, 0, 0]}
-                barSize={30}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Daily New Users Chart */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+            <TrendingUp size={18} className="text-emerald-400" />
+            Novos Usuários por Dia
+          </h3>
+          <p className="text-gray-500 text-sm mb-6">Quantidade de novos usuários cadastrados diariamente</p>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.cumulativeGrowth}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={30}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar
+                  dataKey="daily"
+                  name="Novos Usuários"
+                  fill="#10B981"
+                  radius={[4, 4, 0, 0]}
+                  barSize={30}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Daily New Paid Subscribers Chart (NEW) */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+            <TrendingUp size={18} className="text-[#d97757]" />
+            Novos Assinantes (Pagos) por Dia
+          </h3>
+          <p className="text-gray-500 text-sm mb-6">Quantidade de novas assinaturas Pro iniciadas diariamente</p>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.newSubscribersGrowth}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="date"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={30}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar
+                  dataKey="daily"
+                  name="Novas Assinaturas"
+                  fill="#d97757"
+                  radius={[4, 4, 0, 0]}
+                  barSize={30}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

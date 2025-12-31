@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock, Ticket } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
+import { buildInvoices } from '../services/invoiceBuilder';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { Tooltip } from './UIComponents';
@@ -34,11 +35,11 @@ interface StatsCardsProps {
     setIncludeOpenFinance?: (v: boolean) => void;
     enabledCreditCardIds?: string[];
     setEnabledCreditCardIds?: (ids: string[]) => void;
-    cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
-    setCardInvoiceTypes?: (types: Record<string, 'current' | 'next' | 'used_total'>) => void;
+    cardInvoiceTypes?: Record<string, 'last' | 'current' | 'next' | 'used_total'>;
+    setCardInvoiceTypes?: (types: Record<string, 'last' | 'current' | 'next' | 'used_total'>) => void;
   };
-  cardInvoiceType?: Record<string, 'current' | 'next' | 'used_total'>;
-  setCardInvoiceType?: (types: Record<string, 'current' | 'next' | 'used_total'>) => void;
+  cardInvoiceType?: Record<string, 'last' | 'current' | 'next' | 'used_total'>;
+  setCardInvoiceType?: (types: Record<string, 'last' | 'current' | 'next' | 'used_total'>) => void;
 
   isProMode?: boolean;
   onActivateProMode?: () => void;
@@ -176,7 +177,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   // Track which invoice type each card uses for expenses (current or next)
   // Format: { cardId: 'current' | 'next' | 'used_total' }
-  const [localCardInvoiceType, setLocalCardInvoiceType] = useState<Record<string, 'current' | 'next' | 'used_total'>>(() => {
+  const [localCardInvoiceType, setLocalCardInvoiceType] = useState<Record<string, 'last' | 'current' | 'next' | 'used_total'>>(() => {
     if (typeof window !== 'undefined') {
       const stored = localStorage.getItem('finances_card_invoice_types');
       if (stored) {
@@ -588,22 +589,50 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         nextMonthKey = sortedMonthKeys.find(k => k > currentMonthKey) || incrementMonthKey(currentMonthKey);
       }
 
-      // For currentInvoiceValue, use the selected month's invoice when dashboardDate is set
+      // ============================================================
+      // USA O INVOICEBUILDER para calcular faturas corretamente
+      // Isso garante consistência com a view de Fatura do Cartão
+      // ============================================================
       let currentInvoiceValue: number;
-      if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
-        currentInvoiceValue = selectedMonthAmount;
-      } else if (dashboardDate) {
-        // Use the invoiceValue we already calculated (which tried multiple fallbacks)
-        currentInvoiceValue = invoiceValue;
-      } else {
-        currentInvoiceValue = Math.max(0, currentAmount !== null
-          ? currentAmount
-          : (cardMonthSums.get(currentMonthKey || '') || invoiceValue));
-      }
+      let nextInvoiceValue: number;
+      let lastInvoiceValue: number;
 
-      const nextInvoiceValue = Math.max(0, nextAmount !== null
-        ? nextAmount
-        : (cardMonthSums.get(nextMonthKey || '') || 0));
+      try {
+        // Chama buildInvoices para obter valores precisos
+        const invoiceResult = buildInvoices(card, cardTransactions, card.id);
+
+        // Fatura Atual = currentInvoice.total do invoiceBuilder
+        currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
+
+        // Próxima Fatura = primeira fatura futura ou 0
+        nextInvoiceValue = invoiceResult.futureInvoices.length > 0
+          ? Math.max(0, invoiceResult.futureInvoices[0].total)
+          : 0;
+
+        // Última Fatura = closedInvoice.total (já considera pagamentos se processado assim, mas aqui queremos o valor da fatura)
+        // O invoiceBuilder retorna total já fechado.
+        lastInvoiceValue = Math.max(0, invoiceResult.closedInvoice.total);
+
+      } catch (e) {
+        // Fallback para cálculo antigo se buildInvoices falhar
+        console.warn('[StatsCards] buildInvoices falhou, usando fallback:', e);
+
+        if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
+          currentInvoiceValue = selectedMonthAmount;
+        } else if (dashboardDate) {
+          currentInvoiceValue = invoiceValue;
+        } else {
+          currentInvoiceValue = Math.max(0, currentAmount !== null
+            ? currentAmount
+            : (cardMonthSums.get(currentMonthKey || '') || invoiceValue));
+        }
+
+        nextInvoiceValue = Math.max(0, nextAmount !== null
+          ? nextAmount
+          : (cardMonthSums.get(nextMonthKey || '') || 0));
+
+        lastInvoiceValue = 0; // Fallback
+      }
 
       // Calculate used limit correctly from Pluggy data:
       // Priority 1: usedCreditLimit (direct from Pluggy)
@@ -696,6 +725,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         payable: payableAmount,
         limit: cardLimit,
         available: cardAvailable,
+        lastInvoice: lastInvoiceValue,
         currentInvoice: currentInvoiceValue,
         nextInvoice: nextInvoiceValue,
         currentBillDueDate: currentBill?.dueDate,
@@ -717,6 +747,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
       let chosenValue = currentValue;
       if (selectedType === 'next') chosenValue = nextValue;
+      else if (selectedType === 'last') chosenValue = cardInvoice?.lastInvoice ?? 0;
       else if (selectedType === 'used_total') chosenValue = cardInvoice?.usedTotal ?? 0;
 
       return sum + chosenValue;
@@ -1044,10 +1075,11 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
                   const cardInvoice = cardInvoices[index] || {
                     invoice: 0, limit: 0, available: 0,
-                    cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, futureInvoices: []
+                    cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, lastInvoice: 0, futureInvoices: []
                   };
                   const currentInvoiceValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
                   const nextInvoiceValue = cardInvoice?.nextInvoice ?? 0;
+                  const lastInvoiceValue = cardInvoice?.lastInvoice ?? 0;
                   const formatDueDate = (dateStr?: string) => {
                     if (!dateStr) return '--/--/----';
                     const d = new Date(dateStr);
@@ -1064,11 +1096,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                   const selectedType = cardInvoiceType[card.id] || 'current';
                   const displayValue = selectedType === 'used_total'
                     ? (cardInvoice?.usedTotal ?? 0)
-                    : (cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0);
+                    : selectedType === 'next'
+                      ? (cardInvoice?.nextInvoice ?? 0)
+                      : selectedType === 'last'
+                        ? (cardInvoice?.lastInvoice ?? 0)
+                        : (cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0);
 
                   // Format month name for display
                   const getMonthLabel = () => {
                     if (selectedType === 'used_total') return 'total usado';
+                    if (selectedType === 'next') return 'próxima fatura';
+                    if (selectedType === 'last') return 'última fatura';
                     if (dashboardDate) {
                       const [year, month] = dashboardDate.split('-').map(Number);
                       const monthNames = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
@@ -1184,7 +1222,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                 </DropdownTrigger>
                               </Tooltip>
 
-                              <DropdownContent width="w-[320px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
+                              <DropdownContent width="w-[400px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
                                 <DropdownLabel>Configurações dos Cartões</DropdownLabel>
                                 <div className="px-3 py-2 space-y-3">
                                   {creditAccounts.map((card, index) => {
@@ -1202,13 +1240,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                       }
                                     };
 
-                                    const setMode = (mode: 'current' | 'next' | 'used_total') => {
+                                    const setMode = (mode: 'last' | 'current' | 'next' | 'used_total') => {
                                       if (setCardInvoiceType) {
                                         setCardInvoiceType({ ...cardInvoiceType, [card.id]: mode });
                                       }
                                     };
 
                                     const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
+                                    const lastVal = cardInvoice?.lastInvoice ?? 0;
                                     const usedVal = cardInvoice?.usedTotal ?? 0;
 
                                     return (
@@ -1245,7 +1284,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                               : 'Atual';
 
                                             return (
-                                              <div className={`px-3 pb-3 pt-0 ${isViewingPastMonth ? '' : 'grid grid-cols-2 gap-2'}`}>
+                                              <div className={`px-3 pb-3 pt-0 ${isViewingPastMonth ? '' : 'grid grid-cols-3 gap-2'}`}>
+                                                {/* Última Fatura */}
+                                                {!isViewingPastMonth && (
+                                                  <div
+                                                    onClick={(e) => { e.stopPropagation(); setMode('last'); }}
+                                                    className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'last'
+                                                      ? 'bg-purple-500/10 border-blue-500/30 shadow-inner'
+                                                      : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                                  >
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'last' ? 'text-purple-400' : 'text-gray-500'}`}>
+                                                      Última
+                                                    </span>
+                                                    <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'last' ? 'text-white' : 'text-gray-400'}`}>
+                                                      {formatCurrency(lastVal)}
+                                                    </span>
+                                                  </div>
+                                                )}
+
+                                                {/* Fatura Atual */}
                                                 <div
                                                   onClick={(e) => { e.stopPropagation(); setMode('current'); }}
                                                   className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current' || isViewingPastMonth
@@ -1253,25 +1310,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                                     : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
                                                 >
                                                   <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' || isViewingPastMonth ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                    Fatura {monthLabel}
+                                                    Atual
                                                   </span>
-                                                  <span className={`text-xs font-mono font-bold ${selectedType === 'current' || isViewingPastMonth ? 'text-white' : 'text-gray-400'}`}>
+                                                  <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'current' || isViewingPastMonth ? 'text-white' : 'text-gray-400'}`}>
                                                     {formatCurrency(currentVal)}
                                                   </span>
                                                 </div>
 
-                                                {/* Only show "Total Usado" option for current month */}
+                                                {/* Total Usado */}
                                                 {!isViewingPastMonth && (
                                                   <div
                                                     onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
                                                     className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
-                                                      ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
+                                                      ? 'bg-emerald-500/10 border-emerald-500/30 shadow-inner'
                                                       : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
                                                   >
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-[#D97757]' : 'text-gray-500'}`}>
-                                                      Total Usado
+                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                                      Usado
                                                     </span>
-                                                    <span className={`text-xs font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                    <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
                                                       {formatCurrency(usedVal)}
                                                     </span>
                                                   </div>

@@ -255,6 +255,15 @@ export interface ConnectedTransactionPreview {
   currency?: string;
 }
 
+export interface FinanceCharges {
+  iof: number;
+  interest: number;
+  lateFee: number;
+  otherCharges?: number;
+  total?: number;
+  details?: { type: string; amount: number; date?: string }[];
+}
+
 export interface ProviderBill {
   id: string;
   dueDate: string;
@@ -262,10 +271,261 @@ export interface ProviderBill {
   totalAmountCurrencyCode?: string;
   minimumPaymentAmount?: number;
   allowsInstallments?: boolean;
-  financeCharges?: any[];
+  financeCharges?: FinanceCharges;
   balanceCloseDate?: string;
   state?: 'OPEN' | 'CLOSED' | 'FUTURE'; // Bill state from Pluggy
   paidAmount?: number;
+}
+
+// ============================================================
+// NOVO: Períodos de fatura pré-calculados no backend
+// Fonte única de verdade para cálculos de período de fatura
+// ============================================================
+export interface InvoicePeriod {
+  start: string;    // Data de início do período (YYYY-MM-DD)
+  end: string;      // Data de fechamento (YYYY-MM-DD)
+  dueDate: string;  // Data de vencimento (YYYY-MM-DD)
+  monthKey: string; // Chave do mês (YYYY-MM)
+}
+
+export interface InvoicePeriods {
+  closingDay: number;       // Dia de fechamento validado (1-28)
+  dueDay: number;           // Dia de vencimento
+  calculatedAt: string;     // ISO timestamp de quando foi calculado
+
+  // Datas de fechamento (para referência rápida)
+  beforeLastClosingDate: string;
+  lastClosingDate: string;
+  currentClosingDate: string;
+  nextClosingDate: string;
+
+  // Períodos completos
+  lastInvoice: InvoicePeriod;     // Última fatura (fechada)
+  currentInvoice: InvoicePeriod;  // Fatura atual (aberta)
+  nextInvoice: InvoicePeriod;     // Próxima fatura (futura)
+}
+
+// ============================================================
+// SISTEMA DE FATURAS - Estrutura profissional
+// A Pluggy NÃO entrega faturas prontas, apenas transações + metadados.
+// Quem monta a fatura é o frontend/backend, e isso dá controle total.
+// ============================================================
+
+export type InvoiceStatus = 'OPEN' | 'CLOSED' | 'FUTURE' | 'OVERDUE' | 'PAID';
+
+/**
+ * Representa uma fatura de cartão de crédito montada a partir das transações.
+ *
+ * - OPEN: Fatura atual, ainda aceitando novas compras
+ * - CLOSED: Fatura fechada, aguardando pagamento
+ * - FUTURE: Fatura futura (parcelas projetadas)
+ * - OVERDUE: Fatura fechada com vencimento passado e não paga
+ * - PAID: Fatura paga
+ */
+export interface Invoice {
+  id: string;                    // ID único da fatura (ex: card_id_2025-01)
+  creditCardId: string;          // ID do cartão
+  referenceMonth: string;        // Mês de referência (YYYY-MM)
+  status: InvoiceStatus;         // Status da fatura
+
+  // Datas importantes
+  billingDate: string;           // Data de fechamento (YYYY-MM-DD)
+  dueDate: string;               // Data de vencimento (YYYY-MM-DD)
+  periodStart: string;           // Início do período (YYYY-MM-DD)
+  periodEnd: string;             // Fim do período (YYYY-MM-DD)
+
+  // Valores
+  total: number;                 // Total da fatura
+  totalExpenses: number;         // Total de gastos
+  totalIncomes: number;          // Total de créditos/pagamentos
+  minimumPayment?: number;       // Pagamento mínimo
+  paidAmount?: number;           // Valor pago
+
+  // Parcelas futuras projetadas (para visão de longo prazo)
+  projectedInstallments?: number; // Quantidade de parcelas futuras nesta fatura
+
+  // Encargos (se houver)
+  financeCharges?: FinanceCharges;
+
+  // Itens da fatura
+  items: InvoiceItem[];
+
+  // Metadata
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/**
+ * Item individual de uma fatura.
+ * Pode ser uma transação real ou uma parcela projetada.
+ */
+export interface InvoiceItem {
+  id: string;                    // ID único do item
+  invoiceId?: string;            // ID da fatura (para relacionamento)
+  transactionId?: string;        // ID da transação original (se existir)
+
+  // Dados da transação
+  description: string;
+  amount: number;
+  date: string;                  // Data da transação (YYYY-MM-DD)
+  category?: string;
+  type: TransactionType;         // 'income' | 'expense'
+
+  // Informações de parcelamento
+  installmentNumber?: number;    // Número da parcela atual
+  totalInstallments?: number;    // Total de parcelas
+  originalDate?: string;         // Data da compra original (para parcelas)
+  originalAmount?: number;       // Valor total da compra (para parcelas)
+
+  // Flags
+  isProjected?: boolean;         // True se for parcela projetada (futura)
+  isPayment?: boolean;           // True se for pagamento de fatura
+  isCharge?: boolean;            // True se for encargo (IOF, juros, multa)
+  chargeType?: 'IOF' | 'INTEREST' | 'LATE_FEE' | 'OTHER';
+
+  // Dados brutos do provider (para debug)
+  pluggyRaw?: any;
+}
+
+/**
+ * Resumo de faturas por mês para visão de longo prazo.
+ * Permite ver o comprometimento futuro do cartão.
+ */
+export interface InvoiceForecast {
+  monthKey: string;              // YYYY-MM
+  total: number;                 // Total projetado
+  installmentsCount: number;     // Quantidade de parcelas
+  newPurchasesCount: number;     // Quantidade de compras novas
+  items: InvoiceItem[];          // Itens projetados
+}
+
+/**
+ * Série de parcelas agrupadas (formato legado para compatibilidade).
+ */
+export interface InstallmentSeries {
+  seriesKey: string;
+  description: string;
+  originalAmount: number;
+  installmentAmount: number;
+  totalInstallments: number;
+  paidInstallments: number;
+  remainingInstallments: number;
+  firstInstallmentDate: string;
+  lastInstallmentDate: string;
+  cardId: string;
+  items: InvoiceItem[];
+}
+
+// ============================================================
+// SISTEMA DE PARCELAS - Estrutura profissional e independente
+// A Pluggy NÃO é dona da regra de parcelamento.
+// Ela só replica o que o banco manda (incompleto/inconsistente).
+// Este sistema é a FONTE DA VERDADE para parcelas.
+// ============================================================
+
+export type InstallmentStatus = 'FUTURE' | 'OPEN' | 'CLOSED' | 'PAID';
+
+/**
+ * Representa uma compra parcelada (entidade PAI).
+ * Cada compra gera N parcelas independentes.
+ *
+ * A transação da Pluggy é tratada como EVENTO que dispara a criação.
+ * O sistema próprio mantém a verdade sobre parcelas futuras.
+ */
+export interface Purchase {
+  id: string;                    // ID único da compra
+  creditCardId: string;          // ID do cartão
+  transactionId?: string;        // ID da transação original (Pluggy)
+
+  // Dados da compra
+  description: string;           // Descrição normalizada
+  totalAmount: number;           // Valor total da compra
+  installmentAmount: number;     // Valor de cada parcela
+  totalInstallments: number;     // Total de parcelas
+  purchaseDate: string;          // Data da compra (YYYY-MM-DD)
+
+  // Configuração do cartão no momento da compra
+  billingDay: number;            // Dia de fechamento usado
+  firstBillingMonth: string;     // Mês da 1ª parcela (YYYY-MM)
+
+  // Metadados
+  category?: string;
+  merchant?: string;             // Estabelecimento
+  isRecurring?: boolean;         // Se é assinatura/recorrente
+
+  // Controle
+  createdAt: string;
+  updatedAt?: string;
+  source: 'pluggy' | 'manual' | 'import';
+}
+
+/**
+ * Representa uma parcela individual (entidade FILHA).
+ * Cada parcela é um lançamento independente alocado em uma fatura específica.
+ *
+ * Fatura é apenas AGRUPADOR, parcela é o DADO real.
+ */
+export interface Installment {
+  id: string;                    // ID único da parcela
+  purchaseId: string;            // ID da compra pai
+
+  // Identificação
+  installmentNumber: number;     // Número da parcela (1, 2, 3...)
+  totalInstallments: number;     // Total de parcelas
+
+  // Valores
+  amount: number;                // Valor desta parcela
+
+  // Alocação na fatura
+  referenceMonth: string;        // Mês de referência (YYYY-MM)
+  billingDate: string;           // Data de fechamento da fatura (YYYY-MM-DD)
+  dueDate: string;               // Data de vencimento (YYYY-MM-DD)
+
+  // Status
+  status: InstallmentStatus;     // FUTURE | OPEN | CLOSED | PAID
+  paidAt?: string;               // Data do pagamento
+
+  // Dados herdados da compra (desnormalizados para performance)
+  description: string;
+  category?: string;
+  creditCardId: string;
+  purchaseDate: string;          // Data original da compra
+
+  // Flags
+  isProjected: boolean;          // True se gerada pelo sistema (não veio da API)
+  isFromAPI: boolean;            // True se veio da Pluggy
+  transactionId?: string;        // ID da transação (se veio da API)
+}
+
+/**
+ * Resultado do processamento de parcelas de uma compra.
+ */
+export interface PurchaseWithInstallments {
+  purchase: Purchase;
+  installments: Installment[];
+}
+
+/**
+ * Mapa de parcelas por mês para alocação em faturas.
+ */
+export interface InstallmentsByMonth {
+  [monthKey: string]: Installment[];
+}
+
+/**
+ * Resumo de compromissos futuros com parcelas.
+ */
+export interface InstallmentForecast {
+  monthKey: string;              // YYYY-MM
+  totalAmount: number;           // Total de parcelas no mês
+  installmentsCount: number;     // Quantidade de parcelas
+  purchases: {                   // Detalhamento por compra
+    purchaseId: string;
+    description: string;
+    installmentNumber: number;
+    totalInstallments: number;
+    amount: number;
+  }[];
 }
 
 export interface ConnectedAccount {
@@ -296,17 +556,49 @@ export interface ConnectedAccount {
   dueDay?: number;
   minimumPayment?: number;
   bills?: ProviderBill[];
+  // NOVO: Períodos de fatura pré-calculados (fonte única de verdade)
+  invoicePeriods?: InvoicePeriods;
   connectionMode?: 'AUTO' | 'MANUAL';
   initialBalance?: number;
 
-  // Current bill info (for display)
+  // Current bill info (from Pluggy API - última fatura fechada)
   currentBill?: {
+    id?: string;
     dueDate?: string;
+    closeDate?: string;
+    // Período calculado baseado no closingDay
+    periodStart?: string; // Início do período (dia após fechamento anterior)
+    periodEnd?: string;   // Fim do período (data de fechamento)
+    status?: 'OPEN' | 'CLOSED' | string; // OPEN = aguardando pagamento, CLOSED = paga
+    // Valores
     totalAmount?: number;
-    state?: string;
+    totalAmountCurrencyCode?: string;
+    minimumPaymentAmount?: number;
     paidAmount?: number;
+    // Flags
+    allowsInstallments?: boolean;
+    isInstallment?: boolean;
+    // Encargos
+    financeCharges?: FinanceCharges;
+    // Legacy fields
+    state?: string;
     minimumPayment?: number;
   };
+  // Previous bill info (fatura anterior à última)
+  previousBill?: {
+    id?: string;
+    dueDate?: string;
+    closeDate?: string;
+    periodStart?: string;
+    periodEnd?: string;
+    status?: string;
+    totalAmount?: number;
+    totalAmountCurrencyCode?: string;
+    minimumPaymentAmount?: number;
+    paidAmount?: number;
+    financeCharges?: FinanceCharges;
+  };
+  billsUpdatedAt?: string;
   // Bank account specific
   accountNumber?: string;
   bankNumber?: string;
@@ -315,6 +607,10 @@ export interface ConnectedAccount {
   // Sync tracking
   connectedAt?: string;   // ISO timestamp of first connection
   lastSyncedAt?: string;  // ISO timestamp of last sync
+
+  // Manual closing date overrides
+  manualLastClosingDate?: string; // YYYY-MM-DD
+  manualCurrentClosingDate?: string; // YYYY-MM-DD
 }
 
 export interface AppNotification {

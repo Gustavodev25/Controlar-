@@ -9,6 +9,7 @@ import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
 import { translatePluggyCategory } from '../services/openFinanceService';
 import { UniversalModal } from './UniversalModal';
+import { exportToCSV } from '../utils/export';
 
 interface ExcelTableProps {
   transactions: Transaction[];
@@ -154,6 +155,11 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     setEditTransaction(null);
   };
 
+  const handleExport = () => {
+    const dateStr = new Date().toISOString().split('T')[0];
+    exportToCSV(filteredTransactions, `movimentacoes_${dateStr}.csv`);
+  };
+
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
   const translateCategory = (category: string) => {
@@ -195,6 +201,14 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <span className="hidden sm:inline">Novo Lançamento</span>
           </button>
         )}
+
+        <button
+          onClick={handleExport}
+          className="flex items-center gap-2 px-4 py-2 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] text-white text-sm rounded-lg font-semibold transition-all"
+        >
+          <FileText size={18} />
+          <span className="hidden sm:inline">Exportar</span>
+        </button>
       </div>
 
       {/* Filters Row */}
@@ -473,72 +487,72 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         {/* Mobile Card View */}
         <div className="lg:hidden flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
           <div className="p-4 space-y-4 flex flex-col pb-24">
-          {paginatedTransactions.map((t) => (
-            <div key={t.id} className="bg-transparent border-b border-[#373734] p-4 relative group shrink-0 last:border-0">
-              {/* Left Colored Bar */}
-              <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
+            {paginatedTransactions.map((t) => (
+              <div key={t.id} className="bg-transparent border-b border-[#373734] p-4 relative group shrink-0 last:border-0">
+                {/* Left Colored Bar */}
+                <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'}`}></div>
 
-              <div className="flex justify-between items-start mb-3 pl-3">
-                <div className="flex-1 min-w-0 pr-2">
-                  <h4 className="font-bold text-gray-100 text-sm sm:text-base mb-1 break-words leading-tight">{t.description}</h4>
-                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                    <span className="flex items-center gap-1.5 bg-[#1a1a19] px-2 py-1 rounded-md border border-[#373734]">
-                      {getCategoryIcon(translateCategory(t.category || "Outros"), 12)}
-                      {translateCategory(t.category || "Outros")}
-                    </span>
-                    <span className="font-mono flex items-center gap-1.5">
-                      <Calendar size={12} /> {formatDate(t.date)}
-                    </span>
+                <div className="flex justify-between items-start mb-3 pl-3">
+                  <div className="flex-1 min-w-0 pr-2">
+                    <h4 className="font-bold text-gray-100 text-sm sm:text-base mb-1 break-words leading-tight">{t.description}</h4>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
+                      <span className="flex items-center gap-1.5 bg-[#1a1a19] px-2 py-1 rounded-md border border-[#373734]">
+                        {getCategoryIcon(translateCategory(t.category || "Outros"), 12)}
+                        {translateCategory(t.category || "Outros")}
+                      </span>
+                      <span className="font-mono flex items-center gap-1.5">
+                        <Calendar size={12} /> {formatDate(t.date)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Actions */}
+                  <div className="flex flex-col gap-1 ml-1">
+                    <button
+                      onClick={() => handleEditClick(t)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
+                      title="Editar"
+                    >
+                      <Edit2 size={14} />
+                    </button>
+                    <button
+                      onClick={() => setDeleteId(t.id)}
+                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
+                      title="Excluir"
+                    >
+                      <Trash2 size={14} />
+                    </button>
                   </div>
                 </div>
 
-                {/* Actions */}
-                <div className="flex flex-col gap-1 ml-1">
-                  <button
-                    onClick={() => handleEditClick(t)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
-                    title="Editar"
-                  >
-                    <Edit2 size={14} />
-                  </button>
-                  <button
-                    onClick={() => setDeleteId(t.id)}
-                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
-                    title="Excluir"
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center pl-3 pt-3 border-t border-gray-800/50">
-                <div className="flex items-center gap-2">
-                  <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
-                    {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                <div className="flex justify-between items-center pl-3 pt-3 border-t border-gray-800/50">
+                  <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-lg ${t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-gray-800 text-gray-400'}`}>
+                      {t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
+                    </div>
+                    <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
+                      {formatCurrency(Math.abs(t.amount))}
+                    </span>
                   </div>
-                  <span className={`text-xl font-bold font-mono ${t.type === 'income' ? 'text-emerald-400' : 'text-white'}`}>
-                    {formatCurrency(Math.abs(t.amount))}
+
+                  <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-semibold ${t.status === 'completed'
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : 'bg-amber-500/15 text-amber-400'
+                    }`}>
+                    {t.status === 'completed' ? 'Pago' : 'Pendente'}
                   </span>
                 </div>
-
-                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-semibold ${t.status === 'completed'
-                  ? 'bg-emerald-500/15 text-emerald-400'
-                  : 'bg-amber-500/15 text-amber-400'
-                  }`}>
-                  {t.status === 'completed' ? 'Pago' : 'Pendente'}
-                </span>
               </div>
-            </div>
-          ))}
+            ))}
 
-          {filteredTransactions.length === 0 && (
-            <EmptyState
-              title="Nenhum lançamento encontrado"
-              description="Tente ajustar os filtros de data ou busca."
-              className="!border-0 !bg-transparent !shadow-none flex-1"
-              minHeight="h-full"
-            />
-          )}
+            {filteredTransactions.length === 0 && (
+              <EmptyState
+                title="Nenhum lançamento encontrado"
+                description="Tente ajustar os filtros de data ou busca."
+                className="!border-0 !bg-transparent !shadow-none flex-1"
+                minHeight="h-full"
+              />
+            )}
           </div>
         </div>
 
@@ -629,155 +643,157 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       />
 
       {/* Edit Transaction Modal */}
-      {editTransaction && (
-        <UniversalModal
-          isOpen={isEditModalOpen}
-          onClose={handleCloseEdit}
-          title="Editar Lançamento"
-          icon={<Edit2 size={18} />}
-          themeColor={editTransaction.type === 'income' ? '#10b981' : '#d97757'}
-          footer={
-            <div className="flex gap-3">
-              <button
-                type="button"
-                onClick={handleCloseEdit}
-                className="flex-1 py-3.5 bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl font-semibold transition-all border border-gray-800"
-              >
-                Cancelar
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                className="flex-[2] py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
-              >
-                <Check size={18} strokeWidth={2.5} />
-                Salvar
-              </button>
-            </div>
-          }
-        >
-          <div className="space-y-5">
-            {/* Tipo Segmentado com Smooth */}
-            <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
-              <div
-                className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
-                style={{
-                  left: editTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
-                  backgroundColor: editTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setEditTransaction({ ...editTransaction, type: 'expense' })}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                <TrendingDown size={14} /> Despesa
-              </button>
-              <button
-                type="button"
-                onClick={() => setEditTransaction({ ...editTransaction, type: 'income' })}
-                className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                <TrendingUp size={14} /> Receita
-              </button>
-            </div>
-
-            {/* Descrição */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
-              <div className="relative">
-                <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                <input
-                  type="text"
-                  value={editTransaction.description}
-                  onChange={(e) => setEditTransaction({ ...editTransaction, description: e.target.value })}
-                  className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
-                  placeholder="Ex: Salário"
-                />
+      {
+        editTransaction && (
+          <UniversalModal
+            isOpen={isEditModalOpen}
+            onClose={handleCloseEdit}
+            title="Editar Lançamento"
+            icon={<Edit2 size={18} />}
+            themeColor={editTransaction.type === 'income' ? '#10b981' : '#d97757'}
+            footer={
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={handleCloseEdit}
+                  className="flex-1 py-3.5 bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl font-semibold transition-all border border-gray-800"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  className="flex-[2] py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
+                >
+                  <Check size={18} strokeWidth={2.5} />
+                  Salvar
+                </button>
               </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {/* Valor */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
-                <div className="relative">
-                  <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={editTransaction.amount?.toString()}
-                    onChange={(e) => setEditTransaction({ ...editTransaction, amount: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                    placeholder="0,00"
-                  />
-                </div>
-              </div>
-
-              {/* Data */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
-                <CustomDatePicker
-                  value={editTransaction.date || ''}
-                  onChange={(val) => setEditTransaction({ ...editTransaction, date: val })}
-                />
-              </div>
-            </div>
-
-            {/* Categoria */}
-            <div className="space-y-1.5">
-              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
-              <CustomAutocomplete
-                value={editTransaction.category || ''}
-                onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
-                options={CATEGORIES}
-                icon={<Tag size={16} />}
-                placeholder="Selecione ou digite..."
-              />
-            </div>
-
-            {/* Status Toggle com Smooth */}
-            <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
-              <div className="flex items-center gap-2.5">
-                {editTransaction.status === 'completed'
-                  ? <Check size={16} className="text-emerald-500" />
-                  : <AlertCircle size={16} className="text-amber-500" />
-                }
-                <div>
-                  <span className="block text-sm font-medium text-gray-300">Status</span>
-                  <span className="block text-[10px] text-gray-500">
-                    {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
-                  </span>
-                </div>
-              </div>
-
-              <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
+            }
+          >
+            <div className="space-y-5">
+              {/* Tipo Segmentado com Smooth */}
+              <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
                 <div
-                  className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
+                  className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
                   style={{
-                    left: editTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
-                    backgroundColor: editTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
+                    left: editTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
+                    backgroundColor: editTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
                   }}
                 />
                 <button
                   type="button"
-                  onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
-                  className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  onClick={() => setEditTransaction({ ...editTransaction, type: 'expense' })}
+                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  Pendente
+                  <TrendingDown size={14} /> Despesa
                 </button>
                 <button
                   type="button"
-                  onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
-                  className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  onClick={() => setEditTransaction({ ...editTransaction, type: 'income' })}
+                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  Pago
+                  <TrendingUp size={14} /> Receita
                 </button>
               </div>
+
+              {/* Descrição */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
+                <div className="relative">
+                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                  <input
+                    type="text"
+                    value={editTransaction.description}
+                    onChange={(e) => setEditTransaction({ ...editTransaction, description: e.target.value })}
+                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+                    placeholder="Ex: Salário"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                {/* Valor */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={editTransaction.amount?.toString()}
+                      onChange={(e) => setEditTransaction({ ...editTransaction, amount: parseFloat(e.target.value) || 0 })}
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                      placeholder="0,00"
+                    />
+                  </div>
+                </div>
+
+                {/* Data */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
+                  <CustomDatePicker
+                    value={editTransaction.date || ''}
+                    onChange={(val) => setEditTransaction({ ...editTransaction, date: val })}
+                  />
+                </div>
+              </div>
+
+              {/* Categoria */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                <CustomAutocomplete
+                  value={editTransaction.category || ''}
+                  onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
+                  options={CATEGORIES}
+                  icon={<Tag size={16} />}
+                  placeholder="Selecione ou digite..."
+                />
+              </div>
+
+              {/* Status Toggle com Smooth */}
+              <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+                <div className="flex items-center gap-2.5">
+                  {editTransaction.status === 'completed'
+                    ? <Check size={16} className="text-emerald-500" />
+                    : <AlertCircle size={16} className="text-amber-500" />
+                  }
+                  <div>
+                    <span className="block text-sm font-medium text-gray-300">Status</span>
+                    <span className="block text-[10px] text-gray-500">
+                      {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
+                  <div
+                    className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
+                    style={{
+                      left: editTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
+                      backgroundColor: editTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
+                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Pendente
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
+                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Pago
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
-        </UniversalModal>
-      )}
+          </UniversalModal>
+        )
+      }
 
       {/* Add Transaction Modal */}
       <UniversalModal
@@ -932,6 +948,6 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           </div>
         </div>
       </UniversalModal>
-    </div>
+    </div >
   );
 }

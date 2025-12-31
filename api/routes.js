@@ -1265,9 +1265,12 @@ router.get('/asaas/payments', async (req, res) => {
     const result = await asaasRequest('GET', `/payments${queryString}`);
     res.json({ success: true, ...result });
   } catch (error) {
+    console.error('>>> /asaas/payments Error:', error.message);
     res.status(500).json({
       error: 'Erro ao buscar pagamentos.',
-      details: error.response?.data
+      message: error.message,
+      details: error.response?.data,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });

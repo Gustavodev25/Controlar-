@@ -26,6 +26,163 @@ const pluggyApi = axios.create({
 // Minimal startup log
 console.log('Pluggy: Ready', { hasCredentials: !!(CLIENT_ID && CLIENT_SECRET) });
 
+// ============================================================
+// HELPER: Validar e normalizar closingDay (1-28)
+// ============================================================
+const validateClosingDay = (day) => {
+    if (!day || typeof day !== 'number') return 10; // Default
+    // Limitar a 1-28 para evitar problemas com meses curtos (fevereiro)
+    return Math.max(1, Math.min(28, day));
+};
+
+// ============================================================
+// HELPER: Calcular períodos de fatura centralizados
+// Esta função é a fonte única de verdade para cálculos de período
+// ============================================================
+const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
+    const closingDay = validateClosingDay(closingDayRaw);
+
+    // Helper para criar data de fechamento segura
+    const getClosingDate = (year, month, day) => {
+        const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+        const safeDay = Math.min(day, lastDayOfMonth);
+        return new Date(year, month, safeDay, 23, 59, 59);
+    };
+
+    // Helper para formatar data como ISO string (apenas data)
+    const toDateStr = (d) => d.toISOString().split('T')[0];
+
+    // Helper para criar monthKey (YYYY-MM)
+    const toMonthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+    // Calcular fechamento da fatura ATUAL (próximo fechamento a partir de hoje)
+    let currentClosingDate;
+    if (today.getDate() <= closingDay) {
+        // Ainda não fechou este mês
+        currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+    } else {
+        // Já fechou este mês, próximo é mês que vem
+        const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+        const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+        currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+    }
+
+    // Calcular ÚLTIMA fatura (um mês antes da atual)
+    const lastClosingMonth = currentClosingDate.getMonth() === 0 ? 11 : currentClosingDate.getMonth() - 1;
+    const lastClosingYear = currentClosingDate.getMonth() === 0 ? currentClosingDate.getFullYear() - 1 : currentClosingDate.getFullYear();
+    const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
+
+    // Calcular ANTES DA ÚLTIMA (dois meses antes da atual)
+    const beforeLastMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
+    const beforeLastYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
+    const beforeLastClosingDate = getClosingDate(beforeLastYear, beforeLastMonth, closingDay);
+
+    // Calcular PRÓXIMA fatura (um mês após a atual)
+    const nextClosingMonth = currentClosingDate.getMonth() === 11 ? 0 : currentClosingDate.getMonth() + 1;
+    const nextClosingYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
+    const nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
+
+    // Calcular datas de INÍCIO de cada período (dia após fechamento anterior)
+    const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24*60*60*1000);
+    const currentInvoiceStart = new Date(lastClosingDate.getTime() + 24*60*60*1000);
+    const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24*60*60*1000);
+
+    // Calcular datas de VENCIMENTO
+    const safeDueDay = dueDay || closingDay + 10; // Default: 10 dias após fechamento
+
+    const calculateDueDate = (closingDate) => {
+        const dueMonth = closingDate.getMonth() === 11 ? 0 : closingDate.getMonth() + 1;
+        const dueYear = closingDate.getMonth() === 11 ? closingDate.getFullYear() + 1 : closingDate.getFullYear();
+        const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
+        return new Date(dueYear, dueMonth, Math.min(safeDueDay, lastDayOfDueMonth));
+    };
+
+    const lastDueDate = calculateDueDate(lastClosingDate);
+    const currentDueDate = calculateDueDate(currentClosingDate);
+    const nextDueDate = calculateDueDate(nextClosingDate);
+
+    // Log de debug detalhado
+    console.log('[InvoicePeriods] Calculado:', {
+        closingDay,
+        dueDay: safeDueDay,
+        today: toDateStr(today),
+        lastInvoice: {
+            start: toDateStr(lastInvoiceStart),
+            end: toDateStr(lastClosingDate),
+            due: toDateStr(lastDueDate),
+            monthKey: toMonthKey(lastClosingDate)
+        },
+        currentInvoice: {
+            start: toDateStr(currentInvoiceStart),
+            end: toDateStr(currentClosingDate),
+            due: toDateStr(currentDueDate),
+            monthKey: toMonthKey(currentClosingDate)
+        },
+        nextInvoice: {
+            start: toDateStr(nextInvoiceStart),
+            end: toDateStr(nextClosingDate),
+            due: toDateStr(nextDueDate),
+            monthKey: toMonthKey(nextClosingDate)
+        }
+    });
+
+    return {
+        closingDay,
+        dueDay: safeDueDay,
+        calculatedAt: today.toISOString(),
+
+        // Datas de fechamento
+        beforeLastClosingDate: toDateStr(beforeLastClosingDate),
+        lastClosingDate: toDateStr(lastClosingDate),
+        currentClosingDate: toDateStr(currentClosingDate),
+        nextClosingDate: toDateStr(nextClosingDate),
+
+        // Períodos completos
+        lastInvoice: {
+            start: toDateStr(lastInvoiceStart),
+            end: toDateStr(lastClosingDate),
+            dueDate: toDateStr(lastDueDate),
+            monthKey: toMonthKey(lastClosingDate)
+        },
+        currentInvoice: {
+            start: toDateStr(currentInvoiceStart),
+            end: toDateStr(currentClosingDate),
+            dueDate: toDateStr(currentDueDate),
+            monthKey: toMonthKey(currentClosingDate)
+        },
+        nextInvoice: {
+            start: toDateStr(nextInvoiceStart),
+            end: toDateStr(nextClosingDate),
+            dueDate: toDateStr(nextDueDate),
+            monthKey: toMonthKey(nextClosingDate)
+        }
+    };
+};
+
+// ============================================================
+// HELPER: Calcular invoiceMonthKey para uma transação
+// ============================================================
+const calculateInvoiceMonthKey = (txDate, closingDay) => {
+    const validClosingDay = validateClosingDay(closingDay);
+    const date = new Date(txDate);
+
+    // Regra: Se dia da transação > closingDay → pertence ao MÊS SEGUINTE
+    if (date.getDate() > validClosingDay) {
+        date.setMonth(date.getMonth() + 1);
+    }
+
+    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+    console.log('[InvoiceMonthKey]', {
+        txDate,
+        closingDay: validClosingDay,
+        dayOfTx: new Date(txDate).getDate(),
+        result: monthKey
+    });
+
+    return monthKey;
+};
+
 // Helper to get Pluggy API Key
 let cachedApiKey = null;
 let apiKeyExpiresAt = 0;
@@ -213,15 +370,31 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
                 const existing = existingMap[acc.id];
 
+                // Extrair e VALIDAR closingDay e dueDay (1-28)
+                const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
+                const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+                const validClosingDay = validateClosingDay(rawClosingDay);
+                const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
+
                 const creditFields = isCredit && acc.creditData ? {
                     creditLimit: acc.creditData.creditLimit || null,
                     availableCreditLimit: acc.creditData.availableCreditLimit || null,
                     brand: acc.creditData.brand || null,
                     balanceCloseDate: acc.creditData.balanceCloseDate || null,
                     balanceDueDate: acc.creditData.balanceDueDate || null,
-                    closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
-                    dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
+                    closingDay: validClosingDay,
+                    dueDay: validDueDay,
+                    // NOVO: Períodos de fatura pré-calculados
+                    invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
                 } : {};
+
+                console.log(`[Trigger-Sync] Account ${acc.id} (${acc.name}):`, {
+                    isCredit,
+                    rawClosingDay,
+                    validClosingDay,
+                    rawDueDay,
+                    validDueDay
+                });
 
                 accBatch.set(accountsRef.doc(acc.id), {
                     ...acc,
@@ -237,14 +410,14 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             await updateProgress(30, 'Buscando novas transações...');
 
-            // STEP 3: Fetch transactions IN PARALLEL (INCREMENTAL - only new transactions)
+            // STEP 3: Fetch transactions IN PARALLEL with PAGINATION (INCREMENTAL - only new transactions)
             // For each account, use lastSyncedAt as "from" date to avoid re-fetching old transactions
             // This saves Firebase costs and improves performance
             const defaultFromDate = new Date();
-            defaultFromDate.setDate(defaultFromDate.getDate() - 60); // 60 days fallback for new accounts
+            defaultFromDate.setFullYear(defaultFromDate.getFullYear() - 1); // 12 meses para contas novas
             const defaultFromStr = defaultFromDate.toISOString().split('T')[0];
 
-            const txPromises = accounts.map(account => {
+            const txPromises = accounts.map(async account => {
                 const existing = existingMap[account.id];
                 let fromStr = defaultFromStr;
 
@@ -256,10 +429,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     fromStr = lastSync.toISOString().split('T')[0];
                 }
 
-                return pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
-                    headers: { 'X-API-KEY': apiKey }
-                }).then(resp => ({ account, transactions: resp.data.results || [], fromDate: fromStr }))
-                    .catch(() => ({ account, transactions: [], fromDate: fromStr }));
+                // Use pagination to fetch ALL transactions
+                const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+                return { account, transactions, fromDate: fromStr };
             });
 
             const allTxResults = await Promise.all(txPromises);
@@ -301,6 +473,24 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                         }
 
+                        // Extrair informações de parcelas da API Pluggy
+                        // Pode vir como número ou objeto { number, total }
+                        let totalInstallments = 1;
+                        let installmentNumber = 1;
+                        if (tx.installments) {
+                            if (typeof tx.installments === 'object') {
+                                totalInstallments = tx.installments.total || 1;
+                                installmentNumber = tx.installments.number || 1;
+                            } else if (typeof tx.installments === 'number') {
+                                totalInstallments = tx.installments;
+                                // Tentar extrair número da parcela da descrição (ex: "COMPRA 3/10")
+                                const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+                                if (descMatch) {
+                                    installmentNumber = parseInt(descMatch[1]) || 1;
+                                }
+                            }
+                        }
+
                         mappedTx = {
                             cardId: account.id,
                             date: tx.date.split('T')[0],
@@ -309,8 +499,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             type: tx.amount > 0 ? 'expense' : 'income',
                             category: tx.category || 'Uncategorized',
                             status: 'completed',
-                            installments: tx.installments || 1,
-                            installmentNumber: 1,
+                            totalInstallments,
+                            installmentNumber,
                             invoiceMonthKey,
                             pluggyRaw: tx
                         };
@@ -365,27 +555,122 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     const current = sorted[0];
                     const previous = sorted[1] || null;
 
+                    // Extract finance charges from current bill
+                    // Pluggy types: IOF, LATE_PAYMENT_FEE, LATE_PAYMENT_INTEREST, LATE_PAYMENT_REMUNERATIVE_INTEREST, OTHER
+                    console.log(`[Bills] FATURA COMPLETA (JSON) para account ${account.id}:`, JSON.stringify(current, null, 2));
+                    const financeCharges = current.financeCharges || [];
+                    console.log(`[Bills] Finance charges for account ${account.id}:`, JSON.stringify(financeCharges));
+
+                    const iof = financeCharges.find(f => f.type === 'IOF')?.amount || 0;
+                    const interest = financeCharges
+                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                        .reduce((sum, f) => sum + (f.amount || 0), 0);
+                    const lateFee = financeCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0;
+                    const otherCharges = financeCharges.find(f => f.type === 'OTHER')?.amount || 0;
+
+                    // Calcular datas de período baseado no closingDay configurado
+                    const closingDay = account.closingDay || 10;
+                    const today = new Date();
+
+                    // Helper para criar data de fechamento
+                    const getClosingDate = (year, month, day) => {
+                        const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+                        const safeDay = Math.min(day, lastDayOfMonth);
+                        return new Date(year, month, safeDay, 23, 59, 59);
+                    };
+
+                    // Calcular fechamento da fatura atual (próximo fechamento)
+                    let nextClosingDate;
+                    if (today.getDate() <= closingDay) {
+                        nextClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+                    } else {
+                        const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+                        const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+                        nextClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+                    }
+
+                    // Fechamento da última fatura (um mês antes)
+                    const lastClosingMonth = nextClosingDate.getMonth() === 0 ? 11 : nextClosingDate.getMonth() - 1;
+                    const lastClosingYear = nextClosingDate.getMonth() === 0 ? nextClosingDate.getFullYear() - 1 : nextClosingDate.getFullYear();
+                    const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
+
                     return accountsRef.doc(account.id).update({
                         currentBill: {
+                            // Dados básicos da fatura
                             id: current.id,
                             dueDate: current.dueDate,
-                            totalAmount: current.totalAmount || null,
-                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            closeDate: current.closeDate || null,
+                            // Datas de período calculadas
+                            periodStart: new Date(lastClosingDate.getTime() + 24*60*60*1000).toISOString(), // dia após último fechamento
+                            periodEnd: nextClosingDate.toISOString(), // próximo fechamento
                             status: current.status || 'OPEN',
-                            closeDate: current.closeDate || null
+                            // Valores
+                            totalAmount: current.totalAmount || null,
+                            totalAmountCurrencyCode: current.totalAmountCurrencyCode || 'BRL',
+                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            paidAmount: current.paidAmount || null,
+                            // Flags
+                            allowsInstallments: current.allowsInstallments || false,
+                            isInstallment: current.isInstallment || false,
+                            // Encargos financeiros (processado + original)
+                            financeCharges: {
+                                iof,
+                                interest,
+                                lateFee,
+                                otherCharges,
+                                total: iof + interest + lateFee + otherCharges,
+                                details: financeCharges // Array original da API Pluggy
+                            }
                         },
-                        previousBill: previous ? {
-                            id: previous.id,
-                            dueDate: previous.dueDate,
-                            totalAmount: previous.totalAmount || null
-                        } : null,
-                        bills: sorted.slice(0, 6).map(b => ({
-                            id: b.id,
-                            dueDate: b.dueDate,
-                            totalAmount: b.totalAmount || null,
-                            minimumPaymentAmount: b.minimumPaymentAmount || null,
-                            status: b.status || 'UNKNOWN'
-                        })),
+                        // Calcular período da fatura anterior
+                        previousBill: previous ? (() => {
+                            const beforeLastMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
+                            const beforeLastYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
+                            const beforeLastClosingDate = getClosingDate(beforeLastYear, beforeLastMonth, closingDay);
+
+                            return {
+                                id: previous.id,
+                                dueDate: previous.dueDate,
+                                closeDate: previous.closeDate || null,
+                                periodStart: new Date(beforeLastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                                periodEnd: lastClosingDate.toISOString(),
+                                status: previous.status || 'CLOSED',
+                                totalAmount: previous.totalAmount || null,
+                                totalAmountCurrencyCode: previous.totalAmountCurrencyCode || 'BRL',
+                                minimumPaymentAmount: previous.minimumPaymentAmount || null,
+                                paidAmount: previous.paidAmount || null,
+                                financeCharges: previous.financeCharges ? {
+                                    iof: previous.financeCharges.find(f => f.type === 'IOF')?.amount || 0,
+                                    interest: previous.financeCharges
+                                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                                        .reduce((sum, f) => sum + (f.amount || 0), 0),
+                                    lateFee: previous.financeCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0,
+                                    details: previous.financeCharges // Array original
+                                } : null
+                            };
+                        })() : null,
+                        bills: sorted.slice(0, 6).map(b => {
+                            const bCharges = b.financeCharges || [];
+                            return {
+                                id: b.id,
+                                dueDate: b.dueDate,
+                                closeDate: b.closeDate || null,
+                                status: b.status || 'UNKNOWN',
+                                totalAmount: b.totalAmount || null,
+                                totalAmountCurrencyCode: b.totalAmountCurrencyCode || 'BRL',
+                                minimumPaymentAmount: b.minimumPaymentAmount || null,
+                                paidAmount: b.paidAmount || null,
+                                allowsInstallments: b.allowsInstallments || false,
+                                financeCharges: {
+                                    iof: bCharges.find(f => f.type === 'IOF')?.amount || 0,
+                                    interest: bCharges
+                                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                                        .reduce((sum, f) => sum + (f.amount || 0), 0),
+                                    lateFee: bCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0,
+                                    details: bCharges // Array original
+                                }
+                            };
+                        }),
                         billsUpdatedAt: syncTimestamp
                     });
                 });
@@ -446,6 +731,42 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
     // Timeout - try to proceed anyway (item might have accounts even if still updating)
     console.log(`[Sync] Timeout waiting for item ${itemId}, proceeding anyway`);
     return { ready: true, status: 'TIMEOUT' };
+};
+
+// Helper: Fetch ALL transactions with pagination (Pluggy limits 500 per page)
+const fetchAllTransactions = async (apiKey, accountId, fromDate) => {
+    const allTransactions = [];
+    let page = 1;
+    const pageSize = 500;
+
+    while (true) {
+        try {
+            const response = await pluggyApi.get(
+                `/transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`,
+                { headers: { 'X-API-KEY': apiKey } }
+            );
+
+            const results = response.data.results || [];
+            allTransactions.push(...results);
+
+            console.log(`[Sync] Account ${accountId} page ${page}: ${results.length} transactions`);
+
+            // If returned less than pageSize, no more pages
+            if (results.length < pageSize) break;
+
+            page++;
+            // Safety limit: max 20 pages = 10,000 transactions
+            if (page > 20) {
+                console.log(`[Sync] Account ${accountId}: reached page limit (20)`);
+                break;
+            }
+        } catch (err) {
+            console.error(`[Sync] Error fetching transactions page ${page}:`, err.message);
+            break;
+        }
+    }
+
+    return allTransactions;
 };
 
 // 4. Manual Sync (Fetch & Save) - SYNCHRONOUS FOR VERCEL
@@ -528,15 +849,31 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
             const existing = existingMap[acc.id];
 
+            // Extrair e VALIDAR closingDay e dueDay (1-28)
+            const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
+            const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+            const validClosingDay = validateClosingDay(rawClosingDay);
+            const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
+
             const creditFields = isCredit && acc.creditData ? {
                 creditLimit: acc.creditData.creditLimit || null,
                 availableCreditLimit: acc.creditData.availableCreditLimit || null,
                 brand: acc.creditData.brand || null,
                 balanceCloseDate: acc.creditData.balanceCloseDate || null,
                 balanceDueDate: acc.creditData.balanceDueDate || null,
-                closingDay: acc.creditData.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null,
-                dueDay: acc.creditData.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null
+                closingDay: validClosingDay,
+                dueDay: validDueDay,
+                // NOVO: Períodos de fatura pré-calculados
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
             } : {};
+
+            console.log(`[Sync] Account ${acc.id} (${acc.name}):`, {
+                isCredit,
+                rawClosingDay,
+                validClosingDay,
+                rawDueDay,
+                validDueDay
+            });
 
             accBatch.set(accountsRef.doc(acc.id), {
                 ...acc,
@@ -552,14 +889,14 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         await accBatch.commit();
         console.log(`[Sync] Accounts saved`);
 
-        // STEP 3: Fetch transactions IN PARALLEL (INCREMENTAL - only new transactions)
+        // STEP 3: Fetch transactions IN PARALLEL with PAGINATION (INCREMENTAL - only new transactions)
         // For each account, use lastSyncedAt as "from" date to avoid re-fetching old transactions
         const defaultFromDate = new Date();
-        defaultFromDate.setDate(defaultFromDate.getDate() - 60); // 60 days fallback for new accounts
+        defaultFromDate.setFullYear(defaultFromDate.getFullYear() - 1); // 12 meses para contas novas
         const defaultFromStr = defaultFromDate.toISOString().split('T')[0];
 
-        console.log(`[Sync] Fetching transactions (incremental mode)...`);
-        const txPromises = accounts.map(account => {
+        console.log(`[Sync] Fetching transactions (incremental mode with pagination)...`);
+        const txPromises = accounts.map(async account => {
             const existing = existingMap[account.id];
             let fromStr = defaultFromStr;
 
@@ -571,13 +908,12 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 fromStr = lastSync.toISOString().split('T')[0];
                 console.log(`[Sync] Account ${account.id}: fetching from ${fromStr} (last sync: ${existing.lastSyncedAt})`);
             } else {
-                console.log(`[Sync] Account ${account.id}: first sync, fetching from ${fromStr} (60 days)`);
+                console.log(`[Sync] Account ${account.id}: first sync, fetching from ${fromStr} (12 meses)`);
             }
 
-            return pluggyApi.get(`/transactions?accountId=${account.id}&from=${fromStr}`, {
-                headers: { 'X-API-KEY': apiKey }
-            }).then(resp => ({ account, transactions: resp.data.results || [] }))
-                .catch(() => ({ account, transactions: [] })); // Silent fail per account
+            // Use pagination to fetch ALL transactions
+            const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+            return { account, transactions };
         });
 
         const allTxResults = await Promise.all(txPromises);
@@ -608,6 +944,22 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                     }
 
+                    // Extrair informações de parcelas da API Pluggy
+                    let totalInstallments = 1;
+                    let installmentNumber = 1;
+                    if (tx.installments) {
+                        if (typeof tx.installments === 'object') {
+                            totalInstallments = tx.installments.total || 1;
+                            installmentNumber = tx.installments.number || 1;
+                        } else if (typeof tx.installments === 'number') {
+                            totalInstallments = tx.installments;
+                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+                            if (descMatch) {
+                                installmentNumber = parseInt(descMatch[1]) || 1;
+                            }
+                        }
+                    }
+
                     mappedTx = {
                         cardId: account.id,
                         date: tx.date.split('T')[0],
@@ -616,8 +968,8 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
-                        installments: tx.installments || 1,
-                        installmentNumber: 1,
+                        totalInstallments,
+                        installmentNumber,
                         invoiceMonthKey,
                         pluggyRaw: tx
                     };
@@ -677,27 +1029,121 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     const current = sorted[0];
                     const previous = sorted[1] || null;
 
+                    // Extract finance charges from current bill
+                    // Pluggy types: IOF, LATE_PAYMENT_FEE, LATE_PAYMENT_INTEREST, LATE_PAYMENT_REMUNERATIVE_INTEREST, OTHER
+                    const financeCharges = current.financeCharges || [];
+                    console.log(`[Sync] Finance charges for account ${account.id}:`, JSON.stringify(financeCharges));
+
+                    const iof = financeCharges.find(f => f.type === 'IOF')?.amount || 0;
+                    const interest = financeCharges
+                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                        .reduce((sum, f) => sum + (f.amount || 0), 0);
+                    const lateFee = financeCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0;
+                    const otherCharges = financeCharges.find(f => f.type === 'OTHER')?.amount || 0;
+
+                    // Calcular datas de período baseado no closingDay configurado
+                    const closingDay = account.closingDay || 10;
+                    const today = new Date();
+
+                    // Helper para criar data de fechamento
+                    const getClosingDate = (year, month, day) => {
+                        const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
+                        const safeDay = Math.min(day, lastDayOfMonth);
+                        return new Date(year, month, safeDay, 23, 59, 59);
+                    };
+
+                    // Calcular fechamento da fatura atual (próximo fechamento)
+                    let nextClosingDate;
+                    if (today.getDate() <= closingDay) {
+                        nextClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+                    } else {
+                        const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
+                        const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+                        nextClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+                    }
+
+                    // Fechamento da última fatura (um mês antes)
+                    const lastClosingMonth = nextClosingDate.getMonth() === 0 ? 11 : nextClosingDate.getMonth() - 1;
+                    const lastClosingYear = nextClosingDate.getMonth() === 0 ? nextClosingDate.getFullYear() - 1 : nextClosingDate.getFullYear();
+                    const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
+
                     return accountsRef.doc(account.id).update({
                         currentBill: {
+                            // Dados básicos da fatura
                             id: current.id,
                             dueDate: current.dueDate,
-                            totalAmount: current.totalAmount || null,
-                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            closeDate: current.closeDate || null,
+                            // Datas de período calculadas
+                            periodStart: new Date(lastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                            periodEnd: nextClosingDate.toISOString(),
                             status: current.status || 'OPEN',
-                            closeDate: current.closeDate || null
+                            // Valores
+                            totalAmount: current.totalAmount || null,
+                            totalAmountCurrencyCode: current.totalAmountCurrencyCode || 'BRL',
+                            minimumPaymentAmount: current.minimumPaymentAmount || null,
+                            paidAmount: current.paidAmount || null,
+                            // Flags
+                            allowsInstallments: current.allowsInstallments || false,
+                            isInstallment: current.isInstallment || false,
+                            // Encargos financeiros (processado + original)
+                            financeCharges: {
+                                iof,
+                                interest,
+                                lateFee,
+                                otherCharges,
+                                total: iof + interest + lateFee + otherCharges,
+                                details: financeCharges // Array original da API Pluggy
+                            }
                         },
-                        previousBill: previous ? {
-                            id: previous.id,
-                            dueDate: previous.dueDate,
-                            totalAmount: previous.totalAmount || null
-                        } : null,
-                        bills: sorted.slice(0, 6).map(b => ({
-                            id: b.id,
-                            dueDate: b.dueDate,
-                            totalAmount: b.totalAmount || null,
-                            minimumPaymentAmount: b.minimumPaymentAmount || null,
-                            status: b.status || 'UNKNOWN'
-                        })),
+                        // Calcular período da fatura anterior
+                        previousBill: previous ? (() => {
+                            const beforeLastMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
+                            const beforeLastYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
+                            const beforeLastClosingDate = getClosingDate(beforeLastYear, beforeLastMonth, closingDay);
+
+                            return {
+                                id: previous.id,
+                                dueDate: previous.dueDate,
+                                closeDate: previous.closeDate || null,
+                                periodStart: new Date(beforeLastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                                periodEnd: lastClosingDate.toISOString(),
+                                status: previous.status || 'CLOSED',
+                                totalAmount: previous.totalAmount || null,
+                                totalAmountCurrencyCode: previous.totalAmountCurrencyCode || 'BRL',
+                                minimumPaymentAmount: previous.minimumPaymentAmount || null,
+                                paidAmount: previous.paidAmount || null,
+                                financeCharges: previous.financeCharges ? {
+                                    iof: previous.financeCharges.find(f => f.type === 'IOF')?.amount || 0,
+                                    interest: previous.financeCharges
+                                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                                        .reduce((sum, f) => sum + (f.amount || 0), 0),
+                                    lateFee: previous.financeCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0,
+                                    details: previous.financeCharges // Array original
+                                } : null
+                            };
+                        })() : null,
+                        bills: sorted.slice(0, 6).map(b => {
+                            const bCharges = b.financeCharges || [];
+                            return {
+                                id: b.id,
+                                dueDate: b.dueDate,
+                                closeDate: b.closeDate || null,
+                                status: b.status || 'UNKNOWN',
+                                totalAmount: b.totalAmount || null,
+                                totalAmountCurrencyCode: b.totalAmountCurrencyCode || 'BRL',
+                                minimumPaymentAmount: b.minimumPaymentAmount || null,
+                                paidAmount: b.paidAmount || null,
+                                allowsInstallments: b.allowsInstallments || false,
+                                financeCharges: {
+                                    iof: bCharges.find(f => f.type === 'IOF')?.amount || 0,
+                                    interest: bCharges
+                                        .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
+                                        .reduce((sum, f) => sum + (f.amount || 0), 0),
+                                    lateFee: bCharges.find(f => f.type === 'LATE_PAYMENT_FEE' || f.type === 'LATE_FEE')?.amount || 0,
+                                    details: bCharges // Array original
+                                }
+                            };
+                        }),
                         billsUpdatedAt: syncTimestamp
                     });
                 });
@@ -838,6 +1284,219 @@ router.post('/fix-cc-signs/:userId', async (req, res) => {
     } catch (error) {
         console.error('[Fix CC Signs] Error:', error.message);
         res.status(500).json({ error: 'Failed to fix transactions', message: error.message });
+    }
+});
+
+// 7.6 Full Re-Sync (Force fetch 12 months of history)
+// Use this to re-fetch all transactions for accounts that were connected before the fix
+router.post('/full-sync', withPluggyAuth, async (req, res) => {
+    const { itemId, userId } = req.body;
+    const startTime = Date.now();
+
+    console.log(`[Full-Sync] Starting full sync for item ${itemId}, user ${userId}`);
+
+    if (!firebaseAdmin) {
+        return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    const db = firebaseAdmin.firestore();
+    const apiKey = req.pluggyApiKey;
+    const syncTimestamp = new Date().toISOString();
+    const accountsRef = db.collection('users').doc(userId).collection('accounts');
+    const txCollection = db.collection('users').doc(userId).collection('transactions');
+    const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
+
+    try {
+        // STEP 0: Wait for Pluggy item to be ready
+        console.log(`[Full-Sync] Waiting for item ${itemId} to be ready...`);
+        const itemStatus = await waitForItemReady(apiKey, itemId);
+        console.log(`[Full-Sync] Item ready check: ${itemStatus.status}`);
+
+        if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
+            return res.json({
+                success: false,
+                error: 'O banco requer ação adicional. Tente reconectar.',
+                needsReconnect: true
+            });
+        }
+
+        // STEP 1: Fetch accounts
+        console.log(`[Full-Sync] Fetching accounts...`);
+        const accountsResp = await pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } });
+        const accounts = accountsResp.data.results || [];
+        console.log(`[Full-Sync] Found ${accounts.length} accounts`);
+
+        if (accounts.length === 0) {
+            return res.json({
+                success: true,
+                message: '0 contas encontradas.',
+                accountsFound: 0,
+                transactionsFound: 0
+            });
+        }
+
+        // STEP 2: Save accounts (quick batch)
+        console.log(`[Full-Sync] Saving ${accounts.length} accounts...`);
+        const accBatch = db.batch();
+        for (const acc of accounts) {
+            const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+
+            // Extrair e VALIDAR closingDay e dueDay (1-28)
+            const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
+            const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+            const validClosingDay = validateClosingDay(rawClosingDay);
+            const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
+
+            const creditFields = isCredit && acc.creditData ? {
+                creditLimit: acc.creditData.creditLimit || null,
+                availableCreditLimit: acc.creditData.availableCreditLimit || null,
+                brand: acc.creditData.brand || null,
+                balanceCloseDate: acc.creditData.balanceCloseDate || null,
+                balanceDueDate: acc.creditData.balanceDueDate || null,
+                closingDay: validClosingDay,
+                dueDay: validDueDay,
+                // NOVO: Períodos de fatura pré-calculados
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+            } : {};
+
+            console.log(`[Full-Sync] Account ${acc.id} (${acc.name}):`, {
+                isCredit,
+                rawClosingDay,
+                validClosingDay,
+                rawDueDay,
+                validDueDay
+            });
+
+            accBatch.set(accountsRef.doc(acc.id), {
+                ...acc,
+                ...creditFields,
+                accountNumber: acc.number || null,
+                itemId,
+                connector: itemStatus.item?.connector || null,
+                lastSyncedAt: syncTimestamp,
+                updatedAt: syncTimestamp
+            }, { merge: true });
+        }
+        await accBatch.commit();
+        console.log(`[Full-Sync] Accounts saved`);
+
+        // STEP 3: FULL SYNC - Always fetch 12 months (ignores lastSyncedAt)
+        const fromDate = new Date();
+        fromDate.setFullYear(fromDate.getFullYear() - 1); // 12 meses
+        const fromStr = fromDate.toISOString().split('T')[0];
+
+        console.log(`[Full-Sync] Fetching ALL transactions from ${fromStr} (12 meses)...`);
+        const txPromises = accounts.map(async account => {
+            const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+            console.log(`[Full-Sync] Account ${account.id}: ${transactions.length} transactions`);
+            return { account, transactions };
+        });
+
+        const allTxResults = await Promise.all(txPromises);
+
+        // STEP 4: Process and batch write all transactions
+        let txCount = 0;
+        let opCount = 0;
+        let currentBatch = db.batch();
+        const batchPromises = [];
+
+        for (const { account, transactions } of allTxResults) {
+            const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
+            const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+            const targetColl = isCredit ? ccTxCollection : txCollection;
+
+            for (const tx of transactions) {
+                let mappedTx;
+
+                if (isCredit) {
+                    let invoiceMonthKey = tx.date.slice(0, 7);
+                    if (account.creditData?.balanceCloseDate) {
+                        const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                        const txDate = new Date(tx.date);
+                        if (txDate.getDate() > closingDay) {
+                            txDate.setMonth(txDate.getMonth() + 1);
+                        }
+                        invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+                    }
+
+                    // Extrair informações de parcelas da API Pluggy
+                    let totalInstallments = 1;
+                    let installmentNumber = 1;
+                    if (tx.installments) {
+                        if (typeof tx.installments === 'object') {
+                            totalInstallments = tx.installments.total || 1;
+                            installmentNumber = tx.installments.number || 1;
+                        } else if (typeof tx.installments === 'number') {
+                            totalInstallments = tx.installments;
+                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+                            if (descMatch) {
+                                installmentNumber = parseInt(descMatch[1]) || 1;
+                            }
+                        }
+                    }
+
+                    mappedTx = {
+                        cardId: account.id,
+                        date: tx.date.split('T')[0],
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount > 0 ? 'expense' : 'income',
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        totalInstallments,
+                        installmentNumber,
+                        invoiceMonthKey,
+                        pluggyRaw: tx
+                    };
+                } else {
+                    mappedTx = {
+                        providerId: tx.id,
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount < 0 ? 'expense' : 'income',
+                        date: tx.date.split('T')[0],
+                        accountId: tx.accountId,
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        updatedAt: syncTimestamp,
+                        isInvestment: isSavings,
+                        pluggyRaw: tx
+                    };
+                }
+
+                currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                opCount++;
+                txCount++;
+
+                if (opCount >= 450) {
+                    batchPromises.push(currentBatch.commit());
+                    currentBatch = db.batch();
+                    opCount = 0;
+                }
+            }
+        }
+
+        if (opCount > 0) batchPromises.push(currentBatch.commit());
+        await Promise.all(batchPromises);
+        console.log(`[Full-Sync] Saved ${txCount} transactions`);
+
+        const duration = Date.now() - startTime;
+        console.log(`[Full-Sync] Completed in ${duration}ms: ${accounts.length} accounts, ${txCount} transactions`);
+
+        return res.json({
+            success: true,
+            message: `Full sync concluído: ${accounts.length} contas, ${txCount} transações (12 meses)`,
+            accountsFound: accounts.length,
+            transactionsFound: txCount,
+            duration
+        });
+
+    } catch (err) {
+        console.error('[Full-Sync] Failed:', err.message);
+        return res.status(500).json({
+            success: false,
+            error: err.message || 'Erro no full sync'
+        });
     }
 });
 

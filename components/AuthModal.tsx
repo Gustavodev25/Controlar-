@@ -1104,7 +1104,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                 <p className="mt-2">A Controlar+ não armazenará dados de cartão em formato legível ("em claro") em seus servidores e utilizará criptografia e tokens de segurança fornecidos por parceiros de pagamento.</p>
 
                 <h5 className="font-bold text-white mt-4 mb-1">5.3 Renovação e Cancelamento</h5>
-                <p>As assinaturas dos Planos Pro/Family serão renovadas automaticamente ao final de cada período, salvo cancelamento prévio pelo Usuário. O cancelamento poderá ser realizado a qualquer momento por meio das configurações de conta na plataforma.</p>
+                <p>As assinaturas dos Planos Pro serão renovadas automaticamente ao final de cada período, salvo cancelamento prévio pelo Usuário. O cancelamento poderá ser realizado a qualquer momento por meio das configurações de conta na plataforma.</p>
                 <p className="mt-2">Ao cancelar uma assinatura:</p>
                 <ul className="list-disc pl-5 mt-2 space-y-1">
                   <li>O Usuário poderá optar por migrar para o Plano Free, mantendo sua conta e dados</li>

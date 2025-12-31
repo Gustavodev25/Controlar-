@@ -862,7 +862,7 @@ export const LoginNew: React.FC = () => {
                         <p className="mt-2">No Plano Free, nenhum dado de cartão será armazenado ou coletado.</p>
 
                         <h5 className="font-bold text-white mt-4 mb-1">5.3 Renovação e Cancelamento</h5>
-                        <p>As assinaturas dos Planos Pro/Family serão renovadas automaticamente ao final de cada período, salvo cancelamento prévio pelo Usuário.</p>
+                        <p>As assinaturas dos Planos Pro serão renovadas automaticamente ao final de cada período, salvo cancelamento prévio pelo Usuário.</p>
                         <p className="mt-2">Ao cancelar uma assinatura:</p>
                         <ul className="list-disc pl-5 mt-2 space-y-1">
                             <li>O Usuário poderá optar por migrar para o Plano Free, mantendo sua conta e dados</li>
