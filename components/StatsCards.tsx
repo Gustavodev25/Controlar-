@@ -1222,7 +1222,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                 </DropdownTrigger>
                               </Tooltip>
 
-                              <DropdownContent width="w-[400px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar" portal>
+                              <DropdownContent width="w-[90vw] sm:w-[400px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar max-sm:!left-1/2 max-sm:!-translate-x-1/2" portal>
                                 <DropdownLabel>Configurações dos Cartões</DropdownLabel>
                                 <div className="px-3 py-2 space-y-3">
                                   {creditAccounts.map((card, index) => {
