@@ -1315,12 +1315,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             }
          }
 
-         // 2. Update local state only if server cancellation succeeded (or if no ID existed)
+         // 2. Update local state - change status AND revoke plan to starter
          const updatedUser: UserType = {
             ...formData,
             subscription: {
                ...formData.subscription!,
                status: 'canceled',
+               plan: 'starter',
                autoRenew: false
             }
          };
@@ -1328,7 +1329,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          setFormData(updatedUser);
          setAutoRenew(false);
          await persistUser(updatedUser);
-         toast.success("Assinatura cancelada com sucesso. Cobranças futuras foram interrompidas.");
+         toast.success("Assinatura cancelada com sucesso. Seu plano foi alterado para Starter.");
          setShowCancelSubscriptionConfirmation(false);
 
       } catch (error: any) {
@@ -2784,23 +2785,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  )}
 
                                  {/* Refund Button - Only visible in first 7 days AND has real payment */}
-                                 {isRefundEligible && hasRealPayment && !isFreeCouponSubscription && (
-                                    <div className="text-center">
-                                       <button
-                                          onClick={() => setShowRefundConfirmation(true)}
-                                          className="text-xs text-amber-400 hover:text-amber-300 transition-colors flex items-center gap-1.5 bg-amber-500/10 hover:bg-amber-500/20 px-4 py-2 rounded-lg border border-amber-500/20"
-                                       >
-                                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                                             <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                                             <path d="M3 3v5h5" />
-                                          </svg>
-                                          Solicitar Estorno
-                                       </button>
-                                       <p className="text-[10px] text-gray-500 mt-1.5">
-                                          Garantia de {daysUntilRefundExpires} dia{daysUntilRefundExpires !== 1 ? 's' : ''} restante{daysUntilRefundExpires !== 1 ? 's' : ''}
-                                       </p>
-                                    </div>
-                                 )}
+
 
                                  {/* Expired Refund Notice - Show if past 7 days but user might want to know */}
                                  {!isRefundEligible && hasRealPayment && plan !== 'starter' && status === 'active' && (

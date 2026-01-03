@@ -1186,7 +1186,73 @@ router.post('/asaas/webhook', async (req, res) => {
 
   console.log('>>> ASAAS WEBHOOK RECEIVED:', event.event);
   console.log('>>> Payment ID:', event.payment?.id);
+  console.log('>>> Subscription ID:', event.subscription?.id);
+  console.log('>>> Customer ID:', event.payment?.customer || event.subscription?.customer);
   console.log('>>> Status:', event.payment?.status);
+
+  // Helper function to revoke user plan by customer ID
+  const revokeUserPlanByCustomerId = async (customerId, newStatus) => {
+    if (!customerId || !firebaseAdmin) return false;
+    try {
+      const db = firebaseAdmin.firestore();
+      const usersRef = db.collection('users');
+      const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', customerId).get();
+
+      if (snapshot.empty) {
+        console.log(`>>> No user found with asaasCustomerId: ${customerId}`);
+        return false;
+      }
+
+      const batch = db.batch();
+      snapshot.forEach(doc => {
+        batch.update(doc.ref, {
+          'subscription.plan': 'starter',
+          'subscription.status': newStatus,
+          'subscription.autoRenew': false,
+          'subscription.updatedAt': new Date().toISOString()
+        });
+        console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);
+      });
+
+      await batch.commit();
+      return true;
+    } catch (error) {
+      console.error('>>> Error revoking user plan:', error);
+      return false;
+    }
+  };
+
+  // Helper function to revoke user plan by subscription ID
+  const revokeUserPlanBySubscriptionId = async (subscriptionId, newStatus) => {
+    if (!subscriptionId || !firebaseAdmin) return false;
+    try {
+      const db = firebaseAdmin.firestore();
+      const usersRef = db.collection('users');
+      const snapshot = await usersRef.where('subscription.asaasSubscriptionId', '==', subscriptionId).get();
+
+      if (snapshot.empty) {
+        console.log(`>>> No user found with asaasSubscriptionId: ${subscriptionId}`);
+        return false;
+      }
+
+      const batch = db.batch();
+      snapshot.forEach(doc => {
+        batch.update(doc.ref, {
+          'subscription.plan': 'starter',
+          'subscription.status': newStatus,
+          'subscription.autoRenew': false,
+          'subscription.updatedAt': new Date().toISOString()
+        });
+        console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);
+      });
+
+      await batch.commit();
+      return true;
+    } catch (error) {
+      console.error('>>> Error revoking user plan:', error);
+      return false;
+    }
+  };
 
   try {
     switch (event.event) {
@@ -1194,21 +1260,41 @@ router.post('/asaas/webhook', async (req, res) => {
       case 'PAYMENT_RECEIVED':
         console.log(`>>> Payment confirmed: ${event.payment?.id}`);
         break;
+
       case 'PAYMENT_OVERDUE':
         console.log(`>>> Payment overdue: ${event.payment?.id}`);
         break;
+
       case 'PAYMENT_REFUNDED':
-        console.log(`>>> Payment refunded: ${event.payment?.id}`);
+      case 'PAYMENT_REFUND_IN_PROGRESS':
+      case 'PAYMENT_CHARGEBACK_REQUESTED':
+      case 'PAYMENT_CHARGEBACK_DISPUTE':
+        // Revoke plan when payment is refunded or chargeback occurs
+        console.log(`>>> Payment refunded/chargeback: ${event.payment?.id}`);
+        if (event.payment?.customer) {
+          const revoked = await revokeUserPlanByCustomerId(event.payment.customer, 'refunded');
+          console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+        }
         break;
+
       case 'SUBSCRIPTION_CREATED':
         console.log(`>>> Subscription created: ${event.subscription?.id}`);
         break;
+
       case 'SUBSCRIPTION_RENEWED':
         console.log(`>>> Subscription renewed: ${event.subscription?.id}`);
         break;
+
       case 'SUBSCRIPTION_CANCELED':
+      case 'SUBSCRIPTION_DELETED':
+        // Revoke plan when subscription is canceled
         console.log(`>>> Subscription canceled: ${event.subscription?.id}`);
+        if (event.subscription?.id) {
+          const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');
+          console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+        }
         break;
+
       default:
         console.log(`>>> Unknown event: ${event.event}`);
     }
@@ -1310,6 +1396,109 @@ router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
       error: 'Erro ao estornar pagamento.',
       details: error.response?.data?.errors?.[0]?.description || error.message
     });
+  }
+});
+
+// Endpoint to revoke user plan (admin action)
+router.post('/admin/revoke-plan', async (req, res) => {
+  const { userId, reason } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const userData = userDoc.data();
+    const previousPlan = userData.subscription?.plan || 'starter';
+
+    await userRef.update({
+      'subscription.plan': 'starter',
+      'subscription.status': reason === 'refund' ? 'refunded' : 'canceled',
+      'subscription.autoRenew': false,
+      'subscription.updatedAt': new Date().toISOString(),
+      'subscription.revokedAt': new Date().toISOString(),
+      'subscription.revokedReason': reason || 'admin_action'
+    });
+
+    console.log(`>>> [ADMIN] Plan revoked for user ${userId}. Previous: ${previousPlan}, Reason: ${reason}`);
+
+    res.json({
+      success: true,
+      message: `Plano revogado com sucesso`,
+      previousPlan,
+      userId
+    });
+  } catch (error) {
+    console.error('>>> Error revoking plan:', error);
+    res.status(500).json({ error: 'Erro ao revogar plano', details: error.message });
+  }
+});
+
+// Endpoint to revoke plan by customer ID (for webhook fallback or admin use)
+router.post('/admin/revoke-plan-by-customer', async (req, res) => {
+  const { customerId, reason } = req.body;
+
+  if (!customerId) {
+    return res.status(400).json({ error: 'customerId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    const usersRef = db.collection('users');
+    const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', customerId).get();
+
+    if (snapshot.empty) {
+      return res.status(404).json({ error: 'Nenhum usuário encontrado com esse customerId' });
+    }
+
+    const results = [];
+    const batch = db.batch();
+
+    snapshot.forEach(doc => {
+      const userData = doc.data();
+      results.push({
+        userId: doc.id,
+        previousPlan: userData.subscription?.plan || 'starter'
+      });
+
+      batch.update(doc.ref, {
+        'subscription.plan': 'starter',
+        'subscription.status': reason === 'refund' ? 'refunded' : 'canceled',
+        'subscription.autoRenew': false,
+        'subscription.updatedAt': new Date().toISOString(),
+        'subscription.revokedAt': new Date().toISOString(),
+        'subscription.revokedReason': reason || 'admin_action'
+      });
+    });
+
+    await batch.commit();
+
+    console.log(`>>> [ADMIN] Plan revoked for ${results.length} user(s) with customerId: ${customerId}`);
+
+    res.json({
+      success: true,
+      message: `Plano revogado para ${results.length} usuário(s)`,
+      results
+    });
+  } catch (error) {
+    console.error('>>> Error revoking plan:', error);
+    res.status(500).json({ error: 'Erro ao revogar plano', details: error.message });
   }
 });
 

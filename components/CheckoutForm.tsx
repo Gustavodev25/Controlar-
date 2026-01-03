@@ -65,7 +65,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-  
+
   React.useEffect(() => {
     if (initialCouponCode) {
       handleApplyCoupon(initialCouponCode);
@@ -639,7 +639,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     Processando...
                   </>
                 ) : (
-                  "Confirmar Pagamento"
+                  "Confirmar pagamento"
                 )}
               </button>
             </div>

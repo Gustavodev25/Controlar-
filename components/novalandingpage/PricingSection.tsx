@@ -170,7 +170,7 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                                     <div className="flex items-center justify-center gap-1">
                                         <span className="text-4xl font-bold text-white">
                                             <NumberFlow
-                                                value={isPro && billingCycle === 'monthly' ? 5.00 : price}
+                                                value={isPro && billingCycle === 'monthly' ? 9.90 : price}
                                                 format={{ style: 'currency', currency: 'BRL' }}
                                                 locales="pt-BR"
                                             />
@@ -189,7 +189,7 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                                                 <div className="relative flex items-center justify-center bg-[#D97757]/10 border border-dashed border-[#D97757]/40 rounded-xl py-2 px-4 transition-all hover:bg-[#D97757]/20 hover:scale-105 cursor-pointer group">
                                                     <div className="flex flex-col items-center">
                                                         <span className="text-[10px] uppercase font-bold text-[#D97757]/70 leading-none mb-1">Promoção de Ano Novo</span>
-                                                        <span className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                                        <span className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">FELIZ2026</span>
                                                     </div>
                                                 </div>
                                             </motion.div>

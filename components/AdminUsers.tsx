@@ -583,7 +583,7 @@ export const AdminUsers: React.FC = () => {
                                                         )}
                                                     </div>
                                                     <div className="flex items-center gap-2">
-                                                        <span className="text-white font-medium text-sm">{user.name || 'Sem nome'}</span>
+                                                        <span className="text-white font-medium text-sm block truncate max-w-[120px]" title={user.name}>{user.name || 'Sem nome'}</span>
                                                         {user.isAdmin && (
                                                             <span className="p-1 rounded bg-amber-500/10 text-amber-500" title="Admin">
                                                                 <Shield size={12} />

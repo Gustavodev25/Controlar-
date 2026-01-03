@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Calendar, Search, ArrowLeft, Info, Sparkles, Bug, ArrowRight, ExternalLink } from 'lucide-react';
 import { Topbar } from './novalandingpage/Topbar';
+import { AnimatedGridPattern } from './AnimatedGridPattern';
+import { ShiningText } from './ShiningText';
 
 interface ChangeLogItem {
     version: string;
@@ -61,104 +63,127 @@ const changelogs: ChangeLogItem[] = [
 
 export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
     return (
-        <div className="min-h-screen bg-[#262624] font-sans selection:bg-[#D97757]/30 text-[#FAF9F5] pb-20">
+        <div className="min-h-screen font-sans selection:bg-[#D97757]/30 text-[#FAF9F5] pb-20 relative overflow-hidden bg-[radial-gradient(ellipse_60%_40%_at_50%_40%,_#3a1a10_0%,_#1a0f0a_100%)]">
+
+            {/* Grid Animado de Fundo */}
+            <AnimatedGridPattern
+                width={60}
+                height={60}
+                numSquares={20}
+                maxOpacity={0.08}
+                duration={4}
+                repeatDelay={2}
+                className="[mask-image:radial-gradient(ellipse_50%_50%_at_50%_40%,white_0%,transparent_70%)] fill-white/5 stroke-white/[0.03] fixed inset-0 h-full w-full pointer-events-none"
+            />
 
             {/* Topbar Wrapper */}
-            <div className="bg-[#262624]">
-                <Topbar />
+            <div className="relative z-50">
+                <Topbar onLogin={() => { }} />
             </div>
 
-            <main className="pt-32 px-4 sm:px-6 lg:px-8 max-w-6xl mx-auto">
+            <main className="relative z-10 pt-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col lg:flex-row gap-12 h-[calc(100vh-20px)] overflow-hidden">
 
-                {/* Standard Page Header (No Card) */}
-                <div className="relative z-10 py-12 md:py-20 text-center max-w-4xl mx-auto mb-12">
-                    {/* Ambient background glow behind title */}
-                    <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[300px] bg-[#D97757]/10 blur-[100px] rounded-full pointer-events-none" />
+                {/* Left Column - Fixed Content */}
+                <div className="lg:w-5/12 flex flex-col justify-center lg:sticky lg:top-0 lg:h-full pb-12 pl-4">
+                    <div className="space-y-8">
+                        <div>
+                            <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-6 tracking-tight leading-tight">
+                                Acompanhe a evolução do <ShiningText text="Controlar+" />
+                            </h1>
+                            <p className="text-lg md:text-xl text-gray-400 leading-relaxed max-w-xl">
+                                Central de Novidades: fique por dentro de cada melhoria, nova funcionalidade e correção que implementamos para aprimorar sua experiência financeira.
+                            </p>
+                        </div>
 
-                    <h1 className="relative text-4xl md:text-5xl lg:text-6xl font-extrabold text-white mb-6 tracking-tight leading-tight">
-                        Acompanhe a evolução do <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D97757] via-[#ffcfbf] to-[#D97757]">Controlar</span>
-                    </h1>
-                    <p className="relative text-lg md:text-xl text-gray-400 leading-relaxed max-w-2xl mx-auto">
-                        Central de Novidades: fique por dentro de cada melhoria, nova funcionalidade e correção que implementamos para aprimorar sua experiência financeira.
-                    </p>
-                </div>
+                        <div className="flex items-center gap-4">
+                            {/* Badge Removed */}
+                        </div>
 
-                {/* Sub-header info (Simplified) */}
-                <div className="flex flex-col md:flex-row items-center justify-end gap-4 mb-16 px-2">
-                    <div className="bg-[#30302E] px-4 py-2 rounded-full border border-gray-700 shadow-sm text-sm font-medium text-gray-300 cursor-pointer hover:bg-gray-800 transition-colors hover:text-white hover:border-gray-600">
-                        Atualizações em 2024
+                        <div className="pt-8">
+                            <button
+                                onClick={onBack}
+                                className="group flex items-center gap-2 px-5 py-3 rounded-full bg-white/5 hover:bg-white/10 text-white text-sm font-medium transition-all border border-white/10 hover:border-white/20"
+                            >
+                                <ArrowLeft size={16} className="transition-transform group-hover:-translate-x-1" />
+                                Voltar para o Início
+                            </button>
+                        </div>
                     </div>
                 </div>
 
-                {/* Timeline Grid */}
-                <div className="relative">
-                    {/* Dotted Line */}
-                    <div className="absolute left-[8px] md:left-[180px] top-4 bottom-0 w-px border-l-2 border-dashed border-gray-700" />
-
-                    <div className="space-y-16">
+                {/* Right Column - Scrollable Content */}
+                <div className="lg:w-7/12 lg:overflow-y-auto lg:h-full pb-32 pr-2 custom-scrollbar">
+                    <div className="space-y-10 pt-4">
                         {changelogs.map((log, index) => {
                             const improvements = log.changes.filter(c => c.type !== 'fix');
                             const bugfixes = log.changes.filter(c => c.type === 'fix');
 
                             return (
                                 <motion.div
-                                    initial={{ opacity: 0, y: 30 }}
-                                    whileInView={{ opacity: 1, y: 0 }}
-                                    viewport={{ once: true }}
+                                    initial={{ opacity: 0, x: 50 }}
+                                    whileInView={{ opacity: 1, x: 0 }}
+                                    viewport={{ once: true, margin: "-100px" }}
                                     transition={{ duration: 0.5, delay: index * 0.1 }}
                                     key={log.version}
-                                    className="flex flex-col md:flex-row gap-8 md:gap-12 relative"
+                                    className="flex flex-col gap-4"
                                 >
-                                    {/* Date Column */}
-                                    <div className="md:w-[150px] flex-shrink-0 md:text-right pt-2 pl-8 md:pl-0 relative">
-                                        <span className="text-sm font-bold text-gray-400 capitalize">{log.date}</span>
-                                        {/* Timeline Circle */}
-                                        <div className="absolute left-[3px] md:left-auto md:-right-[21px] top-3 w-3 h-3 bg-[#262624] border-2 border-gray-600 rounded-full z-10" />
+                                    {/* Version Header Small */}
+                                    <div className="flex items-center gap-4 pl-2">
+                                        <span className="text-sm font-bold text-[#D97757]">{log.version}</span>
+                                        <div className="h-px bg-gray-800 flex-1" />
+                                        <span className="text-xs font-medium text-gray-500 uppercase">{log.date}</span>
                                     </div>
 
-                                    {/* Content Column */}
-                                    <div className="flex-1">
-                                        <div className="rounded-[2rem] p-8 md:p-10 relative overflow-hidden bg-[#30302E] shadow-xl border border-gray-800/50 hover:border-gray-700 transition-all duration-300">
+                                    {/* Main Card */}
+                                    <div
+                                        className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex flex-col gap-6 group transition-all hover:border-white/20"
+                                        style={{
+                                            backgroundColor: "rgba(10, 10, 10, 0.65)",
+                                            backdropFilter: "blur(24px) saturate(180%)",
+                                            WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                                        }}
+                                    >
+                                        {/* Textura Noise */}
+                                        <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
 
-                                            {/* Big Watermark Number */}
-                                            <div className="absolute -right-4 top-4 pointer-events-none opacity-[0.03] font-black text-9xl tracking-tighter select-none text-white">
-                                                {log.majorVersion}
+                                        {/* Borda Superior Brilhante */}
+                                        <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
+
+                                        {/* Big Watermark Number */}
+                                        <div className="absolute -right-4 top-4 pointer-events-none opacity-[0.03] font-black text-9xl tracking-tighter select-none text-white group-hover:opacity-[0.05] transition-opacity">
+                                            {log.majorVersion}
+                                        </div>
+
+                                        {/* Optional Image */}
+                                        {log.image && (
+                                            <div className="relative z-10 rounded-2xl overflow-hidden shadow-lg border border-white/10">
+                                                <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent opacity-60" />
+                                                <img
+                                                    src={log.image}
+                                                    alt={`Update ${log.version}`}
+                                                    className="w-full h-48 sm:h-64 object-cover transform group-hover:scale-105 transition-transform duration-700 ease-in-out"
+                                                />
                                             </div>
+                                        )}
 
-                                            {/* Header: Title */}
-                                            <div className="relative z-10 mb-6">
-                                                <h2 className="text-3xl font-bold text-gray-100 mb-2">{log.version}</h2>
-                                                {log.summary && (
-                                                    <p className="text-gray-400 text-base leading-relaxed max-w-2xl">
-                                                        {log.summary}
-                                                    </p>
-                                                )}
-                                            </div>
-
-                                            {/* Optional Image */}
-                                            {log.image && (
-                                                <div className="relative z-10 mb-8 rounded-2xl overflow-hidden shadow-2xl border border-gray-800 group">
-                                                    <div className="absolute inset-0 bg-gradient-to-t from-[#262624] via-transparent to-transparent opacity-60" />
-                                                    <img
-                                                        src={log.image}
-                                                        alt={`Update ${log.version}`}
-                                                        className="w-full h-64 md:h-80 object-cover transform group-hover:scale-105 transition-transform duration-700 ease-in-out"
-                                                    />
-                                                </div>
+                                        <div className="relative z-10 flex flex-col gap-6">
+                                            {log.summary && (
+                                                <p className="text-gray-300 text-base leading-relaxed">
+                                                    {log.summary}
+                                                </p>
                                             )}
 
-                                            {/* Change Lists */}
-                                            <div className="grid md:grid-cols-1 gap-8 relative z-10">
+                                            <div className="space-y-8">
                                                 {improvements.length > 0 && (
                                                     <div>
-                                                        <h3 className="font-bold text-gray-300 mb-4 text-sm uppercase tracking-wider flex items-center gap-2">
-                                                            <Sparkles size={16} className="text-[#D97757]" />
+                                                        <h3 className="font-bold text-gray-400 mb-4 text-xs uppercase tracking-wider flex items-center gap-2">
+                                                            <Sparkles size={14} className="text-[#D97757]" />
                                                             Melhorias
                                                         </h3>
                                                         <ul className="space-y-3">
                                                             {improvements.map((item, i) => (
-                                                                <li key={i} className="flex items-start gap-3 text-sm text-gray-400 leading-relaxed font-medium">
-                                                                    <span className="mt-2 w-1.5 h-1.5 rounded-full bg-gray-600 flex-shrink-0" />
+                                                                <li key={i} className="flex items-start gap-3 text-sm text-gray-400 font-medium">
+                                                                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-700 flex-shrink-0" />
                                                                     {item.text}
                                                                 </li>
                                                             ))}
@@ -168,14 +193,14 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
 
                                                 {bugfixes.length > 0 && (
                                                     <div>
-                                                        <h3 className="font-bold text-gray-300 mb-4 text-sm uppercase tracking-wider flex items-center gap-2">
-                                                            <Bug size={16} className="text-red-400" />
+                                                        <h3 className="font-bold text-gray-400 mb-4 text-xs uppercase tracking-wider flex items-center gap-2">
+                                                            <Bug size={14} className="text-red-400" />
                                                             Correções
                                                         </h3>
                                                         <ul className="space-y-3">
                                                             {bugfixes.map((item, i) => (
-                                                                <li key={i} className="flex items-start gap-3 text-sm text-gray-400 leading-relaxed font-medium">
-                                                                    <span className="mt-2 w-1.5 h-1.5 rounded-full bg-gray-600 flex-shrink-0" />
+                                                                <li key={i} className="flex items-start gap-3 text-sm text-gray-400 font-medium">
+                                                                    <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-700 flex-shrink-0" />
                                                                     {item.text}
                                                                 </li>
                                                             ))}
@@ -183,48 +208,25 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                                                     </div>
                                                 )}
                                             </div>
-
-                                            {/* Footer: Date & Button */}
-                                            {log.actionLink && (
-                                                <div className="mt-8 pt-8 border-t border-gray-800 flex items-center justify-between relative z-10">
-                                                    <span className="text-xs font-medium text-gray-500 uppercase tracking-widest">
-                                                        Lançado em {log.date}
-                                                    </span>
-
-                                                    {/* Ghost Button */}
-                                                    <a
-                                                        href={log.actionLink}
-                                                        className="
-                                                    group flex items-center gap-2 px-6 py-2.5 rounded-full text-sm font-semibold transition-all duration-300
-                                                    bg-transparent text-white border border-gray-600
-                                                    hover:bg-white hover:text-black hover:border-white hover:shadow-[0_0_20px_rgba(255,255,255,0.3)]
-                                                "
-                                                    >
-                                                        Saber mais
-                                                        <ArrowRight size={16} className="transition-transform group-hover:translate-x-1" />
-                                                    </a>
-                                                </div>
-                                            )}
-
                                         </div>
+
+                                        {/* Footer Button */}
+                                        {log.actionLink && (
+                                            <div className="mt-8 pt-6 border-t border-gray-800/50 flex justify-end relative z-10">
+                                                <a
+                                                    href={log.actionLink}
+                                                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#D97757] hover:text-[#ff9270] transition-colors"
+                                                >
+                                                    Saber mais <ArrowRight size={16} />
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 </motion.div>
                             );
                         })}
                     </div>
                 </div>
-
-                {/* Footer Link */}
-                <div className="mt-20 text-center pb-8 border-t border-gray-800 pt-8">
-                    <button
-                        onClick={onBack}
-                        className="text-gray-500 hover:text-white transition-colors text-sm flex items-center justify-center gap-2 mx-auto font-medium"
-                    >
-                        <ArrowLeft size={16} />
-                        Voltar para o Início
-                    </button>
-                </div>
-
             </main>
         </div>
     );

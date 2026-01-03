@@ -27,6 +27,7 @@ export interface User {
     couponUsed?: string;
     startDate?: string;
     firstMonthOverridePrice?: number; // Override price for month 1 (manual fix)
+    couponStartMonth?: string; // Mês de início do cupom (YYYY-MM)
     autoRenew?: boolean;
   };
   paymentMethodDetails?: {

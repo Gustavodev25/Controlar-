@@ -155,17 +155,17 @@ const AnimatedStat: React.FC<{
 };
 
 // Helper Component Types
-interface CountdownTimerProps {
-    targetDate: string;
-}
-
-// Countdown Timer Component with NumberFlow
-const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) => {
+const CountdownTimer: React.FC = () => {
     const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number }>({ d: 0, h: 0, m: 0, s: 0 });
 
     useEffect(() => {
         const calculateTimeLeft = () => {
-            const difference = +new Date(targetDate) - +new Date();
+            const now = new Date();
+            const target = new Date(now);
+            target.setHours(24, 0, 0, 0); // Set to next midnight (00:00:00 of tomorrow)
+
+            const difference = target.getTime() - now.getTime();
+
             if (difference > 0) {
                 return {
                     d: Math.floor(difference / (1000 * 60 * 60 * 24)),
@@ -183,7 +183,7 @@ const CountdownTimer: React.FC<CountdownTimerProps> = ({ targetDate }) => {
         }, 1000);
 
         return () => clearInterval(timer);
-    }, [targetDate]);
+    }, []);
 
     return (
         <div className="flex items-center gap-3 text-white">
@@ -302,12 +302,12 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                 <span className="relative inline-flex rounded-full h-2 w-2 bg-[#D97757]"></span>
                             </span>
                             <span className="text-xs font-bold text-[#D97757] tracking-wide uppercase">
-                                Restam apenas 68 vagas promocionais
+                                Restam apenas 23 vagas promocionais
                             </span>
                             <div className="w-16 h-1.5 bg-[#D97757]/20 rounded-full overflow-hidden ml-1">
                                 <motion.div
                                     initial={{ width: 0 }}
-                                    animate={{ width: "68%" }}
+                                    animate={{ width: "23%" }}
                                     transition={{ duration: 1, delay: 0.5, ease: "easeOut" }}
                                     className="h-full bg-[#D97757]"
                                 />
@@ -381,7 +381,7 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                         {/* Countdown Timer Above Card */}
                         <div className="flex flex-col items-center gap-3">
                             <p className="text-sm uppercase tracking-widest text-[#D97757] font-bold">Oferta de Ano Novo acaba em:</p>
-                            <CountdownTimer targetDate="2026-01-01T12:00:00" />
+                            <CountdownTimer />
                         </div>
 
                         <motion.div
@@ -431,7 +431,7 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                 <div className="flex items-center gap-1">
                                     <span className="text-4xl font-bold text-white">
                                         <NumberFlow
-                                            value={5.00}
+                                            value={9.90}
                                             format={{ style: 'currency', currency: 'BRL' }}
                                             locales="pt-BR"
                                         />
@@ -441,7 +441,7 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                 <div className="mt-4 w-full px-2">
                                     <div
                                         onClick={() => {
-                                            navigator.clipboard.writeText("DESCONTO05");
+                                            navigator.clipboard.writeText("FELIZ2026");
                                             // Optional: You might want to add a toast or state change here to indicate copy
                                             const el = document.getElementById('coupon-text');
                                             if (el) {
@@ -454,13 +454,13 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                                     >
                                         <div className="flex flex-col items-center">
                                             <span className="text-[10px] uppercase font-bold text-[#D97757]/70 leading-none mb-1">Promoção de Ano Novo</span>
-                                            <span id="coupon-text" className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">DESCONTO05</span>
+                                            <span id="coupon-text" className="text-lg font-extrabold text-[#D97757] tracking-widest leading-none">FELIZ2026</span>
                                         </div>
                                         <div className="absolute right-3 opacity-0 group-hover:opacity-100 transition-opacity text-[#D97757]">
                                             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>
                                         </div>
                                     </div>
-                                    <p className="text-[10px] text-gray-500 mt-2 text-center cursor-pointer hover:text-gray-300 transition-colors" onClick={() => navigator.clipboard.writeText("DESCONTO05")}>
+                                    <p className="text-[10px] text-gray-500 mt-2 text-center cursor-pointer hover:text-gray-300 transition-colors" onClick={() => navigator.clipboard.writeText("FELIZ2026")}>
                                         Clique para copiar o cupom
                                     </p>
                                 </div>

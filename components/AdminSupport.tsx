@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket } from '../services/database';
+import React, { useState, useEffect, useMemo } from 'react';
+import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -16,12 +16,28 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
     const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
     const [showTerminationModal, setShowTerminationModal] = useState(false);
 
+    // New Ticket / User Search State
+    const [showNewTicketModal, setShowNewTicketModal] = useState(false);
+    const [availableUsers, setAvailableUsers] = useState<UserType[]>([]);
+    const [userSearchTerm, setUserSearchTerm] = useState('');
+    const [isLoadingUsers, setIsLoadingUsers] = useState(false);
+    const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
+
     useEffect(() => {
         const unsub = listenToAllOpenTickets((data) => {
             setTickets(data);
+
+            // Auto-select pending ticket if it appears
+            if (pendingTicketId) {
+                const found = data.find(t => t.id === pendingTicketId);
+                if (found) {
+                    setSelectedTicket(found);
+                    setPendingTicketId(null);
+                }
+            }
         });
         return () => unsub();
-    }, []);
+    }, [pendingTicketId]);
 
     // Update selected ticket real-time status if it changes in the list
     useEffect(() => {
@@ -30,6 +46,22 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
             if (updated) setSelectedTicket(updated);
         }
     }, [tickets]);
+
+    // Load users for the new ticket modal
+    useEffect(() => {
+        if (showNewTicketModal && availableUsers.length === 0) {
+            setIsLoadingUsers(true);
+            getAllUsers().then(users => {
+                // Filter out current admin if desired, or keep all
+                setAvailableUsers(users);
+                setIsLoadingUsers(false);
+            }).catch(err => {
+                console.error("Error loading users", err);
+                toast.error("Erro ao carregar usuários");
+                setIsLoadingUsers(false);
+            });
+        }
+    }, [showNewTicketModal]);
 
     const handleCloseTicket = async (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
@@ -45,6 +77,45 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         if (!selectedTicket || !currentUser || !currentUser.id) return;
         await acceptSupportTicket(selectedTicket.id!, currentUser.id, currentUser.name);
     };
+
+    const handleStartNewTicket = async (user: UserType) => {
+        if (!user.id) return;
+
+        try {
+            // Check if there's already an open ticket for this user in our current list
+            const existingOpen = tickets.find(t => t.userId === user.id);
+            if (existingOpen) {
+                setSelectedTicket(existingOpen);
+                setShowNewTicketModal(false);
+                toast.info(`Já existe um chamado aberto para ${user.name}`);
+                return;
+            }
+
+            // Create new ticket (or get existing if any logic on backend handles it)
+            // Note: createSupportTicket logic on database.ts ensures distinct open tickets per user usually
+            const ticketId = await createSupportTicket(user.id, user.email, user.name);
+
+            if (ticketId) {
+                setPendingTicketId(ticketId);
+                // We'll rely on the listener to select it, helping with optimistic UI
+                // But for immediate feedback:
+                toast.success('Chamado iniciado!');
+                setShowNewTicketModal(false);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Erro ao iniciar chamado');
+        }
+    };
+
+    const filteredUsers = useMemo(() => {
+        if (!userSearchTerm) return availableUsers.slice(0, 50); // Limit initial view
+        const lower = userSearchTerm.toLowerCase();
+        return availableUsers.filter(u =>
+            (u.name || '').toLowerCase().includes(lower) ||
+            (u.email || '').toLowerCase().includes(lower)
+        ).slice(0, 50); // Limit results
+    }, [availableUsers, userSearchTerm]);
 
     const getTimeAgo = (dateStr: string) => {
         const date = new Date(dateStr);
@@ -74,12 +145,19 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         <div className="flex h-[calc(100vh-140px)] gap-6 overflow-hidden">
             {/* List */}
             <div className="w-[320px] flex flex-col shrink-0 bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden">
-                <div className="p-4 border-b border-[#373734] bg-[#30302E]">
+                <div className="p-4 border-b border-[#373734] bg-[#30302E] flex items-center justify-between">
                     <h2 className="font-bold text-lg flex items-center gap-2 text-white">
                         <MessageSquare size={18} className="text-[#d97757]" />
                         Chamados
                         <span className="text-xs font-normal text-gray-500 bg-[#373734] px-2 py-0.5 rounded-full">{tickets.length}</span>
                     </h2>
+                    <button
+                        onClick={() => setShowNewTicketModal(true)}
+                        className="p-1.5 rounded-lg bg-[#3d3d3b] hover:bg-[#454543] text-gray-300 hover:text-white transition-colors"
+                        title="Novo Atendimento"
+                    >
+                        <Plus size={16} />
+                    </button>
                 </div>
 
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-[#30302E]">
@@ -238,6 +316,72 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                 <div className="text-gray-300 text-sm leading-relaxed">
                     <p>Tem certeza que deseja encerrar este atendimento?</p>
                     <p className="mt-2 text-gray-400 text-xs">O status do chamado será alterado para "Fechado" e a conversa será arquivada.</p>
+                </div>
+            </UniversalModal>
+
+            {/* New Ticket Modal */}
+            <UniversalModal
+                isOpen={showNewTicketModal}
+                onClose={() => setShowNewTicketModal(false)}
+                title="Iniciar Novo Atendimento"
+                width="max-w-lg"
+                themeColor="#d97757"
+                icon={<MessageSquare size={20} />}
+            >
+                <div className="space-y-4">
+                    <div className="relative">
+                        <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" />
+                        <input
+                            type="text"
+                            placeholder="Buscar usuário..."
+                            value={userSearchTerm}
+                            onChange={(e) => setUserSearchTerm(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2.5 bg-[#373734] border border-[#454543] rounded-xl text-white placeholder-gray-500 focus:outline-none focus:border-[#d97757] transition-all"
+                            autoFocus
+                        />
+                    </div>
+
+                    <div className="min-h-[300px] max-h-[400px] overflow-y-auto custom-scrollbar border border-[#373734]/50 rounded-xl bg-[#2A2A28]">
+                        {isLoadingUsers ? (
+                            <div className="flex items-center justify-center h-[300px]">
+                                <div className="flex flex-col items-center gap-3">
+                                    <Loader size={24} className="animate-spin text-[#d97757]" />
+                                    <span className="text-xs text-gray-500">Carregando usuários...</span>
+                                </div>
+                            </div>
+                        ) : filteredUsers.length === 0 ? (
+                            <div className="flex items-center justify-center h-[300px] text-gray-500 text-sm">
+                                Nenhum usuário encontrado
+                            </div>
+                        ) : (
+                            <div className="divide-y divide-[#373734]/50">
+                                {filteredUsers.map(user => (
+                                    <div
+                                        key={user.id}
+                                        onClick={() => handleStartNewTicket(user)}
+                                        className="p-3 hover:bg-[#373734] cursor-pointer transition-colors flex items-center justify-between group"
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm ${getAvatarColors(user.name).bg} ${getAvatarColors(user.name).text}`}>
+                                                {getInitials(user.name)}
+                                            </div>
+                                            <div>
+                                                <div className="font-medium text-white text-sm group-hover:text-[#d97757] transition-colors">
+                                                    {user.name}
+                                                </div>
+                                                <div className="text-xs text-gray-500">
+                                                    {user.email}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <button className="p-2 rounded-lg bg-[#3d3d3b] text-gray-400 opacity-0 group-hover:opacity-100 transition-all hover:bg-[#d97757] hover:text-white">
+                                            <MessageSquare size={16} />
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             </UniversalModal>
         </div>

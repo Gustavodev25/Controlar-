@@ -951,7 +951,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                             )
                             : (isLogin
                               ? 'Entrar na Plataforma'
-                              : (step === 1 ? 'Continuar Cadastro' : 'Finalizar Cadastro')
+                              : (step === 1 ? 'Continuar cadastro' : 'Finalizar Cadastro')
                             )
                           }
                           <ArrowRight size={18} />

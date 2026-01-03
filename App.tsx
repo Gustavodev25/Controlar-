@@ -516,15 +516,15 @@ const App: React.FC = () => {
     }
   }, [isProMode]);
 
-  // Force Manual Mode for users on free plan (starter)
+  // Force Manual Mode for users on free plan (starter) or canceled/refunded users
   useEffect(() => {
     if (!currentUser) return;
 
-    const plan = currentUser.subscription?.plan || 'starter';
-    const isProOrFamily = plan === 'pro' || plan === 'family';
+    // Use effectivePlan to account for canceled/refunded users
+    const isProOrFamily = effectivePlan === 'pro' || effectivePlan === 'family';
 
-    // Only force downgrade if explicitly on starter plan.
-    if (plan === 'starter' && isProMode) {
+    // Only force downgrade if user doesn't have active pro/family plan
+    if (effectivePlan === 'starter' && isProMode) {
       setIsProMode(false);
     }
     // Auto-enable Pro Mode for Pro/Family users if they haven't explicitly set a preference
@@ -541,7 +541,7 @@ const App: React.FC = () => {
         setIsProMode(true);
       }
     }
-  }, [currentUser, isProMode]);
+  }, [currentUser, effectivePlan, isProMode]);
 
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
@@ -3117,8 +3117,8 @@ const App: React.FC = () => {
   };
 
   const isLimitReached = useMemo(() => {
-    const plan = currentUser?.subscription?.plan || 'starter';
-    if (plan !== 'starter') return false;
+    // Use effectivePlan to ensure canceled/refunded users are treated as starter
+    if (effectivePlan !== 'starter') return false;
 
     if (activeTab === 'budgets') {
       return budgets.length >= 2;
@@ -3127,7 +3127,7 @@ const App: React.FC = () => {
       return investments.length >= 2;
     }
     return false;
-  }, [currentUser, activeTab, budgets, investments]);
+  }, [effectivePlan, activeTab, budgets, investments]);
 
   if (isLoadingAuth) {
     return <div className="min-h-screen bg-gray-950 flex items-center justify-center">
@@ -3336,7 +3336,7 @@ const App: React.FC = () => {
                   {effectivePlan === 'starter' && (
                     <div
                       onClick={() => {
-                        setSubscriptionInitialState({ planId: 'pro', couponCode: 'DESCONTO05' });
+                        setSubscriptionInitialState({ planId: 'pro', couponCode: 'FELIZ2026' });
                         setActiveTab('subscription');
                       }}
                       className="relative overflow-hidden rounded-xl bg-[#30302E] border border-[#373734] p-4 mb-6 cursor-pointer group hover:border-gray-600 transition-colors"
@@ -3352,10 +3352,10 @@ const App: React.FC = () => {
                           </div>
                           <div className="flex-1">
                             <h3 className="font-bold text-white flex flex-wrap items-center gap-2 text-sm sm:text-base">
-                              Promoção de Ano Novo <span className="bg-[#d97757] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">Desconto05</span>
+                              Promoção de Ano Novo <span className="bg-[#d97757] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">FELIZ2026</span>
                             </h3>
                             <p className="text-gray-400 text-xs sm:text-sm mt-1 leading-snug">
-                              Comece 2026 com o pé direito! Assine o plano Pro por apenas <span className="text-emerald-400 font-bold">R$ 5,00</span> no primeiro mês.
+                              Comece 2026 com o pé direito! Assine o plano Pro por apenas <span className="text-emerald-400 font-bold">R$ 9,90</span> no primeiro mês.
                             </p>
                           </div>
                         </div>
@@ -3397,8 +3397,8 @@ const App: React.FC = () => {
                       isProMode={isProMode}
                       onToggleProMode={(val) => {
                         // Validação extra: Usuários Starter não podem ativar modo AUTO
-                        const userPlan = currentUser?.subscription?.plan || 'starter';
-                        if (userPlan === 'starter' && val) {
+                        // Use effectivePlan to ensure canceled/refunded users are treated as starter
+                        if (effectivePlan === 'starter' && val) {
                           // Ignorar tentativa de ativar Auto para Starter
                           return;
                         }
@@ -3444,7 +3444,7 @@ const App: React.FC = () => {
                     userPlan={effectivePlan}
                     onUpgradeClick={() => setActiveTab('subscription')}
                     onPromoClick={() => {
-                      setSubscriptionInitialState({ planId: 'pro', couponCode: 'DESCONTO05' });
+                      setSubscriptionInitialState({ planId: 'pro', couponCode: 'FELIZ2026' });
                       setActiveTab('subscription');
                     }}
                   />                    <div className="animate-fade-in space-y-6">

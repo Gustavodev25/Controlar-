@@ -814,6 +814,26 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       });
   }, [transactions, searchTerm, sortField, sortDirection, selectedYear, startDate, endDate, selectedCardId]);
 
+  // ALL card transactions (without year filter) - for "Histórico Completo" mode
+  const allCardTransactions = useMemo(() => {
+    return transactions
+      .filter(t => {
+        if (!t.date) return false;
+
+        // Bank/Card Filter only (no year filter for complete history)
+        let matchesCard = true;
+        if (selectedCardId !== 'all') {
+          const targetId = String(selectedCardId);
+          const txCardId = t.cardId ? String(t.cardId) : '';
+          const txAccountId = t.accountId ? String(t.accountId) : '';
+          matchesCard = txCardId === targetId || txAccountId === targetId;
+        }
+
+        return matchesCard;
+      })
+      .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
+  }, [transactions, selectedCardId]);
+
   // Get selected card for invoice calculations
   const selectedCard = useMemo(() => {
     if (selectedCardId === 'all') return creditCardAccounts[0];
@@ -929,8 +949,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const invoiceTransactions = useMemo(() => {
     switch (selectedInvoice) {
       case 'all':
-        // Retorna TODAS as transações do cartão (sem filtro de período)
-        return baseFilteredTransactions;
+        // Retorna TODAS as transações do cartão (sem filtro de ano/período)
+        return allCardTransactions;
       case 'last':
         return invoiceSummary.lastInvoice.transactions;
       case 'current':
@@ -940,7 +960,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       default:
         return invoiceSummary.currentInvoice.transactions;
     }
-  }, [selectedInvoice, invoiceSummary, baseFilteredTransactions]);
+  }, [selectedInvoice, invoiceSummary, allCardTransactions]);
 
   // Gerar linhas virtuais de encargos (IOF, juros, multa) da fatura selecionada
   const chargeTransactions = useMemo((): ChargeTransaction[] => {
@@ -1082,7 +1102,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [invoiceTransactions, baseFilteredTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate]);
+  }, [invoiceTransactions, allCardTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate]);
 
   // Combinar transações filtradas com encargos
   const transactionsWithCharges = useMemo(() => {

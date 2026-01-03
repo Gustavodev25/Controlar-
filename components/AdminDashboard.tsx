@@ -506,6 +506,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     // --- DAILY NEW SUBSCRIBERS (PAID) ---
     const dailySubCounts: Record<string, number> = {};
+    let subMinDate: Date | null = null;
+    let subMaxDate: Date | null = null;
 
     filteredUsers.forEach(u => {
       // Only count PAID plans (Pro/Family)
@@ -515,24 +517,69 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const dateStr = u.subscription?.startDate;
       if (!dateStr) return;
 
-      const date = new Date(dateStr);
+      let date = new Date(dateStr);
+      // Fix: If dateStr is YYYY-MM-DD (10 chars), it parses as UTC midnight => prev day in Brazil
+      // Append time or use splitting to ensure it counts as THAT day locally.
+      if (dateStr.length === 10) {
+        date = new Date(dateStr + 'T12:00:00');
+      }
+
+      if (!subMinDate || date < subMinDate) subMinDate = date;
+      if (!subMaxDate || date > subMaxDate) subMaxDate = date;
+
       // 'sv-SE' for YYYY-MM-DD
       const key = date.toLocaleDateString('sv-SE');
       dailySubCounts[key] = (dailySubCounts[key] || 0) + 1;
     });
 
-    const sortedSubDates = Object.keys(dailySubCounts).sort();
     const newSubscribersGrowth: { date: string, rawDate: string, daily: number }[] = [];
 
-    sortedSubDates.forEach(dateKey => {
-      const count = dailySubCounts[dateKey];
-      const [y, m, d] = dateKey.split('-');
+    // Determine loop bounds
+    // Use filter dates if available, otherwise use data bounds
+    let loopStart = startDate ? new Date(startDate + 'T00:00:00') : (subMinDate ? new Date(subMinDate) : new Date());
+    let loopEnd = endDate ? new Date(endDate + 'T00:00:00') : (subMaxDate ? new Date(subMaxDate) : new Date());
+
+    // Fallback if no data and no filter (show last 30 days)
+    if (!startDate && !endDate && !subMinDate) {
+      loopEnd = new Date();
+      loopStart = new Date();
+      loopStart.setDate(loopStart.getDate() - 30);
+    }
+
+    // Just in case end is before start
+    if (loopStart > loopEnd) loopStart = new Date(loopEnd);
+
+    const currentLoop = new Date(loopStart);
+    currentLoop.setHours(0, 0, 0, 0);
+    const loopEndLimit = new Date(loopEnd);
+    loopEndLimit.setHours(0, 0, 0, 0);
+
+    // If we have an open timeline (no end date set), enforce 'Today' as max if data doesn't exceed it
+    // This makes the chart look "up to date" instead of stopping at last sale
+    if (!endDate && loopEndLimit < new Date()) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (today > loopEndLimit) {
+        // Optionally extend to today for better visual? 
+        // Let's stick to data max if unbounded, logic stays cleaner.
+        // Actually, dashboards usually show "Trends", so empty days at the end are important info (Sales stopped).
+        // So let's extend to Today if no filter is set.
+        loopEndLimit.setTime(new Date().setHours(0, 0, 0, 0));
+      }
+    }
+    // Also if specific date filter is set, we strictly honor it (already correctly set above)
+
+    while (currentLoop <= loopEndLimit) {
+      const key = currentLoop.toLocaleDateString('sv-SE');
+      // format DD/MM
+      const [y, m, d] = key.split('-');
       newSubscribersGrowth.push({
         date: `${d}/${m}`,
-        rawDate: dateKey,
-        daily: count
+        rawDate: key,
+        daily: dailySubCounts[key] || 0
       });
-    });
+      currentLoop.setDate(currentLoop.getDate() + 1);
+    }
 
     if (newSubscribersGrowth.length === 0) {
       newSubscribersGrowth.push({ date: 'Hoje', rawDate: new Date().toISOString(), daily: 0 });
@@ -540,14 +587,61 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     // Heatmap / Location Data (Top 5 States)
     const locationData: Record<string, number> = {};
+    const ageBuckets: Record<string, number> = {
+      '<18': 0,
+      '18-24': 0,
+      '25-34': 0,
+      '35-44': 0,
+      '45-54': 0,
+      '55+': 0,
+      'N/A': 0
+    };
+
     filteredUsers.forEach(u => {
+      // Location
       const state = u.address?.state?.toUpperCase() || 'N/A';
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
+
+      // Age
+      if (u.birthDate) {
+        const birth = new Date(u.birthDate);
+        if (!isNaN(birth.getTime())) {
+          // Calculate age carefully
+          let age = today.getFullYear() - birth.getFullYear();
+          const m = today.getMonth() - birth.getMonth();
+          if (m < 0 || (m === 0 && today.getDate() < birth.getDate())) {
+            age--;
+          }
+
+          if (age < 0) ageBuckets['N/A']++; // Invalid date in future
+          else if (age < 18) ageBuckets['<18']++;
+          else if (age <= 24) ageBuckets['18-24']++;
+          else if (age <= 34) ageBuckets['25-34']++;
+          else if (age <= 44) ageBuckets['35-44']++;
+          else if (age <= 54) ageBuckets['45-54']++;
+          else ageBuckets['55+']++;
+        } else {
+          ageBuckets['N/A']++;
+        }
+      } else {
+        ageBuckets['N/A']++;
+      }
     });
+
     const locationsChartData = Object.entries(locationData)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
+
+    const ageChartData = [
+      { name: '< 18', value: ageBuckets['<18'] },
+      { name: '18-24', value: ageBuckets['18-24'] },
+      { name: '25-34', value: ageBuckets['25-34'] },
+      { name: '35-44', value: ageBuckets['35-44'] },
+      { name: '45-54', value: ageBuckets['45-54'] },
+      { name: '55+', value: ageBuckets['55+'] },
+      { name: 'N/A', value: ageBuckets['N/A'] },
+    ];
 
 
 
@@ -570,6 +664,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       chartData,
       planData,
       locationsChartData,
+      ageData: ageChartData,
 
       cumulativeGrowth, // Add to return object
       newSubscribersGrowth, // New chart data
@@ -1101,6 +1196,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           </div>
         </div>
 
+        {/* Plan Distribution (Shadcn Radial Stacked) */}
         <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 flex flex-col">
           <h3 className="text-lg font-bold text-white mb-6">Distribuição de Planos</h3>
           <div className="flex-1 flex items-center justify-center relative">
@@ -1139,6 +1235,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
               ))}
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Age Estimation Chart */}
+      <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+          <Calendar size={18} className="text-[#d97757]" />
+          Estimativa de Idades
+        </h3>
+        <p className="text-gray-500 text-sm mb-6">Distribuição etária da base de usuários</p>
+        <div className="h-[300px] w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <BarChart data={stats.ageData}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+              <XAxis
+                dataKey="name"
+                stroke="#6b7280"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+              />
+              <YAxis
+                stroke="#6b7280"
+                fontSize={12}
+                tickLine={false}
+                axisLine={false}
+                allowDecimals={false}
+              />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar
+                dataKey="value"
+                name="Usuários"
+                fill="#8B5CF6"
+                radius={[4, 4, 0, 0]}
+                barSize={50}
+              />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       </div>
 

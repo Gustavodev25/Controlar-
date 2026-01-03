@@ -79,6 +79,24 @@ export const updateUserProfile = async (userId: string, data: Partial<User>) => 
   await setDoc(userRef, { profile: cleanData }, { merge: true });
 };
 
+export const updateUserSubscription = async (userId: string, subscriptionData: any) => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+
+  // Update subscription data in both root and profile.subscription for consistency
+  const updates: any = {};
+
+  // Flatten subscription data for updates
+  Object.keys(subscriptionData).forEach(key => {
+    if (subscriptionData[key] !== undefined) {
+      updates[`subscription.${key}`] = subscriptionData[key];
+      updates[`profile.subscription.${key}`] = subscriptionData[key];
+    }
+  });
+
+  await updateDoc(userRef, updates);
+};
+
 export const setAdminStatus = async (userId: string, isAdmin: boolean) => {
   if (!db) return;
   const userRef = doc(db, "users", userId);
@@ -2653,6 +2671,7 @@ export const listenToTicket = (ticketId: string, callback: (ticket: SupportTicke
   });
 };
 
+
 export const getAllConnectedAccounts = async (): Promise<ConnectedAccount[]> => {
   try {
     if (!db) return [];
@@ -2677,4 +2696,52 @@ export const getAllConnectedAccounts = async (): Promise<ConnectedAccount[]> => 
     return [];
   }
 };
+
+
+// --- Admin Message Logs ---
+
+export interface AdminMessageLog {
+  id?: string;
+  type: 'email' | 'notification' | 'popup';
+  subject?: string;
+  title?: string;
+  body: string;
+  recipientType: 'all' | 'pro' | 'starter' | 'waitlist' | 'specific';
+  recipientCount: number;
+  successCount?: number;
+  failureCount?: number;
+  sentAt: string;
+  sentBy: string; // Admin email or ID
+  status: 'success' | 'partial' | 'failed';
+  details?: any; // Extra info
+}
+
+export const addAdminMessageLog = async (log: Omit<AdminMessageLog, 'id'>) => {
+  if (!db) return;
+  const logsRef = collection(db, "admin_message_logs");
+  await addDoc(logsRef, log);
+};
+
+export const getAdminMessageLogs = async (): Promise<AdminMessageLog[]> => {
+  if (!db) return [];
+  const logsRef = collection(db, "admin_message_logs");
+  const q = query(logsRef, orderBy("sentAt", "desc"), limit(50));
+  const snap = await getDocs(q);
+  return snap.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminMessageLog));
+};
+
+export const listenToAdminMessageLogs = (callback: (logs: AdminMessageLog[]) => void) => {
+  if (!db) return () => { };
+  const logsRef = collection(db, "admin_message_logs");
+  const q = query(logsRef, orderBy("sentAt", "desc"), limit(50));
+
+  return onSnapshot(q, (snapshot) => {
+    const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminMessageLog));
+    callback(logs);
+  }, (error) => {
+    console.error("Error listening to admin logs:", error);
+    callback([]);
+  });
+};
+
 
