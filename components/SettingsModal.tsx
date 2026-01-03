@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
    X, User, Mail, Check, Save, Sparkles, Shield, CreditCard,
@@ -697,8 +697,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
    };
 
-   const [autoRenew, setAutoRenew] = useState(user.subscription?.autoRenew ?? true); // Moved to top level
-   const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
+
    const [showCancelSubscriptionConfirmation, setShowCancelSubscriptionConfirmation] = useState(false);
    const [showRefundConfirmation, setShowRefundConfirmation] = useState(false);
    const [isProcessingRefund, setIsProcessingRefund] = useState(false);
@@ -1350,12 +1349,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                ...formData.subscription!,
                status: 'canceled',
                plan: 'starter',
-               autoRenew: false
+               autoRenew: true
             }
          };
 
          setFormData(updatedUser);
-         setAutoRenew(false);
+
          await persistUser(updatedUser);
          toast.success("Assinatura cancelada com sucesso. Seu plano foi alterado para Starter.");
          setShowCancelSubscriptionConfirmation(false);
@@ -1402,12 +1401,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   ...formData.subscription!,
                   status: 'refunded',
                   plan: 'starter',
-                  autoRenew: false
+                  autoRenew: true
                }
             };
 
             setFormData(updatedUser);
-            setAutoRenew(false);
+
             await persistUser(updatedUser);
             toast.success("Estorno realizado com sucesso! O valor será devolvido em até 7 dias úteis.");
             setShowRefundConfirmation(false);
@@ -1474,19 +1473,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       }
    };
 
-   // Update autoRenew persistence immediately when toggled (if confirmed)
-   const toggleAutoRenew = async (newValue: boolean) => {
-      const updatedUser: UserType = {
-         ...formData,
-         subscription: {
-            ...formData.subscription!,
-            autoRenew: newValue
-         }
-      };
-      setFormData(updatedUser);
-      setAutoRenew(newValue);
-      await persistUser(updatedUser);
-   };
+
 
    /*
    // Mock History Data
@@ -2643,7 +2630,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                  <div className="flex flex-col justify-between h-full p-2">
                                     <div className="flex justify-between items-start mb-6">
                                        <h4 className="font-bold text-white flex items-center gap-2">
-                                          <CreditCard size={18} className="text-gray-400" /> Método de Pagamento
+                                          <CreditCard size={18} className="text-gray-400" /> Método de Pagamento <span className="ml-2 hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-500 uppercase tracking-wider"><ShieldCheck size={12} /> Ambiente Seguro</span>
                                        </h4>
                                        <button
                                           onClick={() => setIsCardModalOpen(true)}
@@ -2723,41 +2710,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     )}
                                  </div>
 
-                                 {/* Billing Settings */}
-                                 <div className="space-y-4">
-                                    {/* Auto Renew Toggle - Clean */}
-                                    <div className="p-4 rounded-xl hover:bg-gray-900/30 transition-colors">
-                                       <div className="flex justify-between items-center mb-2">
-                                          <h4 className="font-bold text-white flex items-center gap-2">
-                                             <Calendar size={18} className="text-gray-400" /> Cobrança Automática
-                                          </h4>
-                                          <button
-                                             onClick={() => {
-                                                if (autoRenew) {
-                                                   setShowAutoRenewConfirmation(true);
-                                                } else {
-                                                   toggleAutoRenew(true);
-                                                   toast.success("Cobrança automática ativada.");
-                                                }
-                                             }}
-                                             className={`w-11 h-6 rounded-full transition-colors duration-300 relative ${autoRenew ? 'bg-[#d97757]' : 'bg-gray-700'}`}
-                                          >
-                                             <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-transform duration-300 ${autoRenew ? 'left-6' : 'left-1'}`}></div>
-                                          </button>
-                                       </div>
-                                       <p className="text-xs text-gray-500 leading-relaxed mb-4">
-                                          Renovar automaticamente seu plano {cycle === 'annual' ? 'anual' : 'mensal'} usando o cartão cadastrado para evitar interrupções.
-                                       </p>
-                                       {autoRenew && (
-                                          <div className="flex items-center gap-2 text-xs text-gray-400">
-                                             <CheckCircle size={14} className="text-[#d97757]" />
-                                             Próxima cobrança agendada para {nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : '...'}
-                                          </div>
-                                       )}
-                                    </div>
 
-
-                                 </div>
                               </div>
 
                               {/* Billing History List - Full Width Below */}
@@ -2865,20 +2818,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             onConfirm={handleDeleteAccount}
          />
 
-         {/* Auto Renew Confirmation */}
-         <ConfirmationBar
-            isOpen={showAutoRenewConfirmation}
-            onCancel={() => setShowAutoRenewConfirmation(false)}
-            onConfirm={() => {
-               setAutoRenew(false);
-               toast.success("Cobrança automática pausada.");
-               setShowAutoRenewConfirmation(false);
-            }}
-            label="Desabilitar Cobrança Recorrente?"
-            confirmText="Sim, desativar"
-            cancelText="Manter ativa"
-            isDestructive={true}
-         />
+
 
          {/* Cancel Subscription Confirmation */}
          <ConfirmationBar
@@ -2918,3 +2858,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       document.body
    );
 };
+
+
+
+

@@ -246,7 +246,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
 // --- CUSTOM SELECT ---
 interface Option {
   value: string | number;
-  label: string;
+  label: React.ReactNode | string;
 }
 
 interface CustomSelectProps {
@@ -345,7 +345,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
                     : 'text-gray-300 hover:bg-white/10'}
                 `}
               >
-                <span className="font-medium">{opt.label}</span>
+                <div className="font-medium">{opt.label}</div>
                 {String(value) === String(opt.value) && <Check size={14} />}
               </motion.div>
             ))}
@@ -366,9 +366,9 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
       >
         <div className="flex items-center gap-3 overflow-hidden">
           {icon && <span className="text-gray-500">{icon}</span>}
-          <span className={`truncate ${!selectedOption ? 'text-gray-500' : 'text-[#faf9f5]'}`}>
+          <div className={`truncate ${!selectedOption ? 'text-gray-500' : 'text-[#faf9f5]'} flex-1`}>
             {selectedOption ? selectedOption.label : placeholder || 'Selecione'}
-          </span>
+          </div>
         </div>
         <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>

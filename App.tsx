@@ -55,6 +55,7 @@ import { AdminSubscriptions } from './components/AdminSubscriptions';
 import { AdminControl } from './components/AdminControl';
 import { SupportChat } from './components/SupportChat';
 import { AdminSupport } from './components/AdminSupport';
+import { AdminChangelog } from './components/AdminChangelog';
 import AdminEmailMessage from './components/AdminEmailMessage';
 import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
@@ -3323,6 +3324,8 @@ const App: React.FC = () => {
             <AdminFeedbacks />
           ) : activeTab === 'admin_support' ? (
             <AdminSupport currentUser={currentUser} />
+          ) : activeTab === 'admin_changelog' ? (
+            <AdminChangelog />
           ) : activeTab === 'admin_control' || activeTab === 'admin_users' || activeTab === 'admin_subscriptions' ? (
             <AdminControl />
           ) : (
@@ -3734,6 +3737,9 @@ const App: React.FC = () => {
           targetMode={showGlobalModeModal}
         />
       )}
+
+
+
 
       {/* Pro Onboarding Tutorial */}
       <ProOnboardingModal

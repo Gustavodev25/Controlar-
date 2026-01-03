@@ -15,7 +15,7 @@ export const parseOFX = async (userId: string, file: File): Promise<number> => {
             try {
                 const regex = /<STMTTRN>([\s\S]*?)<\/STMTTRN>/g;
                 const matches = text.match(regex);
-                
+
                 if (!matches) return resolve(0);
 
                 let count = 0;
@@ -24,16 +24,16 @@ export const parseOFX = async (userId: string, file: File): Promise<number> => {
                     const amountMatch = block.match(/<TRNAMT>([\d\.\-\+]+)/);
                     const dateMatch = block.match(/<DTPOSTED>(\d{8})/);
                     const memoMatch = block.match(/<MEMO>(.*?)<|$/);
-                    
+
                     if (amountMatch && dateMatch) {
                         const rawAmount = parseFloat(amountMatch[1]);
                         const absAmount = Math.abs(rawAmount);
-                        
-                        const rawDate = dateMatch[1]; 
-                        const dateStr = `${rawDate.substring(0,4)}-${rawDate.substring(4,6)}-${rawDate.substring(6,8)}`;
-                        
+
+                        const rawDate = dateMatch[1];
+                        const dateStr = `${rawDate.substring(0, 4)}-${rawDate.substring(4, 6)}-${rawDate.substring(6, 8)}`;
+
                         const description = memoMatch ? memoMatch[1].trim().replace(/&amp;/g, '&') : "Transação OFX";
-                        
+
                         let category = "Outros";
                         const descLower = description.toLowerCase();
                         if (descLower.includes('uber') || descLower.includes('posto') || descLower.includes('combustivel')) category = "Transporte";
@@ -107,94 +107,175 @@ export const generateMockData = async (userId: string, bankName: string): Promis
     for (const tx of transactions) {
         await addTransaction(userId, tx);
     }
-    
+
     return transactions.length;
 };
 
 export const translatePluggyCategory = (category: string | undefined | null): string => {
     if (!category) return 'Outros';
-    
+
+    // Mapeamento case-insensitive - chaves em lowercase
     const map: Record<string, string> = {
-        'Salary': 'Salário',
-        'Retirement': 'Aposentadoria',
-        'Government aid': 'Benefícios',
-        'Non-recurring income': 'Rendimentos extras',
-        'Loans': 'Empréstimos',
-        'Interests charged': 'Juros',
-        'Fixed income': 'Renda fixa',
-        'Variable income': 'Renda variável',
-        'Proceeds interests and dividends': 'Juros e dividendos',
-        'Same person transfer - PIX': 'Transf. própria Pix',
-        'Transfer - PIX': 'Transf. Pix',
-        'Credit card payment': 'Cartão de crédito',
-        'Bank slip': 'Boleto',
-        'Debt card': 'Cartão débito',
-        'Alimony': 'Pensão',
-        'Telecommunications': 'Telecom',
-        'Internet': 'Internet',
-        'Mobile': 'Celular',
-        'School': 'Escola',
-        'University': 'Universidade',
-        'Gyms and fitness centers': 'Academia',
-        'Wellness': 'Bem-estar',
-        'Cinema, theater and concerts': 'Cinema / shows',
-        'Online shopping': 'Online',
-        'Electronics': 'Eletrônicos',
-        'Clothing': 'Roupas',
-        'Video streaming': 'Streaming vídeo',
-        'Music streaming': 'Streaming música',
-        'N/A': 'Supermercado',
-        'Eating out': 'Restaurante',
-        'Food delivery': 'Delivery',
-        'Airport and airlines': 'Passagens aéreas',
-        'Accommodation': 'Hospedagem',
-        'Lottery': 'Loterias',
-        'Income taxes': 'IR',
-        'Account fees': 'Tarifas conta',
-        'Rent': 'Aluguel',
-        'Electricity': 'Luz',
-        'Water': 'Água',
-        'Pharmacy': 'Farmácia',
-        'Hospital clinics and labs': 'Clínicas / exames',
-        'Taxi and ride-hailing': 'Táxi / apps',
-        'Public transportation': 'Ônibus / metrô',
-        'Car rental': 'Aluguel carro',
-        'Bicycle': 'Bicicleta',
-        'Gas stations': 'Combustível',
-        'Parking': 'Estacionamento',
-        'Health insurance': 'Plano de saúde',
-        'Vehicle insurance': 'Seguro auto',
-        // New Additions
-        'Same person transfer': 'Transf. própria',
-        'Digital services': 'Serviços digitais',
-        'Transfer - TED': 'Transferência TED',
-        'Third party transfer - PIX': 'Transf. Terceiros Pix',
-        'Investments': 'Investimentos',
-        // Credit Card Specifics
-        'Shopping': 'Compras',
-        'Credit card fees': 'Tarifas cartão',
-        'Groceries': 'Supermercado',
-        'Accomodation': 'Hospedagem',
-        'Insurance': 'Seguros',
-        'Entrepreneurial activities': 'Empreendedorismo',
-        'Tolls and in vehicle payment': 'Pedágios',
-        'Services': 'Serviços',
-        'Mileage programs': 'Milhas',
-        'Bookstore': 'Livraria',
-        'Pet supplies and vet': 'Pet Shop / Vet',
-        'Houseware': 'Casa e Decoração',
-        'Transfers': 'Transferências',
-        'Gambling': 'Jogos / Apostas',
-        'Tickets': 'Ingressos',
-        'Vehicle maintenance': 'Manutenção Auto',
-        'Dentist': 'Dentista',
-        'Transfer - Foreign Exchange': 'Câmbio',
-        // Common Fallbacks
-        'Donation': 'Doações',
-        'Donations': 'Doações',
-        'Leisure': 'Lazer',
-        'Entertainment': 'Lazer'
+        // Renda / Income
+        'salary': 'Salário',
+        'retirement': 'Aposentadoria',
+        'government aid': 'Benefícios',
+        'non-recurring income': 'Rendimentos extras',
+        'loans': 'Empréstimos',
+        'interests charged': 'Juros',
+        'fixed income': 'Renda fixa',
+        'variable income': 'Renda variável',
+        'proceeds interests and dividends': 'Juros e dividendos',
+        'income': 'Receita',
+
+        // Transferências
+        'same person transfer - pix': 'Transf. própria Pix',
+        'transfer - pix': 'Transf. Pix',
+        'third party transfer - pix': 'Transf. Terceiros Pix',
+        'same person transfer': 'Transf. própria',
+        'transfer - ted': 'Transferência TED',
+        'transfer - foreign exchange': 'Câmbio',
+        'transfers': 'Transferências',
+        'transfer': 'Transferência',
+
+        // Pagamentos
+        'credit card payment': 'Pagamento de Fatura',
+        'bank slip': 'Boleto',
+        'debt card': 'Cartão débito',
+        'debit card': 'Cartão débito',
+
+        // Telecomunicações
+        'telecommunications': 'Telecom',
+        'internet': 'Internet',
+        'mobile': 'Celular',
+
+        // Educação
+        'school': 'Escola',
+        'university': 'Universidade',
+        'education': 'Educação',
+
+        // Saúde e Bem-estar
+        'gyms and fitness centers': 'Academia',
+        'wellness': 'Bem-estar',
+        'pharmacy': 'Farmácia',
+        'hospital clinics and labs': 'Clínicas / exames',
+        'health insurance': 'Plano de saúde',
+        'dentist': 'Dentista',
+        'health': 'Saúde',
+
+        // Entretenimento e Lazer
+        'cinema, theater and concerts': 'Cinema / shows',
+        'video streaming': 'Streaming vídeo',
+        'music streaming': 'Streaming música',
+        'lottery': 'Loterias',
+        'gambling': 'Jogos / Apostas',
+        'tickets': 'Ingressos',
+        'leisure': 'Lazer',
+        'entertainment': 'Lazer',
+
+        // Compras
+        'online shopping': 'Compras Online',
+        'electronics': 'Eletrônicos',
+        'clothing': 'Roupas',
+        'shopping': 'Compras',
+        'bookstore': 'Livraria',
+        'pet supplies and vet': 'Pet Shop / Vet',
+        'houseware': 'Casa e Decoração',
+
+        // Alimentação
+        'eating out': 'Restaurante',
+        'food delivery': 'Delivery',
+        'groceries': 'Supermercado',
+        'food': 'Alimentação',
+        'n/a': 'Supermercado',
+
+        // Viagem e Hospedagem
+        'airport and airlines': 'Passagens aéreas',
+        'accommodation': 'Hospedagem',
+        'accomodation': 'Hospedagem',
+        'travel': 'Viagem',
+
+        // Transporte
+        'taxi and ride-hailing': 'Táxi / apps',
+        'public transportation': 'Ônibus / metrô',
+        'car rental': 'Aluguel carro',
+        'bicycle': 'Bicicleta',
+        'gas stations': 'Combustível',
+        'parking': 'Estacionamento',
+        'tolls and in vehicle payment': 'Pedágios',
+        'vehicle maintenance': 'Manutenção Auto',
+        'transport': 'Transporte',
+
+        // Seguros
+        'vehicle insurance': 'Seguro auto',
+        'insurance': 'Seguros',
+
+        // Moradia
+        'rent': 'Aluguel',
+        'electricity': 'Luz',
+        'water': 'Água',
+        'housing': 'Moradia',
+        'utilities': 'Contas',
+
+        // Impostos e Tarifas
+        'income taxes': 'IR',
+        'account fees': 'Tarifas conta',
+        'credit card fees': 'Tarifas cartão',
+        'taxes': 'Impostos',
+
+        // Serviços e Investimentos
+        'digital services': 'Serviços digitais',
+        'services': 'Serviços',
+        'investments': 'Investimentos',
+        'investment': 'Investimento',
+        'mileage programs': 'Milhas',
+        'entrepreneurial activities': 'Empreendedorismo',
+
+        // Outros
+        'alimony': 'Pensão',
+        'donation': 'Doações',
+        'donations': 'Doações',
+        'withdraw': 'Saque',
+        'others': 'Outros',
+
+        // Encargos e Taxas Financeiras
+        'tax on financial operations': 'IOF',
+        'late payment and overdraft costs': 'Encargos e Juros',
+        'late payment': 'Multa por Atraso',
+        'overdraft': 'Cheque Especial',
+        'overdraft costs': 'Cheque Especial',
+        'interest': 'Juros',
+        'fee': 'Taxa',
+        'fees': 'Taxas',
+        'finance charges': 'Encargos Financeiros',
+        'bank charges': 'Tarifas Bancárias',
+        'bank fees': 'Tarifas Bancárias',
+        'service charge': 'Taxa de Serviço',
+        'service charges': 'Taxas de Serviço',
+        'maintenance fee': 'Taxa de Manutenção',
+        'annual fee': 'Anuidade',
+        'monthly fee': 'Mensalidade',
+        'transaction fee': 'Taxa de Transação',
+        'atm fee': 'Taxa de Saque',
+        'wire transfer fee': 'Taxa de Transferência',
+        'foreign transaction fee': 'Taxa de Câmbio',
+        'penalty': 'Multa',
+        'penalties': 'Multas',
+        'uncategorized': 'Outros',
+        'unknown': 'Outros',
+        'other': 'Outros',
+        'miscellaneous': 'Diversos',
+        'general': 'Geral',
+        'unspecified': 'Não Especificado'
     };
 
-    return map[category] || category || 'Outros';
+    // Busca case-insensitive
+    const lowerCategory = category.toLowerCase().trim();
+
+    if (map[lowerCategory]) {
+        return map[lowerCategory];
+    }
+
+    // Se não encontrar, capitaliza a primeira letra e retorna
+    return category.charAt(0).toUpperCase() + category.slice(1);
 };

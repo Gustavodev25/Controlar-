@@ -18,7 +18,7 @@ import {
   collectionGroup
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem } from "../types";
 import { AppNotification } from "../types";
 
 
@@ -2806,4 +2806,46 @@ export const refundUserPayment = async (userId: string, amount?: number) => {
   });
 };
 
+// --- Changelog Services ---
+export const addChangelog = async (item: Omit<ChangelogItem, 'id'>) => {
+  if (!db) return "";
+  const changelogRef = collection(db, "changelogs");
+  // Ensure createdAt is present
+  const payload = {
+    ...item,
+    createdAt: item.createdAt || new Date().toISOString()
+  };
+  const docRef = await addDoc(changelogRef, payload);
+  return docRef.id;
+};
 
+export const getChangelogs = async (): Promise<ChangelogItem[]> => {
+  if (!db) return [];
+  try {
+    const changelogRef = collection(db, "changelogs");
+    // Sort by createdAt desc
+    const q = query(changelogRef, orderBy("createdAt", "desc"));
+    const snapshot = await getDocs(q);
+
+    return snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as ChangelogItem));
+  } catch (error) {
+    console.error("Error fetching changelogs:", error);
+    return [];
+  }
+};
+
+export const updateChangelog = async (id: string, item: Partial<ChangelogItem>) => {
+  if (!db) return;
+  const docRef = doc(db, "changelogs", id);
+  const { id: _, ...data } = item;
+  await updateDoc(docRef, data);
+};
+
+export const deleteChangelog = async (id: string) => {
+  if (!db) return;
+  const docRef = doc(db, "changelogs", id);
+  await deleteDoc(docRef);
+};

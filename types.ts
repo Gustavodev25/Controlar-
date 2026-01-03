@@ -663,3 +663,22 @@ export interface PromoPopup {
 export interface SystemSettings {
   metaPixelId?: string;
 }
+
+export interface ChangelogItem {
+  id?: string;
+  version: string;
+  majorVersion: string; // e.g. "10" for background display
+  date: string; // Display date string e.g. "24 Dez, 2024"
+  type: 'major' | 'minor' | 'patch';
+  image?: string;
+  summary?: string;
+  actionLink?: string;
+  changes: {
+    type: 'new' | 'improvement' | 'fix';
+    text: string;
+  }[];
+  newFeaturesIntro?: string;
+  improvementsIntro?: string;
+  fixesIntro?: string;
+  createdAt?: string; // ISO timestamp for sorting
+}

@@ -84,6 +84,13 @@ service cloud.firestore {
       allow update: if request.auth != null;
       allow delete: if request.auth != null && isUserAdmin();
     }
+
+    // --- REGRAS PARA CHANGELOG ---
+    match /changelogs/{changeLogId} {
+      allow read: if true;
+      allow write: if isUserAdmin();
+    }
+
     // --- REGRAS PARA CHAMADOS DE SUPORTE ---
     match /support_tickets/{ticketId} {
       allow create: if request.auth != null; // Changed to simple auth check, validated by logic

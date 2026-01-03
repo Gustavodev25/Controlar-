@@ -1234,7 +1234,21 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                   <div className="mt-3 pt-3 border-t border-gray-800/50">
                                     {(() => {
                                       const creditLimit = acc.creditLimit || 0;
-                                      const usedAmount = bill?.totalAmount || Math.abs(acc.balance || 0); // Use bill amount as "used" per user request
+                                      const availableLimit = acc.availableCreditLimit;
+
+                                      // Calcular o limite usado corretamente:
+                                      // Prioridade 1: creditLimit - availableCreditLimit (mais preciso)
+                                      // Prioridade 2: usedCreditLimit (se a API fornecer)
+                                      // Prioridade 3: Fallback para balance se nada mais estiver disponível
+                                      let usedAmount = 0;
+                                      if (creditLimit > 0 && availableLimit !== undefined && availableLimit !== null) {
+                                        usedAmount = Math.max(0, creditLimit - availableLimit);
+                                      } else if (acc.usedCreditLimit !== undefined && acc.usedCreditLimit !== null) {
+                                        usedAmount = acc.usedCreditLimit;
+                                      } else {
+                                        usedAmount = Math.abs(acc.balance || 0);
+                                      }
+
                                       const usagePercentage = creditLimit > 0 ? (usedAmount / creditLimit) * 100 : 0;
 
                                       return (

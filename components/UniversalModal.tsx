@@ -124,7 +124,7 @@ export const ModalSection: React.FC<ModalSectionProps> = ({ icon, title, childre
             <div className={iconClassName}>{icon}</div>
             <h4 className="text-sm font-bold text-white">{title}</h4>
         </div>
-        <div className="ml-6">
+        <div>
             {children}
         </div>
     </div>

@@ -14,6 +14,7 @@ import {
 } from 'recharts';
 import { Transaction } from '../types';
 import { getCategoryIcon } from './Icons';
+import { translatePluggyCategory } from '../services/openFinanceService';
 
 interface ChartsProps {
   transactions: Transaction[];
@@ -32,32 +33,6 @@ const COLORS = [
   '#e69a83', // Muted Clay
 ];
 
-const translateCategory = (category: string) => {
-  const map: Record<string, string> = {
-    'food': 'Alimentação',
-    'transport': 'Transporte',
-    'shopping': 'Compras',
-    'health': 'Saúde',
-    'education': 'Educação',
-    'housing': 'Moradia',
-    'entertainment': 'Lazer',
-    'utilities': 'Contas',
-    'salary': 'Salário',
-    'income': 'Receita',
-    'transfer': 'Transferência',
-    'investment': 'Investimento',
-    'services': 'Serviços',
-    'others': 'Outros',
-    'credit card payment': 'Pagamento de Cartão',
-    'taxes': 'Impostos',
-    'travel': 'Viagem',
-    'withdraw': 'Saque'
-  };
-  const lower = (category || '').toLowerCase();
-  // Return mapped value or Capitalized original
-  return map[lower] || (category ? category.charAt(0).toUpperCase() + category.slice(1) : 'Outros');
-};
-
 export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading = false }) => {
   // Process data for Category Pie Chart
   const categoryData = React.useMemo(() => {
@@ -66,7 +41,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
     const grouped = expenses.reduce((acc, curr) => {
       // Always use absolute amount for visualization
       const val = Math.abs(curr.amount);
-      const translatedCat = translateCategory(curr.category);
+      const translatedCat = translatePluggyCategory(curr.category);
       acc[translatedCat] = (acc[translatedCat] || 0) + val;
       return acc;
     }, {} as Record<string, number>);
