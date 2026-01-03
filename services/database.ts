@@ -2541,9 +2541,13 @@ export interface SupportTicket {
   unreadCount?: number;
   assignedTo?: string; // Admin ID
   assignedByName?: string; // Admin Name
+  type?: 'general' | 'cancellation_request';
+  awaitingRating?: boolean; // When admin requests rating
+  rating?: number; // 0-5 stars
+  ratedAt?: string;
 }
 
-export const createSupportTicket = async (userId: string, userEmail: string, userName: string) => {
+export const createSupportTicket = async (userId: string, userEmail: string, userName: string, type: 'general' | 'cancellation_request' = 'general') => {
   if (!db) return null;
   const ticketsRef = collection(db, "support_tickets");
 
@@ -2552,7 +2556,7 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
   const snap = await getDocs(q);
 
   if (!snap.empty) {
-    return snap.docs[0].id;
+    return snap.docs[0].id; // Return existing ticket if open
   }
 
   const newTicket: SupportTicket = {
@@ -2562,7 +2566,8 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
     status: 'open',
     createdAt: new Date().toISOString(),
     lastMessageAt: new Date().toISOString(),
-    unreadCount: 0
+    unreadCount: 0,
+    type
   };
 
   const docRef = await addDoc(ticketsRef, newTicket);
@@ -2646,7 +2651,43 @@ export const listenToAllOpenTickets = (callback: (tickets: SupportTicket[]) => v
 export const closeSupportTicket = async (ticketId: string) => {
   if (!db) return;
   const ticketRef = doc(db, "support_tickets", ticketId);
-  await updateDoc(ticketRef, { status: 'closed' });
+  await updateDoc(ticketRef, { status: 'closed', awaitingRating: false });
+};
+
+// Mark ticket as awaiting user rating
+export const requestTicketRating = async (ticketId: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await updateDoc(ticketRef, { awaitingRating: true });
+};
+
+// Submit user rating and close ticket
+export const submitTicketRating = async (ticketId: string, rating: number) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await updateDoc(ticketRef, {
+    rating,
+    ratedAt: new Date().toISOString(),
+    awaitingRating: false,
+    status: 'closed'
+  });
+};
+
+// Listen to closed tickets (for admin to see ratings)
+export const listenToClosedTickets = (callback: (tickets: SupportTicket[]) => void) => {
+  if (!db) return () => { };
+  const ticketsRef = collection(db, "support_tickets");
+  const q = query(ticketsRef, where("status", "==", "closed"));
+  return onSnapshot(q, (snap) => {
+    const tickets = snap.docs.map(d => ({ id: d.id, ...d.data() } as SupportTicket));
+    // Sort by ratedAt or lastMessageAt desc
+    tickets.sort((a, b) => {
+      const dateA = a.ratedAt || a.lastMessageAt || a.createdAt;
+      const dateB = b.ratedAt || b.lastMessageAt || b.createdAt;
+      return new Date(dateB).getTime() - new Date(dateA).getTime();
+    });
+    callback(tickets);
+  });
 };
 
 export const acceptSupportTicket = async (ticketId: string, adminId: string, adminName: string) => {
@@ -2738,9 +2779,30 @@ export const listenToAdminMessageLogs = (callback: (logs: AdminMessageLog[]) => 
   return onSnapshot(q, (snapshot) => {
     const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as AdminMessageLog));
     callback(logs);
-  }, (error) => {
-    console.error("Error listening to admin logs:", error);
-    callback([]);
+  });
+};
+
+
+// --- Admin Actions Services ---
+
+export const cancelUserSubscription = async (userId: string) => {
+  if (!db) return;
+  // Use existing helper to update subscription status
+  await updateUserSubscription(userId, {
+    status: 'canceled',
+    autoRenew: false
+  });
+};
+
+export const refundUserPayment = async (userId: string, amount?: number) => {
+  if (!db) return;
+  // Placeholder for refund logic (e.g., call Asaas API in backend)
+  // For now, we just log it or maybe mark last payment as refunded in DB if we had that structure
+  console.log(`[REFUND] Processing refund for user ${userId} amount ${amount || 'full'}`);
+
+  // Optionally update subscription status to refunded if that's the desired flow
+  await updateUserSubscription(userId, {
+    status: 'refunded'
   });
 };
 

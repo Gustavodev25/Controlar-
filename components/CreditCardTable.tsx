@@ -659,6 +659,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // Bank/Card Filter
   const [selectedCardId, setSelectedCardId] = useState<string>('');
 
+  // Category Filter
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
   // Enforce selecting the first card on load
   React.useEffect(() => {
     if ((selectedCardId === 'all' || !selectedCardId) && creditCardAccounts.length > 0) {
@@ -755,6 +758,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     years.add(new Date().getFullYear());
     const sortedYears = Array.from(years).sort((a, b) => b - a);
     return [{ value: 0, label: 'Todos' }, ...sortedYears.map(y => ({ value: y, label: y.toString() }))];
+  }, [transactions]);
+
+  // Extract unique categories from transactions
+  const availableCategories = useMemo(() => {
+    const categories = new Set<string>();
+    transactions.forEach(t => {
+      if (t.category) {
+        categories.add(t.category);
+      }
+    });
+    return Array.from(categories).sort();
   }, [transactions]);
 
   const isCreditCardPayment = (tx: Transaction) => {
@@ -1093,7 +1107,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         const matchesStartDate = startDate ? t.date >= startDate : true;
         const matchesEndDate = endDate ? t.date <= endDate : true;
 
-        return matchesSearch && matchesStartDate && matchesEndDate;
+        // Category Filter
+        let matchesCategory = true;
+        if (selectedCategory !== 'all') {
+          matchesCategory = t.category === selectedCategory;
+        }
+
+        return matchesSearch && matchesStartDate && matchesEndDate && matchesCategory;
       })
       .sort((a, b) => {
         const aValue: any = (a as any)[sortField];
@@ -1102,7 +1122,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [invoiceTransactions, allCardTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate]);
+  }, [invoiceTransactions, allCardTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate, selectedCategory]);
 
   // Combinar transações filtradas com encargos
   const transactionsWithCharges = useMemo(() => {
@@ -1601,8 +1621,40 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   {/* Spacer - hidden on mobile */}
                   <div className="hidden sm:block flex-1 order-2" />
 
+                  {/* Category Filter Dropdown */}
+                  <div className="relative z-50 w-full sm:w-auto order-3 sm:order-3">
+                    <Dropdown>
+                      <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
+                        <div className="flex items-center gap-2 truncate">
+                          <Tag size={16} className="text-[#d97757] flex-shrink-0" />
+                          <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translatePluggyCategory(selectedCategory)}</span>
+                        </div>
+                        <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
+                      </DropdownTrigger>
+                      <DropdownContent className="w-64 max-h-80 overflow-y-auto custom-scrollbar" align="left">
+                        <DropdownItem
+                          onClick={() => setSelectedCategory('all')}
+                          icon={Tag}
+                          className={selectedCategory === 'all' ? 'bg-white/5 text-white' : ''}
+                        >
+                          Todas as Categorias
+                        </DropdownItem>
+                        {availableCategories.map(cat => (
+                          <DropdownItem
+                            key={cat}
+                            onClick={() => setSelectedCategory(cat)}
+                            icon={Tag}
+                            className={selectedCategory === cat ? 'bg-white/5 text-white' : ''}
+                          >
+                            {translatePluggyCategory(cat)}
+                          </DropdownItem>
+                        ))}
+                      </DropdownContent>
+                    </Dropdown>
+                  </div>
+
                   {/* Start Date */}
-                  <div className="w-[calc(50%-6px)] sm:w-36 order-4 sm:order-3">
+                  <div className="w-[calc(50%-6px)] sm:w-36 order-4 sm:order-4">
                     <CustomDatePicker
                       value={startDate}
                       onChange={setStartDate}
@@ -1612,7 +1664,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
 
                   {/* End Date */}
-                  <div className="w-[calc(50%-6px)] sm:w-36 order-5 sm:order-4">
+                  <div className="w-[calc(50%-6px)] sm:w-36 order-5 sm:order-5">
                     <CustomDatePicker
                       value={endDate}
                       onChange={setEndDate}
@@ -1622,7 +1674,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
 
                   {/* Year Selector */}
-                  <div className="w-[calc(50%-6px)] sm:w-28 order-6 sm:order-5">
+                  <div className="w-[calc(50%-6px)] sm:w-28 order-6 sm:order-6">
                     <CustomSelect
                       value={selectedYear}
                       onChange={(val) => setSelectedYear(Number(val))}
@@ -1634,10 +1686,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
 
                   {/* Reset Button */}
-                  {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear())) && (
+                  {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedCategory !== 'all') && (
                     <button
-                      onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); }}
-                      className="h-11 px-4 w-[calc(50%-6px)] sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider order-7 sm:order-6"
+                      onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedCategory('all'); }}
+                      className="h-11 px-4 w-[calc(50%-6px)] sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider order-7 sm:order-7"
                     >
                       <X size={14} /> Limpar
                     </button>

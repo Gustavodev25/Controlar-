@@ -3291,7 +3291,7 @@ const App: React.FC = () => {
           />
         )}
 
-        <div className={activeTab === 'chat' ? "flex-1 overflow-hidden relative" : activeTab === 'credit_cards' || activeTab === 'table' ? "p-3 lg:p-6" : "p-3 lg:p-6 max-w-7xl mx-auto"}>
+        <div className={activeTab === 'chat' ? "flex-1 overflow-hidden relative" : activeTab === 'credit_cards' || activeTab === 'table' ? "p-3 lg:p-6" : activeTab === 'admin_support' ? "h-[calc(100vh-80px)] overflow-hidden" : "p-3 lg:p-6 max-w-7xl mx-auto"}>
 
           {/* Subscription Page - High Priority Render */}
           {activeTab === 'subscription' && currentUser ? (
@@ -3644,8 +3644,8 @@ const App: React.FC = () => {
         </div>
       </main>
 
-      {/* Floating Chat Assistant (Visible on all tabs except 'chat') */}
-      {activeTab !== 'chat' && (
+      {/* Floating Chat Assistant (Visible on all tabs except 'chat' and admin mode) */}
+      {activeTab !== 'chat' && !isAdminMode && (
         <AIChatAssistant
           onAddTransaction={handleAddTransaction}
           onAddReminder={handleAddReminder}

@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { CustomSettingsIcon } from './CustomIcons';
 import { UniversalModal, ModalSection, ModalDivider } from './UniversalModal';
+import { CancellationModal as CancellationModalNew } from './CancellationModal';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
@@ -22,7 +23,7 @@ import fogueteImg from '../assets/foguete.png';
 import familiaImg from '../assets/familia.png';
 import { getCurrentLocalMonth, toLocalISODate } from '../utils/dateUtils';
 import NumberFlow from '@number-flow/react';
-import { deleteUserAccount, getCouponById } from '../services/database';
+import { deleteUserAccount, getCouponById, createSupportTicket } from '../services/database';
 import { Coupon } from '../types';
 import { deleteUser, signOut } from 'firebase/auth';
 import { auth } from '../services/firebase';
@@ -227,6 +228,8 @@ const DeleteAccountModal: React.FC<DeleteAccountModalProps> = ({ isOpen, onClose
       document.body
    );
 };
+
+
 
 // --- COMPONENTE TWO FACTOR MODAL (Extraído para evitar re-renders) ---
 interface TwoFactorModalProps {
@@ -668,6 +671,31 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    });
    const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
    const [isVisible, setIsVisible] = useState(false);
+
+   // --- CANCELLATION STATE ---
+   const [showCancellationModal, setShowCancellationModal] = useState(false);
+   const [isProcessingCancellation, setIsProcessingCancellation] = useState(false);
+
+   const handleCancellationRequest = async () => {
+      try {
+         setIsProcessingCancellation(true);
+         const targetUserId = userId || user.id || ''; // Fallback to user.id or empty
+         const ticketId = await createSupportTicket(targetUserId, user.email || '', user.name || 'Usuário', 'cancellation_request');
+
+         if (ticketId) {
+            toast.success("Solicitação enviada. Nossa equipe entrará em contato em breve.");
+            setShowCancellationModal(false);
+         } else {
+            toast.info("Você já possui uma solicitação em aberto.");
+            setShowCancellationModal(false);
+         }
+      } catch (error) {
+         console.error("Error requesting cancellation:", error);
+         toast.error("Erro ao enviar solicitação. Tente novamente.");
+      } finally {
+         setIsProcessingCancellation(false);
+      }
+   };
 
    const [autoRenew, setAutoRenew] = useState(user.subscription?.autoRenew ?? true); // Moved to top level
    const [showAutoRenewConfirmation, setShowAutoRenewConfirmation] = useState(false);
@@ -2797,7 +2825,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                                  {/* Cancel Subscription Button */}
                                  <button
-                                    onClick={() => setShowCancelSubscriptionConfirmation(true)}
+                                    onClick={() => setShowCancellationModal(true)}
                                     className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
                                  >
                                     Cancelar assinatura
@@ -2878,6 +2906,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
          {/* Receipt Modal */}
          <ReceiptModal />
+         {/* Cancel Subscription Modal Flow */}
+         <CancellationModalNew
+            isOpen={showCancellationModal}
+            onClose={() => setShowCancellationModal(false)}
+            onConfirm={handleCancellationRequest}
+            isLoading={isProcessingCancellation}
+         />
+
       </div>,
       document.body
    );

@@ -3,10 +3,92 @@ import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, Send, MessageSquare, User, Shield, Zap, Copy, MessageSquarePlus, Check } from './Icons';
 import * as dbService from '../services/database';
-import { SupportMessage } from '../services/database';
+import { SupportMessage, SupportTicket, submitTicketRating, listenToTicket } from '../services/database';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { toast } from 'sonner';
+import { Star } from 'lucide-react';
+
+// Star Rating Component
+const StarRating: React.FC<{ onRate: (rating: number) => void; isSubmitting: boolean }> = ({ onRate, isSubmitting }) => {
+    const [hoveredStar, setHoveredStar] = useState<number | null>(null);
+    const [selectedStar, setSelectedStar] = useState<number | null>(null);
+
+    const handleClick = (rating: number) => {
+        setSelectedStar(rating);
+        onRate(rating);
+    };
+
+    return (
+        <motion.div
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="flex flex-col items-center justify-center py-6 px-4 bg-gradient-to-b from-[#373734] to-[#30302E] rounded-2xl border border-[#454543] mx-4 my-4 shadow-xl"
+        >
+            <div className="text-center mb-4">
+                <h3 className="text-white font-bold text-lg mb-1">Como foi o atendimento?</h3>
+                <p className="text-gray-400 text-sm">Sua avaliação nos ajuda a melhorar!</p>
+            </div>
+
+            <div className="flex gap-2 mb-4">
+                {[1, 2, 3, 4, 5].map((star) => (
+                    <motion.button
+                        key={star}
+                        disabled={isSubmitting}
+                        onMouseEnter={() => setHoveredStar(star)}
+                        onMouseLeave={() => setHoveredStar(null)}
+                        onClick={() => handleClick(star)}
+                        whileHover={{ scale: 1.2 }}
+                        whileTap={{ scale: 0.9 }}
+                        className={`p-2 transition-all duration-200 ${isSubmitting ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                        <Star
+                            size={32}
+                            className={`transition-all duration-200 ${(hoveredStar !== null && star <= hoveredStar) || (selectedStar !== null && star <= selectedStar)
+                                ? 'text-yellow-400 fill-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.5)]'
+                                : 'text-gray-600'
+                                }`}
+                        />
+                    </motion.button>
+                ))}
+            </div>
+
+            <p className="text-gray-500 text-xs">
+                {hoveredStar === 1 ? 'Péssimo' :
+                    hoveredStar === 2 ? 'Ruim' :
+                        hoveredStar === 3 ? 'Regular' :
+                            hoveredStar === 4 ? 'Bom' :
+                                hoveredStar === 5 ? 'Excelente!' : 'Clique em uma estrela'}
+            </p>
+
+            {isSubmitting && (
+                <div className="mt-2 flex items-center gap-2 text-gray-400 text-sm">
+                    <div className="w-4 h-4 border-2 border-[#d97757] border-t-transparent rounded-full animate-spin" />
+                    Enviando...
+                </div>
+            )}
+        </motion.div>
+    );
+};
+
+// Ticket Closed Message Component
+const TicketClosedMessage: React.FC<{ rating?: number }> = ({ rating }) => (
+    <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex justify-center py-4"
+    >
+        <div className="bg-[#373734] text-gray-400 text-xs px-4 py-2 rounded-full border border-[#454543] flex items-center gap-2">
+            <Check size={14} className="text-emerald-500" />
+            Atendimento finalizado
+            {rating !== undefined && (
+                <span className="flex items-center gap-1 ml-1 text-yellow-400">
+                    <Star size={12} fill="currentColor" /> {rating}
+                </span>
+            )}
+        </div>
+    </motion.div>
+);
 
 interface SupportChatProps {
     isOpen: boolean;
@@ -28,7 +110,10 @@ export const SupportChat: React.FC<SupportChatProps> = ({
     const [messages, setMessages] = useState<SupportMessage[]>([]);
     const [newMessage, setNewMessage] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [ticket, setTicket] = useState<SupportTicket | null>(null);
+    const [isSubmittingRating, setIsSubmittingRating] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const lastEmailSentRef = useRef<number>(0); // Track last email sent timestamp
 
     // For User: listen to active ticket if not provided
     useEffect(() => {
@@ -44,6 +129,19 @@ export const SupportChat: React.FC<SupportChatProps> = ({
             return () => unsubscribe();
         }
     }, [userId, isAdmin, ticketIdProp]);
+
+    // Listen to ticket status (for awaitingRating flag)
+    useEffect(() => {
+        if (!activeTicketId) {
+            setTicket(null);
+            return;
+        }
+
+        const unsubscribe = listenToTicket(activeTicketId, (ticketData) => {
+            setTicket(ticketData);
+        });
+        return () => unsubscribe();
+    }, [activeTicketId]);
 
     // Listen to messages when we have a ticket ID
     useEffect(() => {
@@ -70,6 +168,21 @@ export const SupportChat: React.FC<SupportChatProps> = ({
         }, 100);
     };
 
+    const handleSubmitRating = async (rating: number) => {
+        if (!activeTicketId || isSubmittingRating) return;
+
+        setIsSubmittingRating(true);
+        try {
+            await submitTicketRating(activeTicketId, rating);
+            toast.success('Obrigado pela sua avaliação!');
+        } catch (error) {
+            console.error('Error submitting rating:', error);
+            toast.error('Erro ao enviar avaliação');
+        } finally {
+            setIsSubmittingRating(false);
+        }
+    };
+
     const handleSendMessage = async () => {
         if (!newMessage.trim() || isLoading) return;
         setIsLoading(true);
@@ -90,6 +203,37 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                     senderType: isAdmin ? 'admin' : 'user',
                     createdAt: new Date().toISOString()
                 });
+
+                // Send Email Notification if Admin (with debounce to avoid multiple emails)
+                if (isAdmin) {
+                    const now = Date.now();
+                    const EMAIL_DEBOUNCE_MS = 60000; // 60 seconds debounce
+
+                    // Only send email if 60 seconds passed since last email
+                    if (now - lastEmailSentRef.current > EMAIL_DEBOUNCE_MS) {
+                        lastEmailSentRef.current = now;
+
+                        // Non-blocking email send
+                        fetch('/api/admin/send-email', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify({
+                                recipients: [userEmail],
+                                subject: 'Nova resposta no suporte - Controlar+',
+                                title: 'Suporte Controlar+',
+                                body: `Ola ${userName},\n\nVoce tem uma nova mensagem do suporte esperando por voce no app.\n\nAcesse para visualizar e responder.`,
+                                buttonText: 'Ver Mensagem',
+                                buttonLink: 'https://www.controlarmais.com.br/',
+                                headerAlign: 'center',
+                                titleAlign: 'center',
+                                bodyAlign: 'left'
+                            })
+                        }).catch(err => console.error("Failed to send support notification email:", err));
+                    }
+                }
+
                 setNewMessage('');
             }
         } catch (error) {
@@ -155,7 +299,7 @@ export const SupportChat: React.FC<SupportChatProps> = ({
         const userAvatarColors = getAvatarColors(userName);
 
         return (
-            <div className="flex flex-col h-full bg-[#30302E]">
+            <div className="flex flex-col h-full min-h-0 bg-[#30302E]">
                 {/* Header */}
                 <div className="flex items-center justify-between p-4 border-b border-[#373734] bg-[#30302E] shrink-0">
                     <div className="flex items-center gap-3">
@@ -275,7 +419,7 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                 </div>
 
                 {/* Chat Area */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-[#30302E] custom-scrollbar">
+                <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4 bg-[#30302E] custom-scrollbar">
                     {!activeTicketId && !isAdmin && (
                         <div className="flex flex-col items-center justify-center h-full text-center space-y-4 opacity-50">
                             <MessageSquare size={32} className="text-gray-600" />
@@ -298,7 +442,7 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                                 >
                                     <div
                                         className={`
-                                        max-w-[85%] rounded-2xl px-4 py-2.5 text-sm
+                                        ${isAdmin ? 'max-w-[90%] text-base' : 'max-w-[85%] text-sm'} rounded-2xl px-4 py-2.5
                                         ${isMe
                                                 ? 'bg-[#d97757] text-white'
                                                 : 'bg-[#3d3d3b] text-gray-200'
@@ -307,43 +451,56 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                                     >
                                         <p className="whitespace-pre-wrap leading-relaxed">{msg.text}</p>
                                     </div>
-                                    <span className="text-[10px] text-gray-600 mt-1 px-1">
+                                    <span className="text-xs text-gray-600 mt-1 px-1">
                                         {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                                     </span>
                                 </motion.div>
                             );
                         })}
                     </AnimatePresence>
+
+                    {/* Rating Component - Show when awaiting rating (user side only) */}
+                    {!isAdmin && ticket?.awaitingRating && (
+                        <StarRating onRate={handleSubmitRating} isSubmitting={isSubmittingRating} />
+                    )}
+
+                    {/* Closed Message - Show when ticket is closed */}
+                    {ticket?.status === 'closed' && (
+                        <TicketClosedMessage rating={ticket.rating} />
+                    )}
+
                     <div ref={messagesEndRef} />
                 </div>
 
-                {/* Input Area */}
-                <div className="p-4 bg-[#30302E] shrink-0">
-                    <div className="relative flex items-center gap-2">
-                        <textarea
-                            value={newMessage}
-                            onChange={(e) => setNewMessage(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            placeholder="Digite sua mensagem..."
-                            className="w-full bg-[#3d3d3b] text-white placeholder:text-gray-600 border border-transparent focus:border-[#373734] rounded-xl px-4 py-3 text-sm focus:outline-none transition-all resize-none custom-scrollbar"
-                            rows={1}
-                            style={{ minHeight: '44px', maxHeight: '100px' }}
-                        />
-                        <button
-                            onClick={handleSendMessage}
-                            disabled={!newMessage.trim() || isLoading}
-                            className={`
-                            p-2.5 rounded-xl transition-all shrink-0
-                            ${!newMessage.trim() || isLoading
-                                    ? 'text-gray-600 bg-[#3d3d3b]'
-                                    : 'bg-white text-black hover:bg-gray-200'
-                                }
-                        `}
-                        >
-                            <Send size={18} />
-                        </button>
+                {/* Input Area - Hide when awaiting rating or closed (for user) */}
+                {(isAdmin || (!ticket?.awaitingRating && ticket?.status !== 'closed')) && (
+                    <div className="p-4 bg-[#30302E] shrink-0">
+                        <div className="relative flex items-center gap-2">
+                            <textarea
+                                value={newMessage}
+                                onChange={(e) => setNewMessage(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                placeholder="Digite sua mensagem..."
+                                className={`w-full bg-[#3d3d3b] text-white placeholder:text-gray-600 border border-transparent focus:border-[#373734] rounded-xl px-4 py-3 focus:outline-none transition-all resize-none custom-scrollbar ${isAdmin ? 'text-base' : 'text-sm'}`}
+                                rows={1}
+                                style={{ minHeight: '44px', maxHeight: '100px' }}
+                            />
+                            <button
+                                onClick={handleSendMessage}
+                                disabled={!newMessage.trim() || isLoading}
+                                className={`
+                                p-2.5 rounded-xl transition-all shrink-0
+                                ${!newMessage.trim() || isLoading
+                                        ? 'text-gray-600 bg-[#3d3d3b]'
+                                        : 'bg-white text-black hover:bg-gray-200'
+                                    }
+                            `}
+                            >
+                                <Send size={18} />
+                            </button>
+                        </div>
                     </div>
-                </div>
+                )}
             </div>
         );
     };

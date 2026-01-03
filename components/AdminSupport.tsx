@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket } from '../services/database';
+import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -13,8 +13,10 @@ interface AdminSupportProps {
 
 export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
     const [tickets, setTickets] = useState<SupportTicket[]>([]);
+    const [closedTickets, setClosedTickets] = useState<SupportTicket[]>([]);
     const [selectedTicket, setSelectedTicket] = useState<SupportTicket | null>(null);
     const [showTerminationModal, setShowTerminationModal] = useState(false);
+    const [activeListTab, setActiveListTab] = useState<'open' | 'closed'>('open');
 
     // New Ticket / User Search State
     const [showNewTicketModal, setShowNewTicketModal] = useState(false);
@@ -39,13 +41,22 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         return () => unsub();
     }, [pendingTicketId]);
 
+    // Listen to closed tickets
+    useEffect(() => {
+        const unsub = listenToClosedTickets((data) => {
+            setClosedTickets(data);
+        });
+        return () => unsub();
+    }, []);
+
     // Update selected ticket real-time status if it changes in the list
     useEffect(() => {
         if (selectedTicket) {
-            const updated = tickets.find(t => t.id === selectedTicket.id);
+            const allTickets = [...tickets, ...closedTickets];
+            const updated = allTickets.find(t => t.id === selectedTicket.id);
             if (updated) setSelectedTicket(updated);
         }
-    }, [tickets]);
+    }, [tickets, closedTickets]);
 
     // Load users for the new ticket modal
     useEffect(() => {
@@ -132,24 +143,53 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         if (!selectedTicket) return;
 
         try {
-            await closeSupportTicket(selectedTicket.id!);
-            toast.success('Atendimento encerrado com sucesso!');
-            setSelectedTicket(null);
+            // Mark ticket as awaiting rating - the user will see a star rating UI
+            await requestTicketRating(selectedTicket.id!);
+
+            toast.success('Solicitação de avaliação enviada! Aguardando resposta do usuário.');
             setShowTerminationModal(false);
+            // Keep selectedTicket open to monitor user response
         } catch (error) {
-            toast.error('Erro ao encerrar atendimento');
+            console.error(error);
+            toast.error('Erro ao solicitar avaliação');
+        }
+    };
+
+    const handleAdminCancelSubscription = async () => {
+        if (!selectedTicket || !selectedTicket.userId) return;
+        if (!confirm("Tem certeza que deseja cancelar a assinatura deste usuário?")) return;
+
+        try {
+            await cancelUserSubscription(selectedTicket.userId);
+            toast.success("Assinatura cancelada com sucesso.");
+            // Optionally auto-close ticket or add system message
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao cancelar assinatura.");
+        }
+    };
+
+    const handleAdminRefund = async () => {
+        if (!selectedTicket || !selectedTicket.userId) return;
+        if (!confirm("Confirmar estorno do pagamento? Esta ação não pode ser desfeita.")) return;
+
+        try {
+            await refundUserPayment(selectedTicket.userId);
+            toast.success("Estorno processado (simulado).");
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao processar estorno.");
         }
     };
 
     return (
-        <div className="flex h-[calc(100vh-140px)] gap-6 overflow-hidden">
+        <div className="flex h-full w-full min-h-0 gap-4 overflow-hidden p-4">
             {/* List */}
-            <div className="w-[320px] flex flex-col shrink-0 bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden">
+            <div className="w-[450px] flex flex-col shrink-0 bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden">
                 <div className="p-4 border-b border-[#373734] bg-[#30302E] flex items-center justify-between">
                     <h2 className="font-bold text-lg flex items-center gap-2 text-white">
                         <MessageSquare size={18} className="text-[#d97757]" />
                         Chamados
-                        <span className="text-xs font-normal text-gray-500 bg-[#373734] px-2 py-0.5 rounded-full">{tickets.length}</span>
                     </h2>
                     <button
                         onClick={() => setShowNewTicketModal(true)}
@@ -160,8 +200,34 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                     </button>
                 </div>
 
+                {/* Tabs */}
+                <div className="flex border-b border-[#373734]">
+                    <button
+                        onClick={() => setActiveListTab('open')}
+                        className={`flex-1 px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeListTab === 'open'
+                            ? 'text-white bg-[#373734] border-b-2 border-[#d97757]'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-[#373734]/30'
+                            }`}
+                    >
+                        <MessageSquare size={14} />
+                        Abertos
+                        <span className="text-xs bg-[#454543] px-1.5 py-0.5 rounded-full">{tickets.length}</span>
+                    </button>
+                    <button
+                        onClick={() => setActiveListTab('closed')}
+                        className={`flex-1 px-4 py-2.5 text-sm font-medium transition-all flex items-center justify-center gap-2 ${activeListTab === 'closed'
+                            ? 'text-white bg-[#373734] border-b-2 border-[#d97757]'
+                            : 'text-gray-500 hover:text-gray-300 hover:bg-[#373734]/30'
+                            }`}
+                    >
+                        <Archive size={14} />
+                        Finalizados
+                        <span className="text-xs bg-[#454543] px-1.5 py-0.5 rounded-full">{closedTickets.length}</span>
+                    </button>
+                </div>
+
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-2 bg-[#30302E]">
-                    {tickets.length === 0 && (
+                    {activeListTab === 'open' && tickets.length === 0 && (
                         <div className="py-12 text-center text-gray-500 flex flex-col items-center">
                             <div className="w-16 h-16 rounded-full bg-[#373734] flex items-center justify-center mb-3 border border-[#454543]">
                                 <CheckCircle size={24} className="opacity-30" />
@@ -171,7 +237,18 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                         </div>
                     )}
 
-                    {tickets.map(ticket => {
+                    {activeListTab === 'closed' && closedTickets.length === 0 && (
+                        <div className="py-12 text-center text-gray-500 flex flex-col items-center">
+                            <div className="w-16 h-16 rounded-full bg-[#373734] flex items-center justify-center mb-3 border border-[#454543]">
+                                <Archive size={24} className="opacity-30" />
+                            </div>
+                            <span className="text-sm font-medium">Nenhum atendimento finalizado</span>
+                            <span className="text-xs opacity-60 mt-1">Os chamados fechados aparecerão aqui.</span>
+                        </div>
+                    )}
+
+                    {/* Open Tickets */}
+                    {activeListTab === 'open' && tickets.map(ticket => {
                         const isSelected = selectedTicket?.id === ticket.id;
                         const isUnassigned = !ticket.assignedTo;
                         const userAvatarColors = getAvatarColors(ticket.userName || 'User');
@@ -182,7 +259,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                 key={ticket.id}
                                 onClick={() => setSelectedTicket(ticket)}
                                 className={`
-                                    p-4 rounded-xl cursor-pointer transition-all duration-200 group relative border
+                                    p-5 rounded-xl cursor-pointer transition-all duration-200 group relative border
                                     ${isSelected
                                         ? 'bg-[#373734] border-[#d97757] shadow-[0_0_15px_-3px_rgba(217,119,87,0.15)]'
                                         : 'bg-[#373734]/50 border-transparent hover:border-[#454543] hover:bg-[#373734]'
@@ -208,7 +285,17 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
 
                                 <div className="pl-[52px] flex items-center justify-between">
                                     <div className="flex items-center gap-2">
-                                        {isUnassigned ? (
+                                        {ticket.type === 'cancellation_request' && (
+                                            <span className="flex items-center gap-1.5 text-[10px] font-bold text-red-500 bg-red-500/10 px-2 py-0.5 rounded-full border border-red-500/20">
+                                                CANCELAMENTO
+                                            </span>
+                                        )}
+                                        {ticket.awaitingRating ? (
+                                            <span className="flex items-center gap-1.5 text-[10px] font-medium text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
+                                                <Star size={10} fill="currentColor" />
+                                                Aguardando Avaliação
+                                            </span>
+                                        ) : isUnassigned ? (
                                             <span className="flex items-center gap-1.5 text-[10px] font-medium text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
                                                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
                                                 Novo
@@ -229,13 +316,77 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             </div>
                         );
                     })}
+
+                    {/* Closed Tickets */}
+                    {activeListTab === 'closed' && closedTickets.map(ticket => {
+                        const isSelected = selectedTicket?.id === ticket.id;
+                        const userAvatarColors = getAvatarColors(ticket.userName || 'User');
+                        const closedDate = ticket.ratedAt || ticket.lastMessageAt;
+
+                        return (
+                            <div
+                                key={ticket.id}
+                                onClick={() => setSelectedTicket(ticket)}
+                                className={`
+                                    p-5 rounded-xl cursor-pointer transition-all duration-200 group relative border
+                                    ${isSelected
+                                        ? 'bg-[#373734] border-[#d97757] shadow-[0_0_15px_-3px_rgba(217,119,87,0.15)]'
+                                        : 'bg-[#373734]/50 border-transparent hover:border-[#454543] hover:bg-[#373734]'
+                                    }
+                                `}
+                            >
+                                <div className="flex justify-between items-start mb-2">
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 font-bold text-sm ${userAvatarColors.bg} ${userAvatarColors.text} ring-2 ring-[#30302E] opacity-70`}>
+                                            {getInitials(ticket.userName || 'User')}
+                                        </div>
+                                        <div className="flex flex-col min-w-0">
+                                            <span className={`font-semibold text-sm truncate ${isSelected ? 'text-white' : 'text-gray-300'}`}>
+                                                {ticket.userName || 'Usuário'}
+                                            </span>
+                                            <span className="text-xs text-gray-500 truncate">{ticket.userEmail}</span>
+                                        </div>
+                                    </div>
+                                    <span className="text-[10px] font-medium text-gray-500 bg-[#373734] px-1.5 py-0.5 rounded whitespace-nowrap">
+                                        {new Date(closedDate).toLocaleDateString('pt-BR')}
+                                    </span>
+                                </div>
+
+                                <div className="pl-[52px] flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        {/* Rating Badge */}
+                                        {ticket.rating !== undefined ? (
+                                            <span className="flex items-center gap-1 text-[10px] font-medium text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
+                                                {[...Array(5)].map((_, i) => (
+                                                    <Star
+                                                        key={i}
+                                                        size={10}
+                                                        className={i < ticket.rating! ? 'fill-yellow-400' : 'fill-gray-600 text-gray-600'}
+                                                    />
+                                                ))}
+                                                <span className="ml-1">{ticket.rating}/5</span>
+                                            </span>
+                                        ) : (
+                                            <span className="flex items-center gap-1.5 text-[10px] font-medium text-gray-500 bg-gray-500/10 px-2 py-0.5 rounded-full border border-gray-500/20">
+                                                Sem avaliação
+                                            </span>
+                                        )}
+                                    </div>
+                                    <span className="flex items-center gap-1 text-[10px] text-gray-500">
+                                        <CheckCircle size={12} />
+                                        Finalizado
+                                    </span>
+                                </div>
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
 
             {/* Chat View */}
-            <div className="flex-1 bg-[#30302E] relative flex flex-col rounded-2xl overflow-hidden border border-[#373734]">
+            <div className="flex-1 min-h-0 bg-[#30302E] relative flex flex-col rounded-2xl overflow-hidden border border-[#373734]">
                 {selectedTicket ? (
-                    <div className="h-full flex flex-col relative bg-[#30302E]">
+                    <div className="h-full min-h-0 flex flex-col relative bg-[#30302E]">
                         {/* Assignment Banner */}
                         {!selectedTicket.assignedTo && (
                             <div className="absolute inset-x-0 top-0 z-20 bg-blue-500/10 backdrop-blur-md border-b border-blue-500/20 p-3 flex items-center justify-between shadow-lg">
@@ -261,7 +412,38 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             </div>
                         )}
 
-                        <div className={`flex-1 ${!selectedTicket.assignedTo ? 'pt-[52px]' : ''}`}>
+                        {/* Cancellation Request Action Panel */}
+                        {selectedTicket.type === 'cancellation_request' && (
+                            <div className="bg-red-500/5 border-b border-red-500/10 p-4 flex items-center justify-between z-10">
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-red-500/10 rounded-lg text-red-500">
+                                        <AlertTriangle size={18} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-sm font-bold text-red-400">Solicitação de Cancelamento</h4>
+                                        <p className="text-xs text-gray-500">O usuário solicitou o cancelamento do plano.</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        onClick={handleAdminRefund}
+                                        className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-700 flex items-center gap-2"
+                                        title="Estornar Pagamento"
+                                    >
+                                        <CreditCard size={14} /> Estornar
+                                    </button>
+                                    <button
+                                        onClick={handleAdminCancelSubscription}
+                                        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors shadow-lg shadow-red-500/20 flex items-center gap-2"
+                                        title="Cancelar Plano"
+                                    >
+                                        <Ban size={14} /> Cancelar Plano
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className={`flex-1 min-h-0 overflow-hidden ${!selectedTicket.assignedTo ? 'pt-[52px]' : ''}`}>
                             <SupportChat
                                 isOpen={true}
                                 onClose={() => setSelectedTicket(null)}
@@ -384,6 +566,6 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                     </div>
                 </div>
             </UniversalModal>
-        </div>
+        </div >
     );
 }

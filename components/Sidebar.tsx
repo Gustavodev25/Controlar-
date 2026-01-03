@@ -532,24 +532,43 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`
                     relative flex items-center outline-none group transition-all duration-300 w-full
                     ${isOpen ? 'gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
-                    text-gray-500 hover:bg-gray-800/50 hover:text-gray-300
+                    ${hasUnreadSupport
+                    ? 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30'
+                    : 'text-gray-500 hover:bg-gray-800/50 hover:text-gray-300'
+                  }
                   `}
               >
                 <div className="relative flex items-center justify-center shrink-0">
                   {hasUnreadSupport && (
-                    <div className="absolute -right-1 -top-1 w-2 h-2 bg-[#d97757] rounded-full animate-pulse" />
+                    <>
+                      {/* Pulsing ring effect */}
+                      <div className="absolute inset-0 w-6 h-6 -m-1 bg-[#d97757]/20 rounded-full animate-ping" />
+                      {/* Dot indicator */}
+                      <div className="absolute -right-1 -top-1 w-2.5 h-2.5 bg-[#d97757] rounded-full animate-pulse shadow-lg shadow-[#d97757]/50" />
+                    </>
                   )}
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="transition-transform duration-300 group-hover:scale-110"><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 group-hover:scale-110 ${hasUnreadSupport ? 'text-[#d97757]' : ''}`}><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>
                 </div>
 
                 <AnimatePresence>
                   {isOpen && (
-                    <motion.span
+                    <motion.div
                       initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
-                      className="font-medium text-sm text-gray-400 group-hover:text-gray-300"
+                      className="flex items-center gap-2 flex-1"
                     >
-                      Suporte
-                    </motion.span>
+                      <span className={`font-medium text-sm ${hasUnreadSupport ? 'text-[#d97757]' : 'text-gray-400 group-hover:text-gray-300'}`}>
+                        Suporte
+                      </span>
+                      {hasUnreadSupport && (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="px-2 py-0.5 bg-[#d97757] text-white text-[10px] font-bold rounded-full uppercase tracking-wider shadow-lg shadow-[#d97757]/30"
+                        >
+                          Nova resposta!
+                        </motion.span>
+                      )}
+                    </motion.div>
                   )}
                 </AnimatePresence>
               </button>

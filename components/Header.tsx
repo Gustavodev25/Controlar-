@@ -162,6 +162,8 @@ export const Header: React.FC<HeaderProps> = ({
       case 'admin_users': return { title: 'Usuários', desc: 'Gerenciar usuários cadastrados no sistema.' };
       case 'credit_cards': return { title: 'Faturas', desc: 'Gerencie suas despesas em cartões de crédito.' };
       case 'roadmap': return { title: 'Roadmap Público', desc: 'Acompanhe as próximas novidades.' };
+      case 'admin_support': return { title: 'Suporte', desc: 'Gerencie chamados e atendimentos.' };
+      case 'admin_subscriptions': return { title: 'Assinaturas Asaas', desc: 'Gerenciar assinaturas de usuários.' };
       default: return { title: 'Controlar+', desc: '' };
     }
   };

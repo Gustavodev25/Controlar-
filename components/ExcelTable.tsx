@@ -37,6 +37,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   // Account Filter
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
+  // Category Filter
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
   // Confirmation Card State
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
@@ -68,6 +71,17 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     return [{ value: 0, label: 'Todos' }, ...sortedYears.map(y => ({ value: y, label: y.toString() }))];
   }, [transactions]);
 
+  // Extract unique categories from transactions
+  const availableCategories = useMemo(() => {
+    const categories = new Set<string>();
+    transactions.forEach(t => {
+      if (t.category) {
+        categories.add(t.category);
+      }
+    });
+    return Array.from(categories).sort();
+  }, [transactions]);
+
   const handleSort = (field: keyof Transaction) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -96,7 +110,13 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         matchesAccount = t.accountId === selectedAccountId;
       }
 
-      return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesAccount;
+      // Category Filter
+      let matchesCategory = true;
+      if (selectedCategory !== 'all') {
+        matchesCategory = t.category === selectedCategory;
+      }
+
+      return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesAccount && matchesCategory;
     })
     .sort((a, b) => {
       const aValue = a[sortField];
@@ -116,7 +136,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   // Reset página quando filtros mudam
   React.useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedYear, startDate, endDate, selectedAccountId]);
+  }, [searchTerm, selectedYear, startDate, endDate, selectedAccountId, selectedCategory]);
 
   const handlePageChange = (page: number) => {
     if (page >= 1 && page <= totalPages) {
@@ -238,7 +258,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               </div>
               <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
             </DropdownTrigger>
-            <DropdownContent className="w-56" align="right">
+            <DropdownContent className="w-56" align="left">
               <DropdownItem
                 onClick={() => setSelectedAccountId('all')}
                 icon={Filter}
@@ -254,6 +274,38 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   className={selectedAccountId === acc.id ? 'bg-white/5 text-white' : ''}
                 >
                   {acc.name || acc.institution || 'Conta Sem Nome'}
+                </DropdownItem>
+              ))}
+            </DropdownContent>
+          </Dropdown>
+        </div>
+
+        {/* Category Filter Dropdown */}
+        <div className="relative z-50 w-full sm:w-auto order-4 sm:order-3">
+          <Dropdown>
+            <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
+              <div className="flex items-center gap-2 truncate">
+                <Tag size={16} className="text-[#d97757] flex-shrink-0" />
+                <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translateCategory(selectedCategory)}</span>
+              </div>
+              <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
+            </DropdownTrigger>
+            <DropdownContent className="w-64 max-h-80 overflow-y-auto custom-scrollbar" align="left">
+              <DropdownItem
+                onClick={() => setSelectedCategory('all')}
+                icon={Tag}
+                className={selectedCategory === 'all' ? 'bg-white/5 text-white' : ''}
+              >
+                Todas as Categorias
+              </DropdownItem>
+              {availableCategories.map(cat => (
+                <DropdownItem
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  icon={Tag}
+                  className={selectedCategory === cat ? 'bg-white/5 text-white' : ''}
+                >
+                  {translateCategory(cat)}
                 </DropdownItem>
               ))}
             </DropdownContent>
@@ -293,9 +345,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         </div>
 
         {/* Reset Button */}
-        {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedAccountId !== 'all') && (
+        {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedAccountId !== 'all' || selectedCategory !== 'all') && (
           <button
-            onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedAccountId('all'); }}
+            onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedAccountId('all'); setSelectedCategory('all'); }}
             className="h-11 px-4 w-[calc(50%-6px)] sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider order-7 sm:order-6"
           >
             <X size={14} /> Limpar
