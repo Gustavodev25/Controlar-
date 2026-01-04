@@ -1,15 +1,16 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight } from './Icons';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus } from './Icons';
+import { motion, AnimatePresence } from 'framer-motion';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
 import { createPortal } from 'react-dom';
 import { useToasts } from './Toast';
 import { EmptyState } from './EmptyState';
-import { translatePluggyCategory } from '../services/openFinanceService';
 import { UniversalModal } from './UniversalModal';
 import { exportToCSV } from '../utils/export';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 interface ExcelTableProps {
   transactions: Transaction[];
@@ -18,9 +19,11 @@ interface ExcelTableProps {
   isManualMode?: boolean;
   onAdd?: (transaction: Omit<Transaction, 'id'>) => Promise<void>;
   accounts?: ConnectedAccount[];
+  userId?: string;
+  onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => void;
 }
 
-export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd, accounts = [] }) => {
+export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd, accounts = [], userId, onBulkUpdate }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
@@ -182,8 +185,34 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
-  const translateCategory = (category: string) => {
-    return translatePluggyCategory(category);
+  // Hook para tradução de categorias do usuário
+  const { translateCategory, categoryMappings } = useCategoryTranslation(userId);
+
+  // Bulk Selection State
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [bulkCategory, setBulkCategory] = useState('');
+
+  const handleSelectAll = () => {
+    if (selectedIds.length === filteredTransactions.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredTransactions.map(t => t.id));
+    }
+  };
+
+  const handleSelectOne = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleBulkSubmit = () => {
+    if (onBulkUpdate && bulkCategory) {
+      onBulkUpdate(selectedIds, { category: bulkCategory });
+      setSelectedIds([]);
+      setBulkCategory('');
+      setIsBulkEditOpen(false);
+    }
   };
 
   // Get selected account name for display
@@ -356,13 +385,111 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       </div>
 
       {/* Table Card */}
-      <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden">
+      <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden relative">
+        <AnimatePresence>
+          {selectedIds.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -20 }}
+              className="absolute top-0 left-0 right-0 z-20 bg-[#232322] border-b border-[#373734] p-3 flex items-center justify-between"
+            >
+              <div className="flex items-center gap-3 pl-2">
+                <span className="flex items-center justify-center w-6 h-6 rounded-md bg-[#d97757]/20 text-[#d97757] font-bold text-xs">
+                  {selectedIds.length}
+                </span>
+                <span className="text-white font-medium text-sm">
+                  selecionados
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Dropdown>
+                  <DropdownTrigger className="flex items-center gap-2 px-3 py-1.5 bg-[#3a3a38] border border-[#454542] hover:border-[#d97757]/50 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-colors">
+                    <Tag size={13} />
+                    {bulkCategory ? translateCategory(bulkCategory) : "Alterar Categoria"}
+                  </DropdownTrigger>
+                  <DropdownContent className="w-56 max-h-60 overflow-y-auto custom-scrollbar" align="right">
+                    <DropdownItem
+                      onClick={() => setBulkCategory('')}
+                      icon={Tag}
+                      className="bg-transparent text-gray-400"
+                    >
+                      Limpar Seleção
+                    </DropdownItem>
+                    {categoryMappings.length > 0 ? categoryMappings.map((cat) => (
+                      <DropdownItem
+                        key={cat.originalKey}
+                        onClick={() => setBulkCategory(cat.originalKey)}
+                        icon={Tag}
+                        className={bulkCategory === cat.originalKey ? 'bg-white/5 text-white' : ''}
+                      >
+                        {cat.displayName || cat.originalKey}
+                      </DropdownItem>
+                    )) : CATEGORIES.map((cat: any) => (
+                      <DropdownItem
+                        key={cat}
+                        onClick={() => setBulkCategory(cat)}
+                        icon={Tag}
+                        className={bulkCategory === cat ? 'bg-white/5 text-white' : ''}
+                      >
+                        {translateCategory(cat)}
+                      </DropdownItem>
+                    ))}
+                  </DropdownContent>
+                </Dropdown>
+
+                <button
+                  onClick={handleBulkSubmit}
+                  disabled={!bulkCategory}
+                  className="flex items-center gap-2 px-3 py-1.5 bg-[#d97757] hover:bg-[#c56646] text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Check size={13} />
+                  Aplicar
+                </button>
+
+                <div className="h-4 w-px bg-gray-700 mx-1" />
+                <button
+                  onClick={() => setSelectedIds([])}
+                  className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                  title="Limpar seleção"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
         {/* Desktop Table View */}
         <div className="hidden lg:block overflow-auto flex-1 custom-scrollbar z-0">
           <table className="min-w-full border-collapse text-sm text-left h-full">
             <thead className="bg-[#333432] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
               <tr>
-                <th className="px-6 py-4 border-b border-r border-[#373734] w-40 first:rounded-tl-xl">
+                <th className="px-4 py-4 border-b border-r border-[#373734] w-12 text-center first:rounded-tl-xl align-middle">
+                  <div className="flex items-center justify-center h-full">
+                    <button
+                      onClick={handleSelectAll}
+                      className="group flex items-center justify-center w-full h-full"
+                    >
+                      <div className={`
+                        w-5 h-5 rounded-md border transition-all flex items-center justify-center
+                        ${selectedIds.length > 0
+                          ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                          : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                        }
+                      `}>
+                        {filteredTransactions.length > 0 && selectedIds.length === filteredTransactions.length ? (
+                          <Check size={12} strokeWidth={3} />
+                        ) : selectedIds.length > 0 ? (
+                          <Minus size={12} strokeWidth={3} />
+                        ) : (
+                          <Check size={12} strokeWidth={3} />
+                        )}
+                      </div>
+                    </button>
+                  </div>
+                </th>
+                <th className="px-6 py-4 border-b border-r border-[#373734] w-40">
                   <Dropdown>
                     <DropdownTrigger className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer w-full text-left">
                       Data {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
@@ -461,6 +588,24 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <tbody className="divide-y divide-[#373734]">
               {paginatedTransactions.map((t) => (
                 <tr key={t.id} className="hover:bg-[#373734]/10 transition-colors group border-b border-[#373734]">
+                  <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
+                    <div className="flex items-center justify-center h-full">
+                      <button
+                        onClick={(e) => handleSelectOne(t.id, e)}
+                        className="group flex items-center justify-center w-full h-full"
+                      >
+                        <div className={`
+                          w-5 h-5 rounded-md border transition-all flex items-center justify-center
+                          ${selectedIds.includes(t.id)
+                            ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                            : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                          }
+                        `}>
+                          <Check size={12} strokeWidth={3} />
+                        </div>
+                      </button>
+                    </div>
+                  </td>
                   <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs border-r border-[#373734]">
                     {formatDate(t.date)}
                   </td>
@@ -522,7 +667,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               ))}
               {filteredTransactions.length === 0 && (
                 <tr className="h-full">
-                  <td colSpan={6} className="p-4 h-full">
+                  <td colSpan={7} className="p-4 h-full">
                     <EmptyState
                       title="Nenhum lançamento encontrado"
                       description="Tente ajustar os filtros de data ou busca."
@@ -677,6 +822,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           </div>
         </div>
       </div>
+
+      {/* Bulk Action Bar */}
+
 
       {/* Delete Confirmation */}
       <ConfirmationBar

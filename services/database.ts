@@ -18,7 +18,7 @@ import {
   collectionGroup
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping } from "../types";
 import { AppNotification } from "../types";
 
 
@@ -659,6 +659,25 @@ export const updateTransaction = async (userId: string, transaction: Transaction
   await updateDoc(txRef, data);
 };
 
+export const bulkUpdateTransactions = async (userId: string, transactionIds: string[], updates: Partial<Transaction>) => {
+  if (!db) return;
+
+  // Firestore limits batches to 500 operations
+  const chunkSize = 500;
+  for (let i = 0; i < transactionIds.length; i += chunkSize) {
+    const chunk = transactionIds.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    const userRef = collection(db, "users", userId, "transactions");
+
+    chunk.forEach(id => {
+      const docRef = doc(userRef, id);
+      batch.update(docRef, updates);
+    });
+
+    await batch.commit();
+  }
+};
+
 export const deleteTransaction = async (userId: string, transactionId: string) => {
   if (!db) return;
   const txRef = doc(db, "users", userId, "transactions", transactionId);
@@ -1158,6 +1177,24 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
   const { id, ...data } = transaction;
   const cleanData = removeUndefined(data);
   await updateDoc(txRef, cleanData);
+};
+
+export const bulkUpdateCreditCardTransactions = async (userId: string, transactionIds: string[], updates: Partial<CreditCardTransaction>) => {
+  if (!db) return;
+
+  const chunkSize = 500;
+  for (let i = 0; i < transactionIds.length; i += chunkSize) {
+    const chunk = transactionIds.slice(i, i + chunkSize);
+    const batch = writeBatch(db);
+    const userRef = collection(db, "users", userId, "creditCardTransactions");
+
+    chunk.forEach(id => {
+      const docRef = doc(userRef, id);
+      batch.update(docRef, updates);
+    });
+
+    await batch.commit();
+  }
 };
 
 export const deleteCreditCardTransaction = async (userId: string, transactionId: string) => {
@@ -2849,3 +2886,271 @@ export const deleteChangelog = async (id: string) => {
   const docRef = doc(db, "changelogs", id);
   await deleteDoc(docRef);
 };
+
+// --- Category Mapping Services ---
+// Gerenciamento de nomes personalizados de categorias por usuário
+
+// Categorias padrão do sistema (baseado no mapeamento da Pluggy)
+export const DEFAULT_CATEGORY_MAPPINGS: Omit<CategoryMapping, 'id' | 'updatedAt'>[] = [
+  // Renda / Income
+  { originalKey: 'salary', displayName: 'Salário', isDefault: true },
+  { originalKey: 'retirement', displayName: 'Aposentadoria', isDefault: true },
+  { originalKey: 'government aid', displayName: 'Benefícios', isDefault: true },
+  { originalKey: 'non-recurring income', displayName: 'Rendimentos extras', isDefault: true },
+  { originalKey: 'loans', displayName: 'Empréstimos', isDefault: true },
+  { originalKey: 'interests charged', displayName: 'Juros', isDefault: true },
+  { originalKey: 'fixed income', displayName: 'Renda fixa', isDefault: true },
+  { originalKey: 'variable income', displayName: 'Renda variável', isDefault: true },
+  { originalKey: 'proceeds interests and dividends', displayName: 'Juros e dividendos', isDefault: true },
+
+  // Transferências
+  { originalKey: 'same person transfer - pix', displayName: 'Transf. própria Pix', isDefault: true },
+  { originalKey: 'transfer - pix', displayName: 'Transf. Pix', isDefault: true },
+  { originalKey: 'credit card payment', displayName: 'Cartão de crédito', isDefault: true },
+  { originalKey: 'bank slip', displayName: 'Boleto', isDefault: true },
+  { originalKey: 'debt card', displayName: 'Cartão débito', isDefault: true },
+
+  // Diversos
+  { originalKey: 'alimony', displayName: 'Pensão', isDefault: true },
+  { originalKey: 'telecommunications', displayName: 'Telecom', isDefault: true },
+  { originalKey: 'internet', displayName: 'Internet', isDefault: true },
+  { originalKey: 'mobile', displayName: 'Celular', isDefault: true },
+
+  // Educação
+  { originalKey: 'school', displayName: 'Escola', isDefault: true },
+  { originalKey: 'university', displayName: 'Universidade', isDefault: true },
+
+  // Saúde e Bem-estar
+  { originalKey: 'gyms and fitness centers', displayName: 'Academia', isDefault: true },
+  { originalKey: 'wellness', displayName: 'Bem-estar', isDefault: true },
+
+  // Entretenimento
+  { originalKey: 'cinema, theater and concerts', displayName: 'Cinema / shows', isDefault: true },
+  { originalKey: 'online shopping', displayName: 'Online', isDefault: true },
+  { originalKey: 'electronics', displayName: 'Eletrônicos', isDefault: true },
+  { originalKey: 'clothing', displayName: 'Roupas', isDefault: true },
+  { originalKey: 'video streaming', displayName: 'Streaming vídeo', isDefault: true },
+  { originalKey: 'music streaming', displayName: 'Streaming música', isDefault: true },
+
+  // Alimentação
+  { originalKey: 'n/a', displayName: 'Supermercado', isDefault: true },
+  { originalKey: 'groceries', displayName: 'Supermercado', isDefault: true },
+  { originalKey: 'eating out', displayName: 'Restaurante', isDefault: true },
+  { originalKey: 'food delivery', displayName: 'Delivery', isDefault: true },
+
+  // Viagem
+  { originalKey: 'airport and airlines', displayName: 'Passagens aéreas', isDefault: true },
+  { originalKey: 'accommodation', displayName: 'Hospedagem', isDefault: true },
+
+  // Outros
+  { originalKey: 'donation', displayName: 'Doações', isDefault: true },
+  { originalKey: 'lottery', displayName: 'Loterias', isDefault: true },
+  { originalKey: 'income taxes', displayName: 'IR', isDefault: true },
+  { originalKey: 'account fees', displayName: 'Tarifas conta', isDefault: true },
+
+  // Moradia
+  { originalKey: 'rent', displayName: 'Aluguel', isDefault: true },
+  { originalKey: 'electricity', displayName: 'Luz', isDefault: true },
+  { originalKey: 'water', displayName: 'Água', isDefault: true },
+
+  // Saúde
+  { originalKey: 'pharmacy', displayName: 'Farmácia', isDefault: true },
+  { originalKey: 'hospital clinics and labs', displayName: 'Clínicas / exames', isDefault: true },
+
+  // Transporte
+  { originalKey: 'taxi and ride-hailing', displayName: 'Táxi / apps', isDefault: true },
+  { originalKey: 'public transportation', displayName: 'Ônibus / metrô', isDefault: true },
+  { originalKey: 'car rental', displayName: 'Aluguel carro', isDefault: true },
+  { originalKey: 'bicycle', displayName: 'Bicicleta', isDefault: true },
+  { originalKey: 'gas stations', displayName: 'Combustível', isDefault: true },
+  { originalKey: 'parking', displayName: 'Estacionamento', isDefault: true },
+
+  // Seguros
+  { originalKey: 'health insurance', displayName: 'Plano de saúde', isDefault: true },
+  { originalKey: 'vehicle insurance', displayName: 'Seguro auto', isDefault: true },
+
+  // Lazer
+  { originalKey: 'leisure', displayName: 'Lazer', isDefault: true },
+  { originalKey: 'entertainment', displayName: 'Lazer', isDefault: true },
+];
+
+// Obter mapeamentos de categorias do usuário (com fallback para padrões)
+export const getCategoryMappings = async (userId: string): Promise<CategoryMapping[]> => {
+  if (!db) return DEFAULT_CATEGORY_MAPPINGS.map((cat, idx) => ({
+    ...cat,
+    id: cat.originalKey.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+  }));
+
+  try {
+    const catRef = collection(db, "users", userId, "categoryMappings");
+    const snapshot = await getDocs(catRef);
+
+    if (snapshot.empty) {
+      // Retorna categorias padrão se o usuário não tiver customizações
+      return DEFAULT_CATEGORY_MAPPINGS.map((cat) => ({
+        ...cat,
+        id: cat.originalKey.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      }));
+    }
+
+    const userMappings: CategoryMapping[] = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as CategoryMapping));
+
+    return userMappings;
+  } catch (error) {
+    console.error("Error fetching category mappings:", error);
+    return DEFAULT_CATEGORY_MAPPINGS.map((cat) => ({
+      ...cat,
+      id: cat.originalKey.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+    }));
+  }
+};
+
+// Inicializar categorias padrão para um usuário (chamado uma vez quando acessar a gestão)
+export const initializeCategoryMappings = async (userId: string): Promise<CategoryMapping[]> => {
+  if (!db) return [];
+
+  try {
+    const catRef = collection(db, "users", userId, "categoryMappings");
+    const snapshot = await getDocs(catRef);
+
+    // Se já tem categorias, retorna as existentes
+    if (!snapshot.empty) {
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as CategoryMapping));
+    }
+
+    // Cria as categorias padrão para o usuário
+    const batch = writeBatch(db);
+    const now = new Date().toISOString();
+    const categories: CategoryMapping[] = [];
+
+    for (const cat of DEFAULT_CATEGORY_MAPPINGS) {
+      const id = cat.originalKey.toLowerCase().replace(/[^a-z0-9]/g, '_');
+      const docRef = doc(catRef, id);
+      const mapping: CategoryMapping = {
+        id,
+        originalKey: cat.originalKey,
+        displayName: cat.displayName,
+        isDefault: true,
+        updatedAt: now,
+      };
+      batch.set(docRef, mapping);
+      categories.push(mapping);
+    }
+
+    await batch.commit();
+    return categories;
+  } catch (error) {
+    console.error("Error initializing category mappings:", error);
+    return [];
+  }
+};
+
+// Atualizar nome de exibição de uma categoria
+export const updateCategoryMapping = async (userId: string, categoryId: string, displayName: string): Promise<void> => {
+  if (!db) return;
+
+  try {
+    const catRef = doc(db, "users", userId, "categoryMappings", categoryId);
+    await updateDoc(catRef, {
+      displayName,
+      isDefault: false, // Marca como customizado
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Error updating category mapping:", error);
+    throw error;
+  }
+};
+
+// Resetar uma categoria para o valor padrão
+export const resetCategoryMapping = async (userId: string, categoryId: string, originalDisplayName: string): Promise<void> => {
+  if (!db) return;
+
+  try {
+    const catRef = doc(db, "users", userId, "categoryMappings", categoryId);
+    await updateDoc(catRef, {
+      displayName: originalDisplayName,
+      isDefault: true,
+      updatedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error("Error resetting category mapping:", error);
+    throw error;
+  }
+};
+
+// Escutar mudanças nas categorias do usuário
+export const listenToCategoryMappings = (userId: string, callback: (mappings: CategoryMapping[]) => void) => {
+  if (!db) return () => { };
+
+  const catRef = collection(db, "users", userId, "categoryMappings");
+
+  return onSnapshot(catRef, (snapshot) => {
+    if (snapshot.empty) {
+      // Retorna categorias padrão
+      callback(DEFAULT_CATEGORY_MAPPINGS.map((cat) => ({
+        ...cat,
+        id: cat.originalKey.toLowerCase().replace(/[^a-z0-9]/g, '_'),
+      })));
+      return;
+    }
+
+    const mappings: CategoryMapping[] = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data()
+    } as CategoryMapping));
+
+    callback(mappings);
+  });
+};
+
+// Criar uma nova categoria customizada
+export const createCustomCategory = async (userId: string, displayName: string, group: string): Promise<string> => {
+  if (!db) return "";
+
+  try {
+    const catRef = collection(db, "users", userId, "categoryMappings");
+
+    // Create a doc ref to get an ID
+    const newDocRef = doc(catRef);
+    const id = newDocRef.id;
+    // We use a prefix to identify custom categories easily if needed, but the ID itself is unique
+    // Using 'custom_' prefix for originalKey to avoid collision with potential future system keys
+    const originalKey = `custom_${id}`;
+
+    const mapping: CategoryMapping = {
+      id,
+      originalKey,
+      displayName,
+      isDefault: false,
+      group,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await setDoc(newDocRef, mapping);
+    return id;
+  } catch (error) {
+    console.error("Error creating custom category:", error);
+    throw error;
+  }
+};
+
+// Deletar uma categoria customizada
+export const deleteCategoryMapping = async (userId: string, categoryId: string): Promise<void> => {
+  if (!db) return;
+
+  try {
+    const catRef = doc(db, "users", userId, "categoryMappings", categoryId);
+    await deleteDoc(catRef);
+  } catch (error) {
+    console.error("Error deleting category mapping:", error);
+    throw error;
+  }
+};
+

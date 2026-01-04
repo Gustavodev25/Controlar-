@@ -20,7 +20,7 @@ import { MemberSelector } from './MemberSelector';
 import coinzinhaImg from '../assets/coinzinha.png';
 
 export type TabType =
-  | 'dashboard' | 'table' | 'credit_cards' | 'reminders' | 'subscriptions'
+  | 'dashboard' | 'table' | 'credit_cards' | 'categories' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire' | 'roadmap'
   | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'admin_changelog' | 'chat';
 
@@ -463,7 +463,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     label="Transações"
                     icon={<SidebarWallet size={20} />}
                     isOpen={isOpen}
-                    isActiveParent={activeTab === 'table' || activeTab === 'credit_cards'}
+                    isActiveParent={activeTab === 'table' || activeTab === 'credit_cards' || activeTab === 'categories'}
                     onToggleSidebar={() => setIsOpen(true)}
                   >
                     <NavItem
@@ -479,6 +479,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => handleNavClick('credit_cards')}
                       icon={<div className="scale-90"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /></svg></div>}
                       label="Cartões"
+                      isOpen={isOpen}
+                      isChild={true}
+                    />
+                    <NavItem
+                      active={activeTab === 'categories'}
+                      onClick={() => handleNavClick('categories')}
+                      icon={<div className="scale-90"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5Z" /><path d="M2 17l10 5 10-5" /><path d="M2 12l10 5 10-5" /></svg></div>}
+                      label="Categorias"
                       isOpen={isOpen}
                       isChild={true}
                     />

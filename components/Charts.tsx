@@ -14,11 +14,12 @@ import {
 } from 'recharts';
 import { Transaction } from '../types';
 import { getCategoryIcon } from './Icons';
-import { translatePluggyCategory } from '../services/openFinanceService';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 interface ChartsProps {
   transactions: Transaction[];
   isLoading?: boolean;
+  userId?: string;
 }
 
 // Orange Color Palette (Terracotta themed)
@@ -33,7 +34,10 @@ const COLORS = [
   '#e69a83', // Muted Clay
 ];
 
-export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading = false }) => {
+export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading = false, userId }) => {
+  // Hook para tradução de categorias do usuário
+  const { translateCategory } = useCategoryTranslation(userId);
+
   // Process data for Category Pie Chart
   const categoryData = React.useMemo(() => {
     // Robust check: explicit 'expense' type OR negative amount
@@ -41,7 +45,7 @@ export const DashboardCharts: React.FC<ChartsProps> = ({ transactions, isLoading
     const grouped = expenses.reduce((acc, curr) => {
       // Always use absolute amount for visualization
       const val = Math.abs(curr.amount);
-      const translatedCat = translatePluggyCategory(curr.category);
+      const translatedCat = translateCategory(curr.category);
       acc[translatedCat] = (acc[translatedCat] || 0) + val;
       return acc;
     }, {} as Record<string, number>);

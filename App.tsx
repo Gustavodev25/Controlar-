@@ -56,6 +56,7 @@ import { AdminControl } from './components/AdminControl';
 import { SupportChat } from './components/SupportChat';
 import { AdminSupport } from './components/AdminSupport';
 import { AdminChangelog } from './components/AdminChangelog';
+import { CategoryManager } from './components/CategoryManager';
 import AdminEmailMessage from './components/AdminEmailMessage';
 import { Header, FilterMode } from './components/Header';
 import { Subscriptions } from './components/Subscriptions';
@@ -1221,6 +1222,10 @@ const App: React.FC = () => {
     });
 
     const unsubCreditCardTxs = dbService.listenToCreditCardTransactions(userId, (data) => {
+      console.log('[DEBUG CC-TX] Transações de cartão carregadas:', {
+        count: data.length,
+        sample: data.slice(0, 3).map(tx => ({ id: tx.id, date: tx.date, desc: tx.description?.slice(0, 30), cardId: tx.cardId }))
+      });
       setSeparateCreditCardTxs(data);
     });
 
@@ -2533,6 +2538,28 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, [userId]);
 
+  const handleBulkUpdateTransactions = async (ids: string[], updates: Partial<Transaction>) => {
+    if (!userId) return;
+    try {
+      await dbService.bulkUpdateTransactions(userId, ids, updates);
+      toast.success(`${ids.length} lançamentos atualizados!`);
+    } catch (error) {
+      console.error('Error bulk updating transactions:', error);
+      toast.error('Erro ao atualizar lançamentos.');
+    }
+  };
+
+  const handleBulkUpdateCreditCardTransactions = async (ids: string[], updates: Partial<Transaction>) => {
+    if (!userId) return;
+    try {
+      await dbService.bulkUpdateCreditCardTransactions(userId, ids, updates as any);
+      toast.success(`${ids.length} lançamentos de cartão atualizados!`);
+    } catch (error) {
+      console.error('Error bulk updating credit card transactions:', error);
+      toast.error('Erro ao atualizar lançamentos de cartão.');
+    }
+  };
+
   const handleSyncOpenFinance = async () => {
     if (!userId || isSyncingCards) return;
 
@@ -2862,6 +2889,18 @@ const App: React.FC = () => {
   };
 
 
+
+
+  const handleRegularBulkUpdate = async (ids: string[], updates: Partial<Transaction>) => {
+    if (!userId) return;
+    try {
+      await dbService.bulkUpdateTransactions(userId, ids, updates);
+      toast.success(`${ids.length} transações atualizadas com sucesso!`);
+    } catch (e) {
+      console.error("Error bulk updating transactions:", e);
+      toast.error("Erro ao atualizar transações.");
+    }
+  };
 
   const handleUpdateTransaction = async (transaction: Transaction) => {
     if (!userId) return;
@@ -3453,10 +3492,7 @@ const App: React.FC = () => {
                   />                    <div className="animate-fade-in space-y-6">
                     <DashboardCharts
                       transactions={filteredDashboardTransactions}
-                      reminders={filteredReminders}
-                      stats={stats}
-                      dashboardDate={dashboardDate}
-                      filterMode={filterMode}
+                      userId={userId || undefined}
                     />
                     {filterMode === 'month' && (
                       <FinanceCalendar
@@ -3478,7 +3514,10 @@ const App: React.FC = () => {
                     onUpdate={handleUpdateTransaction}
                     isManualMode={!isProMode}
                     onAdd={handleAddTransaction}
+
                     accounts={accountBalances.checkingAccounts}
+                    userId={userId || undefined}
+                    onBulkUpdate={handleRegularBulkUpdate}
                   />
                 </div>
               )}
@@ -3500,7 +3539,23 @@ const App: React.FC = () => {
                       await dbService.updateConnectedAccount(userId, accountId, updates);
                     }}
                     onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+                    onBulkUpdate={async (ids, updates) => {
+                      if (!userId) return;
+                      try {
+                        await dbService.bulkUpdateCreditCardTransactions(userId, ids, updates as any);
+                        toast.success(`${ids.length} transações atualizadas com sucesso!`);
+                      } catch (error) {
+                        console.error("Error bulk updating credit card transactions:", error);
+                        toast.error("Erro ao atualizar transações.");
+                      }
+                    }}
                   />
+                </div>
+              )}
+
+              {activeTab === 'categories' && userId && (
+                <div className="flex-1 animate-fade-in">
+                  <CategoryManager userId={userId} />
                 </div>
               )}
 

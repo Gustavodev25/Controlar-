@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, Minus
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -13,7 +13,6 @@ import { UniversalModal } from './UniversalModal';
 import { Button } from './Button';
 
 import { EmptyState } from './EmptyState';
-import { translatePluggyCategory } from '../services/openFinanceService';
 import { getInvoiceMonthKey } from '../services/invoiceCalculator';
 import {
   buildInvoices,
@@ -25,6 +24,7 @@ import {
   type InvoiceBuildResult
 } from '../services/invoiceBuilder';
 import { exportToCSV } from '../utils/export';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 // ============================================================ 
 // Helper: Calculate Invoice Logic (Extracted for Preview)
@@ -515,6 +515,7 @@ interface CreditCardTableProps {
   billTotalsByMonthKey?: Record<string, number>;
   onUpdateAccount?: (accountId: string, updates: Partial<ConnectedAccount>) => Promise<void>;
   onOpenFeedback?: () => void;
+  onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => void;
 }
 
 
@@ -645,7 +646,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   onAdd,
   billTotalsByMonthKey = {},
   onUpdateAccount,
-  onOpenFeedback
+  onOpenFeedback,
+  onBulkUpdate
 }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
@@ -668,6 +670,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       setSelectedCardId(creditCardAccounts[0].id);
     }
   }, [creditCardAccounts, selectedCardId]);
+
+  // DEBUG: Log das transações e cartões recebidos
+  React.useEffect(() => {
+    console.log('[DEBUG CreditCardTable]', {
+      transactionsReceived: transactions.length,
+      creditCardAccountsCount: creditCardAccounts.length,
+      creditCardAccountsIds: creditCardAccounts.map(c => ({ id: c.id, name: c.name || c.institution })),
+      selectedCardId,
+      sampleTransactions: transactions.slice(0, 3).map(tx => ({ id: tx.id, date: tx.date, desc: tx.description?.slice(0, 30), accountId: tx.accountId, cardId: tx.cardId }))
+    });
+  }, [transactions, creditCardAccounts, selectedCardId]);
 
   // Invoice Filter (Todas, Última, Atual, Próxima)
   const [selectedInvoice, setSelectedInvoice] = useState<'all' | 'last' | 'current' | 'next'>('current');
@@ -717,6 +730,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   }, [showInvoiceCards]);
 
   const toast = useToasts();
+
+  // Hook para tradução de categorias
+  const { translateCategory, categoryMappings } = useCategoryTranslation(userId);
+
+  // Bulk Selection
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState('');
+
+
 
   const enrichWithDueDate = (obj: any) => {
     if (!obj) return obj;
@@ -1204,6 +1226,29 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
 
 
+  // Handlers for Bulk Actions
+  const handleSelectAll = () => {
+    // Select all visible transactions (using filteredTransactions as source of truth)
+    if (selectedIds.length === filteredTransactions.length) {
+      setSelectedIds([]);
+    } else {
+      setSelectedIds(filteredTransactions.map(t => t.id));
+    }
+  };
+
+  const handleSelectOne = (id: string, e: React.SyntheticEvent) => {
+    e.stopPropagation();
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]);
+  };
+
+  const handleBulkSubmit = () => {
+    if (onBulkUpdate && bulkCategory) {
+      onBulkUpdate(selectedIds, { category: bulkCategory });
+      setSelectedIds([]);
+      setBulkCategory('');
+    }
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in w-full">
       {/* Header */}
@@ -1627,7 +1672,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
                         <div className="flex items-center gap-2 truncate">
                           <Tag size={16} className="text-[#d97757] flex-shrink-0" />
-                          <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translatePluggyCategory(selectedCategory)}</span>
+                          <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translateCategory(selectedCategory)}</span>
                         </div>
                         <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
                       </DropdownTrigger>
@@ -1646,7 +1691,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                             icon={Tag}
                             className={selectedCategory === cat ? 'bg-white/5 text-white' : ''}
                           >
-                            {translatePluggyCategory(cat)}
+                            {translateCategory(cat)}
                           </DropdownItem>
                         ))}
                       </DropdownContent>
@@ -1697,13 +1742,111 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 </div>
 
                 {/* Table Card */}
-                <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden">
+                <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden relative">
+                  <AnimatePresence>
+                    {selectedIds.length > 0 && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -20 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -20 }}
+                        className="absolute top-0 left-0 right-0 z-20 bg-[#232322] border-b border-[#373734] p-3 flex items-center justify-between"
+                      >
+                        <div className="flex items-center gap-3 pl-2">
+                          <span className="flex items-center justify-center w-6 h-6 rounded-md bg-[#d97757]/20 text-[#d97757] font-bold text-xs">
+                            {selectedIds.length}
+                          </span>
+                          <span className="text-white font-medium text-sm">
+                            selecionados
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Dropdown>
+                            <DropdownTrigger className="flex items-center gap-2 px-3 py-1.5 bg-[#3a3a38] border border-[#454542] hover:border-[#d97757]/50 text-gray-300 hover:text-white rounded-lg text-xs font-medium transition-colors">
+                              <Tag size={13} />
+                              {bulkCategory ? translateCategory(bulkCategory) : "Alterar Categoria"}
+                            </DropdownTrigger>
+                            <DropdownContent className="w-56 max-h-60 overflow-y-auto custom-scrollbar" align="right">
+                              <DropdownItem
+                                onClick={() => setBulkCategory('')}
+                                icon={Tag}
+                                className="bg-transparent text-gray-400"
+                              >
+                                Limpar Seleção
+                              </DropdownItem>
+                              {categoryMappings.length > 0 ? categoryMappings.map((cat) => (
+                                <DropdownItem
+                                  key={cat.originalKey}
+                                  onClick={() => setBulkCategory(cat.originalKey)}
+                                  icon={Tag}
+                                  className={bulkCategory === cat.originalKey ? 'bg-white/5 text-white' : ''}
+                                >
+                                  {cat.displayName || cat.originalKey}
+                                </DropdownItem>
+                              )) : CATEGORIES.map((cat) => (
+                                <DropdownItem
+                                  key={cat}
+                                  onClick={() => setBulkCategory(cat)}
+                                  icon={Tag}
+                                  className={bulkCategory === cat ? 'bg-white/5 text-white' : ''}
+                                >
+                                  {translateCategory(cat)}
+                                </DropdownItem>
+                              ))}
+                            </DropdownContent>
+                          </Dropdown>
+
+                          <button
+                            onClick={handleBulkSubmit}
+                            disabled={!bulkCategory}
+                            className="flex items-center gap-2 px-3 py-1.5 bg-[#d97757] hover:bg-[#c56646] text-white rounded-lg text-xs font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            <Check size={13} />
+                            Aplicar
+                          </button>
+
+                          <div className="h-4 w-px bg-gray-700 mx-1" />
+                          <button
+                            onClick={() => setSelectedIds([])}
+                            className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
+                            title="Limpar seleção"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                   {/* Desktop Grid */}
                   <div className="hidden lg:block overflow-auto flex-1 custom-scrollbar z-0">
                     <table className="min-w-full border-collapse text-sm text-left h-full">
                       <thead className="bg-[#333432] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
                         <tr>
-                          <th className="px-6 py-4 border-b border-r border-[#373734] w-40 first:rounded-tl-xl">
+                          <th className="px-4 py-4 border-b border-r border-[#373734] w-12 text-center first:rounded-tl-xl align-middle">
+                            <div className="flex items-center justify-center h-full">
+                              <button
+                                onClick={handleSelectAll}
+                                className="group flex items-center justify-center w-full h-full"
+                              >
+                                <div className={`
+                                  w-5 h-5 rounded-md border transition-all flex items-center justify-center
+                                  ${selectedIds.length > 0
+                                    ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                                    : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                                  }
+                                `}>
+                                  {filteredTransactions.length > 0 && selectedIds.length === filteredTransactions.length ? (
+                                    <Check size={12} strokeWidth={3} />
+                                  ) : selectedIds.length > 0 ? (
+                                    <Minus size={12} strokeWidth={3} />
+                                  ) : (
+                                    <Check size={12} strokeWidth={3} />
+                                  )}
+                                </div>
+                              </button>
+                            </div>
+                          </th>
+                          <th className="px-6 py-4 border-b border-r border-[#373734] w-40">
                             <Dropdown>
                               <DropdownTrigger className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer w-full text-left">
                                 Data {sortField === 'date' && (sortDirection === 'asc' ? '↑' : '↓')}
@@ -1822,6 +1965,24 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     : 'hover:bg-[#373734]/30'
                                 }`}
                             >
+                              <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
+                                <div className="flex items-center justify-center h-full">
+                                  <button
+                                    onClick={(e) => handleSelectOne(t.id, e)}
+                                    className="group flex items-center justify-center w-full h-full"
+                                  >
+                                    <div className={`
+                                      w-5 h-5 rounded-md border transition-all flex items-center justify-center
+                                      ${selectedIds.includes(t.id)
+                                        ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                                        : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                                      }
+                                    `}>
+                                      <Check size={12} strokeWidth={3} />
+                                    </div>
+                                  </button>
+                                </div>
+                              </td>
                               <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs border-r border-[#373734]">
                                 {formatDate(t.date)}
                               </td>
@@ -1913,10 +2074,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         <path d="M12 16v-4" />
                                         <path d="M12 8h.01" />
                                       </svg>
-                                    ) : isCharge ? <AlertCircle size={14} /> : isPayment ? <CreditCard size={14} /> : getCategoryIcon(translatePluggyCategory(t.category), 14)}
+                                    ) : isCharge ? <AlertCircle size={14} /> : isPayment ? <CreditCard size={14} /> : getCategoryIcon(translateCategory(t.category), 14)}
                                   </div>
                                   <span className={`text-xs ${isAdjustment ? 'text-purple-400' : isCharge ? 'text-red-400' : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400') : ''}`}>
-                                    {isAdjustment ? 'Ajuste Automático' : isCharge ? 'Encargos Financeiros' : isPayment ? 'Pagamento Fatura' : translatePluggyCategory(t.category)}
+                                    {isAdjustment ? 'Ajuste Automático' : isCharge ? 'Encargos Financeiros' : isPayment ? 'Pagamento Fatura' : translateCategory(t.category)}
                                   </span>
                                 </div>
                               </td>
@@ -2069,8 +2230,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     : isPayment ? (isLate ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400')
                                       : 'bg-[#1a1a19] border-[#373734]'
                                     }`}>
-                                    {isCharge ? <AlertCircle size={12} /> : isPayment ? <CreditCard size={12} /> : getCategoryIcon(translatePluggyCategory(t.category), 12)}
-                                    {isCharge ? 'Encargos' : isPayment ? 'Pagamento' : translatePluggyCategory(t.category)}
+                                    {isCharge ? <AlertCircle size={12} /> : isPayment ? <CreditCard size={12} /> : getCategoryIcon(translateCategory(t.category), 12)}
+                                    {isCharge ? 'Encargos' : isPayment ? 'Pagamento' : translateCategory(t.category)}
                                   </span>
                                   <span className="font-mono flex items-center gap-1.5">
                                     <Calendar size={12} /> {formatDate(t.date)}
@@ -2731,6 +2892,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           </UniversalModal>
         </div>
       )}
+
+
     </div>
   );
 };

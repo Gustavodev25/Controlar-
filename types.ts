@@ -682,3 +682,18 @@ export interface ChangelogItem {
   fixesIntro?: string;
   createdAt?: string; // ISO timestamp for sorting
 }
+
+// ============================================================
+// GESTÃO DE CATEGORIAS - Mapeamento personalizado por usuário
+// ============================================================
+
+export interface CategoryMapping {
+  id: string;                    // ID único (geralmente a chave original em lowercase)
+  originalKey: string;           // Chave original (da Pluggy ou do sistema)
+  displayName: string;           // Nome de exibição personalizado pelo usuário
+  isDefault: boolean;            // Se é uma categoria padrão do sistema
+  icon?: string;                 // Ícone opcional (nome do ícone)
+  color?: string;                // Cor opcional (hex)
+  group?: string;                // Grupo/Tema a qual pertence (para categorias customizadas)
+  updatedAt?: string;            // Última atualização
+}

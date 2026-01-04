@@ -116,7 +116,8 @@ import {
   Map,
   Hammer,
   Ticket,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Minus
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -254,7 +255,8 @@ export {
   ThumbsUp,
   Ban,
   Ticket,
-  MessageSquarePlus
+  MessageSquarePlus,
+  Minus
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (
