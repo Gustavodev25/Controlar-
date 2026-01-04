@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, Minus
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, Minus, HelpCircle, AlertTriangle
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -11,6 +11,7 @@ import { ConfirmationBar } from './ConfirmationBar';
 import { useToasts } from './Toast';
 import { UniversalModal } from './UniversalModal';
 import { Button } from './Button';
+
 
 import { EmptyState } from './EmptyState';
 import { getInvoiceMonthKey } from '../services/invoiceCalculator';
@@ -740,6 +741,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
 
 
+
+
   const enrichWithDueDate = (obj: any) => {
     if (!obj) return obj;
     const computedDue =
@@ -1195,7 +1198,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   }, [transactions, hasCheckedDuplicates, onDelete, toast]);
 
   const handleEditClick = (transaction: Transaction) => {
-    setEditTransaction({ ...transaction });
+    // Garantir que accountType está definido como CREDIT_CARD
+    setEditTransaction({
+      ...transaction,
+      accountType: transaction.accountType || 'CREDIT_CARD'
+    });
     setIsEditModalOpen(true);
   };
 
@@ -1223,7 +1230,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     exportToCSV(filteredTransactions, `fatura_cartao_${dateStr}.csv`);
   };
 
-  const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
+  // Usar categorias do mapeamento Pluggy ao invés de hardcoded
+  const CATEGORIES = useMemo(() => {
+    return categoryMappings.map(cat => cat.displayName);
+  }, [categoryMappings]);
 
 
   // Handlers for Bulk Actions
@@ -1243,7 +1253,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   const handleBulkSubmit = () => {
     if (onBulkUpdate && bulkCategory) {
-      onBulkUpdate(selectedIds, { category: bulkCategory });
+      // Filtrar transações projetadas (não existem no banco de dados)
+      const realTransactionIds = selectedIds.filter(id =>
+        !id.startsWith('proj_') && !id.startsWith('charge_')
+      );
+
+      if (realTransactionIds.length === 0) {
+        toast.error("Nenhuma transação real selecionada. Transações projetadas não podem ser atualizadas.");
+        return;
+      }
+
+      onBulkUpdate(realTransactionIds, { category: bulkCategory });
       setSelectedIds([]);
       setBulkCategory('');
     }
@@ -1284,13 +1304,16 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           )}
 
           <button
+            id="export-btn"
+
             onClick={handleExport}
-            className="flex items-center gap-2 px-4 py-2 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] text-white text-sm rounded-lg font-semibold transition-all"
+            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
             title="Exportar para Excel"
           >
             <FileText size={18} />
             <span className="hidden sm:inline">Exportar</span>
           </button>
+
         </div>
       </div>
 
@@ -1739,6 +1762,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       <X size={14} /> Limpar
                     </button>
                   )}
+
+
                 </div>
 
                 {/* Table Card */}
@@ -1749,6 +1774,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         initial={{ opacity: 0, y: -20 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -20 }}
+                        data-tour="bulk-action-bar"
                         className="absolute top-0 left-0 right-0 z-20 bg-[#232322] border-b border-[#373734] p-3 flex items-center justify-between"
                       >
                         <div className="flex items-center gap-3 pl-2">
@@ -1940,12 +1966,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           </th>
 
                           <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-                          <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
+                          {isManualMode && (
+                            <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
+                          )}
                         </tr>
                       </thead>
 
                       <tbody className="divide-y divide-[#373734]">
-                        {transactionsWithCharges.map((t) => {
+                        {transactionsWithCharges.map((t, index) => {
                           const isCharge = (t as any).isCharge === true;
                           const isPayment = (t as any).isPayment === true;
                           const isLate = (t as any).isLate === true;
@@ -1971,12 +1999,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     onClick={(e) => handleSelectOne(t.id, e)}
                                     className="group flex items-center justify-center w-full h-full"
                                   >
-                                    <div className={`
+                                    <div
+                                      data-tour={index === 0 ? "row-checkbox-0" : undefined}
+                                      className={`
                                       w-5 h-5 rounded-md border transition-all flex items-center justify-center
                                       ${selectedIds.includes(t.id)
-                                        ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
-                                        : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
-                                      }
+                                          ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                                          : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                                        }
                                     `}>
                                       <Check size={12} strokeWidth={3} />
                                     </div>
@@ -2114,26 +2144,28 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   </span>
                                 )}
                               </td>
-                              <td className="px-6 py-4">
-                                {!isCharge && !isPayment && !isAdjustment && (
-                                  <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button
-                                      onClick={() => handleEditClick(t)}
-                                      className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
-                                      title="Editar"
-                                    >
-                                      <Edit2 size={16} />
-                                    </button>
-                                    <button
-                                      onClick={() => setDeleteId(t.id)}
-                                      className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                                      title="Excluir"
-                                    >
-                                      <Trash2 size={16} />
-                                    </button>
-                                  </div>
-                                )}
-                              </td>
+                              {isManualMode && (
+                                <td className="px-6 py-4">
+                                  {!isCharge && !isPayment && !isAdjustment && (
+                                    <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <button
+                                        onClick={() => handleEditClick(t)}
+                                        className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Edit2 size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteId(t.id)}
+                                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                                        title="Excluir"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
@@ -2244,7 +2276,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 )}
                               </div>
 
-                              {!isCharge && !isPayment && (
+                              {isManualMode && (
                                 <div className="flex flex-col gap-1 ml-1">
                                   <button
                                     onClick={() => handleEditClick(t)}
@@ -2361,21 +2393,22 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 themeColor={editTransaction.type === 'income' ? '#10b981' : '#d97757'}
                 footer={
                   <div className="flex gap-3">
-                    <button
-                      type="button"
+                    <Button
+                      variant="dark"
+                      size="lg"
+                      className="flex-1 text-gray-400 hover:text-white"
                       onClick={handleCloseEdit}
-                      className="flex-1 py-3.5 bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl font-semibold transition-all border border-gray-800"
                     >
                       Cancelar
-                    </button>
-                    <button
-                      type="button"
+                    </Button>
+                    <Button
+                      variant="primary"
+                      size="lg"
+                      className="flex-[2]"
                       onClick={handleSaveEdit}
-                      className="flex-[2] py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
                     >
-                      <Check size={18} strokeWidth={2.5} />
                       Salvar
-                    </button>
+                    </Button>
                   </div>
                 }
               >
@@ -2447,57 +2480,61 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     </div>
                   </div>
 
-                  {/* Categoria */}
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
-                    <CustomAutocomplete
-                      value={editTransaction.category || ''}
-                      onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
-                      options={CATEGORIES}
-                      icon={<Tag size={16} />}
-                      placeholder="Selecione ou digite..."
-                    />
-                  </div>
+                  {/* Categoria - Apenas Modo Manual */}
+                  {isManualMode && (
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                      <CustomAutocomplete
+                        value={editTransaction.category || ''}
+                        onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
+                        options={CATEGORIES}
+                        icon={<Tag size={16} />}
+                        placeholder="Selecione ou digite..."
+                      />
+                    </div>
+                  )}
 
-                  {/* Status Toggle com Smooth */}
-                  <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
-                    <div className="flex items-center gap-2.5">
-                      {editTransaction.status === 'completed'
-                        ? <Check size={16} className="text-emerald-500" />
-                        : <AlertCircle size={16} className="text-amber-500" />
-                      }
-                      <div>
-                        <span className="block text-sm font-medium text-gray-300">Status</span>
-                        <span className="block text-[10px] text-gray-500">
-                          {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
-                        </span>
+                  {/* Status Toggle com Smooth - Apenas Modo Manual */}
+                  {isManualMode && (
+                    <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+                      <div className="flex items-center gap-2.5">
+                        {editTransaction.status === 'completed'
+                          ? <Check size={16} className="text-emerald-500" />
+                          : <AlertCircle size={16} className="text-amber-500" />
+                        }
+                        <div>
+                          <span className="block text-sm font-medium text-gray-300">Status</span>
+                          <span className="block text-[10px] text-gray-500">
+                            {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
+                        <div
+                          className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
+                            ${editTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
+                          `}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
+                          className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                        >
+                          PENDENTE
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
+                          className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                        >
+                          PAGO
+                        </button>
                       </div>
                     </div>
+                  )}
 
-                    <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
-                      <div
-                        className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
-                        style={{
-                          left: editTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
-                          backgroundColor: editTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
-                        className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
-                      >
-                        Pendente
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
-                        className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
-                      >
-                        Pago
-                      </button>
-                    </div>
-                  </div>
+
                 </div>
               </UniversalModal>
             )
@@ -2511,8 +2548,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             icon={<CreditCard size={18} />}
             themeColor={newTransaction.type === 'income' ? '#10b981' : '#d97757'}
             footer={
-              <button
-                type="button"
+              <Button
+                variant={newTransaction.type === 'income' ? 'success' : 'primary'}
+                size="lg"
+                fullWidth
                 onClick={async () => {
                   if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
                     toast.error("Preencha a descrição, valor e data.");
@@ -2564,14 +2603,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     setIsAddModalOpen(false);
                   }
                 }}
-                className={`w-full py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${newTransaction.type === 'income'
-                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
-                  : 'bg-[#d97757] hover:bg-[#e08868] text-white'
-                  }`}
+                className={newTransaction.type === 'income' ? '!bg-emerald-500 hover:!bg-emerald-400' : ''}
               >
                 <Check size={18} strokeWidth={2.5} />
                 Confirmar
-              </button>
+              </Button>
             }
           >
             <div className="space-y-5">
@@ -2728,27 +2764,25 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
                 </div>
 
-                <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
+                <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
                   <div
-                    className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
-                    style={{
-                      left: newTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
-                      backgroundColor: newTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
-                    }}
+                    className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
+                      ${newTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
+                    `}
                   />
                   <button
                     type="button"
                     onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                    className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
                   >
-                    Pendente
+                    PENDENTE
                   </button>
                   <button
                     type="button"
                     onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                    className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
                   >
-                    Pago
+                    PAGO
                   </button>
                 </div>
               </div>
@@ -2794,11 +2828,36 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             }
           >
             <div className="space-y-5">
+              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
+                <div className="flex gap-3">
+                  <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-bold text-amber-500">Atenção na Configuração</h4>
+                    <p className="text-xs text-gray-400 leading-relaxed">
+                      Alterar o dia de fechamento pode reorganizar suas faturas passadas. Para maior precisão, recomendamos usar a sincronização automática se disponível.
+                    </p>
+                  </div>
+                </div>
+              </div>
 
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Dia de Fechamento</label>
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={cardSettings.closingDay}
+                      onChange={(e) => setCardSettings({ ...cardSettings, closingDay: parseInt(e.target.value) || 1 })}
+                      className="w-full bg-[#1a1a19] border border-[#373734] rounded-lg px-4 py-3 text-white focus:border-[#d97757] outline-none transition-colors"
+                    />
+                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
+                  </div>
+                  <p className="text-[10px] text-gray-500">Dia em que a fatura fecha e novas compras vão para o próximo mês.</p>
+                </div>
+              </div>
 
-
-
-              {/* Closing Day */}
               <div className="space-y-4">
 
 
@@ -2888,13 +2947,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
                 )}
               </div>
-            </div>
-          </UniversalModal>
-        </div>
+            </div >
+          </UniversalModal >
+
+        </div >
       )}
-
-
-    </div>
+    </div >
   );
 };
 

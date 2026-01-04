@@ -537,7 +537,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       const key = acc.itemId || acc.institution || "Outros";
       const itemStatus = acc.itemId ? itemStatuses[acc.itemId] : null;
       const connectorName = itemStatus?.connectorName;
-      const institutionName = acc.institution || connectorName || "Banco";
+      const institutionName = connectorName || acc.connector?.name || acc.institution || "Banco";
 
       if (!groups[key]) {
         groups[key] = {

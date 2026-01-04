@@ -59,6 +59,12 @@ export const useCategoryTranslation = (userId?: string) => {
             return userMapping;
         }
 
+        // Se é uma categoria customizada que foi deletada, retorna "Outros"
+        // Categorias customizadas têm originalKey no formato "custom_<id>"
+        if (key.startsWith('custom_')) {
+            return 'Outros';
+        }
+
         // Fallback para tradução padrão do sistema
         return translatePluggyCategory(originalCategory);
     }, [categoryMap]);

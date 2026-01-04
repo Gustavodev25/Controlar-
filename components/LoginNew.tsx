@@ -756,7 +756,7 @@ export const LoginNew: React.FC = () => {
                         >
                             {isResettingPassword
                                 ? (recoveryStep === 1 ? 'Enviar Código' : recoveryStep === 2 ? 'Verificar Código' : 'Redefinir Senha')
-                                : (isLogin ? 'Entrar' : (step === 1 ? 'Continuar' : 'Finalizar'))
+                                : (isLogin ? 'Entrar' : (step === 1 ? 'Continuar' : 'Finalizar Cadastro'))
                             }
                         </Button>
                     </form>

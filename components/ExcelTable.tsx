@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus } from './Icons';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus, HelpCircle } from './Icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -11,6 +11,9 @@ import { EmptyState } from './EmptyState';
 import { UniversalModal } from './UniversalModal';
 import { exportToCSV } from '../utils/export';
 import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
+import { Button } from './Button';
+import { TutorialModal } from './TutorialModal';
+import { Walkthrough } from './Walkthrough';
 
 interface ExcelTableProps {
   transactions: Transaction[];
@@ -52,6 +55,44 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   // Add Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  // Walkthrough State
+  const [isWalkthroughActive, setIsWalkthroughActive] = useState(false);
+
+  const startWalkthrough = () => {
+    setIsWalkthroughActive(true);
+    if (selectedIds.length === 0 && filteredTransactions.length > 0) {
+      setSelectedIds([filteredTransactions[0].id]);
+    }
+  };
+
+  const walkthroughSteps: any[] = [
+    {
+      target: 'row-checkbox-0',
+      title: 'Seleção em Lote',
+      content: 'Clique na caixa de seleção para marcar um ou mais itens. Isso ativa o menu de ações em massa.',
+      placement: 'right'
+    },
+    {
+      target: 'bulk-action-bar',
+      title: 'Edição Múltipla',
+      content: 'Com itens selecionados, use esta barra para alterar a categoria de todos eles de uma só vez.',
+      placement: 'bottom'
+    },
+    {
+      target: 'row-edit-btn-0',
+      title: 'Edição Individual',
+      content: 'Clique no ícone de lápis para editar todos os detalhes de uma transação específica.',
+      placement: 'left'
+    },
+    {
+      target: 'export-btn',
+      title: 'Exportar Dados',
+      content: 'Exporte seus dados filtrados para analise externa.',
+      placement: 'bottom'
+    }
+  ];
+
   const [newTransaction, setNewTransaction] = useState<Partial<Transaction>>({
     description: '',
     amount: 0,
@@ -183,10 +224,13 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     exportToCSV(filteredTransactions, `movimentacoes_${dateStr}.csv`);
   };
 
-  const CATEGORIES = ['Trabalho', 'Alimentação', 'Transporte', 'Lazer', 'Saúde', 'Educação', 'Moradia', 'Outros'];
-
   // Hook para tradução de categorias do usuário
   const { translateCategory, categoryMappings } = useCategoryTranslation(userId);
+
+  // Usar categorias do mapeamento Pluggy ao invés de hardcoded
+  const CATEGORIES = useMemo(() => {
+    return categoryMappings.map(cat => cat.displayName);
+  }, [categoryMappings]);
 
   // Bulk Selection State
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -231,33 +275,46 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           <p className="text-sm text-gray-400 mt-1">{filteredTransactions.length} registros encontrados</p>
         </div>
 
-        {isManualMode && onAdd && (
-          <button
-            onClick={() => {
-              setNewTransaction({
-                description: '',
-                amount: 0,
-                date: new Date().toISOString().split('T')[0],
-                category: '',
-                type: 'expense',
-                status: 'completed'
-              });
-              setIsAddModalOpen(true);
-            }}
-            className="flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white text-sm rounded-lg font-semibold transition-all shadow-md shadow-[#d97757]/20"
-          >
-            <Plus size={18} strokeWidth={3} />
-            <span className="hidden sm:inline">Novo Lançamento</span>
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          {isManualMode && onAdd && (
+            <button
+              onClick={() => {
+                setNewTransaction({
+                  description: '',
+                  amount: 0,
+                  date: new Date().toISOString().split('T')[0],
+                  category: '',
+                  type: 'expense',
+                  status: 'completed'
+                });
+                setIsAddModalOpen(true);
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white text-sm rounded-lg font-semibold transition-all shadow-md shadow-[#d97757]/20"
+            >
+              <Plus size={18} strokeWidth={3} />
+              <span className="hidden sm:inline">Novo Lançamento</span>
+            </button>
+          )}
 
-        <button
-          onClick={handleExport}
-          className="flex items-center gap-2 px-4 py-2 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] text-white text-sm rounded-lg font-semibold transition-all"
-        >
-          <FileText size={18} />
-          <span className="hidden sm:inline">Exportar</span>
-        </button>
+          <button
+            id="export-btn"
+            data-tour="export-btn"
+            onClick={handleExport}
+            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+          >
+            <FileText size={18} />
+            <span className="hidden sm:inline">Exportar</span>
+          </button>
+
+          <button
+            onClick={startWalkthrough}
+            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+            title="Ajuda e Dicas de Uso"
+          >
+            <HelpCircle size={18} />
+            <span className="hidden sm:inline">Ajuda</span>
+          </button>
+        </div>
       </div>
 
       {/* Filters Row */}
@@ -392,6 +449,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               initial={{ opacity: 0, y: -20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
+              data-tour="bulk-action-bar"
               className="absolute top-0 left-0 right-0 z-20 bg-[#232322] border-b border-[#373734] p-3 flex items-center justify-between"
             >
               <div className="flex items-center gap-3 pl-2">
@@ -456,6 +514,12 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 >
                   <X size={14} />
                 </button>
+              </div>
+
+              {/* Tip for Bulk Actions */}
+              <div className="hidden xl:flex items-center gap-2 text-[10px] text-gray-500 bg-[#1a1a19] px-3 py-1.5 rounded-lg border border-[#373734] ml-auto mr-4">
+                <AlertCircle size={12} className="text-[#d97757]" />
+                <span>Dica: Use a seleção múltipla para organizar categorias rapidamente.</span>
               </div>
             </motion.div>
           )}
@@ -582,11 +646,13 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   </Dropdown>
                 </th>
                 <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-                <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
+                {isManualMode && (
+                  <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
+                )}
               </tr>
             </thead>
             <tbody className="divide-y divide-[#373734]">
-              {paginatedTransactions.map((t) => (
+              {paginatedTransactions.map((t, index) => (
                 <tr key={t.id} className="hover:bg-[#373734]/10 transition-colors group border-b border-[#373734]">
                   <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
                     <div className="flex items-center justify-center h-full">
@@ -594,12 +660,14 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                         onClick={(e) => handleSelectOne(t.id, e)}
                         className="group flex items-center justify-center w-full h-full"
                       >
-                        <div className={`
+                        <div
+                          data-tour={index === 0 ? "row-checkbox-0" : undefined}
+                          className={`
                           w-5 h-5 rounded-md border transition-all flex items-center justify-center
                           ${selectedIds.includes(t.id)
-                            ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
-                            : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
-                          }
+                              ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                              : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                            }
                         `}>
                           <Check size={12} strokeWidth={3} />
                         </div>
@@ -645,24 +713,26 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                       {t.status === 'completed' ? 'Pago' : 'Pendente'}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
-                    <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button
-                        onClick={() => handleEditClick(t)}
-                        className="p-2 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl transition-colors"
-                        title="Editar"
-                      >
-                        <Edit2 size={16} />
-                      </button>
-                      <button
-                        onClick={() => setDeleteId(t.id)}
-                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                        title="Excluir"
-                      >
-                        <Trash2 size={16} />
-                      </button>
-                    </div>
-                  </td>
+                  {isManualMode && (
+                    <td className="px-6 py-4">
+                      <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleEditClick(t)}
+                          className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
+                          title="Editar"
+                        >
+                          <Edit2 size={16} />
+                        </button>
+                        <button
+                          onClick={() => setDeleteId(t.id)}
+                          className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                          title="Excluir"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </td>
+                  )}
                 </tr>
               ))}
               {filteredTransactions.length === 0 && (
@@ -704,22 +774,24 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-col gap-1 ml-1">
-                    <button
-                      onClick={() => handleEditClick(t)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
-                      title="Editar"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => setDeleteId(t.id)}
-                      className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
-                      title="Excluir"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
+                  {isManualMode && (
+                    <div className="flex flex-col gap-1 ml-1">
+                      <button
+                        onClick={() => handleEditClick(t)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-gray-800 text-gray-500 hover:text-white border border-gray-800 hover:border-gray-700 transition-all"
+                        title="Editar"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                      <button
+                        onClick={() => setDeleteId(t.id)}
+                        className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-900 hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-gray-800 hover:border-red-500/30 transition-all"
+                        title="Excluir"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex justify-between items-center pl-3 pt-3 border-t border-gray-800/50">
@@ -853,21 +925,22 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             themeColor={editTransaction.type === 'income' ? '#10b981' : '#d97757'}
             footer={
               <div className="flex gap-3">
-                <button
-                  type="button"
+                <Button
+                  variant="dark"
+                  size="lg"
+                  className="flex-1 text-gray-400 hover:text-white"
                   onClick={handleCloseEdit}
-                  className="flex-1 py-3.5 bg-gray-900 text-gray-400 hover:text-white hover:bg-gray-800 rounded-xl font-semibold transition-all border border-gray-800"
                 >
                   Cancelar
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="flex-[2]"
                   onClick={handleSaveEdit}
-                  className="flex-[2] py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-semibold transition-all flex items-center justify-center gap-2"
                 >
-                  <Check size={18} strokeWidth={2.5} />
                   Salvar
-                </button>
+                </Button>
               </div>
             }
           >
@@ -939,57 +1012,61 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 </div>
               </div>
 
-              {/* Categoria */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
-                <CustomAutocomplete
-                  value={editTransaction.category || ''}
-                  onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
-                  options={CATEGORIES}
-                  icon={<Tag size={16} />}
-                  placeholder="Selecione ou digite..."
-                />
-              </div>
+              {/* Categoria - Apenas Modo Manual */}
+              {isManualMode && (
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                  <CustomAutocomplete
+                    value={editTransaction.category || ''}
+                    onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
+                    options={CATEGORIES}
+                    icon={<Tag size={16} />}
+                    placeholder="Selecione ou digite..."
+                  />
+                </div>
+              )}
 
-              {/* Status Toggle com Smooth */}
-              <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
-                <div className="flex items-center gap-2.5">
-                  {editTransaction.status === 'completed'
-                    ? <Check size={16} className="text-emerald-500" />
-                    : <AlertCircle size={16} className="text-amber-500" />
-                  }
-                  <div>
-                    <span className="block text-sm font-medium text-gray-300">Status</span>
-                    <span className="block text-[10px] text-gray-500">
-                      {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
-                    </span>
+              {/* Status Toggle com Smooth - Apenas Modo Manual */}
+              {isManualMode && (
+                <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+                  <div className="flex items-center gap-2.5">
+                    {editTransaction.status === 'completed'
+                      ? <Check size={16} className="text-emerald-500" />
+                      : <AlertCircle size={16} className="text-amber-500" />
+                    }
+                    <div>
+                      <span className="block text-sm font-medium text-gray-300">Status</span>
+                      <span className="block text-[10px] text-gray-500">
+                        {editTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
+                    <div
+                      className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
+                        ${editTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
+                      `}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
+                      className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      PENDENTE
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
+                      className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      PAGO
+                    </button>
                   </div>
                 </div>
+              )}
 
-                <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
-                  <div
-                    className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
-                    style={{
-                      left: editTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
-                      backgroundColor: editTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setEditTransaction({ ...editTransaction, status: 'pending' })}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    Pendente
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setEditTransaction({ ...editTransaction, status: 'completed' })}
-                    className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${editTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    Pago
-                  </button>
-                </div>
-              </div>
+
             </div>
           </UniversalModal>
         )
@@ -1003,8 +1080,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         icon={<Plus size={18} />}
         themeColor={newTransaction.type === 'income' ? '#10b981' : '#d97757'}
         footer={
-          <button
-            type="button"
+          <Button
+            variant={newTransaction.type === 'income' ? 'success' : 'primary'}
+            size="lg"
+            fullWidth
             onClick={async () => {
               if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
                 toast.error("Preencha a descrição, valor e data.");
@@ -1016,14 +1095,11 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 setIsAddModalOpen(false);
               }
             }}
-            className={`w-full py-3.5 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${newTransaction.type === 'income'
-              ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
-              : 'bg-[#d97757] hover:bg-[#e08868] text-white'
-              }`}
+            className={newTransaction.type === 'income' ? '!bg-emerald-500 hover:!bg-emerald-400' : ''}
           >
             <Check size={18} strokeWidth={2.5} />
             Confirmar
-          </button>
+          </Button>
         }
       >
         <div className="space-y-5">
@@ -1122,32 +1198,36 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               </div>
             </div>
 
-            <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800">
+            <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
               <div
-                className="absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out"
-                style={{
-                  left: newTransaction.status === 'pending' ? '2px' : 'calc(50% + 0px)',
-                  backgroundColor: newTransaction.status === 'pending' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(16, 185, 129, 0.2)'
-                }}
+                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
+                  ${newTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
+                `}
               />
               <button
                 type="button"
                 onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
-                className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
               >
-                Pendente
+                PENDENTE
               </button>
               <button
                 type="button"
                 onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
-                className={`relative z-10 px-3 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
               >
-                Pago
+                PAGO
               </button>
             </div>
           </div>
         </div>
       </UniversalModal>
+      <Walkthrough
+        steps={walkthroughSteps}
+        isActive={isWalkthroughActive}
+        onComplete={() => setIsWalkthroughActive(false)}
+        onSkip={() => setIsWalkthroughActive(false)}
+      />
     </div >
   );
-}
+};

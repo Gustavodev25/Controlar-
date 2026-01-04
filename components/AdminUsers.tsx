@@ -44,7 +44,7 @@ interface SystemUser extends UserType {
 type PlanFilter = 'all' | 'starter' | 'pro' | 'family';
 type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due';
 type RoleFilter = 'all' | 'admin' | 'user';
-type SortOption = 'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'last_active';
+type SortOption = 'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'last_active' | 'most_active_days' | 'least_active_days';
 
 const planTabs: { value: PlanFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
@@ -123,6 +123,26 @@ export const AdminUsers: React.FC = () => {
                     const lastLoginA = a.connectionLogs?.[0]?.timestamp ? new Date(a.connectionLogs[0].timestamp).getTime() : 0;
                     const lastLoginB = b.connectionLogs?.[0]?.timestamp ? new Date(b.connectionLogs[0].timestamp).getTime() : 0;
                     return lastLoginB - lastLoginA;
+                case 'most_active_days': {
+                    const getDays = (u: SystemUser) => {
+                        if (!u.createdAt) return 0;
+                        const lastLog = u.connectionLogs?.[0];
+                        const end = lastLog?.timestamp ? new Date(lastLog.timestamp).getTime() : new Date(u.createdAt).getTime();
+                        const start = new Date(u.createdAt).getTime();
+                        return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                    };
+                    return getDays(b) - getDays(a);
+                }
+                case 'least_active_days': {
+                    const getDays = (u: SystemUser) => {
+                        if (!u.createdAt) return 0;
+                        const lastLog = u.connectionLogs?.[0];
+                        const end = lastLog?.timestamp ? new Date(lastLog.timestamp).getTime() : new Date(u.createdAt).getTime();
+                        const start = new Date(u.createdAt).getTime();
+                        return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                    };
+                    return getDays(a) - getDays(b);
+                }
                 default:
                     return 0;
             }
@@ -262,6 +282,43 @@ export const AdminUsers: React.FC = () => {
         return `${Math.floor(diffDays / 365)} anos`;
     };
 
+    const renderActiveDays = (user: SystemUser) => {
+        if (!user.createdAt) return <span>-</span>;
+
+        const logs = user.connectionLogs;
+        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+
+        // Check for Online status (last access within 5 minutes)
+        if (lastLog?.timestamp) {
+            const lastAccessTime = new Date(lastLog.timestamp).getTime();
+            const nowTime = new Date().getTime();
+            const fiveMinutes = 5 * 60 * 1000;
+
+            if (nowTime - lastAccessTime < fiveMinutes) {
+                return (
+                    <div className="flex items-center gap-1.5">
+                        <span className="relative flex h-2 w-2">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span className="text-emerald-500 font-medium text-sm">Online</span>
+                    </div>
+                );
+            }
+        }
+
+        // Active Days Calculation
+        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(user.createdAt);
+        const createdDate = new Date(user.createdAt);
+
+        if (isNaN(lastAccessDate.getTime()) || isNaN(createdDate.getTime())) return <span>-</span>;
+
+        const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        return <span className="text-gray-400 text-sm">{Math.max(0, diffDays) + ' dias'}</span>;
+    };
+
     const handleDelete = async () => {
         if (!deleteId) return;
         try {
@@ -324,6 +381,8 @@ export const AdminUsers: React.FC = () => {
             case 'newest': return 'Mais Recentes';
             case 'oldest': return 'Mais Antigos';
             case 'last_active': return 'Último Acesso';
+            case 'most_active_days': return 'Mais Dias Ativos';
+            case 'least_active_days': return 'Menos Dias Ativos';
             default: return sort;
         }
     };
@@ -497,6 +556,20 @@ export const AdminUsers: React.FC = () => {
                             >
                                 Último Acesso
                             </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('most_active_days')}
+                                icon={Calendar}
+                                className={sortOption === 'most_active_days' ? 'bg-white/5' : ''}
+                            >
+                                Mais Dias Ativos
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('least_active_days')}
+                                icon={Calendar}
+                                className={sortOption === 'least_active_days' ? 'bg-white/5' : ''}
+                            >
+                                Menos Dias Ativos
+                            </DropdownItem>
                             <DropdownSeparator />
                             <DropdownItem
                                 onClick={() => setSortOption('name_asc')}
@@ -554,26 +627,27 @@ export const AdminUsers: React.FC = () => {
                     />
                 ) : (
                     <>
-                        <div className="overflow-x-auto">
+                        <div className="overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
                             <table className="w-full">
                                 <thead className="bg-[#333431] text-xs uppercase tracking-wider text-gray-500">
                                     <tr>
-                                        <th className="px-4 py-3 text-left">Usuário</th>
-                                        <th className="px-4 py-3 text-left">Email</th>
-                                        <th className="px-4 py-3 text-left">Membro Há</th>
-                                        <th className="px-4 py-3 text-left">Idade</th>
-                                        <th className="px-4 py-3 text-left">Plano</th>
-                                        <th className="px-4 py-3 text-left">Status</th>
-                                        <th className="px-4 py-3 text-left">Ciclo</th>
-                                        <th className="px-4 py-3 text-left">Último Acesso</th>
-                                        <th className="px-4 py-3 text-left">Próx. Cobrança</th>
-                                        <th className="px-4 py-3 text-center">Ações</th>
+                                        <th className="px-3 py-3 text-left">Usuário</th>
+                                        <th className="px-3 py-3 text-left">Email</th>
+                                        <th className="px-3 py-3 text-left">Membro Há</th>
+                                        <th className="px-3 py-3 text-left">Idade</th>
+                                        <th className="px-3 py-3 text-left">Dias Ativos</th>
+                                        <th className="px-3 py-3 text-left">Plano</th>
+                                        <th className="px-3 py-3 text-left">Status</th>
+                                        <th className="px-3 py-3 text-left">Ciclo</th>
+                                        <th className="px-3 py-3 text-left">Último Acesso</th>
+                                        <th className="px-3 py-3 text-left">Próx. Cobrança</th>
+                                        <th className="px-3 py-3 text-center">Ações</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-[#373734]">
                                     {paginatedUsers.map((user) => (
                                         <tr key={user.id} className="hover:bg-[#373734]/30 transition-colors">
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center gap-3">
                                                     <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-sm ${user.avatarUrl ? 'bg-gray-800' : getAvatarColors(user.name || '').bg} ${user.avatarUrl ? 'text-white' : getAvatarColors(user.name || '').text}`}>
                                                         {user.avatarUrl ? (
@@ -592,41 +666,44 @@ export const AdminUsers: React.FC = () => {
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-sm block truncate max-w-[150px]" title={user.email}>{user.email}</span>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <div className="flex flex-col">
                                                     <span className="text-white text-sm">{formatDate(user.createdAt)}</span>
                                                     <span className="text-gray-500 text-xs">{getTimeSinceCreation(user.createdAt)}</span>
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
+                                                {renderActiveDays(user)}
+                                            </td>
+                                            <td className="px-3 py-3">
                                                 {getPlanBadge(user.subscription?.plan)}
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 {getStatusBadge(user.subscription?.status)}
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-xs uppercase">
                                                     {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
                                                     <Clock size={12} />
                                                     {getLastLogin(user)}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-xs font-mono">
                                                     {formatDate(user.subscription?.nextBillingDate)}
                                                 </span>
                                             </td>
-                                            <td className="px-4 py-3">
+                                            <td className="px-3 py-3">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button
                                                         onClick={() => setAdminToggleId(user.id)}

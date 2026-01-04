@@ -30,7 +30,8 @@ import {
   X,
   Calendar,
   ShieldAlert,
-  Info
+  Info,
+  Clock
 } from 'lucide-react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { CustomDatePicker } from './UIComponents';
@@ -64,7 +65,7 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
         {payload.map((entry: any, index: number) => (
           <p key={index} className="text-sm font-bold flex items-center gap-2" style={{ color: entry.color || entry.fill }}>
             <span className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color || entry.fill }} />
-            {formatter ? formatter(entry.value) : entry.value}
+            {formatter ? formatter(entry.value, entry.name, entry) : entry.value}
           </p>
         ))}
       </div>
@@ -87,12 +88,12 @@ const KPICard = ({
   value: number,
   prefix?: string,
   suffix?: string,
-  trendData: number[],
+  trendData?: number[],
   color: string,
   trendPercent?: number,
   footer?: string
 }) => {
-  const chartData = trendData.map((val, i) => ({ i, val }));
+  const chartData = trendData ? trendData.map((val, i) => ({ i, val })) : [];
 
   return (
     <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-5 flex items-center justify-between overflow-hidden relative group hover:border-[#4a4a48] transition-colors h-[140px]">
@@ -119,22 +120,24 @@ const KPICard = ({
       </div>
 
       {/* Mini Chart (Recharts Area) */}
-      <div className="w-[40%] h-[80%] flex items-end justify-end absolute bottom-0 right-0 opacity-50 group-hover:opacity-80 transition-opacity pointer-events-none">
-        <ResponsiveContainer width="100%" height="100%">
-          <AreaChart data={chartData}>
-            <Area
-              type="natural"
-              dataKey="val"
-              stroke={color}
-              strokeWidth={2}
-              fill={color}
-              fillOpacity={0.4}
-              isAnimationActive={true}
-              activeDot={false}
-            />
-          </AreaChart>
-        </ResponsiveContainer>
-      </div>
+      {trendData && trendData.length > 0 && (
+        <div className="w-[40%] h-[80%] flex items-end justify-end absolute bottom-0 right-0 opacity-50 group-hover:opacity-80 transition-opacity pointer-events-none">
+          <ResponsiveContainer width="100%" height="100%">
+            <AreaChart data={chartData}>
+              <Area
+                type="natural"
+                dataKey="val"
+                stroke={color}
+                strokeWidth={2}
+                fill={color}
+                fillOpacity={0.4}
+                isAnimationActive={true}
+                activeDot={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+      )}
     </div>
   );
 };
@@ -206,6 +209,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     let totalRevenueEst = 0;
     let activeUsers = 0; // Only PAYING active users
     let totalFree = 0; // Active Starter users
+    let totalActiveDays = 0;
+    let usersWithActiveDaysCount = 0;
+    let onlineUsers = 0;
 
     // For Projection Chart
     const projectionMap: Record<string, number> = {};
@@ -305,6 +311,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     });
 
     filteredUsers.forEach(u => {
+      // Calculate Active Days & Online Status
+      if (u.createdAt) {
+        const logs = u.connectionLogs;
+        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+
+        // Online Check (5 mins)
+        if (lastLog?.timestamp) {
+          const now = new Date();
+          const lastTime = new Date(lastLog.timestamp).getTime();
+          if (now.getTime() - lastTime < 5 * 60 * 1000) {
+            onlineUsers++;
+          }
+        }
+
+        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt);
+        const createdDate = new Date(u.createdAt);
+        if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
+          const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          // If they have logs but diff is 0 (same millisecond?), let's allow 0, but usually ceil gives 1 for >0.
+          // Users expect to see at least '1 day' if they did anything.
+          // But if they just created account and left, 0 is correct retention.
+          // However, user complaint "não é 0 dias" suggests they want to see value.
+          // Let's use Math.floor but create a fallback?
+          // No, Math.ceil is safer to avoid "0 days" for active users on day 1.
+          totalActiveDays += Math.max(0, diffDays);
+          usersWithActiveDaysCount++;
+        }
+      }
+
       // Logic continues with filteredUsers instead of all users
       // Note: Some global stats (like total plan counts) might need to be calculated on ALL users 
       // if we want to show distribution regardless of filter, but user likely wants stats for the filtered set.
@@ -404,6 +440,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     // ARPU (Ticket Médio)
     const arpu = activeUsers > 0 ? totalMRR / activeUsers : 0;
+
+    // Average Active Days
+    const avgActiveDays = usersWithActiveDaysCount > 0 ? Math.round(totalActiveDays / usersWithActiveDaysCount) : 0;
 
     // Pending Revenue
     let pendingRevenue = 0;
@@ -596,12 +635,39 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       '55+': 0,
       'N/A': 0
     };
+    const activeDaysBuckets: Record<string, number> = {
+      '0-7': 0,
+      '8-14': 0,
+      '15-21': 0,
+      '22-30': 0,
+      '>31': 0
+    };
 
     filteredUsers.forEach(u => {
       // Location
       const state = u.address?.state?.toUpperCase() || 'N/A';
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
+
+      // Active Days Distribution
+      if (u.createdAt) {
+        const logs = u.connectionLogs;
+        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt);
+        const createdDate = new Date(u.createdAt);
+
+        if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
+          const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+          const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+          const days = Math.max(0, diffDays);
+
+          if (days <= 7) activeDaysBuckets['0-7']++;
+          else if (days <= 14) activeDaysBuckets['8-14']++;
+          else if (days <= 21) activeDaysBuckets['15-21']++;
+          else if (days <= 30) activeDaysBuckets['22-30']++;
+          else activeDaysBuckets['>31']++;
+        }
+      }
 
       // Age
       if (u.birthDate) {
@@ -643,6 +709,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       { name: 'N/A', value: ageBuckets['N/A'] },
     ];
 
+    const activeDaysChartData = [
+      { name: '0-7', full: '0 a 7 dias', value: activeDaysBuckets['0-7'] },
+      { name: '8-14', full: '8 a 14 dias', value: activeDaysBuckets['8-14'] },
+      { name: '15-21', full: '15 a 21 dias', value: activeDaysBuckets['15-21'] },
+      { name: '22-30', full: '22 a 30 dias', value: activeDaysBuckets['22-30'] },
+      { name: '>31', full: 'Mais de 31 dias', value: activeDaysBuckets['>31'] },
+    ];
+
 
 
     const chartData = Object.entries(projectionMap).map(([name, value]) => ({ name, value }));
@@ -659,12 +733,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       totalFree,
       arpu,
       conversionRate,
+      avgActiveDays, // New metric
+      onlineUsers,
       pendingRevenue,
       newUsers,
       chartData,
       planData,
       locationsChartData,
       ageData: ageChartData,
+      activeDaysData: activeDaysChartData, // New chart data
 
       cumulativeGrowth, // Add to return object
       newSubscribersGrowth, // New chart data
@@ -905,7 +982,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       </div>
 
       {/* Secondary Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Ticket Médio (ARPU)"
           value={stats.arpu}
@@ -931,6 +1008,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           trendData={stats.trends.mrr}
           color="#EC4899"
           footer="Total em atraso"
+        />
+        <KPICard
+          title="Média Dias Ativos"
+          value={stats.avgActiveDays}
+          color="#06b6d4"
+          footer="Do cadastro ao último acesso"
+          suffix=" dias"
         />
       </div>
 
@@ -1238,41 +1322,85 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         </div>
       </div>
 
-      {/* Age Estimation Chart */}
-      <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
-        <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
-          <Calendar size={18} className="text-[#d97757]" />
-          Estimativa de Idades
-        </h3>
-        <p className="text-gray-500 text-sm mb-6">Distribuição etária da base de usuários</p>
-        <div className="h-[300px] w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={stats.ageData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
-              <XAxis
-                dataKey="name"
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                stroke="#6b7280"
-                fontSize={12}
-                tickLine={false}
-                axisLine={false}
-                allowDecimals={false}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Bar
-                dataKey="value"
-                name="Usuários"
-                fill="#8B5CF6"
-                radius={[4, 4, 0, 0]}
-                barSize={50}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+      {/* Age & Active Days Charts Row */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+        {/* Active Days Distribution Chart */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+            <Clock size={18} className="text-cyan-400" />
+            Tempo de Atividade
+          </h3>
+          <p className="text-gray-500 text-sm mb-6">Distribuição de dias ativos dos usuários</p>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.activeDaysData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip
+                  content={<CustomTooltip formatter={(value: number, name: string, entry: any) => `${entry.payload.full}: ${value}`} />}
+                />
+                <Bar
+                  dataKey="value"
+                  name="Usuários"
+                  fill="#06b6d4" // Cyan-500 to match KPI
+                  radius={[4, 4, 0, 0]}
+                  barSize={50}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        {/* Age Estimation Chart */}
+        <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
+          <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
+            <Calendar size={18} className="text-[#d97757]" />
+            Estimativa de Idades
+          </h3>
+          <p className="text-gray-500 text-sm mb-6">Distribuição etária da base de usuários</p>
+          <div className="h-[300px] w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={stats.ageData}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#373734" vertical={false} />
+                <XAxis
+                  dataKey="name"
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                />
+                <YAxis
+                  stroke="#6b7280"
+                  fontSize={12}
+                  tickLine={false}
+                  axisLine={false}
+                  allowDecimals={false}
+                />
+                <Tooltip content={<CustomTooltip />} />
+                <Bar
+                  dataKey="value"
+                  name="Usuários"
+                  fill="#8B5CF6"
+                  radius={[4, 4, 0, 0]}
+                  barSize={50}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
         </div>
       </div>
 

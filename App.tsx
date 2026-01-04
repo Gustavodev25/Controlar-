@@ -2905,9 +2905,15 @@ const App: React.FC = () => {
   const handleUpdateTransaction = async (transaction: Transaction) => {
     if (!userId) return;
     try {
-      await dbService.updateTransaction(userId, transaction);
+      // Check if it's a credit card transaction and update the correct collection
+      if (transaction.accountType === 'CREDIT_CARD') {
+        await dbService.updateCreditCardTransaction(userId, transaction as any);
+      } else {
+        await dbService.updateTransaction(userId, transaction);
+      }
       toast.success("Lançamento atualizado com sucesso!");
     } catch (e) {
+      console.error("Error updating transaction:", e);
       toast.error("Erro ao atualizar lançamento.");
     }
   };
@@ -3542,8 +3548,20 @@ const App: React.FC = () => {
                     onBulkUpdate={async (ids, updates) => {
                       if (!userId) return;
                       try {
-                        await dbService.bulkUpdateCreditCardTransactions(userId, ids, updates as any);
-                        toast.success(`${ids.length} transações atualizadas com sucesso!`);
+                        // Passar as transações originais para que a função possa criar transações que não existem no banco
+                        const result = await dbService.bulkUpdateCreditCardTransactions(
+                          userId,
+                          ids,
+                          updates as any,
+                          creditCardTransactions as any
+                        );
+                        if (result.failed === 0) {
+                          toast.success(`${result.success} transações atualizadas com sucesso!`);
+                        } else if (result.success > 0) {
+                          toast.success(`${result.success} transações atualizadas. ${result.failed} falharam.`);
+                        } else {
+                          toast.error("Nenhuma transação foi atualizada.");
+                        }
                       } catch (error) {
                         console.error("Error bulk updating credit card transactions:", error);
                         toast.error("Erro ao atualizar transações.");

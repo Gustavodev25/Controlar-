@@ -1179,22 +1179,64 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
   await updateDoc(txRef, cleanData);
 };
 
-export const bulkUpdateCreditCardTransactions = async (userId: string, transactionIds: string[], updates: Partial<CreditCardTransaction>) => {
-  if (!db) return;
+export const bulkUpdateCreditCardTransactions = async (
+  userId: string,
+  transactionIds: string[],
+  updates: Partial<CreditCardTransaction>,
+  allTransactions?: CreditCardTransaction[]
+): Promise<{ success: number; failed: number }> => {
+  if (!db) return { success: 0, failed: 0 };
 
-  const chunkSize = 500;
-  for (let i = 0; i < transactionIds.length; i += chunkSize) {
-    const chunk = transactionIds.slice(i, i + chunkSize);
-    const batch = writeBatch(db);
-    const userRef = collection(db, "users", userId, "creditCardTransactions");
+  let successCount = 0;
+  let failedCount = 0;
 
-    chunk.forEach(id => {
-      const docRef = doc(userRef, id);
-      batch.update(docRef, updates);
-    });
-
-    await batch.commit();
+  // Criar um mapa de transações para busca rápida
+  const txMap = new Map<string, CreditCardTransaction>();
+  if (allTransactions) {
+    allTransactions.forEach(tx => txMap.set(tx.id, tx));
   }
+
+  for (const id of transactionIds) {
+    try {
+      const docRef = doc(db, "users", userId, "creditCardTransactions", id);
+
+      // Tenta primeiro fazer update (mais eficiente se já existe)
+      try {
+        await updateDoc(docRef, updates);
+        successCount++;
+      } catch (updateError: any) {
+        // Se o documento não existe, tenta criar com os dados originais + updates
+        if (updateError?.code === 'not-found' || updateError?.message?.includes('No document to update')) {
+          const originalTx = txMap.get(id);
+          if (originalTx) {
+            // Criar documento com dados originais + updates
+            const { id: _, ...txData } = originalTx;
+            const cleanData = { ...txData, ...updates };
+            // Remove undefined values
+            Object.keys(cleanData).forEach(key => {
+              if ((cleanData as any)[key] === undefined) {
+                delete (cleanData as any)[key];
+              }
+            });
+            await setDoc(docRef, cleanData);
+            successCount++;
+          } else {
+            // Sem dados originais, não podemos criar
+            console.warn(`Transaction ${id} not found in database or local data`);
+            failedCount++;
+          }
+        } else {
+          throw updateError;
+        }
+      }
+    } catch (error) {
+      console.error(`Error updating credit card transaction ${id}:`, error);
+      failedCount++;
+    }
+  }
+
+  console.log(`[bulkUpdateCreditCardTransactions] Success: ${successCount}, Failed: ${failedCount}`);
+  return { success: successCount, failed: failedCount };
 };
 
 export const deleteCreditCardTransaction = async (userId: string, transactionId: string) => {
@@ -3057,9 +3099,10 @@ export const updateCategoryMapping = async (userId: string, categoryId: string, 
 
   try {
     const catRef = doc(db, "users", userId, "categoryMappings", categoryId);
+    // Não altera isDefault - mantém como estava originalmente
+    // A verificação de "customizado" é feita comparando displayName com o nome padrão
     await updateDoc(catRef, {
       displayName,
-      isDefault: false, // Marca como customizado
       updatedAt: new Date().toISOString()
     });
   } catch (error) {

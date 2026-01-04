@@ -545,6 +545,13 @@ export interface ConnectedAccount {
   currency?: string;
   lastUpdated?: string;
   previewTransactions?: ConnectedTransactionPreview[];
+  // Connector info from DB
+  connector?: {
+    id?: string;
+    name?: string;
+    imageUrl?: string;
+    primaryColor?: string;
+  };
   // Credit card specific
   creditLimit?: number;
   availableCreditLimit?: number;

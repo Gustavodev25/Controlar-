@@ -26,6 +26,7 @@ import {
     deleteCategoryMapping,
     DEFAULT_CATEGORY_MAPPINGS
 } from '../services/database';
+import { ConfirmationBar } from './ConfirmationBar';
 
 interface CategoryManagerProps {
     userId: string;
@@ -65,6 +66,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
     const [addingToGroup, setAddingToGroup] = useState<string | null>(null);
     const [newCategoryName, setNewCategoryName] = useState('');
     const [deletingId, setDeletingId] = useState<string | null>(null);
+    const [deleteCategory, setDeleteCategory] = useState<CategoryMapping | null>(null);
+
+
 
     // Inicializar e escutar categorias
     useEffect(() => {
@@ -90,6 +94,19 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
             cat => cat.originalKey.toLowerCase() === originalKey.toLowerCase()
         );
         return defaultCat?.displayName || originalKey;
+    };
+
+    // Verificar se uma categoria é originalmente padrão (existe no DEFAULT_CATEGORY_MAPPINGS)
+    const isOriginallyDefault = (originalKey: string): boolean => {
+        return DEFAULT_CATEGORY_MAPPINGS.some(
+            cat => cat.originalKey.toLowerCase() === originalKey.toLowerCase()
+        );
+    };
+
+    // Verificar se uma categoria foi customizada (nome diferente do padrão)
+    const isCustomized = (category: CategoryMapping): boolean => {
+        const defaultName = getDefaultDisplayName(category.originalKey);
+        return category.displayName !== defaultName;
     };
 
     // Agrupar categorias
@@ -153,7 +170,15 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
 
         setSaving(category.id);
         try {
-            await updateCategoryMapping(userId, category.id, editValue.trim());
+            const defaultName = getDefaultDisplayName(category.originalKey);
+
+            // Se o valor editado for igual ao nome padrão, marca como isDefault
+            if (editValue.trim() === defaultName) {
+                await resetCategoryMapping(userId, category.id, defaultName);
+            } else {
+                await updateCategoryMapping(userId, category.id, editValue.trim());
+            }
+
             setShowSuccess(category.id);
             setTimeout(() => setShowSuccess(null), 2000);
         } catch (error) {
@@ -198,17 +223,22 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
         }
     };
 
-    // Deletar categoria
-    const handleDelete = async (category: CategoryMapping) => {
-        if (!window.confirm(`Tem certeza que deseja excluir a categoria "${category.displayName}"?`)) return;
+    // Deletar categoria - abre confirmação
+    const handleDelete = (category: CategoryMapping) => {
+        setDeleteCategory(category);
+    };
 
-        setDeletingId(category.id);
+    // Confirmar exclusão
+    const confirmDelete = async () => {
+        if (!deleteCategory) return;
+        setDeletingId(deleteCategory.id);
         try {
-            await deleteCategoryMapping(userId, category.id);
+            await deleteCategoryMapping(userId, deleteCategory.id);
         } catch (error) {
             console.error('Erro ao deletar categoria:', error);
         } finally {
             setDeletingId(null);
+            setDeleteCategory(null);
         }
     };
 
@@ -245,7 +275,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
 
                     {/* Stats */}
                     <div className="flex items-center gap-4">
-                        <div className="px-4 py-2 bg-[#30302E] rounded-xl border border-gray-700/50">
+                        <div className="px-4 py-2 bg-[#30302E] rounded-xl border border-gray-700/50" data-tour="cat-stats">
                             <p className="text-xs text-gray-400">Total</p>
                             <p className="text-lg font-bold text-white">{categories.length}</p>
                         </div>
@@ -256,6 +286,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                     </div>
                 </div>
             </div>
+
 
             {/* Filters & Actions */}
             <div className="flex flex-col gap-4">
@@ -269,7 +300,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                         <p className="text-gray-400">Nenhuma categoria encontrada</p>
                     </div>
                 ) : (
-                    Object.entries(groupedCategories).map(([groupName, cats]) => (
+                    Object.entries(groupedCategories).map(([groupName, cats], groupIndex) => (
                         <motion.div
                             key={groupName}
                             initial={{ opacity: 0, y: 20 }}
@@ -305,7 +336,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                                         transition={{ duration: 0.2 }}
                                         className="divide-y divide-gray-800/50 overflow-hidden"
                                     >
-                                        {cats.map((category) => (
+                                        {cats.map((category, catIndex) => (
                                             <div
                                                 key={category.id}
                                                 className="px-5 py-4 hover:bg-[#373734]/30 transition-colors"
@@ -325,7 +356,7 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                                                     <div className="flex-1 min-w-0">
                                                         <p className="text-xs text-gray-500 mb-1 uppercase tracking-wider flex items-center gap-1">
                                                             Nome de Exibição
-                                                            {!category.isDefault && (
+                                                            {isCustomized(category) && (
                                                                 <span className="px-1.5 py-0.5 bg-[#d97757]/20 text-[#d97757] text-[10px] rounded-full font-medium">
                                                                     Customizado
                                                                 </span>
@@ -405,12 +436,12 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                                                                 >
                                                                     <Edit2 className="w-4 h-4" />
                                                                 </button>
-                                                                {/* Only show Reset for Default categories, Delete for Custom categories */}
-                                                                {category.isDefault ? (
+                                                                {/* Reset button - for originally default categories that have been customized */}
+                                                                {isOriginallyDefault(category.originalKey) && isCustomized(category) && (
                                                                     <button
                                                                         onClick={() => handleReset(category)}
                                                                         disabled={saving === category.id}
-                                                                        className="p-2 text-gray-400 hover:text-[#d97757] hover:bg-[#d97757]/10 rounded-lg transition-colors disabled:opacity-50"
+                                                                        className="p-2 text-[#d97757] hover:text-[#ff9270] hover:bg-[#d97757]/10 rounded-lg transition-colors disabled:opacity-50"
                                                                         title="Restaurar nome padrão"
                                                                     >
                                                                         {saving === category.id ? (
@@ -419,7 +450,9 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                                                                             <RotateCcw className="w-4 h-4" />
                                                                         )}
                                                                     </button>
-                                                                ) : (
+                                                                )}
+                                                                {/* Delete button - only for custom categories (not originally default) */}
+                                                                {!isOriginallyDefault(category.originalKey) && (
                                                                     <button
                                                                         onClick={() => handleDelete(category)}
                                                                         disabled={deletingId === category.id}
@@ -507,6 +540,18 @@ export const CategoryManager: React.FC<CategoryManagerProps> = ({ userId }) => {
                     ))
                 )}
             </div>
+
+            {/* Barra de Confirmação de Exclusão */}
+            <ConfirmationBar
+                isOpen={!!deleteCategory}
+                onCancel={() => setDeleteCategory(null)}
+                onConfirm={confirmDelete}
+                label={`Excluir a categoria "${deleteCategory?.displayName}"?`}
+                confirmText="Sim, excluir"
+                cancelText="Cancelar"
+                isDestructive={true}
+                position="bottom"
+            />
         </div>
     );
 };
