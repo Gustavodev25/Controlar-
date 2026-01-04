@@ -32,7 +32,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
 
   // Date Range Filters
-  const [selectedYear, setSelectedYear] = useState<number>(new Date().getFullYear());
+  const [selectedYear, setSelectedYear] = useState<number>(0);
   const [startDate, setStartDate] = React.useState('');
   const [endDate, setEndDate] = React.useState('');
 

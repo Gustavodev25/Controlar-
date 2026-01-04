@@ -10,6 +10,7 @@ import {
 } from 'framer-motion';
 import { Menu, X, ArrowRight } from 'lucide-react';
 import logo from '../../assets/logo.png'; // ⚠️ Verifique o caminho
+import { getAvatarColors, getInitials } from '../../utils/avatarUtils';
 
 // --- TYPES ---
 interface NavItemProps {
@@ -49,9 +50,12 @@ const NavItem: React.FC<NavItemProps> = ({ children, href, isActive, onClick }) 
 // --- TOPBAR ---
 interface TopbarProps {
   onLogin: () => void;
+  hideNavigation?: boolean;
+  user?: any;
+  centerContent?: React.ReactNode;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
+export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false, user, centerContent }) => {
   const navLinks = [
     { name: 'Início', href: '#hero' },
     { name: 'Funcionalidades', href: '#features' },
@@ -189,100 +193,122 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin }) => {
             </a>
           </div>
 
-          {/* Desktop Links */}
+          {/* Desktop Links OR Center Content */}
           <div className="hidden md:flex items-center absolute left-1/2 -translate-x-1/2 z-10">
-            <div className="flex items-center gap-1 p-1">
-              {navLinks.map((link) => (
-                <NavItem
-                  key={link.name}
-                  href={link.href}
-                  isActive={activeTab === link.name}
-                  onClick={(e) => handleNavClick(e, link.href, link.name)}
-                >
-                  {link.name}
-                </NavItem>
-              ))}
-            </div>
+            {!hideNavigation ? (
+              <div className="flex items-center gap-1 p-1">
+                {navLinks.map((link) => (
+                  <NavItem
+                    key={link.name}
+                    href={link.href}
+                    isActive={activeTab === link.name}
+                    onClick={(e) => handleNavClick(e, link.href, link.name)}
+                  >
+                    {link.name}
+                  </NavItem>
+                ))}
+              </div>
+            ) : (
+              centerContent
+            )}
           </div>
 
           {/* Botões Direita */}
           <div className="pr-1 flex items-center gap-2 relative z-10">
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={onLogin}
-              className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
-            >
-              <span>Entrar</span>
-            </motion.button>
+            {user ? (
+              // User Avatar Rendering
+              (() => {
+                const avatarColors = getAvatarColors(user.name || 'User');
+                const hasCustomAvatar = user.avatarUrl && user.avatarUrl.includes('url');
+                return (
+                  <div className="flex items-center gap-3 pr-2">
+                    <div className={`w-8 h-8 rounded-full ${hasCustomAvatar ? '' : avatarColors.bg} flex items-center justify-center text-xs font-bold ${hasCustomAvatar ? 'text-white' : avatarColors.text} shadow-md border border-white/10`}>
+                      {!hasCustomAvatar && getInitials(user.name || 'User')}
+                    </div>
+                  </div>
+                );
+              })()
+            ) : (
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={onLogin}
+                className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
+              >
+                <span>Entrar</span>
+              </motion.button>
+            )}
 
-            <button
-              className="md:hidden p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors backdrop-blur-md border border-white/5"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-            </button>
+            {!hideNavigation && (
+              <button
+                className="md:hidden p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors backdrop-blur-md border border-white/5"
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              >
+                {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+              </button>
+            )}
           </div>
         </motion.nav>
 
         {/* --- MENU MOBILE DROPDOWN (GLASSMORPHISM STYLE) --- */}
-        <AnimatePresence>
-          {mobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -10, scale: 0.98, filter: "blur(10px)" }}
-              animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-              exit={{ opacity: 0, y: -10, scale: 0.98, filter: "blur(10px)" }}
-              transition={{ type: "spring", stiffness: 300, damping: 25 }}
-              className="
+        {!hideNavigation && (
+          <AnimatePresence>
+            {mobileMenuOpen && (
+              <motion.div
+                initial={{ opacity: 0, y: -10, scale: 0.98, filter: "blur(10px)" }}
+                animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -10, scale: 0.98, filter: "blur(10px)" }}
+                transition={{ type: "spring", stiffness: 300, damping: 25 }}
+                className="
                 pointer-events-auto mt-2 w-full max-w-[90%] sm:max-w-sm
                 rounded-2xl border border-white/10 
                 shadow-[0_20px_40px_-10px_rgba(0,0,0,0.5)] 
                 overflow-hidden z-40 relative
               "
-              style={{
-                // AQUI ESTÁ A MÁGICA DO GLASSMORPHISM:
-                backgroundColor: "rgba(10, 10, 10, 0.65)", // Base escura translúcida
-                backdropFilter: "blur(24px) saturate(180%)", // Blur forte + saturação para cores vivas
-                WebkitBackdropFilter: "blur(24px) saturate(180%)", // Suporte Safari
-              }}
-            >
-              {/* 1. TEXTURA DE NOISE (Igual ao Topbar) */}
-              <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
+                style={{
+                  backgroundColor: "rgba(10, 10, 10, 0.65)",
+                  backdropFilter: "blur(24px) saturate(180%)",
+                  WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                }}
+              >
+                {/* Textura Noise */}
+                <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
 
-              {/* 2. BRILHO DE BORDA SUPERIOR */}
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-70" />
+                {/* Brilho de Borda Superior */}
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/15 to-transparent opacity-70" />
 
-              <div className="flex flex-col p-2 relative z-10">
-                {navLinks.map((link, i) => (
-                  <motion.a
-                    key={link.name}
-                    initial={{ x: -10, opacity: 0 }}
-                    animate={{ x: 0, opacity: 1 }}
-                    transition={{ delay: i * 0.05 }}
-                    href={link.href}
-                    onClick={(e) => handleNavClick(e, link.href, link.name)}
-                    className="
+                <div className="flex flex-col p-2 relative z-10">
+                  {navLinks.map((link, i) => (
+                    <motion.a
+                      key={link.name}
+                      initial={{ x: -10, opacity: 0 }}
+                      animate={{ x: 0, opacity: 1 }}
+                      transition={{ delay: i * 0.05 }}
+                      href={link.href}
+                      onClick={(e) => handleNavClick(e, link.href, link.name)}
+                      className="
                       flex items-center justify-between p-3 rounded-xl 
                       text-gray-300 hover:text-white hover:bg-white/5 
                       transition-all group border border-transparent hover:border-white/5
                     "
-                  >
-                    <span className="font-medium">{link.name}</span>
-                    <ArrowRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-transform text-[#D97757]" />
-                  </motion.a>
-                ))}
+                    >
+                      <span className="font-medium">{link.name}</span>
+                      <ArrowRight className="w-4 h-4 opacity-0 -translate-x-2 group-hover:opacity-100 group-hover:translate-x-0 transition-transform text-[#D97757]" />
+                    </motion.a>
+                  ))}
 
-                <div className="h-px bg-white/5 my-2 mx-2" />
+                  <div className="h-px bg-white/5 my-2 mx-2" />
 
-                <button
-                  onClick={onLogin}
-                  className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
-                  Entrar na Plataforma
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  <button
+                    onClick={onLogin}
+                    className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
+                    Entrar na Plataforma
+                  </button>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        )}
       </div>
 
       {/* CLICK OUTSIDE PARA FECHAR (INVISÍVEL) */}

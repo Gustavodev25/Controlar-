@@ -569,7 +569,7 @@ export const AdminChangelog: React.FC = () => {
                         <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                                 <Monitor size={18} className="text-green-400" />
-                                <h4 className="text-sm font-bold text-white">Lista de Mudanças</h4>
+                                <h4 className="text-sm font-bold text-white">Lista de Mudanças <span className="text-xs font-normal text-gray-500 ml-2">(Use **negrito** para destacar)</span></h4>
                             </div>
                             <button
                                 onClick={addChange}

@@ -6,8 +6,9 @@ import { AnimatedGridPattern } from './AnimatedGridPattern';
 import { ShiningText } from './ShiningText';
 import { ChangelogItem } from '../types';
 import * as dbService from '../services/database';
+import { RichTextRenderer } from './RichTextRenderer';
 
-export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) => {
+export const PublicChangelog: React.FC<{ onBack: () => void; user?: any }> = ({ onBack, user }) => {
     const [changelogs, setChangelogs] = useState<ChangelogItem[]>([]);
     const [isLoading, setIsLoading] = useState(true);
 
@@ -36,7 +37,16 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
 
             {/* Topbar Wrapper */}
             <div className="relative z-50">
-                <Topbar onLogin={() => { }} />
+                <Topbar
+                    onLogin={() => { }}
+                    hideNavigation={true}
+                    user={user}
+                    centerContent={
+                        <span className="text-white/40 font-mono text-sm tracking-wider">
+                            {new Date().getFullYear()}
+                        </span>
+                    }
+                />
             </div>
 
             <main className="relative z-10 pt-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto flex flex-col lg:flex-row gap-12 h-[calc(100vh-20px)] overflow-hidden">
@@ -137,7 +147,7 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                                             <div className="relative z-10 flex flex-col gap-6">
                                                 {log.summary && (
                                                     <p className="text-gray-300 text-base leading-relaxed">
-                                                        {log.summary}
+                                                        <RichTextRenderer text={log.summary} />
                                                     </p>
                                                 )}
 
@@ -156,7 +166,7 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                                                                 {newFeatures.map((item, i) => (
                                                                     <li key={i} className="flex items-start gap-3 text-sm text-gray-400 font-medium">
                                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-green-500/50 flex-shrink-0" />
-                                                                        {item.text}
+                                                                        <RichTextRenderer text={item.text} />
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -177,7 +187,7 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                                                                 {improvements.map((item, i) => (
                                                                     <li key={i} className="flex items-start gap-3 text-sm text-gray-400 font-medium">
                                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500/50 flex-shrink-0" />
-                                                                        {item.text}
+                                                                        <RichTextRenderer text={item.text} />
                                                                     </li>
                                                                 ))}
                                                             </ul>
@@ -198,7 +208,7 @@ export const PublicChangelog: React.FC<{ onBack: () => void }> = ({ onBack }) =>
                                                                 {bugfixes.map((item, i) => (
                                                                     <li key={i} className="flex items-start gap-3 text-sm text-gray-400 font-medium">
                                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500/50 flex-shrink-0" />
-                                                                        {item.text}
+                                                                        <RichTextRenderer text={item.text} />
                                                                     </li>
                                                                 ))}
                                                             </ul>

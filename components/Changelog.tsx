@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { Calendar, Sparkles, Zap, Bug } from 'lucide-react';
 import { ChangelogItem } from '../types';
 import * as dbService from '../services/database';
+import { RichTextRenderer } from './RichTextRenderer';
 
 export const Changelog: React.FC = () => {
     const [changelogs, setChangelogs] = useState<ChangelogItem[]>([]);
@@ -77,7 +78,7 @@ export const Changelog: React.FC = () => {
                                     {/* Summary */}
                                     {log.summary && (
                                         <div className="text-gray-300 text-sm leading-relaxed border-l-2 border-[#d97757]/30 pl-4 py-1">
-                                            {log.summary}
+                                            <RichTextRenderer text={log.summary} />
                                         </div>
                                     )}
 
@@ -95,7 +96,7 @@ export const Changelog: React.FC = () => {
                                                     <div key={i} className="flex items-start gap-3 group pl-2">
                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-green-500/50 flex-shrink-0" />
                                                         <span className="text-gray-300 group-hover:text-white transition-colors text-sm">
-                                                            {change.text}
+                                                            <RichTextRenderer text={change.text} />
                                                         </span>
                                                     </div>
                                                 ))}
@@ -117,7 +118,7 @@ export const Changelog: React.FC = () => {
                                                     <div key={i} className="flex items-start gap-3 group pl-2">
                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-blue-500/50 flex-shrink-0" />
                                                         <span className="text-gray-300 group-hover:text-white transition-colors text-sm">
-                                                            {change.text}
+                                                            <RichTextRenderer text={change.text} />
                                                         </span>
                                                     </div>
                                                 ))}
@@ -139,7 +140,7 @@ export const Changelog: React.FC = () => {
                                                     <div key={i} className="flex items-start gap-3 group pl-2">
                                                         <div className="mt-1.5 w-1.5 h-1.5 rounded-full bg-orange-500/50 flex-shrink-0" />
                                                         <span className="text-gray-300 group-hover:text-white transition-colors text-sm">
-                                                            {change.text}
+                                                            <RichTextRenderer text={change.text} />
                                                         </span>
                                                     </div>
                                                 ))}

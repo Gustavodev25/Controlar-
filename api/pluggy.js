@@ -277,6 +277,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
     const startTime = Date.now();
 
+    console.log('[SYNC-START] Iniciando sincronização:', { itemId, userId, timestamp: new Date().toISOString() });
+
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
     }
@@ -311,7 +313,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             await updateProgress(5, 'Atualizando conexão...');
 
             try {
-                await pluggyApi.patch(`/items/${itemId}`, { webhookUrl: process.env.PLUGGY_WEBHOOK_URL }, {
+                // Body vazio força sincronização real com o banco (não apenas atualiza webhook)
+                // Ref: https://docs.pluggy.ai/reference/items-update
+                await pluggyApi.patch(`/items/${itemId}`, {}, {
                     headers: { 'X-API-KEY': apiKey }
                 });
             } catch (err) {
@@ -355,6 +359,12 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             ]);
 
             const accounts = accountsResp.data.results || [];
+
+            // Debug: Log balances recebidos do Pluggy
+            console.log('[Trigger-Sync] Accounts with balances:', accounts.map(a => ({
+                id: a.id, name: a.name, balance: a.balance, type: a.type
+            })));
+
             const existingMap = {};
             existingSnap.forEach(doc => {
                 const d = doc.data();
@@ -427,6 +437,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     // Subtract 1 day as safety margin for timezone/timing issues
                     lastSync.setDate(lastSync.getDate() - 1);
                     fromStr = lastSync.toISOString().split('T')[0];
+                    console.log(`[Sync] Conta ${account.id} (${account.name}): sync incremental desde ${fromStr}`);
+                } else {
+                    console.log(`[Sync] Conta ${account.id} (${account.name}): primeiro sync, buscando desde ${fromStr} (12 meses)`);
                 }
 
                 // Use pagination to fetch ALL transactions
@@ -741,15 +754,22 @@ const fetchAllTransactions = async (apiKey, accountId, fromDate) => {
 
     while (true) {
         try {
-            const response = await pluggyApi.get(
-                `/transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`,
-                { headers: { 'X-API-KEY': apiKey } }
-            );
+            const url = `/transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`;
+            console.log(`[Sync] Fetching: ${url}`);
+
+            const response = await pluggyApi.get(url, { headers: { 'X-API-KEY': apiKey } });
 
             const results = response.data.results || [];
             allTransactions.push(...results);
 
             console.log(`[Sync] Account ${accountId} page ${page}: ${results.length} transactions`);
+
+            // Log detalhado se não houver transações
+            if (page === 1 && results.length === 0) {
+                console.log(`[Sync] ⚠️ AVISO: Conta ${accountId} retornou 0 transações.`);
+                console.log(`[Sync] URL chamada: /transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`);
+                console.log(`[Sync] Response data:`, JSON.stringify(response.data, null, 2));
+            }
 
             // If returned less than pageSize, no more pages
             if (results.length < pageSize) break;

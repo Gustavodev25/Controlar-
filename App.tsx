@@ -1119,6 +1119,13 @@ const App: React.FC = () => {
 
 
     const unsubTx = dbService.listenToTransactions(userId, (data) => {
+      console.log('[DEBUG-TX] Transactions carregadas:', data.length);
+      console.log('[DEBUG-TX] Amostra:', data.slice(0, 5).map(t => ({
+        id: t.id,
+        date: t.date,
+        accountId: t.accountId,
+        description: t.description?.slice(0, 30)
+      })));
       setTransactions(data);
       setIsLoadingData(false);
     });
@@ -1218,6 +1225,14 @@ const App: React.FC = () => {
     });
 
     const unsubAccounts = dbService.listenToConnectedAccounts(userId, (data) => {
+      console.log('[DEBUG-ACC] Contas conectadas:', data.length);
+      console.log('[DEBUG-ACC] IDs e tipos das contas:', data.map(a => ({
+        id: a.id,
+        name: a.name,
+        type: a.type,
+        subtype: a.subtype,
+        itemId: a.itemId
+      })));
       setConnectedAccounts(data);
     });
 
@@ -1544,6 +1559,7 @@ const App: React.FC = () => {
   const accountMap = useMemo(() => {
     const map = new Map<string, ConnectedAccount>();
     enrichedConnectedAccounts.forEach(a => map.set(a.id, a));
+    console.log('[DEBUG-MAP] AccountMap criado com', map.size, 'contas. Keys:', Array.from(map.keys()));
     return map;
   }, [enrichedConnectedAccounts]);
 
@@ -1781,7 +1797,7 @@ const App: React.FC = () => {
 
   // Split transactions by Account Type for different tabs
   const checkingTransactions = useMemo(() => {
-    return memberFilteredTransactions.filter(t => {
+    const result = memberFilteredTransactions.filter(t => {
       // Check linked account first
       if (t.accountId) {
         const account = accountMap.get(t.accountId);
@@ -1803,11 +1819,23 @@ const App: React.FC = () => {
           if (t.isInvestment) return false;
           return true;
         }
+        // CORREÇÃO: Se transação tem accountId mas conta não está no map,
+        // verificar pelo accountType da transação ou incluir por padrão
+        const txType = (t.accountType || '').toUpperCase();
+        if (txType.includes('CREDIT') || txType.includes('SAVINGS')) return false;
+        // Incluir a transação se não é credit/savings (mais seguro que excluir)
+        return !t.isInvestment;
       }
 
+      // Transação sem accountId (manual)
       const type = (t.accountType || '').toUpperCase();
       return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
     });
+
+    console.log('[DEBUG-CHECK] memberFilteredTransactions:', memberFilteredTransactions.length);
+    console.log('[DEBUG-CHECK] checkingTransactions (resultado):', result.length);
+
+    return result;
   }, [memberFilteredTransactions, accountMap]);
 
   const creditCardTransactions = useMemo(() => {
@@ -3190,6 +3218,7 @@ const App: React.FC = () => {
   if (showChangelog) {
     return (
       <PublicChangelog
+        user={currentUser}
         onBack={() => {
           // If logged in, go to dashboard, else home
           const target = currentUser ? '/dashboard' : '/';
