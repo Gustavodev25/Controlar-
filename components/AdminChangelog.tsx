@@ -9,6 +9,7 @@ import { CustomDatePicker, CustomSelect } from './UIComponents';
 import { EmptyState } from './EmptyState';
 import { UniversalModal, ModalSection, ModalDivider } from './UniversalModal';
 import { ConfirmationBar } from './ConfirmationBar';
+import { RichTextRenderer } from './RichTextRenderer';
 
 // Helper to parse PT-BR date string (e.g. "24 Dez, 2024" or "24 de dez. de 2024") to YYYY-MM-DD
 const parseDateToIso = (dateStr: string): string => {
@@ -370,7 +371,7 @@ export const AdminChangelog: React.FC = () => {
                     isOpen={isEditing}
                     onClose={() => setIsEditing(false)}
                     title={editItem.id ? 'Editar Changelog' : 'Novo Changelog'}
-                    width="max-w-2xl"
+                    width="max-w-[1200px]"
                     footer={
                         <div className="flex justify-end gap-3">
                             <button
@@ -389,254 +390,378 @@ export const AdminChangelog: React.FC = () => {
                         </div>
                     }
                 >
-                    <div className="space-y-6">
-                        <ModalSection icon={<Tag size={18} />} title="Informações da Versão" iconClassName="text-[#d97757]">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div className="space-y-1">
-                                    <div className="flex items-center justify-between">
-                                        <label className="text-xs font-bold text-gray-500 uppercase">Versão</label>
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-[10px] text-gray-500 font-bold uppercase">Auto</span>
-                                            <button
-                                                onClick={() => setIsAutoVersion(!isAutoVersion)}
-                                                className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${isAutoVersion ? 'bg-[#d97757]' : 'bg-gray-600'}`}
-                                            >
-                                                <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-200 ${isAutoVersion ? 'translate-x-4' : 'translate-x-0'}`} />
-                                            </button>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 items-start">
+                        {/* Left Column: Form */}
+                        <div className="space-y-6">
+                            <ModalSection icon={<Tag size={18} />} title="Informações da Versão" iconClassName="text-[#d97757]">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <label className="text-xs font-bold text-gray-500 uppercase">Versão</label>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-[10px] text-gray-500 font-bold uppercase">Auto</span>
+                                                <button
+                                                    onClick={() => setIsAutoVersion(!isAutoVersion)}
+                                                    className={`w-8 h-4 rounded-full p-0.5 transition-colors duration-200 ease-in-out ${isAutoVersion ? 'bg-[#d97757]' : 'bg-gray-600'}`}
+                                                >
+                                                    <div className={`w-3 h-3 bg-white rounded-full shadow-sm transition-transform duration-200 ${isAutoVersion ? 'translate-x-4' : 'translate-x-0'}`} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                value={editItem.version}
+                                                onChange={handleVersionChange}
+                                                readOnly={isAutoVersion}
+                                                className={`w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white outline-none text-sm font-mono transition-colors h-[46px] ${isAutoVersion
+                                                    ? 'opacity-60 cursor-not-allowed focus:border-[#373734]'
+                                                    : 'focus:border-[#d97757]'
+                                                    }`}
+                                                placeholder="ex: 1.0.0"
+                                            />
+                                            {isAutoVersion && (
+                                                <Sparkles size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#d97757]" />
+                                            )}
                                         </div>
                                     </div>
-                                    <div className="relative">
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Major Version (Background)</label>
                                         <input
                                             type="text"
-                                            value={editItem.version}
-                                            onChange={handleVersionChange}
-                                            readOnly={isAutoVersion}
-                                            className={`w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white outline-none text-sm font-mono transition-colors h-[46px] ${isAutoVersion
-                                                ? 'opacity-60 cursor-not-allowed focus:border-[#373734]'
-                                                : 'focus:border-[#d97757]'
-                                                }`}
-                                            placeholder="ex: 1.0.0"
+                                            value={editItem.majorVersion}
+                                            onChange={e => setEditItem({ ...editItem, majorVersion: e.target.value })}
+                                            className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none text-sm font-mono h-[46px]"
+                                            placeholder="ex: 1"
                                         />
-                                        {isAutoVersion && (
-                                            <Sparkles size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-[#d97757]" />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Data de Lançamento</label>
+                                        <CustomDatePicker
+                                            value={isoDate}
+                                            onChange={setIsoDate}
+                                            className="w-full h-[46px]"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Tipo</label>
+                                        <div className="flex bg-[#30302E] rounded-xl p-1 border border-[#373734] h-[46px] items-stretch">
+                                            {(['patch', 'minor', 'major'] as const).map((t) => (
+                                                <button
+                                                    key={t}
+                                                    onClick={() => handleTypeChange(t)}
+                                                    className={`flex-1 flex items-center justify-center text-xs font-bold rounded-lg uppercase transition-all ${editItem.type === t ? 'bg-[#d97757] text-white shadow-md' : 'text-gray-500 hover:text-white'}`}
+                                                >
+                                                    {t}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                            </ModalSection>
+
+                            <ModalSection icon={<FileText size={18} />} title="Resumo" iconClassName="text-blue-400">
+                                <div className="space-y-4">
+                                    <textarea
+                                        value={editItem.summary || ''}
+                                        onChange={e => setEditItem({ ...editItem, summary: e.target.value })}
+                                        className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[80px] text-sm resize-none"
+                                        placeholder="Descrição geral da atualização..."
+                                    />
+                                    <div className="space-y-1">
+                                        <label className="text-xs font-bold text-gray-500 uppercase">Imagem de Capa (Opcional)</label>
+
+                                        {!editItem.image ? (
+                                            <label className="block w-full cursor-pointer">
+                                                <div className="bg-[#30302E] border border-[#373734] border-dashed rounded-xl p-4 text-center hover:border-[#d97757] transition-colors group">
+                                                    <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:bg-[#d97757]/10 group-hover:text-[#d97757] transition-colors text-gray-500">
+                                                        <Upload size={20} />
+                                                    </div>
+                                                    <p className="text-xs font-medium text-gray-300">Clique para enviar imagem</p>
+                                                    <p className="text-[10px] text-gray-500 mt-1">PNG, JPG ou GIF (max. 2MB)</p>
+                                                </div>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => {
+                                                        const file = e.target.files?.[0];
+                                                        if (file) {
+                                                            if (file.size > 2 * 1024 * 1024) {
+                                                                alert('Imagem muito grande. Máximo 2MB.');
+                                                                return;
+                                                            }
+                                                            const reader = new FileReader();
+                                                            reader.onloadend = () => {
+                                                                setEditItem({ ...editItem, image: reader.result as string });
+                                                            };
+                                                            reader.readAsDataURL(file);
+                                                            setSelectedFile(file);
+                                                        }
+                                                    }}
+                                                />
+                                            </label>
+                                        ) : (
+                                            <div className="relative w-full rounded-xl overflow-hidden border border-[#373734] bg-[#30302E] group">
+                                                <div className="h-40 w-full relative">
+                                                    <img src={editItem.image} alt="Cover Preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-40 transition-opacity" />
+                                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button
+                                                            onClick={() => {
+                                                                setEditItem({ ...editItem, image: '' });
+                                                                setSelectedFile(null);
+                                                            }}
+                                                            className="bg-red-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-red-500 shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all"
+                                                        >
+                                                            <Trash2 size={14} /> Remover
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="px-3 py-2 bg-gray-900/50 border-t border-[#373734] flex justify-between items-center">
+                                                    <span className="text-[10px] text-gray-400">Imagem selecionada</span>
+                                                </div>
+                                            </div>
                                         )}
                                     </div>
                                 </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Major Version (Background)</label>
-                                    <input
-                                        type="text"
-                                        value={editItem.majorVersion}
-                                        onChange={e => setEditItem({ ...editItem, majorVersion: e.target.value })}
-                                        className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none text-sm font-mono h-[46px]"
-                                        placeholder="ex: 1"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Data de Lançamento</label>
-                                    <CustomDatePicker
-                                        value={isoDate}
-                                        onChange={setIsoDate}
-                                        className="w-full h-[46px]"
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Tipo</label>
-                                    <div className="flex bg-[#30302E] rounded-xl p-1 border border-[#373734] h-[46px] items-stretch">
-                                        {(['patch', 'minor', 'major'] as const).map((t) => (
-                                            <button
-                                                key={t}
-                                                onClick={() => handleTypeChange(t)}
-                                                className={`flex-1 flex items-center justify-center text-xs font-bold rounded-lg uppercase transition-all ${editItem.type === t ? 'bg-[#d97757] text-white shadow-md' : 'text-gray-500 hover:text-white'}`}
-                                            >
-                                                {t}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            </div>
-                        </ModalSection>
+                            </ModalSection>
 
-                        <ModalSection icon={<FileText size={18} />} title="Resumo" iconClassName="text-blue-400">
-                            <div className="space-y-4">
-                                <textarea
-                                    value={editItem.summary || ''}
-                                    onChange={e => setEditItem({ ...editItem, summary: e.target.value })}
-                                    className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[80px] text-sm resize-none"
-                                    placeholder="Descrição geral da atualização..."
-                                />
-                                <div className="space-y-1">
-                                    <label className="text-xs font-bold text-gray-500 uppercase">Imagem de Capa (Opcional)</label>
-
-                                    {!editItem.image ? (
-                                        <label className="block w-full cursor-pointer">
-                                            <div className="bg-[#30302E] border border-[#373734] border-dashed rounded-xl p-4 text-center hover:border-[#d97757] transition-colors group">
-                                                <div className="w-10 h-10 bg-gray-800 rounded-full flex items-center justify-center mx-auto mb-2 group-hover:bg-[#d97757]/10 group-hover:text-[#d97757] transition-colors text-gray-500">
-                                                    <Upload size={20} />
-                                                </div>
-                                                <p className="text-xs font-medium text-gray-300">Clique para enviar imagem</p>
-                                                <p className="text-[10px] text-gray-500 mt-1">PNG, JPG ou GIF (max. 2MB)</p>
-                                            </div>
-                                            <input
-                                                type="file"
-                                                accept="image/*"
-                                                className="hidden"
-                                                onChange={(e) => {
-                                                    const file = e.target.files?.[0];
-                                                    if (file) {
-                                                        if (file.size > 2 * 1024 * 1024) {
-                                                            alert('Imagem muito grande. Máximo 2MB.');
-                                                            return;
-                                                        }
-                                                        const reader = new FileReader();
-                                                        reader.onloadend = () => {
-                                                            setEditItem({ ...editItem, image: reader.result as string });
-                                                        };
-                                                        reader.readAsDataURL(file);
-                                                        setSelectedFile(file);
-                                                    }
-                                                }}
-                                            />
-                                        </label>
-                                    ) : (
-                                        <div className="relative w-full rounded-xl overflow-hidden border border-[#373734] bg-[#30302E] group">
-                                            <div className="h-40 w-full relative">
-                                                <img src={editItem.image} alt="Cover Preview" className="w-full h-full object-cover opacity-80 group-hover:opacity-40 transition-opacity" />
-                                                <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button
-                                                        onClick={() => {
-                                                            setEditItem({ ...editItem, image: '' });
-                                                            setSelectedFile(null);
-                                                        }}
-                                                        className="bg-red-500/90 text-white px-3 py-2 rounded-lg text-xs font-bold flex items-center gap-2 hover:bg-red-500 shadow-lg transform translate-y-2 group-hover:translate-y-0 transition-all"
-                                                    >
-                                                        <Trash2 size={14} /> Remover
-                                                    </button>
-                                                </div>
-                                            </div>
-                                            <div className="px-3 py-2 bg-gray-900/50 border-t border-[#373734] flex justify-between items-center">
-                                                <span className="text-[10px] text-gray-400">Imagem selecionada</span>
-                                            </div>
+                            <ModalSection icon={<AlignLeft size={18} />} title="Introdução das Seções (Opcional)" iconClassName="text-purple-400">
+                                <div className="space-y-4">
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Sparkles size={12} className="text-green-400" />
+                                            <label className="text-xs font-bold text-green-400 uppercase">Novidades</label>
                                         </div>
-                                    )}
-                                </div>
-                            </div>
-                        </ModalSection>
-
-                        <ModalSection icon={<AlignLeft size={18} />} title="Introdução das Seções (Opcional)" iconClassName="text-purple-400">
-                            <div className="space-y-4">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Sparkles size={12} className="text-green-400" />
-                                        <label className="text-xs font-bold text-green-400 uppercase">Novidades</label>
+                                        <textarea
+                                            value={editItem.newFeaturesIntro || ''}
+                                            onChange={e => setEditItem({ ...editItem, newFeaturesIntro: e.target.value })}
+                                            className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
+                                            placeholder="Texto introdutório para as novidades..."
+                                        />
                                     </div>
-                                    <textarea
-                                        value={editItem.newFeaturesIntro || ''}
-                                        onChange={e => setEditItem({ ...editItem, newFeaturesIntro: e.target.value })}
-                                        className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
-                                        placeholder="Texto introdutório para as novidades..."
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Zap size={12} className="text-blue-400" />
-                                        <label className="text-xs font-bold text-blue-400 uppercase">Melhorias</label>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Zap size={12} className="text-blue-400" />
+                                            <label className="text-xs font-bold text-blue-400 uppercase">Melhorias</label>
+                                        </div>
+                                        <textarea
+                                            value={editItem.improvementsIntro || ''}
+                                            onChange={e => setEditItem({ ...editItem, improvementsIntro: e.target.value })}
+                                            className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
+                                            placeholder="Texto introdutório para as melhorias..."
+                                        />
                                     </div>
-                                    <textarea
-                                        value={editItem.improvementsIntro || ''}
-                                        onChange={e => setEditItem({ ...editItem, improvementsIntro: e.target.value })}
-                                        className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
-                                        placeholder="Texto introdutório para as melhorias..."
-                                    />
-                                </div>
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2 mb-1">
-                                        <Bug size={12} className="text-orange-400" />
-                                        <label className="text-xs font-bold text-orange-400 uppercase">Correções</label>
+                                    <div className="space-y-1">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <Bug size={12} className="text-orange-400" />
+                                            <label className="text-xs font-bold text-orange-400 uppercase">Correções</label>
+                                        </div>
+                                        <textarea
+                                            value={editItem.fixesIntro || ''}
+                                            onChange={e => setEditItem({ ...editItem, fixesIntro: e.target.value })}
+                                            className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
+                                            placeholder="Texto introdutório para as correções..."
+                                        />
                                     </div>
-                                    <textarea
-                                        value={editItem.fixesIntro || ''}
-                                        onChange={e => setEditItem({ ...editItem, fixesIntro: e.target.value })}
-                                        className="w-full bg-[#30302E] border border-[#373734] rounded-xl p-3 text-white focus:border-[#d97757] outline-none min-h-[60px] text-sm resize-none"
-                                        placeholder="Texto introdutório para as correções..."
-                                    />
                                 </div>
-                            </div>
-                        </ModalSection>
+                            </ModalSection>
 
-                        <ModalDivider />
+                            <ModalDivider />
 
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Monitor size={18} className="text-green-400" />
-                                <h4 className="text-sm font-bold text-white">Lista de Mudanças <span className="text-xs font-normal text-gray-500 ml-2">(Use **negrito** para destacar)</span></h4>
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Monitor size={18} className="text-green-400" />
+                                    <h4 className="text-sm font-bold text-white">Lista de Mudanças <span className="text-xs font-normal text-gray-500 ml-2">(Use **negrito** para destacar)</span></h4>
+                                </div>
+                                <button
+                                    onClick={addChange}
+                                    className="flex items-center gap-2 px-3 py-1.5 bg-[#d97757]/10 text-[#d97757] rounded-lg text-xs font-bold hover:bg-[#d97757]/20 transition-colors uppercase tracking-wider"
+                                >
+                                    <Plus size={12} /> Adicionar
+                                </button>
                             </div>
-                            <button
-                                onClick={addChange}
-                                className="flex items-center gap-2 px-3 py-1.5 bg-[#d97757]/10 text-[#d97757] rounded-lg text-xs font-bold hover:bg-[#d97757]/20 transition-colors uppercase tracking-wider"
-                            >
-                                <Plus size={12} /> Adicionar
-                            </button>
+
+                            <div className="space-y-3">
+                                <AnimatePresence>
+                                    {editItem.changes.map((change, index) => (
+                                        <motion.div
+                                            key={index}
+                                            initial={{ opacity: 0, y: 10 }}
+                                            animate={{ opacity: 1, y: 0 }}
+                                            exit={{ opacity: 0, height: 0 }}
+                                            className="flex gap-2 items-start group"
+                                        >
+                                            <div className="w-40 shrink-0">
+                                                <CustomSelect
+                                                    value={change.type}
+                                                    onChange={val => updateChange(index, 'type', val as any)}
+                                                    options={[
+                                                        { value: 'new', label: <div className="flex items-center gap-2"><Sparkles size={14} className="text-green-400" /> Novo</div> },
+                                                        { value: 'improvement', label: <div className="flex items-center gap-2"><Zap size={14} className="text-blue-400" /> Melhoria</div> },
+                                                        { value: 'fix', label: <div className="flex items-center gap-2"><Bug size={14} className="text-orange-400" /> Correção</div> }
+                                                    ]}
+                                                    className="w-full"
+                                                    portal={true}
+                                                />
+                                            </div>
+
+                                            <div className="flex-1 bg-[#30302E] border border-[#373734] rounded-xl pl-4 pr-2 py-2.5 flex items-center gap-2 focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)] transition-all h-11 group/input">
+                                                <input
+                                                    type="text"
+                                                    value={change.text}
+                                                    onChange={e => updateChange(index, 'text', e.target.value)}
+                                                    className="flex-1 bg-transparent border-none outline-none text-white text-sm placeholder-gray-500"
+                                                    placeholder="Descreva a mudança..."
+                                                    autoFocus={index === editItem.changes.length - 1 && !change.text}
+                                                />
+                                                <button
+                                                    onClick={() => removeChange(index)}
+                                                    className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within/input:opacity-100"
+                                                    title="Remover"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            </div>
+                                        </motion.div>
+                                    ))}
+                                </AnimatePresence>
+                                {editItem.changes.length === 0 && (
+                                    <div className="text-center py-8 border-2 border-dashed border-[#373734] rounded-xl bg-[#30302E]/30 flex flex-col items-center gap-2">
+                                        <div className="p-3 bg-[#30302E] rounded-full text-gray-600">
+                                            <Sparkles size={20} />
+                                        </div>
+                                        <p className="text-gray-500 text-sm">Nenhuma mudança registrada.</p>
+                                        <button
+                                            onClick={addChange}
+                                            className="text-[#d97757] text-sm font-bold hover:underline"
+                                        >
+                                            Adicionar primeira mudança
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="space-y-3">
-                            <AnimatePresence>
-                                {editItem.changes.map((change, index) => (
-                                    <motion.div
-                                        key={index}
-                                        initial={{ opacity: 0, y: 10 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        exit={{ opacity: 0, height: 0 }}
-                                        className="flex gap-2 items-start group"
-                                    >
-                                        <div className="w-40 shrink-0">
-                                            <CustomSelect
-                                                value={change.type}
-                                                onChange={val => updateChange(index, 'type', val as any)}
-                                                options={[
-                                                    { value: 'new', label: <div className="flex items-center gap-2"><Sparkles size={14} className="text-green-400" /> Novo</div> },
-                                                    { value: 'improvement', label: <div className="flex items-center gap-2"><Zap size={14} className="text-blue-400" /> Melhoria</div> },
-                                                    { value: 'fix', label: <div className="flex items-center gap-2"><Bug size={14} className="text-orange-400" /> Correção</div> }
-                                                ]}
-                                                className="w-full"
-                                                portal={true}
-                                            />
-                                        </div>
+                        {/* Right Column: Preview */}
+                        <div className="sticky top-0 mt-8 lg:mt-0">
+                            <div className="flex items-center gap-2 mb-4">
+                                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-wider">Preview em Tempo Real</h3>
+                            </div>
 
-                                        <div className="flex-1 bg-[#30302E] border border-[#373734] rounded-xl pl-4 pr-2 py-2.5 flex items-center gap-2 focus-within:border-[#d97757] focus-within:bg-[rgba(58,59,57,0.8)] transition-all h-11 group/input">
-                                            <input
-                                                type="text"
-                                                value={change.text}
-                                                onChange={e => updateChange(index, 'text', e.target.value)}
-                                                className="flex-1 bg-transparent border-none outline-none text-white text-sm placeholder-gray-500"
-                                                placeholder="Descreva a mudança..."
-                                                autoFocus={index === editItem.changes.length - 1 && !change.text}
-                                            />
-                                            <button
-                                                onClick={() => removeChange(index)}
-                                                className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-red-400/10 rounded-lg transition-all opacity-0 group-hover:opacity-100 focus:opacity-100 group-focus-within/input:opacity-100"
-                                                title="Remover"
-                                            >
-                                                <X size={16} />
-                                            </button>
-                                        </div>
-                                    </motion.div>
-                                ))}
-                            </AnimatePresence>
-                            {editItem.changes.length === 0 && (
-                                <div className="text-center py-8 border-2 border-dashed border-[#373734] rounded-xl bg-[#30302E]/30 flex flex-col items-center gap-2">
-                                    <div className="p-3 bg-[#30302E] rounded-full text-gray-600">
-                                        <Sparkles size={20} />
-                                    </div>
-                                    <p className="text-gray-500 text-sm">Nenhuma mudança registrada.</p>
-                                    <button
-                                        onClick={addChange}
-                                        className="text-[#d97757] text-sm font-bold hover:underline"
-                                    >
-                                        Adicionar primeira mudança
-                                    </button>
+                            {/* Main Card */}
+                            <div
+                                className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex flex-col gap-6"
+                                style={{
+                                    backgroundColor: "rgba(10, 10, 10, 0.65)",
+                                    backdropFilter: "blur(24px) saturate(180%)",
+                                    WebkitBackdropFilter: "blur(24px) saturate(180%)",
+                                }}
+                            >
+                                {/* Texture Noise */}
+                                <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
+
+                                {/* Bright Top Border */}
+                                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
+
+                                {/* Big Watermark Number */}
+                                <div className="absolute -right-4 top-4 pointer-events-none opacity-[0.03] font-black text-9xl tracking-tighter select-none text-white">
+                                    {editItem.majorVersion}
                                 </div>
-                            )}
+
+                                {/* Version Header Small */}
+                                <div className="flex items-center gap-4 relative z-10">
+                                    <span className="text-sm font-bold text-[#D97757]">{editItem.version || 'vX.X.X'}</span>
+                                    <div className="h-px bg-gray-800 flex-1" />
+                                    <span className="text-xs font-medium text-gray-500 uppercase">{formatIsoToDisplay(isoDate) || 'Data'}</span>
+                                </div>
+
+                                {/* Optional Image */}
+                                {editItem.image && (
+                                    <div className="relative z-10 rounded-2xl overflow-hidden shadow-lg border border-white/10">
+                                        <div className="absolute inset-0 bg-gradient-to-t from-gray-950 via-transparent to-transparent opacity-60" />
+                                        <img
+                                            src={editItem.image}
+                                            alt={`Update ${editItem.version}`}
+                                            className="w-full h-48 sm:h-64 object-cover"
+                                        />
+                                    </div>
+                                )}
+
+                                <div className="relative z-10 flex flex-col gap-6">
+                                    {editItem.summary && (
+                                        <p className="text-gray-300 text-sm leading-relaxed">
+                                            <RichTextRenderer text={editItem.summary} />
+                                        </p>
+                                    )}
+
+                                    <div className="space-y-6">
+                                        {/* New Features */}
+                                        {editItem.changes.filter(c => c.type === 'new').length > 0 && (
+                                            <div>
+                                                <h3 className="font-bold text-gray-400 mb-2 text-[10px] uppercase tracking-wider flex items-center gap-2">
+                                                    <Sparkles size={12} className="text-green-400" />
+                                                    Novidades
+                                                </h3>
+                                                {editItem.newFeaturesIntro && (
+                                                    <p className="text-xs text-gray-500 italic mb-2 pl-6">{editItem.newFeaturesIntro}</p>
+                                                )}
+                                                <ul className="space-y-2">
+                                                    {editItem.changes.filter(c => c.type === 'new').map((item, i) => (
+                                                        <li key={i} className="flex items-start gap-3 text-xs text-gray-400 font-medium">
+                                                            <div className="mt-1 w-1 h-1 rounded-full bg-green-500/50 flex-shrink-0" />
+                                                            <RichTextRenderer text={item.text} />
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Improvements */}
+                                        {editItem.changes.filter(c => c.type === 'improvement').length > 0 && (
+                                            <div>
+                                                <h3 className="font-bold text-gray-400 mb-2 text-[10px] uppercase tracking-wider flex items-center gap-2">
+                                                    <Zap size={12} className="text-blue-400" />
+                                                    Melhorias
+                                                </h3>
+                                                {editItem.improvementsIntro && (
+                                                    <p className="text-xs text-gray-500 italic mb-2 pl-6">{editItem.improvementsIntro}</p>
+                                                )}
+                                                <ul className="space-y-2">
+                                                    {editItem.changes.filter(c => c.type === 'improvement').map((item, i) => (
+                                                        <li key={i} className="flex items-start gap-3 text-xs text-gray-400 font-medium">
+                                                            <div className="mt-1 w-1 h-1 rounded-full bg-blue-500/50 flex-shrink-0" />
+                                                            <RichTextRenderer text={item.text} />
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+
+                                        {/* Bug Fixes */}
+                                        {editItem.changes.filter(c => c.type === 'fix').length > 0 && (
+                                            <div>
+                                                <h3 className="font-bold text-gray-400 mb-2 text-[10px] uppercase tracking-wider flex items-center gap-2">
+                                                    <Bug size={12} className="text-orange-400" />
+                                                    Correções
+                                                </h3>
+                                                {editItem.fixesIntro && (
+                                                    <p className="text-xs text-gray-500 italic mb-2 pl-6">{editItem.fixesIntro}</p>
+                                                )}
+                                                <ul className="space-y-2">
+                                                    {editItem.changes.filter(c => c.type === 'fix').map((item, i) => (
+                                                        <li key={i} className="flex items-start gap-3 text-xs text-gray-400 font-medium">
+                                                            <div className="mt-1 w-1 h-1 rounded-full bg-orange-500/50 flex-shrink-0" />
+                                                            <RichTextRenderer text={item.text} />
+                                                        </li>
+                                                    ))}
+                                                </ul>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </UniversalModal>
