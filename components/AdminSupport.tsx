@@ -5,6 +5,7 @@ import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
+import { ConfirmationBar } from './ConfirmationBar';
 import { toast } from 'sonner';
 
 interface AdminSupportProps {
@@ -24,6 +25,9 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
+
+    // Delete Confirmation State
+    const [deleteTicketId, setDeleteTicketId] = useState<string | null>(null);
 
     useEffect(() => {
         const unsub = listenToAllOpenTickets((data) => {
@@ -84,21 +88,27 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         }
     }
 
-    const handleDeleteTicket = async (e: React.MouseEvent, id: string) => {
+    const handleDeleteTicket = (e: React.MouseEvent, id: string) => {
         e.stopPropagation();
-        if (confirm('Tem certeza que deseja EXCLUIR este chamado? Esta ação não pode ser desfeita.')) {
-            try {
-                await deleteSupportTicket(id);
-                toast.success('Chamado excluído com sucesso.');
-                if (selectedTicket?.id === id) {
-                    setSelectedTicket(null);
-                }
-            } catch (error) {
-                console.error(error);
-                toast.error('Erro ao excluir chamado.');
-            }
-        }
+        setDeleteTicketId(id);
     }
+
+    const confirmDelete = async () => {
+        if (!deleteTicketId) return;
+
+        try {
+            await deleteSupportTicket(deleteTicketId);
+            toast.success('Chamado excluído com sucesso.');
+            if (selectedTicket?.id === deleteTicketId) {
+                setSelectedTicket(null);
+            }
+        } catch (error) {
+            console.error(error);
+            toast.error('Erro ao excluir chamado.');
+        } finally {
+            setDeleteTicketId(null);
+        }
+    };
 
     const handleAcceptTicket = async () => {
         if (!selectedTicket || !currentUser || !currentUser.id) return;
@@ -641,6 +651,19 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                     </div>
                 </div>
             </UniversalModal>
+
+            {/* Delete Confirmation Bar */}
+            <ConfirmationBar
+                isOpen={!!deleteTicketId}
+                onCancel={() => setDeleteTicketId(null)}
+                onConfirm={confirmDelete}
+                label="Tem certeza que deseja EXCLUIR este chamado?"
+                description="Esta ação não pode ser desfeita."
+                confirmText="Sim, excluir"
+                cancelText="Cancelar"
+                isDestructive={true}
+                position="bottom"
+            />
         </div >
     );
 }

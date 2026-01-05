@@ -95,7 +95,8 @@ service cloud.firestore {
     match /support_tickets/{ticketId} {
       allow create: if request.auth != null; // Changed to simple auth check, validated by logic
       allow read, update: if request.auth != null && (resource.data.userId == request.auth.uid || isUserAdmin());
-      
+      allow delete: if request.auth != null && isUserAdmin();
+
       match /messages/{messageId} {
         allow read, write: if request.auth != null && (
            get(/databases/$(database)/documents/support_tickets/$(ticketId)).data.userId == request.auth.uid ||
