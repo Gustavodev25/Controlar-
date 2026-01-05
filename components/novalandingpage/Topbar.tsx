@@ -232,10 +232,19 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false,
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
-                onClick={onLogin}
+                onClick={() => {
+                  // Salvar pending_checkout para ir direto para checkout após login
+                  const pendingCheckout = {
+                    planId: 'pro',
+                    billingCycle: 'monthly',
+                    couponCode: 'FELIZ2026'
+                  };
+                  localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                  onLogin();
+                }}
                 className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
               >
-                <span>Entrar</span>
+                <span>Assinar Pro</span>
               </motion.button>
             )}
 
@@ -300,9 +309,18 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false,
                   <div className="h-px bg-white/5 my-2 mx-2" />
 
                   <button
-                    onClick={onLogin}
+                    onClick={() => {
+                      // Salvar pending_checkout para ir direto para checkout após login
+                      const pendingCheckout = {
+                        planId: 'pro',
+                        billingCycle: 'monthly',
+                        couponCode: 'FELIZ2026'
+                      };
+                      localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                      onLogin();
+                    }}
                     className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
-                    Entrar na Plataforma
+                    Assinar Pro
                   </button>
                 </div>
               </motion.div>

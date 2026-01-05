@@ -19,6 +19,7 @@ interface SubscriptionPageProps {
     onUpdateUser: (user: User) => Promise<void>;
     initialCouponCode?: string;
     initialPlanId?: 'starter' | 'pro' | 'family';
+    hideBackButton?: boolean;
 }
 
 export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
@@ -26,7 +27,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
     onBack,
     onUpdateUser,
     initialCouponCode,
-    initialPlanId
+    initialPlanId,
+    hideBackButton
 }) => {
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
     const [view, setView] = useState<'plans' | 'checkout'>(initialPlanId ? 'checkout' : 'plans');
@@ -322,20 +324,24 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
     return (
         <div className="min-h-full bg-gray-950 animate-fade-in flex flex-col">
             {/* Header - Tamanho Reduzido */}
-            <div className="py-3 px-4 lg:px-6 flex items-center gap-3 sticky top-0 z-10 bg-[#30302E] border-b border-gray-800/50">
-                <button
-                    onClick={onBack}
-                    className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors"
-                >
-                    <ChevronLeft size={18} />
-                </button>
+            <div className={`py-3 px-4 lg:px-6 flex items-center gap-3 sticky top-0 z-10 bg-[#30302E] border-b border-gray-800/50 ${hideBackButton ? 'pl-6' : ''}`}>
+                {!hideBackButton && (
+                    <button
+                        onClick={onBack}
+                        className="p-1.5 hover:bg-gray-800 rounded-xl text-gray-400 hover:text-white transition-colors"
+                    >
+                        <ChevronLeft size={18} />
+                    </button>
+                )}
                 <div>
                     <h1 className="text-lg font-bold text-white leading-tight">
                         {view === 'checkout' ? 'Finalizar Assinatura' : 'Planos e Preços'}
                     </h1>
-                    <p className="text-[11px] text-gray-400">
-                        {view === 'checkout' ? 'Dados de pagamento seguros' : 'Escolha o melhor para sua vida financeira'}
-                    </p>
+                    {!hideBackButton && (
+                        <p className="text-[11px] text-gray-400">
+                            {view === 'checkout' ? 'Dados de pagamento seguros' : 'Escolha o melhor para sua vida financeira'}
+                        </p>
+                    )}
                 </div>
             </div>
 

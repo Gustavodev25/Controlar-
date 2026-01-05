@@ -5,6 +5,7 @@ export interface User {
   name: string;
   email: string;
   avatarUrl?: string;
+  phone?: string;
   baseSalary?: number;
   salaryPaymentDay?: number;
   salaryAdvanceDay?: number;

@@ -17,22 +17,6 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
 
     const plans = [
         {
-            id: 'starter',
-            name: 'Starter',
-            price: 0,
-            annualPrice: 0,
-            description: 'Para quem está começando a se organizar.',
-            features: [
-                'Lançamentos Manuais',
-                'Dashboards Básicos',
-                '1 Usuário',
-                'Sem contas conectadas'
-            ],
-            image: quebraCabecaImg,
-            buttonText: 'Começar Grátis',
-            popular: false
-        },
-        {
             id: 'pro',
             name: 'Pro',
             price: 35.90,
@@ -107,7 +91,7 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                     </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+                <div className="flex justify-center w-full max-w-sm mx-auto">
                     {plans.map((plan) => {
                         const price = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
                         const isPro = plan.popular;
@@ -117,7 +101,7 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                                 key={plan.id}
                                 layout
                                 className={`
-                                    relative flex flex-col p-8 rounded-3xl border transition-all duration-300
+                                    relative flex flex-col w-full p-8 rounded-3xl border transition-all duration-300
                                     ${isPro
                                         ? 'bg-[#262624] border-[#d97757] shadow-2xl shadow-[#d97757]/10 z-10'
                                         : 'bg-[#262624] border-gray-800 hover:border-gray-700'}
@@ -230,7 +214,18 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
 
                                 {/* Botão */}
                                 <button
-                                    onClick={onLogin}
+                                    onClick={() => {
+                                        // Salvar informações do plano no localStorage para redirecionar após login
+                                        if (isPro) {
+                                            const pendingCheckout = {
+                                                planId: 'pro',
+                                                billingCycle: billingCycle,
+                                                couponCode: billingCycle === 'monthly' ? 'FELIZ2026' : undefined
+                                            };
+                                            localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                        }
+                                        onLogin();
+                                    }}
                                     className={`
                                         w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]
                                         ${isPro

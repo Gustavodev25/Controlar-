@@ -407,7 +407,7 @@ const App: React.FC = () => {
 
   // Navigation State
   const [activeTab, setActiveTab] = useState<TabType>('dashboard');
-  const [subscriptionInitialState, setSubscriptionInitialState] = useState<{ planId?: 'starter' | 'pro' | 'family', couponCode?: string } | undefined>(undefined);
+  const [subscriptionInitialState, setSubscriptionInitialState] = useState<{ planId?: 'starter' | 'pro' | 'family', couponCode?: string, hideBackButton?: boolean } | undefined>(undefined);
   const [isAdminMode, setIsAdminMode] = useState(false);
   const [isWhatsAppOpen, setIsWhatsAppOpen] = useState(false);
   const [isSidebarOpen, setSidebarOpen] = useState(() => {
@@ -693,6 +693,32 @@ const App: React.FC = () => {
     // Check for new signup flag whenever user is set
     // We don't strictly need to wait for isLoadingData to be false to flip the switch
     if (currentUser) {
+      // Check for pending checkout from landing page (Assinar Pro flow) - Priority over post-signup modal
+      const pendingCheckoutStr = localStorage.getItem('pending_checkout');
+      if (pendingCheckoutStr) {
+        try {
+          const pendingCheckout = JSON.parse(pendingCheckoutStr);
+          if (pendingCheckout.planId) {
+            // Configure subscription page with plan and coupon - hide back button for LP flow
+            setSubscriptionInitialState({
+              planId: pendingCheckout.planId as 'starter' | 'pro' | 'family',
+              couponCode: pendingCheckout.couponCode,
+              hideBackButton: true
+            });
+            // Navigate to subscription page
+            setActiveTab('subscription');
+            // Clean up localStorage - also remove new signup flag since we're handling the flow
+            localStorage.removeItem('pending_checkout');
+            localStorage.removeItem('is_new_signup');
+            return; // Skip post-signup modal
+          }
+        } catch (e) {
+          console.error('Error parsing pending_checkout:', e);
+          localStorage.removeItem('pending_checkout');
+        }
+      }
+
+      // Only show post-signup modal if there's no pending checkout
       const isNewSignup = localStorage.getItem('is_new_signup') === 'true';
       if (isNewSignup) {
         setIsPostSignupModalOpen(true);
@@ -3386,6 +3412,7 @@ const App: React.FC = () => {
                 }}
                 initialPlanId={subscriptionInitialState?.planId}
                 initialCouponCode={subscriptionInitialState?.couponCode}
+                hideBackButton={subscriptionInitialState?.hideBackButton}
               />
             </div>
           ) : activeTab === 'admin_overview' ? (

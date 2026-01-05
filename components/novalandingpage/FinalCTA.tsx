@@ -37,8 +37,17 @@ export const FinalCTA: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                     </p>
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                        <button onClick={onLogin} className="group px-8 py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)]">
-                            Criar Conta Grátis
+                        <button onClick={() => {
+                            // Salvar pending_checkout para ir direto para checkout após login
+                            const pendingCheckout = {
+                                planId: 'pro',
+                                billingCycle: 'monthly',
+                                couponCode: 'FELIZ2026'
+                            };
+                            localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                            onLogin();
+                        }} className="group px-8 py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)]">
+                            Assinar Pro
                             <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                         </button>
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ChevronLeft, User, Check, FileText } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ChevronLeft, User, Check, FileText, Phone } from 'lucide-react';
 import { useToasts } from './Toast';
 import { ShiningText } from './ShiningText';
 import { auth } from '../services/firebase';
@@ -139,6 +139,7 @@ export const LoginNew: React.FC = () => {
         password: '',
         cpf: '',
         birthDate: '',
+        phone: '',
         cep: '',
         street: '',
         number: '',
@@ -203,6 +204,14 @@ export const LoginNew: React.FC = () => {
             .replace(/\D/g, '')
             .replace(/(\d{5})(\d)/, '$1-$2')
             .replace(/(-\d{3})\d+?$/, '$1');
+    };
+
+    const formatPhone = (value: string) => {
+        return value
+            .replace(/\D/g, '')
+            .replace(/(\d{2})(\d)/, '($1) $2')
+            .replace(/(\d{5})(\d)/, '$1-$2')
+            .replace(/(-\d{4})\d+?$/, '$1');
     };
 
     const fetchCepData = async (cepValue: string) => {
@@ -376,8 +385,13 @@ export const LoginNew: React.FC = () => {
                     setIsLoading(false);
                     return;
                 }
-                if (!formData.birthDate || !formData.cep || !formData.street || !formData.number || !formData.city || !formData.state) {
+                if (!formData.birthDate || !formData.cep || !formData.street || !formData.number || !formData.city || !formData.state || !formData.phone) {
                     toast.error("Preencha todos os campos obrigatórios.");
+                    setIsLoading(false);
+                    return;
+                }
+                if (formData.phone.replace(/\D/g, '').length < 10) {
+                    toast.error("Telefone inválido.");
                     setIsLoading(false);
                     return;
                 }
@@ -395,6 +409,7 @@ export const LoginNew: React.FC = () => {
                     await updateUserProfile(userCredential.user.uid, {
                         name: formData.name,
                         email: formData.email,
+                        phone: formData.phone,
                         baseSalary: 0,
                         isAdmin: false,
                         cpf: formData.cpf,
@@ -702,6 +717,14 @@ export const LoginNew: React.FC = () => {
                                         <div className="space-y-1.5">
                                             <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">CEP</label>
                                             <input type="text" maxLength={9} required value={formData.cep} onChange={handleCepChange} placeholder="00000-000" className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
+                                        </div>
+
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Telefone / WhatsApp <span className="text-[#d97757]">*</span></label>
+                                            <div className="relative group">
+                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><Phone size={18} /></div>
+                                                <input type="text" maxLength={15} required value={formatPhone(formData.phone)} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(00) 90000-0000" className="input-primary pl-11 bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
+                                            </div>
                                         </div>
 
                                         <AnimatePresence>

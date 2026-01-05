@@ -326,8 +326,17 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                         {/* Countdown Timer Featured */}
                         {/* Countdown Timer & CTA */}
                         <motion.div variants={itemVariants} className="flex flex-col items-center lg:items-start gap-6 pt-4">
-                            <button onClick={onLogin} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
-                                Começar Agora
+                            <button onClick={() => {
+                                // Salvar pending_checkout para ir direto para checkout após login
+                                const pendingCheckout = {
+                                    planId: 'pro',
+                                    billingCycle: 'monthly',
+                                    couponCode: 'FELIZ2026'
+                                };
+                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                onLogin();
+                            }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
+                                Assinar Pro
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
@@ -492,7 +501,16 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
 
                             {/* CTA */}
                             <button
-                                onClick={onLogin}
+                                onClick={() => {
+                                    // Salvar pending_checkout para ir direto para checkout após login
+                                    const pendingCheckout = {
+                                        planId: 'pro',
+                                        billingCycle: 'monthly',
+                                        couponCode: 'FELIZ2026'
+                                    };
+                                    localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                    onLogin();
+                                }}
                                 className="w-full py-3 rounded-xl font-bold transition-colors bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/25"
                             >
                                 Assinar Pro
