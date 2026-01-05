@@ -805,8 +805,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
                           {t.description}
                         </td>
                         <td className="px-5 py-3 text-right">
-                          <span className={`font-bold font-mono text-xs ${t.amount >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
-                            {formatCurrency(t.amount)}
+                          <span className={`font-bold font-mono text-xs ${t.type === 'expense' || t.amount < 0 ? 'text-red-400' : 'text-emerald-400'}`}>
+                            {t.type === 'expense' && t.amount > 0 ? `- ${formatCurrency(t.amount)}` : formatCurrency(t.amount)}
                           </span>
                         </td>
                       </tr>

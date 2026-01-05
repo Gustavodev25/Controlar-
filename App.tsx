@@ -3312,50 +3312,53 @@ const App: React.FC = () => {
 
       {/* Main Content */}
       <main className={`flex-1 min-w-0 transition-all duration-300 ${isSidebarOpen ? 'lg:ml-64' : 'lg:ml-20'} relative main-content-area ${isSidebarOpen ? 'sidebar-open' : 'sidebar-closed'} ${activeTab === 'chat' ? 'flex flex-col h-screen overflow-hidden' : ''}`}>
-        <Header
-          isSidebarOpen={isSidebarOpen}
-          setSidebarOpen={setSidebarOpen}
-          activeTab={activeTab}
-          setActiveTab={setActiveTab}
-          activeMemberId={activeMemberId}
-          members={members}
-          currentUser={currentUser}
-          isLimitReached={isLimitReached}
-          filterMode={filterMode}
-          setFilterMode={setFilterMode}
-          dashboardDate={dashboardDate}
-          setDashboardDate={setDashboardDate}
-          dashboardYear={dashboardYear}
-          setDashboardYear={setDashboardYear}
-          dashboardCategory={dashboardCategory}
-          projectionSettings={projectionSettings}
-          setProjectionSettings={setProjectionSettings}
-          isProMode={isProMode}
-          showProjectionMenu={showProjectionMenu}
-          setShowProjectionMenu={setShowProjectionMenu}
-          onResetFilters={handleResetFilters}
-          reminders={reminders}
-          budgets={budgets}
-          transactions={transactions}
-          subscriptions={subscriptions}
-          notifications={notifications}
-          onArchiveNotification={handleArchiveNotification}
-          onDeleteNotification={handleDeleteNotification}
-          onMarkReadNotification={handleMarkReadNotification}
-          isAdminMode={isAdminMode}
-          setIsAdminMode={setIsAdminMode}
-          setIsSettingsOpen={setIsSettingsOpen}
-          onLogout={() => auth.signOut()}
-          onFamilyView={() => setActiveMemberId('FAMILY_OVERVIEW')}
-          onBackToProfile={() => {
-            const admin = members.find(m => m.role === 'admin') || members[0];
-            if (admin) setActiveMemberId(admin.id);
-          }}
-          isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
-          showFamilyOption={effectivePlan === 'family'}
-          userId={userId}
-          hasConnectedAccounts={connectedAccounts.length > 0}
-        />
+        {/* Hide header in chat fullscreen mode */}
+        {activeTab !== 'chat' && (
+          <Header
+            isSidebarOpen={isSidebarOpen}
+            setSidebarOpen={setSidebarOpen}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            activeMemberId={activeMemberId}
+            members={members}
+            currentUser={currentUser}
+            isLimitReached={isLimitReached}
+            filterMode={filterMode}
+            setFilterMode={setFilterMode}
+            dashboardDate={dashboardDate}
+            setDashboardDate={setDashboardDate}
+            dashboardYear={dashboardYear}
+            setDashboardYear={setDashboardYear}
+            dashboardCategory={dashboardCategory}
+            projectionSettings={projectionSettings}
+            setProjectionSettings={setProjectionSettings}
+            isProMode={isProMode}
+            showProjectionMenu={showProjectionMenu}
+            setShowProjectionMenu={setShowProjectionMenu}
+            onResetFilters={handleResetFilters}
+            reminders={reminders}
+            budgets={budgets}
+            transactions={transactions}
+            subscriptions={subscriptions}
+            notifications={notifications}
+            onArchiveNotification={handleArchiveNotification}
+            onDeleteNotification={handleDeleteNotification}
+            onMarkReadNotification={handleMarkReadNotification}
+            isAdminMode={isAdminMode}
+            setIsAdminMode={setIsAdminMode}
+            setIsSettingsOpen={setIsSettingsOpen}
+            onLogout={() => auth.signOut()}
+            onFamilyView={() => setActiveMemberId('FAMILY_OVERVIEW')}
+            onBackToProfile={() => {
+              const admin = members.find(m => m.role === 'admin') || members[0];
+              if (admin) setActiveMemberId(admin.id);
+            }}
+            isInFamilyView={activeMemberId === 'FAMILY_OVERVIEW'}
+            showFamilyOption={effectivePlan === 'family'}
+            userId={userId}
+            hasConnectedAccounts={connectedAccounts.length > 0}
+          />
+        )}
 
         {/* Feedback Banner - Only on Dashboard */}
         {activeTab === 'dashboard' && (
@@ -3616,6 +3619,7 @@ const App: React.FC = () => {
                   isProMode={isProMode}
                   userPlan={effectivePlan}
                   onUpgrade={() => setActiveTab('subscription')}
+                  userId={userId || undefined}
                 />
               )}
 
@@ -3778,6 +3782,7 @@ const App: React.FC = () => {
         initialContext={aiModalContext}
         userPlan={effectivePlan}
         onUpgrade={() => setActiveTab('subscription')}
+        userId={userId || undefined}
       />
 
       <SettingsModal

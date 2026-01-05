@@ -1,12 +1,12 @@
-
 import React, { useState, useEffect, useRef } from 'react';
-import { motion } from 'framer-motion';
-import { X, Sparkles, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Check, ArrowRight, Clock, Send, User, RefreshCw } from './Icons';
+import { X, Sparkles, Plus, Calendar, DollarSign, Tag, FileSpreadsheet, Check, ArrowRight, Clock, Send, User, RefreshCw, TrendingUp, TrendingDown, FileText, AlertCircle } from './Icons';
+import { UniversalModal } from './UniversalModal';
 import { parseMessageIntent, AIParsedReminder } from '../services/claudeService';
 import { AIParsedTransaction, Transaction, Reminder } from '../types';
 import { CustomAutocomplete, CustomDatePicker, TextShimmer, CustomSelect } from './UIComponents';
 import coinzinhaImg from '../assets/coinzinha.png';
 import { toLocalISODate } from '../utils/dateUtils';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 interface AIModalProps {
   isOpen: boolean;
@@ -16,6 +16,7 @@ interface AIModalProps {
   initialContext?: 'transaction' | 'reminder';
   userPlan?: 'starter' | 'pro' | 'family';
   onUpgrade?: () => void;
+  userId?: string;
 }
 
 type Mode = 'ai' | 'manual';
@@ -99,9 +100,7 @@ const TransactionSummaryCard: React.FC<{ items: (AIParsedTransaction | AIParsedR
   );
 };
 
-export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, onCreateReminder, initialContext = 'transaction', userPlan = 'starter', onUpgrade }) => {
-  const [isVisible, setIsVisible] = useState(false);
-  const [isAnimating, setIsAnimating] = useState(false);
+export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, onCreateReminder, initialContext = 'transaction', userPlan = 'starter', onUpgrade, userId }) => {
   const [mode, setMode] = useState<Mode>('ai');
   const [context, setContext] = useState<'transaction' | 'reminder'>(initialContext);
 
@@ -132,25 +131,19 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
     category: 'Alimentação',
     date: toLocalISODate(),
     type: 'expense' as 'income' | 'expense',
+    status: 'completed' as 'completed' | 'pending',
     isRecurring: false,
     frequency: 'monthly' as 'monthly' | 'weekly' | 'yearly'
   });
 
-  // Animation Logic
+  // Animation Logic (State reset on open/close handled by useEffect)
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
     if (isOpen) {
-      setIsVisible(true);
-      
       // Sync limit from storage
       const savedCount = localStorage.getItem('coinzinha_starter_count');
       if (savedCount) setStarterMessageCount(parseInt(savedCount, 10));
 
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          setIsAnimating(true);
-        });
-      });
       // Reset State
       setContext(initialContext);
       if (messages.length === 0) {
@@ -165,9 +158,10 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
         }]);
       }
     } else {
-      setIsAnimating(false);
+      // Optional: clear state after close if needed, but keeping it potentially preserves history for session
+      // If we want to reset on full close (after animation):
       timeoutId = setTimeout(() => {
-        setIsVisible(false);
+        // Reset logic moved to handleClose wrapper
       }, 300);
     }
     return () => clearTimeout(timeoutId);
@@ -177,18 +171,18 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, generationStatus]);
 
-  if (!isVisible) return null;
+
 
   // AI Handlers
   const handleSendMessage = async () => {
     if (!input.trim()) return;
     if (userPlan === 'starter') {
-        const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
-        if (currentCount >= 5) {
-            setStarterMessageCount(currentCount);
-            return;
-        }
-        setStarterMessageCount(currentCount + 1);
+      const currentCount = parseInt(localStorage.getItem('coinzinha_starter_count') || '0', 10);
+      if (currentCount >= 5) {
+        setStarterMessageCount(currentCount);
+        return;
+      }
+      setStarterMessageCount(currentCount + 1);
     }
 
     const userText = input;
@@ -368,7 +362,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
         category: manualForm.category,
         date: manualForm.date,
         type: manualForm.type,
-        status: 'completed'
+        status: manualForm.status
       });
     }
     handleClose();
@@ -387,6 +381,7 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
         category: 'Alimentação',
         date: toLocalISODate(),
         type: 'expense',
+        status: 'completed',
         isRecurring: false,
         frequency: 'monthly'
       });
@@ -394,293 +389,307 @@ export const AIModal: React.FC<AIModalProps> = ({ isOpen, onClose, onConfirm, on
     }, 300);
   };
 
-  const categories = ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Salário', 'Investimentos', 'Outros'];
+  const { categoryMappings } = useCategoryTranslation(userId);
+  const categories = React.useMemo(() => {
+    if (categoryMappings.length > 0) {
+      return categoryMappings.map((c) => c.displayName).sort();
+    }
+    return ['Alimentação', 'Transporte', 'Moradia', 'Lazer', 'Saúde', 'Salário', 'Investimentos', 'Outros'];
+  }, [categoryMappings]);
 
   return (
-    <div
-      className={`
-            fixed inset-0 z-[100] flex items-center justify-center p-4 transition-all duration-300 ease-in-out
-            ${isAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'}
-        `}
-    >
-      <motion.div
-        initial={{ height: 600 }}
-        animate={{ height: mode === 'ai' ? 600 : "auto" }}
-        transition={{ duration: 0.3, ease: [0.2, 0.8, 0.2, 1] }}
-        className={`
-            bg-gray-950 rounded-3xl shadow-2xl w-full max-w-lg border border-gray-800 flex flex-col max-h-[90vh] relative transition-[opacity,transform] duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)]
-            ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}
-        `}
-      >
-
-        {/* Background Effects Container */}
-        <div className="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-[#d97757]/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-gray-700/10 rounded-full blur-3xl -ml-20 -mb-20"></div>
-        </div>
-
-        {/* Header */}
-        <div className="p-4 border-b border-gray-800/50 flex justify-between items-center relative z-10 shrink-0">
-          <div className="flex gap-2 bg-gray-900/50 p-1 rounded-xl border border-gray-700/50 backdrop-blur-md">
-            <button
-              onClick={() => setMode('ai')}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${mode === 'ai' ? 'bg-gradient-to-r from-[#d97757] to-[#e68e70] text-white shadow-lg shadow-[#d97757]/20' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-            >
-              <img src={coinzinhaImg} className="w-4 h-4 rounded-full object-cover" alt="Coinzinha" />
-              Coinzinha
-            </button>
-            <button
-              onClick={() => setMode('manual')}
-              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${mode === 'manual' ? 'bg-gray-700 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
-            >
-              <Plus size={14} />
-              Manual
-            </button>
-          </div>
-          <button onClick={handleClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800 rounded-full transition-colors">
-            <X size={20} />
+    <UniversalModal
+      isOpen={isOpen}
+      onClose={handleClose}
+      themeColor={mode === 'manual' ? (manualForm.type === 'income' ? '#10b981' : '#dc2626') : '#d97757'}
+      width="max-w-lg"
+      zIndex="z-[100]"
+      title={
+        <div className="flex gap-2 p-1 rounded-xl bg-[#373734] border border-[#4a4a47]">
+          <button
+            onClick={() => setMode('ai')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${mode === 'ai' ? 'bg-[#d97757] text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
+            <img src={coinzinhaImg} className="w-4 h-4 rounded-full object-cover" alt="Coinzinha" />
+            Coinzinha
+          </button>
+          <button
+            onClick={() => setMode('manual')}
+            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all flex items-center gap-2 ${mode === 'manual' ? 'bg-gray-700 text-white shadow-lg' : 'text-gray-400 hover:text-white hover:bg-white/5'}`}
+          >
+            <Plus size={14} />
+            Manual
           </button>
         </div>
+      }
+      footer={
+        mode === 'ai' ? (
+          <div className="relative flex items-center gap-2 w-full">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSendMessage();
+                }
+              }}
+              placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
+              disabled={generationStatus !== 'idle' || isLimitReached}
+              className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
+            />
+            <button
+              onClick={handleSendMessage}
+              disabled={!input.trim() || generationStatus !== 'idle' || isLimitReached}
+              className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
+            >
+              <Send size={18} />
+            </button>
+          </div>
+        ) : null
+      }
+    >
+      {/* AI MODE Content */}
+      {mode === 'ai' && (
+        <div className="space-y-4">
+          {messages.map((msg) => (
+            <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
+              <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+                {/* Avatar */}
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-gray-800 border-gray-700'}`}>
+                  {msg.role === 'user' ? (
+                    <User size={14} className="text-white" />
+                  ) : (
+                    <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                  )}
+                </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden relative z-10 flex flex-col">
-
-          {/* AI MODE */}
-          {mode === 'ai' && (
-            <>
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
-                {messages.map((msg) => (
-                  <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
-                    <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                      {/* Avatar */}
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 border ${msg.role === 'user' ? 'bg-[#d97757] border-[#e68e70]' : 'bg-gray-800 border-gray-700'}`}>
-                        {msg.role === 'user' ? (
-                          <User size={14} className="text-white" />
-                        ) : (
-                          <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                        )}
-                      </div>
-
-                      {/* Bubble */}
-                      <div>
-                        <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
-                          ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
-                          : 'bg-gray-800/50 text-gray-200 rounded-bl-none border border-gray-700/50'
-                          }`}>
-                          {msg.content}
-                        </div>
-
-                        {/* Transaction Summary Card */}
-                        {msg.summaryData && (
-                          <TransactionSummaryCard items={msg.summaryData} type={msg.summaryType} />
-                        )}
-                      </div>
-                    </div>
+                {/* Bubble */}
+                <div>
+                  <div className={`p-3 rounded-2xl text-sm leading-relaxed shadow-sm ${msg.role === 'user'
+                    ? 'bg-[#d97757]/20 text-white rounded-br-none border border-[#d97757]/30'
+                    : 'bg-gray-800/50 text-gray-200 rounded-bl-none border border-gray-700/50'
+                    }`}>
+                    {msg.content}
                   </div>
-                ))}
 
-                {/* Processing Bubble */}
-                {generationStatus !== 'idle' && (
-                  <div className="flex w-full justify-start animate-fade-in-up">
-                    <div className="flex items-end gap-2 max-w-[85%]">
-                      <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-gray-800 border-gray-700">
-                        <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
-                      </div>
-                      <div className="bg-gray-800/50 text-gray-200 rounded-2xl rounded-bl-none border border-gray-700/50 p-3 shadow-sm flex items-center">
-                        <TextShimmer className='font-medium text-sm' duration={1.5}>
-                          {generationMessage}
-                        </TextShimmer>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                <div ref={messagesEndRef} />
-              </div>
-
-              {/* Limit Banner */}
-              {isLimitReached && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="mb-2 mx-4 px-2 flex items-center justify-between"
-                >
-                  <span className="text-xs text-gray-400">
-                      Limite de 5 mensagens atingido.
-                  </span>
-                  <button 
-                      onClick={() => onUpgrade?.()}
-                      className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
-                  >
-                      Fazer Upgrade
-                  </button>
-                </motion.div>
-              )}
-
-              {/* Input Area */}
-              <div className="p-4 bg-gray-950/50 border-t border-gray-800/50 shrink-0">
-                <div className="relative flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey) {
-                        e.preventDefault();
-                        handleSendMessage();
-                      }
-                    }}
-                    placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
-                    disabled={generationStatus !== 'idle' || isLimitReached}
-                    className="flex-1 bg-gray-900 border border-gray-700 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
-                  />
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!input.trim() || generationStatus !== 'idle' || isLimitReached}
-                    className="p-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg shadow-[#d97757]/20"
-                  >
-                    <Send size={18} />
-                  </button>
+                  {/* Transaction Summary Card */}
+                  {msg.summaryData && (
+                    <TransactionSummaryCard items={msg.summaryData} type={msg.summaryType} />
+                  )}
                 </div>
               </div>
-            </>
+            </div>
+          ))}
+
+          {/* Processing Bubble */}
+          {generationStatus !== 'idle' && (
+            <div className="flex w-full justify-start animate-fade-in-up">
+              <div className="flex items-end gap-2 max-w-[85%]">
+                <div className="w-8 h-8 rounded-full flex items-center justify-center shrink-0 border bg-gray-800 border-gray-700">
+                  <img src={coinzinhaImg} className="w-full h-full rounded-full object-cover" alt="Coinzinha" />
+                </div>
+                <div className="bg-gray-800/50 text-gray-200 rounded-2xl rounded-bl-none border border-gray-700/50 p-3 shadow-sm flex items-center">
+                  <TextShimmer className='font-medium text-sm' duration={1.5}>
+                    {generationMessage}
+                  </TextShimmer>
+                </div>
+              </div>
+            </div>
           )}
 
-          {/* MANUAL MODE */}
-          {mode === 'manual' && (
-            <div className="p-6 overflow-y-auto custom-scrollbar">
-              <form onSubmit={handleManualSubmit} className="space-y-5 animate-fade-in">
-                <div>
-                  <label className="block text-xs font-medium text-gray-400 mb-1.5">Descrição</label>
-                  <div className="relative group">
-                    <FileSpreadsheet className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                    <input
-                      required
-                      type="text"
-                      value={manualForm.description}
-                      onChange={e => setManualForm({ ...manualForm, description: e.target.value })}
-                      placeholder="Ex: Supermercado"
-                      className="input-primary pl-10 focus:border-[#d97757]"
-                    />
-                  </div>
-                </div>
+          <div ref={messagesEndRef} />
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Valor (R$)</label>
-                    <div className="relative group">
-                      <DollarSign className="absolute left-3 top-3.5 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
-                      <input
-                        required
-                        type="number"
-                        step="0.01"
-                        value={manualForm.amount}
-                        onChange={e => setManualForm({ ...manualForm, amount: e.target.value })}
-                        placeholder="0,00"
-                        className="input-primary pl-10 focus:border-[#d97757]"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Data</label>
-                    <div className="relative group z-30">
-                      <CustomDatePicker
-                        value={manualForm.date}
-                        onChange={(val) => setManualForm({ ...manualForm, date: val })}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Categoria</label>
-                    <div className="relative group z-20">
-                      <CustomAutocomplete
-                        value={manualForm.category}
-                        onChange={(val) => setManualForm({ ...manualForm, category: val })}
-                        options={categories}
-                        icon={<Tag size={16} />}
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-400 mb-1.5">Tipo</label>
-                    <div className="flex bg-gray-900 rounded-xl p-1 border border-gray-700">
-                      <button
-                        type="button"
-                        onClick={() => setManualForm({ ...manualForm, type: 'income' })}
-                        className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${manualForm.type === 'income' ? 'bg-green-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-300'}`}
-                      >
-                        Receita
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setManualForm({ ...manualForm, type: 'expense' })}
-                        className={`flex-1 py-2 text-xs font-medium rounded-lg transition-all ${manualForm.type === 'expense' ? 'bg-red-600 text-white shadow-lg' : 'text-gray-400 hover:text-gray-300'}`}
-                      >
-                        Despesa
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {context === 'reminder' && (
-                  <div className="pt-2 border-t border-gray-800">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-xs font-medium text-gray-400 flex items-center gap-2">
-                        <RefreshCw size={14} /> Recorrência
-                      </span>
-                      <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
-                        <button
-                          type="button"
-                          onClick={() => setManualForm({ ...manualForm, isRecurring: false })}
-                          className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!manualForm.isRecurring ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                        >
-                          Não
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setManualForm({ ...manualForm, isRecurring: true })}
-                          className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${manualForm.isRecurring ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
-                        >
-                          Sim
-                        </button>
-                      </div>
-                    </div>
-
-                    {manualForm.isRecurring && (
-                      <div className="animate-fade-in">
-                        <CustomSelect
-                          value={manualForm.frequency}
-                          onChange={(val) => setManualForm({ ...manualForm, frequency: val as any })}
-                          options={[
-                            { value: 'monthly', label: 'Mensalmente' },
-                            { value: 'weekly', label: 'Semanalmente' },
-                            { value: 'yearly', label: 'Anualmente' }
-                          ]}
-                          placeholder="Frequência"
-                        />
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
-                  >
-                    <Check size={18} />
-                    {context === 'reminder' ? 'Criar Lembrete' : 'Adicionar Transação'}
-                  </button>
-                </div>                </form>
+          {/* Limit Banner */}
+          {isLimitReached && (
+            <div className="my-2 px-2 flex items-center justify-between">
+              <span className="text-xs text-gray-400">
+                Limite de 5 mensagens atingido.
+              </span>
+              <button
+                onClick={() => onUpgrade?.()}
+                className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+              >
+                Fazer Upgrade
+              </button>
             </div>
           )}
         </div>
-      </motion.div>
-    </div>
+      )}
+
+      {/* MANUAL MODE Content */}
+      {mode === 'manual' && (
+        <form onSubmit={handleManualSubmit} className="space-y-5 animate-fade-in min-h-[400px]">
+          {/* Tipo Segmentado com Smooth */}
+          <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
+            <div
+              className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
+              style={{
+                left: manualForm.type === 'expense' ? '4px' : 'calc(50% + 0px)',
+                backgroundColor: manualForm.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setManualForm({ ...manualForm, type: 'expense' })}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${manualForm.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              <TrendingDown size={14} /> Despesa
+            </button>
+            <button
+              type="button"
+              onClick={() => setManualForm({ ...manualForm, type: 'income' })}
+              className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${manualForm.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              <TrendingUp size={14} /> Receita
+            </button>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
+            <div className="relative">
+              <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+              <input
+                required
+                type="text"
+                value={manualForm.description}
+                onChange={e => setManualForm({ ...manualForm, description: e.target.value })}
+                placeholder="Ex: Supermercado"
+                className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
+              <div className="relative">
+                <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                <input
+                  required
+                  type="number"
+                  step="0.01"
+                  value={manualForm.amount}
+                  onChange={e => setManualForm({ ...manualForm, amount: e.target.value })}
+                  placeholder="0,00"
+                  className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
+              <CustomDatePicker
+                value={manualForm.date}
+                onChange={(val) => setManualForm({ ...manualForm, date: val })}
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+            <CustomAutocomplete
+              value={manualForm.category}
+              onChange={(val) => setManualForm({ ...manualForm, category: val })}
+              options={categories}
+              icon={<Tag size={16} />}
+              placeholder="Selecione ou digite..."
+            />
+          </div>
+
+          {/* Status Toggle (Only for transactions, not reminders context usually, but good to have) */}
+          {context !== 'reminder' && (
+            <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+              <div className="flex items-center gap-2.5">
+                {manualForm.status === 'completed'
+                  ? <Check size={16} className="text-emerald-500" />
+                  : <AlertCircle size={16} className="text-amber-500" />
+                }
+                <div>
+                  <span className="block text-sm font-medium text-gray-300">Status</span>
+                  <span className="block text-[10px] text-gray-500">
+                    {manualForm.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
+                  </span>
+                </div>
+              </div>
+
+              <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
+                <div
+                  className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
+                  ${manualForm.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
+                `}
+                />
+                <button
+                  type="button"
+                  onClick={() => setManualForm({ ...manualForm, status: 'pending' })}
+                  className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${manualForm.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  PENDENTE
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setManualForm({ ...manualForm, status: 'completed' })}
+                  className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${manualForm.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  PAGO
+                </button>
+              </div>
+            </div>
+          )}
+
+          {context === 'reminder' && (
+            <div className="pt-2 border-t border-gray-800">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-gray-400 flex items-center gap-2">
+                  <RefreshCw size={14} /> Recorrência
+                </span>
+                <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                  <button
+                    type="button"
+                    onClick={() => setManualForm({ ...manualForm, isRecurring: false })}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!manualForm.isRecurring ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Não
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setManualForm({ ...manualForm, isRecurring: true })}
+                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${manualForm.isRecurring ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                  >
+                    Sim
+                  </button>
+                </div>
+              </div>
+
+              {manualForm.isRecurring && (
+                <div className="animate-fade-in">
+                  <CustomSelect
+                    value={manualForm.frequency}
+                    onChange={(val) => setManualForm({ ...manualForm, frequency: val as any })}
+                    options={[
+                      { value: 'monthly', label: 'Mensalmente' },
+                      { value: 'weekly', label: 'Semanalmente' },
+                      { value: 'yearly', label: 'Anualmente' }
+                    ]}
+                    placeholder="Frequência"
+                  />
+                </div>
+              )}
+            </div>
+          )}
+
+          <div className="pt-2">
+            <button
+              type="submit"
+              className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
+            >
+              <Check size={18} />
+              {context === 'reminder' ? 'Criar Lembrete' : 'Adicionar Transação'}
+            </button>
+          </div>
+        </form>
+      )}
+    </UniversalModal>
   );
 };

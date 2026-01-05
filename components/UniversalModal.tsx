@@ -5,7 +5,7 @@ import { X } from './Icons';
 interface UniversalModalProps {
     isOpen: boolean;
     onClose: () => void;
-    title: string;
+    title: React.ReactNode;
     subtitle?: string;
     icon?: React.ReactNode;
     children: React.ReactNode;
@@ -80,7 +80,11 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
                             </div>
                         )}
                         <div>
-                            <h3 className="text-base font-semibold text-white">{title}</h3>
+                            {typeof title === 'string' ? (
+                                <h3 className="text-base font-semibold text-white">{title}</h3>
+                            ) : (
+                                title
+                            )}
                             {subtitle && (
                                 <p className="text-xs text-gray-500">
                                     {subtitle}

@@ -718,6 +718,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [cardSettings, setCardSettings] = useState<{ closingDay: number; manualLastClosingDate?: string; manualCurrentClosingDate?: string }>({ closingDay: 1 });
 
+  // Filter Modal State (Mobile)
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
   // Invoice Cards Visibility with Persistence
   const [showInvoiceCards, setShowInvoiceCards] = useState(() => {
     // Default to true (expanded) if no preference saved
@@ -1279,6 +1282,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         </div>
 
         <div className="flex items-center gap-3">
+          <button
+            id="export-btn"
+
+            onClick={handleExport}
+            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+            title="Exportar para Excel"
+          >
+            <FileText size={18} />
+            <span className="hidden sm:inline">Exportar</span>
+          </button>
+
           {isManualMode && onAdd && (
             <button
               onClick={() => {
@@ -1302,17 +1316,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               <span className="hidden sm:inline">Novo Lançamento</span>
             </button>
           )}
-
-          <button
-            id="export-btn"
-
-            onClick={handleExport}
-            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
-            title="Exportar para Excel"
-          >
-            <FileText size={18} />
-            <span className="hidden sm:inline">Exportar</span>
-          </button>
 
         </div>
       </div>
@@ -1674,94 +1677,105 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               <>
                 {/* Filters Row */}
                 <div className="flex flex-wrap gap-3 items-center mb-4">
-                  {/* Search - Left */}
+                  {/* Search - Left and Full Width on Mobile */}
                   <div className="relative w-full sm:w-72 group order-1">
-                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={18} />
+                    <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors z-10" size={18} />
                     <input
                       type="text"
-                      placeholder="Buscar na fatura..."
-                      className="w-full h-11 pl-11 pr-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-sm text-white transition-all placeholder-gray-600"
+                      placeholder="Buscar..."
+                      className="w-full h-11 pl-11 pr-12 sm:pr-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl focus:ring-2 focus:ring-[#d97757]/50 focus:border-[#d97757] text-sm text-white transition-all placeholder-gray-600"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                     />
+                    {/* Mobile Filter Button (Inside Input) */}
+                    <button
+                      onClick={() => setIsFilterModalOpen(true)}
+                      className="absolute right-1 top-1 bottom-1 w-10 flex sm:hidden items-center justify-center text-gray-400 hover:text-[#d97757] hover:bg-white/5 rounded-lg transition-all z-10"
+                    >
+                      <Filter size={18} />
+                    </button>
                   </div>
 
                   {/* Spacer - hidden on mobile */}
                   <div className="hidden sm:block flex-1 order-2" />
 
-                  {/* Category Filter Dropdown */}
-                  <div className="relative z-50 w-full sm:w-auto order-3 sm:order-3">
-                    <Dropdown>
-                      <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
-                        <div className="flex items-center gap-2 truncate">
-                          <Tag size={16} className="text-[#d97757] flex-shrink-0" />
-                          <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translateCategory(selectedCategory)}</span>
-                        </div>
-                        <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
-                      </DropdownTrigger>
-                      <DropdownContent className="w-64 max-h-80 overflow-y-auto custom-scrollbar" align="left">
-                        <DropdownItem
-                          onClick={() => setSelectedCategory('all')}
-                          icon={Tag}
-                          className={selectedCategory === 'all' ? 'bg-white/5 text-white' : ''}
-                        >
-                          Todas as Categorias
-                        </DropdownItem>
-                        {availableCategories.map(cat => (
+                  {/* Desktop Filters - Hidden on Mobile */}
+                  <div className="hidden sm:flex items-center gap-3 order-3">
+
+                    {/* Category Filter Dropdown */}
+                    <div className="relative z-50 w-full sm:w-auto">
+                      <Dropdown>
+                        <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-2 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between w-full sm:min-w-[180px]">
+                          <div className="flex items-center gap-2 truncate">
+                            <Tag size={16} className="text-[#d97757] flex-shrink-0" />
+                            <span className="truncate">{selectedCategory === 'all' ? 'Todas as Categorias' : translateCategory(selectedCategory)}</span>
+                          </div>
+                          <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
+                        </DropdownTrigger>
+                        <DropdownContent className="w-64 max-h-80 overflow-y-auto custom-scrollbar" align="left">
                           <DropdownItem
-                            key={cat}
-                            onClick={() => setSelectedCategory(cat)}
+                            onClick={() => setSelectedCategory('all')}
                             icon={Tag}
-                            className={selectedCategory === cat ? 'bg-white/5 text-white' : ''}
+                            className={selectedCategory === 'all' ? 'bg-white/5 text-white' : ''}
                           >
-                            {translateCategory(cat)}
+                            Todas as Categorias
                           </DropdownItem>
-                        ))}
-                      </DropdownContent>
-                    </Dropdown>
-                  </div>
+                          {availableCategories.map(cat => (
+                            <DropdownItem
+                              key={cat}
+                              onClick={() => setSelectedCategory(cat)}
+                              icon={Tag}
+                              className={selectedCategory === cat ? 'bg-white/5 text-white' : ''}
+                            >
+                              {translateCategory(cat)}
+                            </DropdownItem>
+                          ))}
+                        </DropdownContent>
+                      </Dropdown>
+                    </div>
 
-                  {/* Start Date */}
-                  <div className="w-[calc(50%-6px)] sm:w-36 order-4 sm:order-4">
-                    <CustomDatePicker
-                      value={startDate}
-                      onChange={setStartDate}
-                      placeholder="Início"
-                      dropdownMode="fixed"
-                    />
-                  </div>
+                    {/* Start Date */}
+                    <div className="w-36">
+                      <CustomDatePicker
+                        value={startDate}
+                        onChange={setStartDate}
+                        placeholder="Início"
+                        dropdownMode="fixed"
+                      />
+                    </div>
 
-                  {/* End Date */}
-                  <div className="w-[calc(50%-6px)] sm:w-36 order-5 sm:order-5">
-                    <CustomDatePicker
-                      value={endDate}
-                      onChange={setEndDate}
-                      placeholder="Fim"
-                      dropdownMode="fixed"
-                    />
-                  </div>
+                    {/* End Date */}
+                    <div className="w-36">
+                      <CustomDatePicker
+                        value={endDate}
+                        onChange={setEndDate}
+                        placeholder="Fim"
+                        dropdownMode="fixed"
+                      />
+                    </div>
 
-                  {/* Year Selector */}
-                  <div className="w-[calc(50%-6px)] sm:w-28 order-6 sm:order-6">
-                    <CustomSelect
-                      value={selectedYear}
-                      onChange={(val) => setSelectedYear(Number(val))}
-                      options={yearOptions}
-                      placeholder="Ano"
-                      className="h-11 bg-[#232322] border-[#373734] rounded-xl text-sm w-full"
-                      portal
-                    />
-                  </div>
+                    {/* Year Selector */}
+                    <div className="w-28">
+                      <CustomSelect
+                        value={selectedYear}
+                        onChange={(val) => setSelectedYear(Number(val))}
+                        options={yearOptions}
+                        placeholder="Ano"
+                        className="h-11 bg-[#232322] border-[#373734] rounded-xl text-sm w-full"
+                        portal
+                      />
+                    </div>
 
-                  {/* Reset Button */}
-                  {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedCategory !== 'all') && (
-                    <button
-                      onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedCategory('all'); }}
-                      className="h-11 px-4 w-[calc(50%-6px)] sm:w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider order-7 sm:order-7"
-                    >
-                      <X size={14} /> Limpar
-                    </button>
-                  )}
+                    {/* Reset Button */}
+                    {(startDate || endDate || (selectedYear !== 0 && selectedYear !== new Date().getFullYear()) || selectedCategory !== 'all') && (
+                      <button
+                        onClick={() => { setStartDate(''); setEndDate(''); setSelectedYear(new Date().getFullYear()); setSelectedCategory('all'); }}
+                        className="h-11 px-4 w-auto flex items-center justify-center gap-2 rounded-xl bg-[#232322] text-gray-400 hover:text-white hover:bg-[#2a2a28] border border-[#373734] transition-all text-xs font-bold uppercase tracking-wider"
+                      >
+                        <X size={14} /> Limpar
+                      </button>
+                    )}
+                  </div>
 
 
                 </div>
@@ -1843,9 +1857,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       </motion.div>
                     )}
                   </AnimatePresence>
-                  {/* Desktop Grid */}
-                  <div className="hidden lg:block overflow-auto flex-1 custom-scrollbar z-0">
-                    <table className="min-w-full border-collapse text-sm text-left h-full">
+                  {/* Responsive Table Grid */}
+                  <div className="overflow-auto flex-1 custom-scrollbar z-0 pb-20 sm:pb-0">
+                    <table className="min-w-[1000px] w-full border-collapse text-sm text-left h-full">
                       <thead className="bg-[#333432] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
                         <tr>
                           <th className="px-4 py-4 border-b border-r border-[#373734] w-12 text-center first:rounded-tl-xl align-middle">
@@ -2147,7 +2161,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               {isManualMode && (
                                 <td className="px-6 py-4">
                                   {!isCharge && !isPayment && !isAdjustment && (
-                                    <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                                       <button
                                         onClick={() => handleEditClick(t)}
                                         className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
@@ -2186,162 +2200,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     </table>
                   </div>
 
-                  {/* Mobile */}
-                  <div className="lg:hidden flex-1 overflow-y-auto overscroll-contain custom-scrollbar">
-                    <div className="p-4 space-y-4 flex flex-col pb-24">
-                      {transactionsWithCharges.map((t) => {
-                        const isCharge = (t as any).isCharge === true;
-                        const isPayment = (t as any).isPayment === true;
-                        const isLate = (t as any).isLate === true;
-                        const daysLate = (t as any).daysLate || 0;
-                        return (
-                          <div
-                            key={t.id}
-                            className={`border-b border-[#373734] p-4 relative group shrink-0 last:border-0 ${isCharge ? 'bg-red-500/5'
-                              : isPayment ? (isLate ? 'bg-amber-500/5' : 'bg-emerald-500/5')
-                                : 'bg-transparent'
-                              }`}
-                          >
-                            <div className={`absolute left-0 top-4 bottom-4 w-1 rounded-r-full ${isCharge ? 'bg-red-500'
-                              : isPayment ? (isLate ? 'bg-amber-500' : 'bg-emerald-500')
-                                : t.type === 'income' ? 'bg-emerald-500' : 'bg-[#d97757]'
-                              }`}></div>
-                            <div className="flex justify-between items-start mb-3 pl-3">
-                              <div className="flex-1 min-w-0 pr-2">
-                                <div className="flex flex-wrap items-center gap-2 mb-1">
-                                  {isCharge && (
-                                    <AlertCircle size={14} className="text-red-400 shrink-0" />
-                                  )}
-                                  {isPayment && (
-                                    <Check size={14} className={isLate ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'} />
-                                  )}
-                                  <h4 className={`font-bold text-sm sm:text-base break-words leading-tight ${isCharge ? 'text-red-300'
-                                    : isPayment ? (isLate ? 'text-amber-300' : 'text-emerald-300')
-                                      : 'text-gray-100'
-                                    }`}>{t.description}</h4>
-                                  {isCharge && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] uppercase font-bold tracking-wide bg-red-500/10 text-red-400 border border-red-500/20 flex-shrink-0"
-                                      title="Encargo financeiro cobrado pelo banco"
-                                    >
-                                      Encargo
-                                    </span>
-                                  )}
-                                  {isPayment && !isLate && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] uppercase font-bold tracking-wide bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 flex-shrink-0"
-                                      title="Pagamento da fatura realizado no prazo"
-                                    >
-                                      No prazo
-                                    </span>
-                                  )}
-                                  {isPayment && isLate && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] uppercase font-bold tracking-wide bg-amber-500/10 text-amber-400 border border-amber-500/20 flex-shrink-0"
-                                      title={`Pagamento com ${daysLate} dia(s) de atraso`}
-                                    >
-                                      {daysLate}d atrasado
-                                    </span>
-                                  )}
-                                  {(t as any).isEstimated && (
-                                    <span
-                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] uppercase font-bold tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20 flex-shrink-0"
-                                      title="Valor estimado aguardando fatura real"
-                                    >
-                                      Estimado
-                                    </span>
-                                  )}
-                                  {(t as any).totalInstallments > 1 && (
-                                    <span className="text-[9px] text-gray-500 font-mono bg-[#1a1a19] px-1.5 py-0.5 rounded border border-[#373734] flex-shrink-0">
-                                      {(t as any).installmentNumber || 1}/{(t as any).totalInstallments}
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-500">
-                                  <span className={`flex items-center gap-1.5 px-2 py-1 rounded-md border ${isCharge ? 'bg-red-500/10 border-red-500/20 text-red-400'
-                                    : isPayment ? (isLate ? 'bg-amber-500/10 border-amber-500/20 text-amber-400' : 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400')
-                                      : 'bg-[#1a1a19] border-[#373734]'
-                                    }`}>
-                                    {isCharge ? <AlertCircle size={12} /> : isPayment ? <CreditCard size={12} /> : getCategoryIcon(translateCategory(t.category), 12)}
-                                    {isCharge ? 'Encargos' : isPayment ? 'Pagamento' : translateCategory(t.category)}
-                                  </span>
-                                  <span className="font-mono flex items-center gap-1.5">
-                                    <Calendar size={12} /> {formatDate(t.date)}
-                                  </span>
-                                </div>
-                                {isPayment && isLate && (
-                                  <span className="text-[9px] text-amber-500 font-medium mt-1 block">
-                                    Possíveis encargos de juros/multa
-                                  </span>
-                                )}
-                              </div>
 
-                              {isManualMode && (
-                                <div className="flex flex-col gap-1 ml-1">
-                                  <button
-                                    onClick={() => handleEditClick(t)}
-                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1a1a19] hover:bg-[#2a2a28] text-gray-500 hover:text-white border border-[#373734] hover:border-gray-600 transition-all"
-                                    title="Editar"
-                                  >
-                                    <Edit2 size={14} />
-                                  </button>
-                                  <button
-                                    onClick={() => setDeleteId(t.id)}
-                                    className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#1a1a19] hover:bg-red-500/10 text-gray-500 hover:text-red-400 border border-[#373734] hover:border-red-500/30 transition-all"
-                                    title="Excluir"
-                                  >
-                                    <Trash2 size={14} />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex justify-between items-center pl-3 pt-3 border-t border-[#373734]/50">
-                              <div className="flex items-center gap-2">
-                                <div className={`p-1.5 rounded-lg ${isCharge ? 'bg-red-500/10 text-red-500'
-                                  : isPayment ? (isLate ? 'bg-amber-500/10 text-amber-500' : 'bg-emerald-500/10 text-emerald-500')
-                                    : t.type === 'income' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-[#373734] text-gray-400'
-                                  }`}>
-                                  {isCharge ? <AlertCircle size={16} /> : isPayment ? <CreditCard size={16} /> : t.type === 'income' ? <ArrowUpCircle size={16} /> : <ArrowDownCircle size={16} />}
-                                </div>
-                                <span className={`text-xl font-bold font-mono ${isCharge ? 'text-red-400' : t.type === 'income' ? 'text-emerald-400' : 'text-white'
-                                  }`}>
-                                  {formatCurrency(Math.abs(t.amount))}
-                                </span>
-                              </div>
-
-                              {isCharge ? (
-                                <span className="px-2 py-0.5 rounded text-[10px] uppercase font-semibold bg-red-500/15 text-red-400">
-                                  Cobrado
-                                </span>
-                              ) : isPayment ? (
-                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-semibold ${isLate ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'
-                                  }`}>
-                                  {isLate ? `${daysLate} dia${daysLate > 1 ? 's' : ''} atrasado` : 'Pagamento'}
-                                </span>
-                              ) : (
-                                <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-semibold ${t.status === 'completed'
-                                  ? 'bg-emerald-500/15 text-emerald-400'
-                                  : 'bg-amber-500/15 text-amber-400'
-                                  }`}>
-                                  {t.status === 'completed' ? 'Pago' : 'Pendente'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-
-                      {transactionsWithCharges.length === 0 && (
-                        <EmptyState
-                          title="Nenhum lançamento de cartão encontrado"
-                          description="Seus gastos com cartão aparecerão aqui."
-                          className="!border-0 !bg-transparent !shadow-none flex-1"
-                          minHeight="h-full"
-                        />
-                      )}
-                    </div>
-                  </div>
 
                   {/* Footer Summary */}
                   <div className="bg-[#333432] border-t border-[#373734] px-6 py-3 text-xs text-gray-400 flex flex-col sm:flex-row justify-between gap-3 font-medium uppercase tracking-wide">
@@ -2948,7 +2807,91 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 )}
               </div>
             </div >
-          </UniversalModal >
+          </UniversalModal>
+
+          {/* Mobile Filters Modal */}
+          <UniversalModal
+            isOpen={isFilterModalOpen}
+            onClose={() => setIsFilterModalOpen(false)}
+            title="Filtrar Faturas"
+            icon={<Filter size={18} />}
+            themeColor="#d97757"
+            footer={
+              <div className="flex gap-3">
+                <Button
+                  variant="dark"
+                  size="lg"
+                  className="flex-1 text-gray-400 hover:text-white"
+                  onClick={() => {
+                    setStartDate('');
+                    setEndDate('');
+                    setSelectedYear(new Date().getFullYear());
+                    setSelectedCategory('all');
+                    setIsFilterModalOpen(false);
+                  }}
+                >
+                  <X size={16} className="mr-2" />
+                  Limpar
+                </Button>
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="flex-[2]"
+                  onClick={() => setIsFilterModalOpen(false)}
+                >
+                  <Check size={16} className="mr-2" />
+                  Ver Resultados
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-6">
+              {/* Category Filter */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                <CustomSelect
+                  value={selectedCategory}
+                  onChange={(val) => setSelectedCategory(val)}
+                  options={[
+                    { value: 'all', label: 'Todas as Categorias' },
+                    ...availableCategories.map(cat => ({ value: cat, label: translateCategory(cat) }))
+                  ]}
+                  placeholder="Todas as Categorias"
+                />
+              </div>
+
+              {/* Date Filters */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Início</label>
+                  <CustomDatePicker
+                    value={startDate}
+                    onChange={setStartDate}
+                    placeholder="Início"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Fim</label>
+                  <CustomDatePicker
+                    value={endDate}
+                    onChange={setEndDate}
+                    placeholder="Fim"
+                  />
+                </div>
+              </div>
+
+              {/* Year Filter */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Ano</label>
+                <CustomSelect
+                  value={selectedYear}
+                  onChange={(val) => setSelectedYear(Number(val))}
+                  options={yearOptions}
+                  placeholder="Selecione o Ano"
+                />
+              </div>
+            </div>
+          </UniversalModal>
 
         </div >
       )}

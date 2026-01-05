@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -182,12 +182,18 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         }
     };
 
+    // Mobile view state: show list or chat
+    const isMobileView = typeof window !== 'undefined' && window.innerWidth < 1024;
+
     return (
-        <div className="flex h-full w-full min-h-0 gap-4 overflow-hidden p-4">
-            {/* List */}
-            <div className="w-[450px] flex flex-col shrink-0 bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden">
-                <div className="p-4 border-b border-[#373734] bg-[#30302E] flex items-center justify-between">
-                    <h2 className="font-bold text-lg flex items-center gap-2 text-white">
+        <div className="flex h-full w-full min-h-0 gap-0 lg:gap-4 overflow-hidden p-2 lg:p-4">
+            {/* List - Hidden on mobile when ticket selected */}
+            <div className={`
+                ${selectedTicket ? 'hidden lg:flex' : 'flex'}
+                w-full lg:w-[450px] flex-col shrink-0 bg-[#30302E] rounded-2xl border border-[#373734] overflow-hidden
+            `}>
+                <div className="p-3 lg:p-4 border-b border-[#373734] bg-[#30302E] flex items-center justify-between">
+                    <h2 className="font-bold text-base lg:text-lg flex items-center gap-2 text-white">
                         <MessageSquare size={18} className="text-[#d97757]" />
                         Chamados
                     </h2>
@@ -383,20 +389,55 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                 </div>
             </div>
 
-            {/* Chat View */}
-            <div className="flex-1 min-h-0 bg-[#30302E] relative flex flex-col rounded-2xl overflow-hidden border border-[#373734]">
+            {/* Chat View - Full screen on mobile when ticket selected */}
+            <div className={`
+                ${selectedTicket ? 'flex' : 'hidden lg:flex'}
+                flex-1 min-h-0 bg-[#30302E] relative flex-col rounded-2xl overflow-hidden border border-[#373734]
+                ${selectedTicket ? 'w-full' : ''}
+            `}>
                 {selectedTicket ? (
                     <div className="h-full min-h-0 flex flex-col relative bg-[#30302E]">
-                        {/* Assignment Banner */}
+                        {/* Mobile Back Button Header */}
+                        <div className="lg:hidden flex items-center gap-3 p-3 border-b border-[#373734] bg-[#30302E]">
+                            <button
+                                onClick={() => setSelectedTicket(null)}
+                                className="p-2 rounded-xl bg-[#373734] hover:bg-[#454543] text-gray-300 hover:text-white transition-colors"
+                            >
+                                <ArrowLeft size={18} />
+                            </button>
+                            <div className="flex items-center gap-3 flex-1 min-w-0">
+                                <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 font-bold text-xs ${getAvatarColors(selectedTicket.userName || 'User').bg} ${getAvatarColors(selectedTicket.userName || 'User').text}`}>
+                                    {getInitials(selectedTicket.userName || 'User')}
+                                </div>
+                                <div className="flex flex-col min-w-0">
+                                    <span className="font-semibold text-sm text-white truncate">
+                                        {selectedTicket.userName || 'Usuário'}
+                                    </span>
+                                    <span className="text-xs text-gray-500 truncate">{selectedTicket.userEmail}</span>
+                                </div>
+                            </div>
+                            {selectedTicket.assignedTo && (
+                                <span className={`flex items-center gap-1.5 text-[10px] font-medium px-2 py-0.5 rounded-full border ${selectedTicket.awaitingRating
+                                    ? 'text-yellow-400 bg-yellow-500/10 border-yellow-500/20'
+                                    : 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
+                                    }`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${selectedTicket.awaitingRating ? 'bg-yellow-500' : 'bg-emerald-500'}`} />
+                                    {selectedTicket.awaitingRating ? 'Avaliação' : 'Ativo'}
+                                </span>
+                            )}
+                        </div>
+
+                        {/* Assignment Banner - relative on mobile, absolute on desktop */}
                         {!selectedTicket.assignedTo && (
-                            <div className="absolute inset-x-0 top-0 z-20 bg-blue-500/10 backdrop-blur-md border-b border-blue-500/20 p-3 flex items-center justify-between shadow-lg">
-                                <div className="flex items-center gap-2 text-blue-400 text-sm font-medium">
+                            <div className="relative lg:absolute inset-x-0 lg:top-0 z-20 bg-blue-500/10 backdrop-blur-md border-b border-blue-500/20 p-2 lg:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-lg">
+                                <div className="flex items-center gap-2 text-blue-400 text-xs lg:text-sm font-medium">
                                     <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
-                                    Este chamado aguarda atendimento.
+                                    <span className="hidden lg:inline">Este chamado aguarda atendimento.</span>
+                                    <span className="lg:hidden">Aguardando atendimento</span>
                                 </div>
                                 <button
                                     onClick={handleAcceptTicket}
-                                    className="px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform hover:-translate-y-0.5"
+                                    className="px-3 lg:px-4 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs font-bold rounded-lg flex items-center gap-2 transition-all shadow-lg shadow-blue-500/20 hover:shadow-blue-500/40 transform hover:-translate-y-0.5 w-full sm:w-auto justify-center"
                                 >
                                     <Play size={12} fill="currentColor" />
                                     Aceitar Chamado
@@ -404,9 +445,9 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             </div>
                         )}
 
-                        {/* Assigned Info Banner - Only if assigned to someone else */}
+                        {/* Assigned Info Banner - Only if assigned to someone else (hidden on mobile - info is in mobile header) */}
                         {selectedTicket.assignedTo && selectedTicket.assignedTo !== currentUser?.id && (
-                            <div className="absolute inset-x-0 top-0 z-20 bg-[#2A2A28] border-b border-[#454543] p-2 flex items-center justify-center text-xs text-gray-400">
+                            <div className="hidden lg:flex absolute inset-x-0 top-0 z-20 bg-[#2A2A28] border-b border-[#454543] p-2 items-center justify-center text-xs text-gray-400">
                                 <User size={12} className="mr-1.5" />
                                 Atendido por: <strong className="ml-1 text-[#d97757]">{selectedTicket.assignedByName || 'Admin'}</strong>
                             </div>
@@ -414,36 +455,36 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
 
                         {/* Cancellation Request Action Panel */}
                         {selectedTicket.type === 'cancellation_request' && (
-                            <div className="bg-red-500/5 border-b border-red-500/10 p-4 flex items-center justify-between z-10">
+                            <div className="bg-red-500/5 border-b border-red-500/10 p-3 lg:p-4 flex flex-col lg:flex-row items-start lg:items-center justify-between gap-3 z-10">
                                 <div className="flex items-center gap-3">
-                                    <div className="p-2 bg-red-500/10 rounded-lg text-red-500">
+                                    <div className="p-2 bg-red-500/10 rounded-lg text-red-500 shrink-0">
                                         <AlertTriangle size={18} />
                                     </div>
                                     <div>
-                                        <h4 className="text-sm font-bold text-red-400">Solicitação de Cancelamento</h4>
-                                        <p className="text-xs text-gray-500">O usuário solicitou o cancelamento do plano.</p>
+                                        <h4 className="text-xs lg:text-sm font-bold text-red-400">Solicitação de Cancelamento</h4>
+                                        <p className="text-[10px] lg:text-xs text-gray-500">O usuário solicitou o cancelamento do plano.</p>
                                     </div>
                                 </div>
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 w-full lg:w-auto">
                                     <button
                                         onClick={handleAdminRefund}
-                                        className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-700 flex items-center gap-2"
+                                        className="flex-1 lg:flex-initial px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-700 flex items-center justify-center gap-2"
                                         title="Estornar Pagamento"
                                     >
-                                        <CreditCard size={14} /> Estornar
+                                        <CreditCard size={14} /> <span className="hidden sm:inline">Estornar</span>
                                     </button>
                                     <button
                                         onClick={handleAdminCancelSubscription}
-                                        className="px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors shadow-lg shadow-red-500/20 flex items-center gap-2"
+                                        className="flex-1 lg:flex-initial px-3 py-1.5 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition-colors shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
                                         title="Cancelar Plano"
                                     >
-                                        <Ban size={14} /> Cancelar Plano
+                                        <Ban size={14} /> <span className="hidden sm:inline">Cancelar Plano</span>
                                     </button>
                                 </div>
                             </div>
                         )}
-
-                        <div className={`flex-1 min-h-0 overflow-hidden ${!selectedTicket.assignedTo ? 'pt-[52px]' : ''}`}>
+                        {/* Chat container - on mobile, assignment banner is hidden since we have mobile header */}
+                        <div className={`flex-1 min-h-0 overflow-hidden ${!selectedTicket.assignedTo ? 'lg:pt-[52px]' : ''}`}>
                             <SupportChat
                                 isOpen={true}
                                 onClose={() => setSelectedTicket(null)}

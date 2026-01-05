@@ -148,12 +148,14 @@ interface CustomAutocompleteProps {
   placeholder?: string;
   className?: string;
   icon?: React.ReactNode;
+  portal?: boolean;
 }
 
-export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, onChange, options, placeholder, className = "", icon }) => {
+export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, onChange, options, placeholder, className = "", icon, portal = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [inputValue, setInputValue] = useState(value);
   const containerRef = useRef<HTMLDivElement>(null);
+  const [coords, setCoords] = useState({ top: 0, left: 0, width: 0 });
 
   useEffect(() => {
     setInputValue(value);
@@ -162,6 +164,9 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        // Check if clicking inside the portal dropdown
+        const target = event.target as HTMLElement;
+        if (target.closest('[data-autocomplete-portal]')) return;
         setIsOpen(false);
         if (inputValue !== value && value !== '') {
           setInputValue(value);
@@ -171,6 +176,26 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [inputValue, value]);
+
+  useEffect(() => {
+    if (isOpen && portal && containerRef.current) {
+      const updatePosition = () => {
+        const rect = containerRef.current!.getBoundingClientRect();
+        setCoords({
+          top: rect.bottom + 8,
+          left: rect.left,
+          width: rect.width
+        });
+      };
+      updatePosition();
+      window.addEventListener('resize', updatePosition);
+      window.addEventListener('scroll', updatePosition, true);
+      return () => {
+        window.removeEventListener('resize', updatePosition);
+        window.removeEventListener('scroll', updatePosition, true);
+      };
+    }
+  }, [isOpen, portal]);
 
   const filteredOptions = (options || []).filter(opt =>
     (opt || "").toLowerCase().includes((inputValue || "").toLowerCase())
@@ -188,6 +213,43 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
   };
 
   const exactMatch = (options || []).some(opt => (opt || "").toLowerCase() === (inputValue || "").toLowerCase());
+
+  const dropdownContent = isOpen && (inputValue || filteredOptions.length > 0) && (
+    <div
+      data-autocomplete-portal
+      style={portal ? { position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 } : undefined}
+      className={portal
+        ? "bg-[#30302E] border border-[#373734] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open"
+        : "absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open"
+      }
+    >
+      {filteredOptions.length > 0 ? (
+        filteredOptions.map((opt) => (
+          <div
+            key={opt}
+            onClick={() => handleSelect(opt)}
+            className={`
+              px-4 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between
+              ${inputValue === opt ? 'bg-[#d97757]/20 text-[#d97757]' : 'text-gray-300 hover:bg-gray-800'}
+            `}
+          >
+            {opt}
+            {inputValue === opt && <Check size={14} />}
+          </div>
+        ))
+      ) : null}
+
+      {!exactMatch && inputValue.trim() !== '' && (
+        <div
+          onClick={() => handleSelect(inputValue)}
+          className="px-4 py-2.5 text-sm cursor-pointer transition-colors text-[#d97757] hover:bg-[#d97757]/10 flex items-center gap-2 border-t border-gray-800"
+        >
+          <Plus size={14} />
+          Criar "{inputValue}"
+        </div>
+      )}
+    </div>
+  );
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -210,35 +272,7 @@ export const CustomAutocomplete: React.FC<CustomAutocompleteProps> = ({ value, o
         <ChevronDown size={16} className={`text-gray-500 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
       </div>
 
-      {isOpen && (inputValue || filteredOptions.length > 0) && (
-        <div className="absolute z-50 w-full mt-2 bg-[#30302E] border border-[#373734] rounded-xl shadow-2xl max-h-60 overflow-y-auto custom-scrollbar animate-dropdown-open">
-          {filteredOptions.length > 0 ? (
-            filteredOptions.map((opt) => (
-              <div
-                key={opt}
-                onClick={() => handleSelect(opt)}
-                className={`
-                  px-4 py-2.5 text-sm cursor-pointer transition-colors flex items-center justify-between
-                  ${inputValue === opt ? 'bg-[#d97757]/20 text-[#d97757]' : 'text-gray-300 hover:bg-gray-800'}
-                `}
-              >
-                {opt}
-                {inputValue === opt && <Check size={14} />}
-              </div>
-            ))
-          ) : null}
-
-          {!exactMatch && inputValue.trim() !== '' && (
-            <div
-              onClick={() => handleSelect(inputValue)}
-              className="px-4 py-2.5 text-sm cursor-pointer transition-colors text-[#d97757] hover:bg-[#d97757]/10 flex items-center gap-2 border-t border-gray-800"
-            >
-              <Plus size={14} />
-              Criar "{inputValue}"
-            </div>
-          )}
-        </div>
-      )}
+      {portal ? createPortal(dropdownContent, document.body) : dropdownContent}
     </div>
   );
 };

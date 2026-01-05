@@ -394,8 +394,19 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     const [isThinking, setIsThinking] = useState(false);
     const [view, setView] = useState<'chat' | 'history'>('chat');
     const [history, setHistory] = useState<ChatSession[]>([]);
-    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+    const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('coinzinha_sidebar_collapsed');
+            return saved !== null ? JSON.parse(saved) : false;
+        }
+        return false;
+    });
     const [isMobile, setIsMobile] = useState(false);
+
+    // Persist sidebar collapse state
+    useEffect(() => {
+        localStorage.setItem('coinzinha_sidebar_collapsed', JSON.stringify(isSidebarCollapsed));
+    }, [isSidebarCollapsed]);
 
     useEffect(() => {
         const checkMobile = () => setIsMobile(window.innerWidth < 480);

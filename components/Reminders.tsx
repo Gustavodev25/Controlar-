@@ -14,6 +14,7 @@ import NumberFlow from '@number-flow/react';
 import { toLocalISODate } from '../utils/dateUtils';
 import { CheckSquare, Square, Settings } from 'lucide-react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 interface RemindersProps {
   reminders: Reminder[];
@@ -25,6 +26,7 @@ interface RemindersProps {
   isProMode?: boolean;
   userPlan?: 'starter' | 'pro' | 'family';
   onUpgrade?: () => void;
+  userId?: string;
 }
 
 type ModalMode = 'ai' | 'manual';
@@ -200,7 +202,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 };
 
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false, userPlan = 'starter', onUpgrade }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false, userPlan = 'starter', onUpgrade, userId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
 
@@ -282,7 +284,14 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // Delete Confirmation State
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const categories = ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Investimentos', 'Trabalho', 'Outros'];
+  const { categoryMappings } = useCategoryTranslation(userId);
+  const categories = useMemo(() => {
+    if (categoryMappings.length > 0) {
+      return categoryMappings.map((c) => c.displayName).sort();
+    }
+    return ['Moradia', 'Alimentação', 'Transporte', 'Saúde', 'Educação', 'Lazer', 'Investimentos', 'Trabalho', 'Outros'];
+  }, [categoryMappings]);
+
   const frequencies = [
     { value: 'monthly', label: 'Mensalmente' },
     { value: 'weekly', label: 'Semanalmente' },
@@ -494,22 +503,23 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
     setBulkMode('single');
     setShowBulkEditModal(false);
   };
-  const sortedReminders = useMemo(() => {
-    let result = [...reminders];
-    if (filterType !== 'all') {
-      result = result.filter(r => (r.type || 'expense') === filterType);
-    }
-    return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
-  }, [reminders, filterType]);
-  const selectedReminders = useMemo(() => {
-    return reminders.filter((r) => selectedIds.includes(r.id));
-  }, [reminders, selectedIds]);
-
   // Filtrar lembretes pelo mês selecionado
   const filteredByMonth = useMemo(() => {
     if (!filterMonth) return reminders;
     return reminders.filter(r => r.dueDate.startsWith(filterMonth));
   }, [reminders, filterMonth]);
+
+  const sortedReminders = useMemo(() => {
+    let result = [...filteredByMonth];
+    if (filterType !== 'all') {
+      result = result.filter(r => (r.type || 'expense') === filterType);
+    }
+    return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  }, [filteredByMonth, filterType]);
+  const selectedReminders = useMemo(() => {
+    return reminders.filter((r) => selectedIds.includes(r.id));
+  }, [reminders, selectedIds]);
+
 
   // Totais baseados no filtro de mês
   const totalExpenses = useMemo(() => {
@@ -729,17 +739,30 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         isOpen={isModalOpen}
         onClose={handleClose}
         title={editingReminder ? "Editar Lembrete" : "Novo Lembrete"}
-        subtitle={modalMode === 'ai' ? "Diga o que você quer lembrar" : "Preencha os dados abaixo"}
-        icon={editingReminder ? <Edit2 size={20} /> : <Plus size={20} />}
+        icon={editingReminder ? <Edit2 size={18} /> : <Plus size={18} />}
         width="max-w-md"
         themeColor={newReminder.type === 'income' ? '#10b981' : '#d97757'}
+        footer={
+          modalMode === 'manual' ? (
+            <button
+              onClick={handleManualSubmit as any}
+              className={`w-full py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-sm ${newReminder.type === 'income'
+                ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+                : 'bg-[#d97757] hover:bg-[#c56a4d] text-white'
+                }`}
+            >
+              <Check size={18} strokeWidth={2.5} />
+              Confirmar
+            </button>
+          ) : undefined
+        }
       >
-        <div className="flex flex-col h-[60vh] sm:h-auto">
+        <div className="space-y-5">
           {/* --- AI MODE (Chat Style igual AIModal) --- */}
           {modalMode === 'ai' && (
             <>
               {/* Área de mensagens */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto space-y-4 custom-scrollbar max-h-[50vh]">
                 {chatMessages.map((msg) => (
                   <div key={msg.id} className={`flex w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in-up`}>
                     <div className={`flex items-end gap-2 max-w-[85%] ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
@@ -830,7 +853,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
               {/* Limit Banner */}
               {isLimitReached && (
-                <div className="mb-2 mx-4 px-2 flex items-center justify-between">
+                <div className="px-2 flex items-center justify-between">
                   <span className="text-xs text-gray-400">
                     Limite de 5 mensagens atingido.
                   </span>
@@ -844,7 +867,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
               )}
 
               {/* Input Area */}
-              <div className="p-4 bg-[#272725]/50 border-t border-[#373734]/50 shrink-0">
+              <div className="pt-4 border-t border-gray-800/50">
                 <div className="relative flex items-center gap-2">
                   <input
                     type="text"
@@ -858,7 +881,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     }}
                     placeholder={isLimitReached ? "Limite atingido. Use o modo manual." : "Digite sua transação... (ex: Uber 20)"}
                     disabled={generationStatus !== 'idle' || isLimitReached}
-                    className="flex-1 bg-[#272725] border border-[#373734] rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/50 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
+                    className="flex-1 bg-gray-900/40 border border-gray-800/60 rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:border-gray-700 focus:bg-gray-900/60 disabled:opacity-50 transition-all placeholder-gray-600 disabled:cursor-not-allowed"
                   />
                   <button
                     onClick={handleSendMessage}
@@ -874,63 +897,70 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
 
           {/* --- MANUAL MODE --- */}
           {modalMode === 'manual' && (
-            <form onSubmit={handleManualSubmit} className="p-4 overflow-y-auto custom-scrollbar space-y-3 animate-fade-in">
-
-              {/* Tipo Segmentado - Compacto */}
-              <div className="flex p-0.5 bg-[#272725]/50 rounded-lg">
+            <>
+              {/* Tipo Segmentado com Smooth Animation */}
+              <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
+                <div
+                  className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
+                  style={{
+                    left: newReminder.type === 'expense' ? '4px' : 'calc(50% + 0px)',
+                    backgroundColor: newReminder.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
+                  }}
+                />
                 <button
                   type="button"
                   onClick={() => setNewReminder({ ...newReminder, type: 'expense' })}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'expense' ? 'bg-red-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${newReminder.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  <TrendingDown size={12} /> Despesa
+                  <TrendingDown size={14} /> Despesa
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewReminder({ ...newReminder, type: 'income' })}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-md text-[11px] font-semibold transition-all ${newReminder.type === 'income' ? 'bg-emerald-500/90 text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${newReminder.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                 >
-                  <TrendingUp size={12} /> Receita
+                  <TrendingUp size={14} /> Receita
                 </button>
               </div>
 
-              {/* Descrição - Compacto */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Descrição</label>
+              {/* Descrição */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
                 <div className="relative">
-                  <FileText className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                   <input
                     required
                     type="text"
                     value={newReminder.description}
                     onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
-                    className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600"
-                    placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Internet"}
+                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+                    placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Almoço"}
+                    autoFocus
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {/* Valor */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Valor (R$)</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
                   <div className="relative">
-                    <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                     <input
                       required
                       type="number"
                       step="0.01"
                       value={newReminder.amount}
                       onChange={e => setNewReminder({ ...newReminder, amount: e.target.value })}
-                      className="w-full bg-[#272725]/40 border border-[#373734]/60 rounded-lg text-white pl-9 pr-3 py-2.5 text-[13px] focus:border-[#4a4a47] focus:bg-[#272725]/60 outline-none transition-all placeholder-gray-600 font-mono"
-                      placeholder="0,00"
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                      placeholder="0"
                     />
                   </div>
                 </div>
 
                 {/* Data */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Data</label>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
                   <CustomDatePicker
                     value={newReminder.dueDate}
                     onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
@@ -939,24 +969,25 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
               </div>
 
               {/* Categoria */}
-              <div className="space-y-1">
-                <label className="text-[10px] font-medium text-gray-500 uppercase tracking-wide">Categoria</label>
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
                 <CustomAutocomplete
                   value={newReminder.category}
                   onChange={(val) => setNewReminder({ ...newReminder, category: val })}
                   options={categories}
-                  icon={<Tag size={14} />}
+                  icon={<Tag size={16} />}
                   placeholder="Selecione ou digite..."
+                  portal
                 />
               </div>
 
-              {/* Recorrência - Compacto */}
-              <div className="flex items-center justify-between py-2 border-t border-[#373734]/30">
-                <div className="flex items-center gap-2">
-                  <RefreshCw size={13} className={`transition-colors ${newReminder.isRecurring ? 'text-[#d97757]' : 'text-gray-600'}`} />
+              {/* Recorrência Toggle com Smooth */}
+              <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
+                <div className="flex items-center gap-2.5">
+                  <RefreshCw size={16} className={`transition-colors ${newReminder.isRecurring ? 'text-[#d97757]' : 'text-gray-600'}`} />
                   <div>
-                    <span className="block text-[13px] font-medium text-gray-300">Recorrência</span>
-                    <span className="block text-[9px] text-gray-500">Repetir este lembrete</span>
+                    <span className="block text-sm font-medium text-gray-300">Recorrência</span>
+                    <span className="block text-[10px] text-gray-500">Repetir este lembrete</span>
                   </div>
                 </div>
 
@@ -967,36 +998,22 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     onChange={e => setNewReminder({ ...newReminder, isRecurring: e.target.checked })}
                     className="sr-only peer"
                   />
-                  <div className="w-9 h-[18px] bg-[#373734] rounded-full peer peer-checked:after:translate-x-[18px] after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-gray-500 after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#d97757] peer-checked:after:bg-white"></div>
+                  <div className="w-11 h-6 bg-gray-800 rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-gray-500 after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#d97757] peer-checked:after:bg-white border border-gray-700"></div>
                 </label>
               </div>
 
               {newReminder.isRecurring && (
-                <div className="animate-fade-in -mt-1">
+                <div className="animate-fade-in">
                   <CustomSelect
                     value={newReminder.frequency}
                     onChange={(val) => setNewReminder({ ...newReminder, frequency: val as any })}
                     options={frequencies}
-                    className="text-[13px]"
+                    className="text-sm"
                     placeholder="Selecione a frequência"
                   />
                 </div>
               )}
-
-              <button
-                type="submit"
-                className={`w-full py-2.5 rounded-lg font-semibold transition-all flex items-center justify-center gap-2 text-[13px] ${newReminder.type === 'income'
-                  ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
-                  : 'bg-[#d97757] hover:bg-[#e08868] text-white'
-                  }`}
-              >
-                <Check size={16} strokeWidth={2.5} />
-                {editingReminder
-                  ? `Atualizar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
-                  : `Confirmar ${newReminder.type === 'income' ? 'Receita' : 'Despesa'}`
-                }
-              </button>
-            </form>
+            </>
           )}
         </div>
       </UniversalModal>
