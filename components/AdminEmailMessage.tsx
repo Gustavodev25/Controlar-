@@ -29,7 +29,8 @@ import {
     AlertTriangle,
     Info,
     Calendar,
-    Upload
+    Upload,
+    Check
 } from './Icons';
 import { Logo } from './Logo';
 import { User, AppNotification, PromoPopup } from '../types';
@@ -37,6 +38,8 @@ import { getAllUsers, addNotification, addPromoPopup, getWaitlistEntries, saveEm
 import { EmptyState } from './EmptyState';
 import { CustomSelect } from './UIComponents';
 import { useToasts } from './Toast';
+import { UniversalModal } from './UniversalModal';
+import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 
 interface AdminEmailMessageProps {
     currentUser?: (User & { id: string }) | null;
@@ -80,6 +83,11 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
 
     // Sending State
     const [isSending, setIsSending] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [successfulRecipients, setSuccessfulRecipients] = useState<{ name?: string; email?: string }[]>([]);
+    const [isAllUsersLocked, setIsAllUsersLocked] = useState(true); // Safety lock for 'all' recipients
+    const [showUserSelectionModal, setShowUserSelectionModal] = useState(false);
+    const [modalSearchTerm, setModalSearchTerm] = useState('');
 
     // Formatting Logic
     const textAreaRef = React.useRef<HTMLTextAreaElement>(null);
@@ -215,6 +223,36 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
         return allUsers.filter(u => selectedUserIds.includes(u.id));
     }, [allUsers, selectedUserIds]);
 
+    // Modal Logic
+    const modalFilteredUsers = useMemo(() => {
+        if (!modalSearchTerm) return allUsers;
+        const lowerTerm = modalSearchTerm.toLowerCase();
+        return allUsers.filter(u =>
+            (u.email?.toLowerCase().includes(lowerTerm)) ||
+            (u.name?.toLowerCase().includes(lowerTerm))
+        );
+    }, [allUsers, modalSearchTerm]);
+
+    const toggleUserSelection = (userId: string) => {
+        setSelectedUserIds(prev =>
+            prev.includes(userId)
+                ? prev.filter(id => id !== userId)
+                : [...prev, userId]
+        );
+    };
+
+    const handleSelectAll = () => {
+        const allIds = modalFilteredUsers.map(u => u.id);
+        const allSelected = allIds.every(id => selectedUserIds.includes(id));
+
+        if (allSelected) {
+            setSelectedUserIds(prev => prev.filter(id => !allIds.includes(id)));
+        } else {
+            const newIds = [...new Set([...selectedUserIds, ...allIds])];
+            setSelectedUserIds(newIds);
+        }
+    };
+
     // Computed Recipients
     const recipientCount = useMemo(() => {
         // If loading, 0
@@ -230,10 +268,25 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
         }
     }, [allUsers, waitlistEntries, recipientType, selectedUserIds, isLoadingUsers]);
 
+    // Effect to reset lock when recipient type changes
+    useEffect(() => {
+        if (recipientType === 'all') {
+            setIsAllUsersLocked(true);
+        } else {
+            setIsAllUsersLocked(false);
+        }
+    }, [recipientType]);
+
     // Send Message Logic (Email or Notification)
     const handleSend = async () => {
         if (recipientCount === 0) {
             toast.warning('Selecione pelo menos um destinatário.');
+            return;
+        }
+
+        // Safety Lock Check
+        if (recipientType === 'all' && isAllUsersLocked) {
+            toast.error('O envio para TODOS os usuários está bloqueado por segurança. Desbloqueie antes de enviar.');
             return;
         }
 
@@ -424,6 +477,10 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                 const data = await response.json();
 
                 if (response.ok) {
+
+                    setSuccessfulRecipients(targetUsers.map(u => ({ name: u.name, email: u.email })));
+                    setShowSuccessModal(true);
+
                     toast.success(`Sucesso! ${data.message}`);
 
                     await addAdminMessageLog({
@@ -500,23 +557,33 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                                 <Save size={16} />
                                 Salvar Rascunho
                             </button>
-                            <button
-                                onClick={handleSend}
-                                disabled={isSending || recipientCount === 0}
-                                className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#d97757] text-white hover:bg-[#c56a4d] transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isSending ? (
-                                    <>
-                                        <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                                        Enviando...
-                                    </>
-                                ) : (
-                                    <>
-                                        {deliveryMethod === 'notification' ? <Bell size={16} /> : <Send size={16} />}
-                                        {deliveryMethod === 'notification' ? 'Notificar' : 'Enviar'} ({recipientCount})
-                                    </>
+                            <div className="flex flex-col items-end gap-1">
+                                <button
+                                    onClick={handleSend}
+                                    disabled={isSending || recipientCount === 0 || (recipientType === 'all' && isAllUsersLocked)}
+                                    className={`flex items-center gap-2 px-4 py-2 rounded-xl bg-[#d97757] text-white hover:bg-[#c56a4d] transition-colors text-sm font-bold shadow-lg shadow-[#d97757]/20 disabled:opacity-50 disabled:cursor-not-allowed ${(recipientType === 'all' && isAllUsersLocked) ? 'grayscale' : ''}`}
+                                >
+                                    {isSending ? (
+                                        <>
+                                            <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                                            Enviando...
+                                        </>
+                                    ) : (
+                                        <>
+                                            {deliveryMethod === 'notification' ? <Bell size={16} /> : <Send size={16} />}
+                                            {deliveryMethod === 'notification' ? 'Notificar' : 'Enviar'} ({recipientCount})
+                                        </>
+                                    )}
+                                </button>
+                                {recipientType === 'all' && isAllUsersLocked && (
+                                    <button
+                                        onClick={() => setIsAllUsersLocked(false)}
+                                        className="text-[10px] text-[#d97757] underline hover:text-[#c56a4d] transition-colors font-medium"
+                                    >
+                                        Desbloquear envio para todos
+                                    </button>
                                 )}
-                            </button>
+                            </div>
                         </>
                     )}
                 </div>
@@ -645,7 +712,12 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                                 </label>
                                 <CustomSelect
                                     value={recipientType}
-                                    onChange={(val) => setRecipientType(val as any)}
+                                    onChange={(val) => {
+                                        setRecipientType(val as any);
+                                        if (val === 'specific') {
+                                            setShowUserSelectionModal(true);
+                                        }
+                                    }}
                                     options={[
                                         { value: 'all', label: 'Todos os Usuários' },
                                         { value: 'pro', label: 'Assinantes Premium (Pro/Family)' },
@@ -659,6 +731,15 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
                                 {/* Specific User Selection UI */}
                                 {recipientType === 'specific' && (
                                     <div className="mt-3 bg-gray-950 border border-gray-800 rounded-xl p-3 animate-fade-in">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <span className="text-[10px] text-gray-500 font-bold uppercase">Busca Rápida</span>
+                                            <button
+                                                onClick={() => setShowUserSelectionModal(true)}
+                                                className="text-[10px] text-[#d97757] font-bold hover:underline flex items-center gap-1"
+                                            >
+                                                <List size={12} /> Abrir Lista Completa
+                                            </button>
+                                        </div>
                                         <div className="relative mb-2">
                                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500" size={14} />
                                             <input
@@ -1135,6 +1216,187 @@ export const AdminEmailMessage: React.FC<AdminEmailMessageProps> = ({ currentUse
 
                 </div>
             )}
+            {/* User Selection Modal */}
+            <UniversalModal
+                isOpen={showUserSelectionModal}
+                onClose={() => setShowUserSelectionModal(false)}
+                title="Selecionar Usuários"
+                width="max-w-[600px]"
+            >
+                <div className="flex flex-col h-[600px] max-h-[80vh]">
+                    {/* Header / Search */}
+                    <div className="px-5 py-4 border-b border-gray-800 flex flex-col gap-3 shrink-0">
+                        <div className="relative group">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors" size={16} />
+                            <input
+                                type="text"
+                                value={modalSearchTerm}
+                                onChange={(e) => setModalSearchTerm(e.target.value)}
+                                placeholder="Buscar usuários..."
+                                className="w-full bg-[#1a1a1a] border border-gray-800/50 rounded-xl pl-10 pr-4 py-3 text-sm text-white focus:border-[#d97757] outline-none transition-all placeholder-gray-600 shadow-inner"
+                            />
+                        </div>
+                        <div className="flex justify-between items-center">
+                            <span className="text-xs font-medium text-gray-500">
+                                <strong className="text-white">{modalFilteredUsers.length}</strong> encontrados
+                            </span>
+
+                            {modalFilteredUsers.length > 0 && (
+                                <button
+                                    onClick={handleSelectAll}
+                                    className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors flex items-center gap-1.5 px-2 py-1 rounded hover:bg-[#d97757]/10"
+                                >
+                                    <div className="w-3 h-3 border border-current rounded-sm flex items-center justify-center">
+                                        {modalFilteredUsers.every(u => selectedUserIds.includes(u.id)) && <div className="w-1.5 h-1.5 bg-current rounded-[1px]" />}
+                                    </div>
+                                    {modalFilteredUsers.every(u => selectedUserIds.includes(u.id)) ? 'Desmarcar Todos' : 'Selecionar Todos'}
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* List */}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar p-2 min-h-0">
+                        {modalFilteredUsers.length === 0 ? (
+                            <div className="h-full flex flex-col items-center justify-center text-gray-500 opacity-50">
+                                <Users size={48} className="mb-2" />
+                                <p className="text-sm">Nenhum usuário encontrado</p>
+                            </div>
+                        ) : (
+                            <div className="flex flex-col gap-1">
+                                {modalFilteredUsers.map(user => {
+                                    const isSelected = selectedUserIds.includes(user.id);
+                                    const userInitials = getInitials(user.name || 'U');
+                                    const avatarColors = getAvatarColors(user.name || 'U');
+
+                                    return (
+                                        <div
+                                            key={user.id}
+                                            onClick={() => toggleUserSelection(user.id)}
+                                            className={`p-3 rounded-xl border flex items-center gap-3 cursor-pointer transition-all ${isSelected
+                                                ? 'bg-[#d97757]/10 border-[#d97757] shadow-sm'
+                                                : 'bg-gray-900/30 border-transparent hover:bg-gray-800 hover:border-gray-800'
+                                                }`}
+                                        >
+                                            <div className={`w-5 h-5 rounded border flex items-center justify-center transition-colors shrink-0 ${isSelected ? 'bg-[#d97757] border-[#d97757] text-white' : 'border-gray-600'
+                                                }`}>
+                                                {isSelected && <Check size={12} strokeWidth={4} />}
+                                            </div>
+
+                                            <div className={`w-8 h-8 rounded-full shrink-0 ${avatarColors.bg} flex items-center justify-center text-[10px] font-bold ${avatarColors.text}`}>
+                                                {userInitials}
+                                            </div>
+
+                                            <div className="min-w-0 flex-1">
+                                                <div className={`text-sm font-bold truncate ${isSelected ? 'text-[#d97757]' : 'text-white'}`}>
+                                                    {user.name || 'Sem nome'}
+                                                </div>
+                                                <div className="text-[10px] text-gray-500 truncate">{user.email}</div>
+                                            </div>
+                                            {/* Plan Badge */}
+                                            <div className="px-2 py-0.5 rounded text-[10px] font-bold uppercase bg-gray-800 text-gray-400 border border-gray-700 shrink-0">
+                                                {user.subscription?.plan || 'Free'}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer */}
+                    <div className="px-5 py-4 border-t border-gray-800 flex justify-between items-center shrink-0">
+                        <div className="flex items-center gap-3">
+                            <div className="flex flex-col">
+                                <span className="text-[10px] uppercase font-bold text-gray-500 tracking-wider">Selecionados</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xl font-bold text-white leading-none">{selectedUserIds.length}</span>
+                                    <span className="text-xs text-gray-600 font-medium">usuários</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                            {selectedUserIds.length > 0 && (
+                                <button
+                                    onClick={() => setSelectedUserIds([])}
+                                    className="px-4 py-2 rounded-xl text-xs font-bold text-gray-500 hover:text-white hover:bg-red-500/10 hover:border-red-500/50 border border-transparent transition-all"
+                                >
+                                    Limpar Seleção
+                                </button>
+                            )}
+                            <button
+                                onClick={() => setShowUserSelectionModal(false)}
+                                className="px-6 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl text-sm font-bold shadow-lg shadow-[#d97757]/20 transition-all hover:scale-105 active:scale-95 flex items-center gap-2"
+                            >
+                                <Check size={16} strokeWidth={3} />
+                                Confirmar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </UniversalModal>
+
+            {/* Success Modal */}
+            <UniversalModal
+                isOpen={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                title="Mensagem Enviada com Sucesso!"
+                width="max-w-[500px]"
+            >
+                <div className="p-4 flex flex-col h-full max-h-[60vh]">
+                    <div className="flex flex-col items-start justify-center mb-6 text-left shrink-0">
+                        <h3 className="text-xl font-bold text-white mb-2">Envio Concluído</h3>
+                        <p className="text-gray-400 text-sm mb-2">
+                            Sua mensagem foi enviada para <strong className="text-white">{successfulRecipients.length}</strong> usuários.
+                        </p>
+                        {deliveryMethod === 'email' && (
+                            <p className="text-[11px] text-[#d97757]/80 bg-[#d97757]/10 px-3 py-2 rounded-lg border border-[#d97757]/20">
+                                <strong className="block mb-0.5">Nota de Entrega Segura:</strong>
+                                Os emails foram processados em lotes sequenciais (10 por vez) com intervalos de segurança para garantir a entrega e evitar bloqueios de spam.
+                            </p>
+                        )}
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto custom-scrollbar min-h-0">
+                        <div className="flex flex-col gap-3">
+                            {successfulRecipients.map((user, index) => {
+                                const userInitials = getInitials(user.name || 'U');
+                                const avatarColors = getAvatarColors(user.name || 'U');
+
+                                return (
+                                    <div key={index} className="bg-[#30302E] border border-[#373734] rounded-xl p-3 flex items-center gap-3 hover:border-[#d97757]/50 transition-colors group relative overflow-hidden">
+                                        {/* Avatar */}
+                                        <div className={`w-10 h-10 rounded-full shrink-0 ${avatarColors.bg} flex items-center justify-center text-xs font-bold ${avatarColors.text} shadow-md`}>
+                                            {userInitials}
+                                        </div>
+
+                                        {/* Info */}
+                                        <div className="min-w-0 flex-1">
+                                            <div className="text-sm font-bold text-white truncate" title={user.name}>{user.name || 'Usuário'}</div>
+                                            <div className="text-[10px] text-gray-500 truncate" title={user.email}>{user.email}</div>
+                                        </div>
+
+                                        {/* Status Indicator */}
+                                        <div className="absolute top-2 right-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                            <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_5px_rgba(34,197,94,0.5)]"></div>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    <div className="mt-6 shrink-0">
+                        <button
+                            onClick={() => setShowSuccessModal(false)}
+                            className="w-full py-3 bg-[#30302E] hover:bg-[#4a4a48] border border-[#373734] rounded-xl text-white font-bold transition-colors shadow-lg"
+                        >
+                            Fechar
+                        </button>
+                    </div>
+                </div>
+            </UniversalModal>
         </div>
     );
 };

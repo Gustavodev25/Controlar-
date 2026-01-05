@@ -547,23 +547,58 @@ router.post('/admin/send-email', async (req, res) => {
   `;
 
   try {
-    const sendPromises = recipients.map((email) => {
-      return smtpTransporter.sendMail({
-        from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
-        to: email,
-        subject: subject,
-        html: htmlTemplate,
-        text: body
+    // Helper functionality for batching
+    const batchSize = 10; // Number of emails per batch
+    const delayBetweenBatches = 2000; // Delay in ms (2 seconds)
+
+    // Split recipients into batches
+    const batches = [];
+    for (let i = 0; i < recipients.length; i += batchSize) {
+      batches.push(recipients.slice(i, i + batchSize));
+    }
+
+    console.log(`>>> Starting batch email send. Total recipients: ${recipients.length}. Batches: ${batches.length}`);
+
+    let successCount = 0;
+    let failCount = 0;
+    const failures = [];
+
+    // Process batches sequentially
+    for (let i = 0; i < batches.length; i++) {
+      const batch = batches[i];
+      console.log(`>>> Sending batch ${i + 1}/${batches.length} (${batch.length} emails)...`);
+
+      const batchPromises = batch.map((email) => {
+        return smtpTransporter.sendMail({
+          from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,
+          to: email,
+          subject: subject,
+          html: htmlTemplate,
+          text: body
+        });
       });
-    });
 
-    const results = await Promise.allSettled(sendPromises);
+      // Wait for all emails in this batch to finish
+      const results = await Promise.allSettled(batchPromises);
 
-    const successCount = results.filter((r) => r.status === 'fulfilled').length;
-    const failures = results.filter((r) => r.status === 'rejected');
-    const failCount = failures.length;
+      // Tally results
+      results.forEach(r => {
+        if (r.status === 'fulfilled') {
+          successCount++;
+        } else {
+          failCount++;
+          failures.push(r);
+        }
+      });
 
-    console.log(`>>> Email Campaign Sent: ${successCount} success, ${failCount} failed.`);
+      // If there are more batches, wait before sending the next one
+      if (i < batches.length - 1) {
+        console.log(`>>> Waiting ${delayBetweenBatches}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));
+      }
+    }
+
+    console.log(`>>> Email Campaign Finished: ${successCount} success, ${failCount} failed.`);
 
     if (successCount === 0 && failCount > 0) {
       const firstError = failures[0].reason;

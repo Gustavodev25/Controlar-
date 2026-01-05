@@ -763,35 +763,35 @@ const App: React.FC = () => {
   }, [activeMemberId]);
 
   const [hasUnreadSupport, setHasUnreadSupport] = useState(false);
+  const [hasPendingRating, setHasPendingRating] = useState(false);
 
   // Monitor unread support messages
   useEffect(() => {
     if (!currentUser || activeTab === 'admin_support') return;
 
-    // Only for users (or admins acting as users, though rarely needed)
-    // If Admin is chatting, they see it in AdminSupport
-    // We want to notify regular users when Admin replies.
-
     // 1. Get active ticket
     const unsubTicket = dbService.getUserActiveTicket(currentUser.id || '', (ticketId) => {
       if (!ticketId) {
         setHasUnreadSupport(false);
+        setHasPendingRating(false);
         return;
       }
 
-      // 2. Listen to messages for that ticket
-      const unsubMessages = dbService.listenToTicketMessages(ticketId, (msgs) => {
-        // Check if there are any unread messages from 'admin'
-        // If I am user, senderType === 'admin' && !read
-        const hasUnread = msgs.some(m => m.senderType === 'admin' && !m.read);
+      // 2. Listen to ticket metadata (for rating status)
+      const unsubTicketData = dbService.listenToTicket(ticketId, (ticket) => {
+        setHasPendingRating(!!ticket?.awaitingRating);
+      });
 
-        // If chat is OPEN, we assume they are being read (handled by SupportChat component),
-        // but here we just reflect the state.
-        // Ideally, if chat is open, they are marked read instantly, so hasUnread becomes false.
+      // 3. Listen to messages for that ticket
+      const unsubMessages = dbService.listenToTicketMessages(ticketId, (msgs) => {
+        const hasUnread = msgs.some(m => m.senderType === 'admin' && !m.read);
         setHasUnreadSupport(hasUnread);
       });
 
-      return () => unsubMessages();
+      return () => {
+        unsubTicketData();
+        unsubMessages();
+      };
     });
 
     return () => unsubTicket();
@@ -3306,6 +3306,7 @@ const App: React.FC = () => {
         onOpenFeedback={() => setIsFeedbackModalOpen(true)}
         onOpenSupport={() => setIsSupportChatOpen(true)}
         hasUnreadSupport={hasUnreadSupport}
+        hasPendingRating={hasPendingRating}
         isProMode={isProMode}
       />
 

@@ -2688,7 +2688,16 @@ export const markMessagesAsRead = async (ticketId: string, role: 'user' | 'admin
   await batch.commit();
 };
 
+// ... (existing code)
+
+export const deleteSupportTicket = async (ticketId: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await deleteDoc(ticketRef);
+};
+
 export const listenToTicketMessages = (ticketId: string, callback: (messages: SupportMessage[]) => void) => {
+  // ... (existing code, ensure it matches previous content)
   if (!db) return () => { };
   const messagesRef = collection(db, "support_tickets", ticketId, "messages");
   const q = query(messagesRef, orderBy("createdAt", "asc"));
@@ -2702,11 +2711,28 @@ export const listenToTicketMessages = (ticketId: string, callback: (messages: Su
 export const getUserActiveTicket = (userId: string, callback: (ticketId: string | null) => void) => {
   if (!db) return () => { };
   const ticketsRef = collection(db, "support_tickets");
-  // Check for open OR in_progress
-  const q = query(ticketsRef, where("userId", "==", userId), where("status", "in", ["open", "in_progress"]), limit(1));
+
+  // Query latest ticket by timestamp. This requires an index on [userId, lastMessageAt DESC]
+  const q = query(
+    ticketsRef,
+    where("userId", "==", userId),
+    orderBy("lastMessageAt", "desc"),
+    limit(1)
+  );
+
   return onSnapshot(q, (snap) => {
     if (!snap.empty) {
-      callback(snap.docs[0].id);
+      const ticket = snap.docs[0].data();
+      const isActive =
+        ticket.status === 'open' ||
+        ticket.status === 'in_progress' ||
+        (ticket.status === 'closed' && ticket.awaitingRating);
+
+      if (isActive) {
+        callback(snap.docs[0].id);
+      } else {
+        callback(null);
+      }
     } else {
       callback(null);
     }

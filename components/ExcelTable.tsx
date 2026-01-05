@@ -275,14 +275,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             <span className="hidden sm:inline">Exportar</span>
           </button>
 
-          <button
-            onClick={startWalkthrough}
-            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
-            title="Ajuda e Dicas de Uso"
-          >
-            <HelpCircle size={18} />
-            <span className="hidden sm:inline">Ajuda</span>
-          </button>
+
 
           {isManualMode && onAdd && (
             <button

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets } from '../services/database';
+import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets, deleteSupportTicket } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft, Trash2 } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -80,6 +80,22 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
             await closeSupportTicket(id);
             if (selectedTicket?.id === id) {
                 setSelectedTicket(null);
+            }
+        }
+    }
+
+    const handleDeleteTicket = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        if (confirm('Tem certeza que deseja EXCLUIR este chamado? Esta ação não pode ser desfeita.')) {
+            try {
+                await deleteSupportTicket(id);
+                toast.success('Chamado excluído com sucesso.');
+                if (selectedTicket?.id === id) {
+                    setSelectedTicket(null);
+                }
+            } catch (error) {
+                console.error(error);
+                toast.error('Erro ao excluir chamado.');
             }
         }
     }
@@ -284,9 +300,18 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                             <span className="text-xs text-gray-500 truncate">{ticket.userEmail}</span>
                                         </div>
                                     </div>
-                                    <span className="text-[10px] font-medium text-gray-400 bg-[#373734] px-1.5 py-0.5 rounded whitespace-nowrap">
-                                        {timeAgo}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={(e) => handleDeleteTicket(e, ticket.id!)}
+                                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-black/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                            title="Excluir Chamado"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                        <span className="text-[10px] font-medium text-gray-400 bg-[#373734] px-1.5 py-0.5 rounded whitespace-nowrap">
+                                            {timeAgo}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div className="pl-[52px] flex items-center justify-between">
@@ -353,9 +378,18 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                             <span className="text-xs text-gray-500 truncate">{ticket.userEmail}</span>
                                         </div>
                                     </div>
-                                    <span className="text-[10px] font-medium text-gray-500 bg-[#373734] px-1.5 py-0.5 rounded whitespace-nowrap">
-                                        {new Date(closedDate).toLocaleDateString('pt-BR')}
-                                    </span>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={(e) => handleDeleteTicket(e, ticket.id!)}
+                                            className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-black/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"
+                                            title="Excluir Chamado"
+                                        >
+                                            <Trash2 size={12} />
+                                        </button>
+                                        <span className="text-[10px] font-medium text-gray-500 bg-[#373734] px-1.5 py-0.5 rounded whitespace-nowrap">
+                                            {new Date(closedDate).toLocaleDateString('pt-BR')}
+                                        </span>
+                                    </div>
                                 </div>
 
                                 <div className="pl-[52px] flex items-center justify-between">
@@ -449,7 +483,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                         {selectedTicket.assignedTo && selectedTicket.assignedTo !== currentUser?.id && (
                             <div className="hidden lg:flex absolute inset-x-0 top-0 z-20 bg-[#2A2A28] border-b border-[#454543] p-2 items-center justify-center text-xs text-gray-400">
                                 <User size={12} className="mr-1.5" />
-                                Atendido por: <strong className="ml-1 text-[#d97757]">{selectedTicket.assignedByName || 'Admin'}</strong>
+                                <strong className="ml-1 text-[#d97757]">{selectedTicket.assignedByName || 'Admin'}</strong>
                             </div>
                         )}
 

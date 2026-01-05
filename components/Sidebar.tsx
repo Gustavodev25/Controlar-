@@ -13,11 +13,14 @@ import {
   Map
 } from './Icons';
 import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag, CreditCard } from 'lucide-react';
-import { motion, AnimatePresence, LayoutGroup } from 'framer-motion';
+import { motion, AnimatePresence, LayoutGroup, Variants } from 'framer-motion';
+
+
 import { Member } from '../types';
 import { Logo } from './Logo';
 import { MemberSelector } from './MemberSelector';
 import coinzinhaImg from '../assets/coinzinha.png';
+import * as dbService from '../services/database';
 
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'categories' | 'reminders' | 'subscriptions'
@@ -313,14 +316,40 @@ interface SidebarProps {
   onOpenFeedback: () => void;
   onOpenSupport: () => void;
   isProMode?: boolean;
-  hasUnreadSupport?: boolean; // New prop
+  hasUnreadSupport?: boolean;
+  hasPendingRating?: boolean; // New prop
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
   isOpen, setIsOpen, activeTab, setActiveTab, isAdminMode, activeMemberId, members,
-  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback, onOpenSupport, isProMode = false, hasUnreadSupport
+  onSelectMember, onAddMember, onDeleteMember, userPlan, isAdmin, overdueRemindersCount = 0, onOpenAIModal, onOpenFeedback, onOpenSupport, isProMode = false, hasUnreadSupport, hasPendingRating
 }) => {
   const [isMobile, setIsMobile] = useState(false);
+  const [latestVersion, setLatestVersion] = useState<{ version: string; date: string } | null>(null);
+
+  useEffect(() => {
+    const fetchChangelog = async () => {
+      try {
+        const logs = await dbService.getChangelogs();
+        if (logs && logs.length > 0) {
+          // Sort to ensure we get the latest
+          const sorted = logs.sort((a, b) => {
+            // Prefer sorting by createdAt if available
+            if (a.createdAt && b.createdAt) {
+              return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+            }
+            // Fallback to semver-ish sort if needed, simplified here:
+            return 0;
+          });
+          const latest = sorted[0];
+          setLatestVersion({ version: latest.version, date: latest.date });
+        }
+      } catch (err) {
+        console.error("Error fetching changelog version", err);
+      }
+    };
+    fetchChangelog();
+  }, []);
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 1024);
@@ -334,7 +363,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (isMobile) setIsOpen(false);
   };
 
-  const sidebarVariants = {
+  const sidebarVariants: Variants = {
     open: { width: "16rem", x: 0, transition: { type: "spring", stiffness: 300, damping: 30 } },
     closed: { width: isMobile ? "16rem" : "5.5rem", x: isMobile ? "-100%" : 0, transition: { type: "spring", stiffness: 300, damping: 30 } }
   };
@@ -547,14 +576,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={`
                     relative flex items-center outline-none group transition-all duration-300 w-full
                     ${isOpen ? 'gap-3 p-2.5 justify-start rounded-xl' : 'w-10 h-10 justify-center rounded-xl mx-auto'}
-                    ${hasUnreadSupport
+                    ${(hasUnreadSupport || hasPendingRating)
                     ? 'bg-[#d97757]/10 text-[#d97757] hover:bg-[#d97757]/20 border border-[#d97757]/30'
                     : 'text-gray-500 hover:bg-gray-800/50 hover:text-gray-300'
                   }
                   `}
               >
                 <div className="relative flex items-center justify-center shrink-0">
-                  {hasUnreadSupport && (
+                  {(hasUnreadSupport || hasPendingRating) && (
                     <>
                       {/* Pulsing ring effect */}
                       <div className="absolute inset-0 w-6 h-6 -m-1 bg-[#d97757]/20 rounded-full animate-ping" />
@@ -562,7 +591,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <div className="absolute -right-1 -top-1 w-2.5 h-2.5 bg-[#d97757] rounded-full animate-pulse shadow-lg shadow-[#d97757]/50" />
                     </>
                   )}
-                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 group-hover:scale-110 ${hasUnreadSupport ? 'text-[#d97757]' : ''}`}><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={`transition-transform duration-300 group-hover:scale-110 ${(hasUnreadSupport || hasPendingRating) ? 'text-[#d97757]' : ''}`}><path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z" /><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1" /></svg>
                 </div>
 
                 <AnimatePresence>
@@ -571,10 +600,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
                       className="flex items-center gap-2 flex-1"
                     >
-                      <span className={`font-medium text-sm ${hasUnreadSupport ? 'text-[#d97757]' : 'text-gray-400 group-hover:text-gray-300'}`}>
+                      <span className={`font-medium text-sm ${(hasUnreadSupport || hasPendingRating) ? 'text-[#d97757]' : 'text-gray-400 group-hover:text-gray-300'}`}>
                         Suporte
                       </span>
-                      {hasUnreadSupport && (
+                      {hasPendingRating ? (
+                        <motion.span
+                          initial={{ scale: 0 }}
+                          animate={{ scale: 1 }}
+                          className="px-2 py-0.5 bg-yellow-500 text-black text-[10px] font-bold rounded-full uppercase tracking-wider shadow-lg shadow-yellow-500/30"
+                        >
+                          Avaliar
+                        </motion.span>
+                      ) : hasUnreadSupport && (
                         <motion.span
                           initial={{ scale: 0 }}
                           animate={{ scale: 1 }}
@@ -629,7 +666,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       initial={{ opacity: 0, x: -5 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
                       className="text-[9px] text-gray-500"
                     >
-                      Versão beta <span className="text-[#D97757]">v0.1.0</span> · Versões iniciais
+                      {latestVersion ? (
+                        <>Versão <span className="text-[#D97757]">v{latestVersion.version}</span> · {latestVersion.date}</>
+                      ) : (
+                        <>Versão beta <span className="text-[#D97757]">v0.1.0</span> · Versões iniciais</>
+                      )}
                     </motion.p>
                   )}
                 </AnimatePresence>
