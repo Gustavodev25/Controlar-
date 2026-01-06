@@ -37,15 +37,23 @@ export const logConnection = async (userId: string, log: any) => {
 
     // Check if the latest log is from the same device/session (prevent spam on refresh)
     const latestLog = existingLogs[0];
+
+    // Extract dates for comparison (only create new log if it's a different day)
+    const newLogDate = log.timestamp ? log.timestamp.split('T')[0] : '';
+    const latestLogDate = latestLog?.timestamp ? latestLog.timestamp.split('T')[0] : '';
+    const isDifferentDay = newLogDate !== latestLogDate;
+
+    // Session is considered "same" only if same device/browser AND same day
+    // We ignore IP for session matching since it can change or fail to fetch
     const isSameSession = latestLog &&
       latestLog.device === log.device &&
       latestLog.os === log.os &&
       latestLog.browser === log.browser &&
-      latestLog.ip === log.ip;
+      !isDifferentDay; // Different day = new session for tracking purposes
 
     let newLogs;
     if (isSameSession) {
-      // Update the timestamp of the existing log and mark as current
+      // Update the timestamp of the existing log and mark as current (same day, same device)
       const updatedLatest = { ...latestLog, timestamp: log.timestamp, isCurrent: true };
       // Mark others as not current just in case
       const others = existingLogs.slice(1).map((l: any) => ({ ...l, isCurrent: false }));
@@ -53,8 +61,8 @@ export const logConnection = async (userId: string, log: any) => {
     } else {
       // Mark all previous logs as not current
       const previousLogs = existingLogs.map((l: any) => ({ ...l, isCurrent: false }));
-      // Prepend new log
-      newLogs = [log, ...previousLogs].slice(0, 10);
+      // Prepend new log - keep up to 30 logs for better activity tracking
+      newLogs = [log, ...previousLogs].slice(0, 30);
     }
 
     await updateDoc(userRef, { connectionLogs: newLogs });

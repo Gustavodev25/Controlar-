@@ -124,24 +124,32 @@ export const AdminUsers: React.FC = () => {
                     const lastLoginB = b.connectionLogs?.[0]?.timestamp ? new Date(b.connectionLogs[0].timestamp).getTime() : 0;
                     return lastLoginB - lastLoginA;
                 case 'most_active_days': {
-                    const getDays = (u: SystemUser) => {
-                        if (!u.createdAt) return 0;
-                        const lastLog = u.connectionLogs?.[0];
-                        const end = lastLog?.timestamp ? new Date(lastLog.timestamp).getTime() : new Date(u.createdAt).getTime();
-                        const start = new Date(u.createdAt).getTime();
-                        return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                    const getUniqueDays = (u: SystemUser) => {
+                        if (!u.connectionLogs || u.connectionLogs.length === 0) return 0;
+                        const uniqueDates = new Set<string>();
+                        u.connectionLogs.forEach(log => {
+                            if (log.timestamp) {
+                                const date = new Date(log.timestamp).toISOString().split('T')[0];
+                                uniqueDates.add(date);
+                            }
+                        });
+                        return uniqueDates.size;
                     };
-                    return getDays(b) - getDays(a);
+                    return getUniqueDays(b) - getUniqueDays(a);
                 }
                 case 'least_active_days': {
-                    const getDays = (u: SystemUser) => {
-                        if (!u.createdAt) return 0;
-                        const lastLog = u.connectionLogs?.[0];
-                        const end = lastLog?.timestamp ? new Date(lastLog.timestamp).getTime() : new Date(u.createdAt).getTime();
-                        const start = new Date(u.createdAt).getTime();
-                        return Math.max(0, Math.ceil((end - start) / (1000 * 60 * 60 * 24)));
+                    const getUniqueDays = (u: SystemUser) => {
+                        if (!u.connectionLogs || u.connectionLogs.length === 0) return 0;
+                        const uniqueDates = new Set<string>();
+                        u.connectionLogs.forEach(log => {
+                            if (log.timestamp) {
+                                const date = new Date(log.timestamp).toISOString().split('T')[0];
+                                uniqueDates.add(date);
+                            }
+                        });
+                        return uniqueDates.size;
                     };
-                    return getDays(a) - getDays(b);
+                    return getUniqueDays(a) - getUniqueDays(b);
                 }
                 default:
                     return 0;
@@ -251,18 +259,67 @@ export const AdminUsers: React.FC = () => {
 
     const getLastLogin = (user: SystemUser) => {
         const logs = user.connectionLogs;
-        if (!logs || logs.length === 0) return '-';
+        if (!logs || logs.length === 0) return { text: 'Nunca', relative: 'Nunca acessou', isRecent: false, status: 'never' as const };
         // logs are typically sorted with latest first
         const lastLog = logs[0];
-        if (!lastLog || !lastLog.timestamp) return '-';
+        if (!lastLog || !lastLog.timestamp) return { text: 'Nunca', relative: 'Nunca acessou', isRecent: false, status: 'never' as const };
 
         const date = new Date(lastLog.timestamp);
-        return date.toLocaleDateString('pt-BR', {
+        const now = new Date();
+        const diffMs = now.getTime() - date.getTime();
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+        let relative: string;
+        let status: 'online' | 'recent' | 'today' | 'week' | 'month' | 'old' | 'never';
+
+        if (diffMinutes < 5) {
+            relative = 'Online agora';
+            status = 'online';
+        } else if (diffMinutes < 60) {
+            relative = `Há ${diffMinutes} min`;
+            status = 'recent';
+        } else if (diffHours < 24) {
+            relative = `Há ${diffHours}h`;
+            status = 'today';
+        } else if (diffDays === 1) {
+            relative = 'Ontem';
+            status = 'week';
+        } else if (diffDays < 7) {
+            relative = `Há ${diffDays} dias`;
+            status = 'week';
+        } else if (diffDays < 30) {
+            relative = `Há ${Math.floor(diffDays / 7)} sem`;
+            status = 'month';
+        } else if (diffDays < 365) {
+            relative = `Há ${Math.floor(diffDays / 30)} mês${Math.floor(diffDays / 30) > 1 ? 'es' : ''}`;
+            status = 'old';
+        } else {
+            relative = `Há ${Math.floor(diffDays / 365)} ano${Math.floor(diffDays / 365) > 1 ? 's' : ''}`;
+            status = 'old';
+        }
+
+        const text = date.toLocaleDateString('pt-BR', {
             day: '2-digit',
             month: '2-digit',
             hour: '2-digit',
             minute: '2-digit'
         });
+
+        return { text, relative, isRecent: diffDays < 7, status };
+    };
+
+    const getUniqueDaysCount = (user: SystemUser) => {
+        if (!user.connectionLogs || user.connectionLogs.length === 0) return 0;
+        const uniqueDates = new Set<string>();
+        user.connectionLogs.forEach(log => {
+            if (log.timestamp) {
+                const date = new Date(log.timestamp).toISOString().split('T')[0];
+                uniqueDates.add(date);
+            }
+        });
+        return uniqueDates.size;
     };
 
     const getTimeSinceCreation = (createdAt?: string) => {
@@ -283,40 +340,105 @@ export const AdminUsers: React.FC = () => {
     };
 
     const renderActiveDays = (user: SystemUser) => {
-        if (!user.createdAt) return <span>-</span>;
+        const uniqueDays = getUniqueDaysCount(user);
+        const memberDays = user.createdAt
+            ? Math.max(1, Math.ceil((new Date().getTime() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
+            : 1;
+        const engagementRate = Math.min(100, Math.round((uniqueDays / memberDays) * 100));
 
-        const logs = user.connectionLogs;
-        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+        // Determine engagement level
+        let engagementColor: string;
+        let engagementBg: string;
+        let engagementLabel: string;
 
-        // Check for Online status (last access within 5 minutes)
-        if (lastLog?.timestamp) {
-            const lastAccessTime = new Date(lastLog.timestamp).getTime();
-            const nowTime = new Date().getTime();
-            const fiveMinutes = 5 * 60 * 1000;
-
-            if (nowTime - lastAccessTime < fiveMinutes) {
-                return (
-                    <div className="flex items-center gap-1.5">
-                        <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                        </span>
-                        <span className="text-emerald-500 font-medium text-sm">Online</span>
-                    </div>
-                );
-            }
+        if (uniqueDays === 0) {
+            engagementColor = 'text-gray-500';
+            engagementBg = 'bg-gray-500/10';
+            engagementLabel = 'Inativo';
+        } else if (engagementRate >= 70) {
+            engagementColor = 'text-emerald-400';
+            engagementBg = 'bg-emerald-500/10';
+            engagementLabel = 'Alto';
+        } else if (engagementRate >= 30) {
+            engagementColor = 'text-amber-400';
+            engagementBg = 'bg-amber-500/10';
+            engagementLabel = 'Médio';
+        } else {
+            engagementColor = 'text-orange-400';
+            engagementBg = 'bg-orange-500/10';
+            engagementLabel = 'Baixo';
         }
 
-        // Active Days Calculation
-        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(user.createdAt);
-        const createdDate = new Date(user.createdAt);
+        return (
+            <div className="flex flex-col gap-0.5">
+                <div className="flex items-center gap-2">
+                    <span className="text-white text-sm font-medium">{uniqueDays}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${engagementBg} ${engagementColor}`}>
+                        {engagementLabel}
+                    </span>
+                </div>
+                <span className="text-gray-500 text-[11px]">
+                    {engagementRate}% de {memberDays}d
+                </span>
+            </div>
+        );
+    };
 
-        if (isNaN(lastAccessDate.getTime()) || isNaN(createdDate.getTime())) return <span>-</span>;
+    const renderLastAccess = (user: SystemUser) => {
+        const lastLogin = getLastLogin(user);
 
-        const diffTime = lastAccessDate.getTime() - createdDate.getTime();
-        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        // Status-based styling
+        let statusColor: string;
+        let statusBg: string;
+        let showPing = false;
 
-        return <span className="text-gray-400 text-sm">{Math.max(0, diffDays) + ' dias'}</span>;
+        switch (lastLogin.status) {
+            case 'online':
+                statusColor = 'text-emerald-400';
+                statusBg = 'bg-emerald-500';
+                showPing = true;
+                break;
+            case 'recent':
+                statusColor = 'text-emerald-400';
+                statusBg = 'bg-emerald-500';
+                break;
+            case 'today':
+                statusColor = 'text-blue-400';
+                statusBg = 'bg-blue-500';
+                break;
+            case 'week':
+                statusColor = 'text-amber-400';
+                statusBg = 'bg-amber-500';
+                break;
+            case 'month':
+                statusColor = 'text-orange-400';
+                statusBg = 'bg-orange-500';
+                break;
+            case 'old':
+                statusColor = 'text-red-400';
+                statusBg = 'bg-red-500';
+                break;
+            default:
+                statusColor = 'text-gray-500';
+                statusBg = 'bg-gray-500';
+        }
+
+        return (
+            <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                    {showPing && (
+                        <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${statusBg} opacity-75`}></span>
+                    )}
+                    <span className={`relative inline-flex rounded-full h-2 w-2 ${statusBg}`}></span>
+                </span>
+                <div className="flex flex-col">
+                    <span className={`text-sm font-medium ${statusColor}`}>{lastLogin.relative}</span>
+                    {lastLogin.status !== 'never' && lastLogin.status !== 'online' && (
+                        <span className="text-gray-500 text-[11px]">{lastLogin.text}</span>
+                    )}
+                </div>
+            </div>
+        );
     };
 
     const handleDelete = async () => {
@@ -693,10 +815,7 @@ export const AdminUsers: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="px-3 py-3">
-                                                <div className="flex items-center gap-1.5 text-gray-400 text-xs font-mono">
-                                                    <Clock size={12} />
-                                                    {getLastLogin(user)}
-                                                </div>
+                                                {renderLastAccess(user)}
                                             </td>
                                             <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-xs font-mono">
@@ -897,6 +1016,91 @@ export const AdminUsers: React.FC = () => {
                                                         </span>
                                                     </div>
                                                 )}
+                                            </div>
+                                        </div>
+
+                                        {/* Activity Info */}
+                                        <div className="space-y-1.5">
+                                            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Atividade</label>
+                                            <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
+                                                {(() => {
+                                                    const uniqueDays = getUniqueDaysCount(selectedUser);
+                                                    const memberDays = selectedUser.createdAt
+                                                        ? Math.max(1, Math.ceil((new Date().getTime() - new Date(selectedUser.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
+                                                        : 1;
+                                                    const engagementRate = Math.min(100, Math.round((uniqueDays / memberDays) * 100));
+                                                    const lastLogin = getLastLogin(selectedUser);
+
+                                                    let engagementColor: string;
+                                                    if (engagementRate >= 70) {
+                                                        engagementColor = 'text-emerald-400';
+                                                    } else if (engagementRate >= 30) {
+                                                        engagementColor = 'text-amber-400';
+                                                    } else if (uniqueDays > 0) {
+                                                        engagementColor = 'text-orange-400';
+                                                    } else {
+                                                        engagementColor = 'text-gray-500';
+                                                    }
+
+                                                    let statusColor: string;
+                                                    switch (lastLogin.status) {
+                                                        case 'online':
+                                                        case 'recent':
+                                                            statusColor = 'text-emerald-400';
+                                                            break;
+                                                        case 'today':
+                                                            statusColor = 'text-blue-400';
+                                                            break;
+                                                        case 'week':
+                                                            statusColor = 'text-amber-400';
+                                                            break;
+                                                        case 'month':
+                                                            statusColor = 'text-orange-400';
+                                                            break;
+                                                        case 'old':
+                                                            statusColor = 'text-red-400';
+                                                            break;
+                                                        default:
+                                                            statusColor = 'text-gray-500';
+                                                    }
+
+                                                    return (
+                                                        <>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500 uppercase">Dias Ativos</span>
+                                                                <span className={`text-sm font-medium ${engagementColor}`}>
+                                                                    {uniqueDays} dias ({engagementRate}%)
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500 uppercase">Membro Desde</span>
+                                                                <span className="text-sm text-gray-300">
+                                                                    {formatDate(selectedUser.createdAt)} ({memberDays} dias)
+                                                                </span>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500 uppercase">Último Acesso</span>
+                                                                <div className="flex items-center gap-2">
+                                                                    {lastLogin.status === 'online' && (
+                                                                        <span className="relative flex h-2 w-2">
+                                                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
+                                                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                                                        </span>
+                                                                    )}
+                                                                    <span className={`text-sm font-medium ${statusColor}`}>
+                                                                        {lastLogin.relative}
+                                                                    </span>
+                                                                </div>
+                                                            </div>
+                                                            <div className="flex justify-between items-center">
+                                                                <span className="text-xs text-gray-500 uppercase">Total de Logins</span>
+                                                                <span className="text-sm text-gray-300">
+                                                                    {selectedUser.connectionLogs?.length || 0}
+                                                                </span>
+                                                            </div>
+                                                        </>
+                                                    );
+                                                })()}
                                             </div>
                                         </div>
 
