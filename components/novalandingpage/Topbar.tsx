@@ -48,14 +48,21 @@ const NavItem: React.FC<NavItemProps> = ({ children, href, isActive, onClick }) 
 };
 
 // --- TOPBAR ---
+interface SubscribeData {
+  planId: 'pro';
+  billingCycle: 'monthly' | 'annual';
+  couponCode?: string;
+}
+
 interface TopbarProps {
   onLogin: () => void;
+  onSubscribe?: (data: SubscribeData) => void;
   hideNavigation?: boolean;
   user?: any;
   centerContent?: React.ReactNode;
 }
 
-export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false, user, centerContent }) => {
+export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNavigation = false, user, centerContent }) => {
   const navLinks = [
     { name: 'Início', href: '#hero' },
     { name: 'Funcionalidades', href: '#features' },
@@ -229,23 +236,40 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false,
                 );
               })()
             ) : (
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => {
-                  // Salvar pending_checkout para ir direto para checkout após login
-                  const pendingCheckout = {
-                    planId: 'pro',
-                    billingCycle: 'monthly',
-                    couponCode: 'FELIZ2026'
-                  };
-                  localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                  onLogin();
-                }}
-                className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
-              >
-                <span>Assinar Pro</span>
-              </motion.button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={onLogin}
+                  className="hidden md:block text-sm font-medium text-gray-400 hover:text-white transition-colors px-2"
+                >
+                  Entrar
+                </button>
+                <motion.button
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => {
+                    // Ir direto para checkout se onSubscribe disponível
+                    if (onSubscribe) {
+                      onSubscribe({
+                        planId: 'pro',
+                        billingCycle: 'monthly',
+                        couponCode: 'FELIZ2026'
+                      });
+                    } else {
+                      // Fallback: salvar pending_checkout e ir para login
+                      const pendingCheckout = {
+                        planId: 'pro',
+                        billingCycle: 'monthly',
+                        couponCode: 'FELIZ2026'
+                      };
+                      localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                      onLogin();
+                    }
+                  }}
+                  className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
+                >
+                  <span>Assinar Pro</span>
+                </motion.button>
+              </div>
             )}
 
             {!hideNavigation && (
@@ -310,14 +334,23 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, hideNavigation = false,
 
                   <button
                     onClick={() => {
-                      // Salvar pending_checkout para ir direto para checkout após login
-                      const pendingCheckout = {
-                        planId: 'pro',
-                        billingCycle: 'monthly',
-                        couponCode: 'FELIZ2026'
-                      };
-                      localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                      onLogin();
+                      // Ir direto para checkout se onSubscribe disponível
+                      if (onSubscribe) {
+                        onSubscribe({
+                          planId: 'pro',
+                          billingCycle: 'monthly',
+                          couponCode: 'FELIZ2026'
+                        });
+                      } else {
+                        // Fallback: salvar pending_checkout e ir para login
+                        const pendingCheckout = {
+                          planId: 'pro',
+                          billingCycle: 'monthly',
+                          couponCode: 'FELIZ2026'
+                        };
+                        localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                        onLogin();
+                      }
                     }}
                     className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
                     Assinar Pro

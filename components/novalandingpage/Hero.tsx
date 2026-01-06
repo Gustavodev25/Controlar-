@@ -230,7 +230,18 @@ const BenefitsItem = ({ text }: { text: string }) => (
     </div>
 );
 
-export function Hero({ onLogin }: { onLogin: () => void }) {
+interface SubscribeData {
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+}
+
+interface HeroProps {
+    onLogin: () => void;
+    onSubscribe?: (data: SubscribeData) => void;
+}
+
+export function Hero({ onLogin, onSubscribe }: HeroProps) {
     const banks = [
         { name: 'Banco do Brasil', logo: bancodobrasilLogo },
         { name: 'Bradesco', logo: bradescoLogo },
@@ -327,14 +338,23 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                         {/* Countdown Timer & CTA */}
                         <motion.div variants={itemVariants} className="flex flex-col items-center lg:items-start gap-6 pt-4">
                             <button onClick={() => {
-                                // Salvar pending_checkout para ir direto para checkout após login
-                                const pendingCheckout = {
-                                    planId: 'pro',
-                                    billingCycle: 'monthly',
-                                    couponCode: 'FELIZ2026'
-                                };
-                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                                onLogin();
+                                // Ir direto para checkout se onSubscribe disponível
+                                if (onSubscribe) {
+                                    onSubscribe({
+                                        planId: 'pro',
+                                        billingCycle: 'monthly',
+                                        couponCode: 'FELIZ2026'
+                                    });
+                                } else {
+                                    // Fallback: salvar pending_checkout e ir para login
+                                    const pendingCheckout = {
+                                        planId: 'pro',
+                                        billingCycle: 'monthly',
+                                        couponCode: 'FELIZ2026'
+                                    };
+                                    localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                    onLogin();
+                                }
                             }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
                                 Assinar Pro
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -502,14 +522,23 @@ export function Hero({ onLogin }: { onLogin: () => void }) {
                             {/* CTA */}
                             <button
                                 onClick={() => {
-                                    // Salvar pending_checkout para ir direto para checkout após login
-                                    const pendingCheckout = {
-                                        planId: 'pro',
-                                        billingCycle: 'monthly',
-                                        couponCode: 'FELIZ2026'
-                                    };
-                                    localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                                    onLogin();
+                                    // Ir direto para checkout se onSubscribe disponível
+                                    if (onSubscribe) {
+                                        onSubscribe({
+                                            planId: 'pro',
+                                            billingCycle: 'monthly',
+                                            couponCode: 'FELIZ2026'
+                                        });
+                                    } else {
+                                        // Fallback: salvar pending_checkout e ir para login
+                                        const pendingCheckout = {
+                                            planId: 'pro',
+                                            billingCycle: 'monthly',
+                                            couponCode: 'FELIZ2026'
+                                        };
+                                        localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                        onLogin();
+                                    }
                                 }}
                                 className="w-full py-3 rounded-xl font-bold transition-colors bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/25"
                             >

@@ -56,7 +56,7 @@ service cloud.firestore {
     // Atualização de Uso (currentUses): Permitimos que QUALQUER usuário autenticado incremente o contador
     // desde que seja a única mudança feita no documento (segurança via regras).
     match /coupons/{couponId} {
-      allow read: if request.auth != null;
+      allow read: if true;
       allow create, delete: if request.auth != null && isUserAdmin();
       allow update: if request.auth != null && (
         isUserAdmin() || 

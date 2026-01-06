@@ -12,7 +12,18 @@ import fogueteImg from '../../assets/foguete.png';
 
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 
-export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+interface SubscribeData {
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+}
+
+interface PricingSectionProps {
+    onLogin: () => void;
+    onSubscribe?: (data: SubscribeData) => void;
+}
+
+export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubscribe }) => {
     const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
 
     const plans = [
@@ -215,16 +226,27 @@ export const PricingSection: React.FC<{ onLogin: () => void }> = ({ onLogin }) =
                                 {/* Botão */}
                                 <button
                                     onClick={() => {
-                                        // Salvar informações do plano no localStorage para redirecionar após login
                                         if (isPro) {
-                                            const pendingCheckout = {
-                                                planId: 'pro',
-                                                billingCycle: billingCycle,
-                                                couponCode: billingCycle === 'monthly' ? 'FELIZ2026' : undefined
-                                            };
-                                            localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                            // Ir direto para checkout se onSubscribe disponível
+                                            if (onSubscribe) {
+                                                onSubscribe({
+                                                    planId: 'pro',
+                                                    billingCycle: billingCycle,
+                                                    couponCode: billingCycle === 'monthly' ? 'FELIZ2026' : undefined
+                                                });
+                                            } else {
+                                                // Fallback: salvar pending_checkout e ir para login
+                                                const pendingCheckout = {
+                                                    planId: 'pro',
+                                                    billingCycle: billingCycle,
+                                                    couponCode: billingCycle === 'monthly' ? 'FELIZ2026' : undefined
+                                                };
+                                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                                onLogin();
+                                            }
+                                        } else {
+                                            onLogin();
                                         }
-                                        onLogin();
                                     }}
                                     className={`
                                         w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]

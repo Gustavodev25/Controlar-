@@ -43,6 +43,7 @@ import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { PostSignupModal } from './components/PostSignupModal';
+import { LandingCheckoutPage } from './components/LandingCheckoutPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
@@ -445,6 +446,13 @@ const App: React.FC = () => {
     }
     return false;
   });
+
+  // Landing Checkout State - Para ir direto ao checkout da landing page
+  const [landingCheckoutData, setLandingCheckoutData] = useState<{
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+  } | null>(null);
 
   // Handle browser back/forward for URL changes
   useEffect(() => {
@@ -3274,12 +3282,37 @@ const App: React.FC = () => {
       );
     }
 
+    // Se tem dados de checkout da landing, mostrar a página de checkout
+    if (landingCheckoutData) {
+      return (
+        <>
+          <PixelPageViewTracker activeTab="landing-checkout" />
+          <ToastContainer />
+          <LandingCheckoutPage
+            planId={landingCheckoutData.planId}
+            billingCycle={landingCheckoutData.billingCycle}
+            couponCode={landingCheckoutData.couponCode}
+            onBack={() => setLandingCheckoutData(null)}
+            onSuccess={() => {
+              // Após sucesso, limpar o estado e deixar o auth listener cuidar do resto
+              setLandingCheckoutData(null);
+              setShowLanding(false);
+            }}
+          />
+        </>
+      );
+    }
+
     if (showLanding && !pendingTwoFactor) {
       return (
         <>
           <PixelPageViewTracker activeTab={`landing-${landingVariant}`} />
           <ToastContainer />
-          <LandingPage variant={landingVariant} onLogin={() => setShowLanding(false)} />
+          <LandingPage
+            variant={landingVariant}
+            onLogin={() => setShowLanding(false)}
+            onSubscribe={(data) => setLandingCheckoutData(data)}
+          />
         </>
       );
     }
@@ -3287,7 +3320,7 @@ const App: React.FC = () => {
       <>
         <PixelPageViewTracker activeTab="auth" />
         <ToastContainer />
-        <LoginNew />
+        <LoginNew onSubscribe={(data) => setLandingCheckoutData(data)} />
       </>
     );
   }

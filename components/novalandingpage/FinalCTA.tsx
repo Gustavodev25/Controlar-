@@ -4,7 +4,18 @@ import { ArrowUpRight } from 'lucide-react';
 import { BlurTextEffect } from '../BlurTextEffect';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 
-export const FinalCTA: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+interface SubscribeData {
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+}
+
+interface FinalCTAProps {
+    onLogin: () => void;
+    onSubscribe?: (data: SubscribeData) => void;
+}
+
+export const FinalCTA: React.FC<FinalCTAProps> = ({ onLogin, onSubscribe }) => {
     return (
         <section className="relative w-full py-24 bg-[radial-gradient(ellipse_60%_40%_at_50%_40%,_#3a1a10_0%,_#1a0f0a_100%)] overflow-hidden">
             {/* Grid Animado de Fundo - Sutil e Centralizado */}
@@ -38,14 +49,23 @@ export const FinalCTA: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <button onClick={() => {
-                            // Salvar pending_checkout para ir direto para checkout após login
-                            const pendingCheckout = {
-                                planId: 'pro',
-                                billingCycle: 'monthly',
-                                couponCode: 'FELIZ2026'
-                            };
-                            localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                            onLogin();
+                            // Ir direto para checkout se onSubscribe disponível
+                            if (onSubscribe) {
+                                onSubscribe({
+                                    planId: 'pro',
+                                    billingCycle: 'monthly',
+                                    couponCode: 'FELIZ2026'
+                                });
+                            } else {
+                                // Fallback: salvar pending_checkout e ir para login
+                                const pendingCheckout = {
+                                    planId: 'pro',
+                                    billingCycle: 'monthly',
+                                    couponCode: 'FELIZ2026'
+                                };
+                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
+                                onLogin();
+                            }
                         }} className="group px-8 py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)]">
                             Assinar Pro
                             <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
@@ -58,3 +78,4 @@ export const FinalCTA: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
         </section>
     );
 };
+

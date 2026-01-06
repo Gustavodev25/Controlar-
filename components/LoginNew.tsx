@@ -117,7 +117,18 @@ const LoginTestimonialsColumn = (props: {
     );
 };
 
-export const LoginNew: React.FC = () => {
+
+interface SubscribeData {
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+}
+
+interface LoginNewProps {
+    onSubscribe?: (data: SubscribeData) => void;
+}
+
+export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
     const toast = useToasts();
     const [isLogin, setIsLogin] = useState(true);
     const [step, setStep] = useState(1);
@@ -798,7 +809,15 @@ export const LoginNew: React.FC = () => {
                                 {isLogin ? 'Ainda não tem conta?' : 'Já tem uma conta?'}
                                 <a
                                     href="#"
-                                    onClick={(e) => { e.preventDefault(); setIsLogin(!isLogin); setStep(1); }}
+                                    onClick={(e) => {
+                                        e.preventDefault();
+                                        if (isLogin && onSubscribe) {
+                                            onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'FELIZ2026' });
+                                        } else {
+                                            setIsLogin(!isLogin);
+                                            setStep(1);
+                                        }
+                                    }}
                                     className="font-bold text-white hover:text-[#d97757] transition-colors ml-1"
                                 >
                                     {isLogin ? 'Criar agora' : 'Fazer login'}

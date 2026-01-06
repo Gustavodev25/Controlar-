@@ -372,8 +372,15 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                             setTimeout(() => onClose(), 2000);
                         } catch (err: any) {
                             console.error('Error syncing Pluggy item:', err);
+
+                            // Translate specific Pluggy errors to friendly messages
+                            let friendlyMessage = err?.message || 'Erro ao sincronizar transações.';
+                            if (err?.message?.includes('ITEM_IS_ALREADY_UPDATING') || err?.message?.includes("hasn't finished executing")) {
+                                friendlyMessage = 'Uma sincronização já está em andamento para este banco. Aguarde alguns minutos e tente novamente.';
+                            }
+
                             setSyncStatus('error');
-                            setSyncMessage(err?.message || 'Erro ao sincronizar transações.');
+                            setSyncMessage(friendlyMessage);
                         }
                     })();
                 } else {
@@ -565,9 +572,16 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
         } catch (err: any) {
             console.error('Error during sync:', err);
-            setError(err?.message || 'Erro ao sincronizar.');
+
+            // Translate specific Pluggy errors to friendly messages
+            let friendlyMessage = err?.message || 'Erro ao sincronizar.';
+            if (err?.message?.includes('ITEM_IS_ALREADY_UPDATING') || err?.message?.includes("hasn't finished executing")) {
+                friendlyMessage = 'Uma sincronização já está em andamento para este banco. Aguarde alguns minutos e tente novamente.';
+            }
+
+            setError(friendlyMessage);
             setSyncStatus('error');
-            setSyncMessage(err?.message || 'Erro na sincronização.');
+            setSyncMessage(friendlyMessage);
         }
     }, [onClose, onSuccess, userId]);
 
@@ -618,7 +632,9 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
         // Handle specific Pluggy errors with user-friendly messages
         let errorMessage = 'Erro na conexão';
 
-        if (errorCode === 'ITEM_LOGIN_ALREADY_QUEUED') {
+        if (errorCode === 'ITEM_IS_ALREADY_UPDATING' || /already.*updating/i.test(errorDataMessage) || /hasn't finished executing/i.test(errorDataMessage)) {
+            errorMessage = 'Uma sincronização já está em andamento para este banco. Aguarde alguns minutos e tente novamente.';
+        } else if (errorCode === 'ITEM_LOGIN_ALREADY_QUEUED') {
             errorMessage = 'Uma conexão já está em andamento. Aguarde alguns segundos e tente novamente.';
         } else if (errorCode === 'ITEM_LOGIN_TIMEOUT') {
             errorMessage = 'O tempo de conexão expirou. Tente novamente.';
