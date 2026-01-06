@@ -206,12 +206,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
   const stats = useMemo(() => {
     let totalMRR = 0;
+    let totalMRRNet = 0; // MRR after Asaas fees
     let totalRevenueEst = 0;
+    let totalRevenueEstNet = 0; // Revenue after Asaas fees
     let activeUsers = 0; // Only PAYING active users
     let totalFree = 0; // Active Starter users
     let totalActiveDays = 0;
     let usersWithActiveDaysCount = 0;
     let onlineUsers = 0;
+
+    // Asaas Fee Constants
+    const ASAAS_CARD_FEE_PERCENT = 2.99; // Credit card processing fee (à vista)
+    const ASAAS_ANTICIPATION_FEE_PERCENT = 1.15; // Anticipation fee per month
+    const ASAAS_ANTICIPATION_MIN_VALUE = 5.00; // Minimum value for anticipation
+
+    // Helper to calculate net value after Asaas fees
+    const calculateNetValue = (grossValue: number, installments: number = 1) => {
+      if (grossValue <= 0) return 0;
+
+      // 1. Card processing fee based on installments
+      let cardFeePercent = ASAAS_CARD_FEE_PERCENT; // Default: à vista 2.99%
+      if (installments >= 2 && installments <= 6) {
+        cardFeePercent = 3.49;
+      } else if (installments >= 7 && installments <= 12) {
+        cardFeePercent = 3.99;
+      } else if (installments >= 13) {
+        cardFeePercent = 4.29;
+      }
+
+      const cardFee = grossValue * (cardFeePercent / 100);
+
+      // 2. Anticipation fee (only if value > R$ 5.00)
+      let anticipationFee = 0;
+      if (grossValue > ASAAS_ANTICIPATION_MIN_VALUE) {
+        anticipationFee = grossValue * (ASAAS_ANTICIPATION_FEE_PERCENT / 100);
+      }
+
+      return grossValue - cardFee - anticipationFee;
+    };
 
     // For Projection Chart
     const projectionMap: Record<string, number> = {};
@@ -400,16 +432,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
       if (status === 'active') {
         const currentPrice = calculateSubscriptionPrice(u.subscription, currentMonthIndex);
+        const installments = u.subscription?.installments || 1;
         totalMRR += currentPrice;
+        totalMRRNet += calculateNetValue(currentPrice, installments);
       }
 
       // 3. Lifetime Revenue Estimation
       if (u.subscription?.startDate) {
         const endCalcDate = status === 'canceled' ? new Date() : new Date();
         const monthsActive = Math.max(1, (endCalcDate.getFullYear() - startDate.getFullYear()) * 12 + (endCalcDate.getMonth() - startDate.getMonth()));
+        const installments = u.subscription?.installments || 1;
 
         for (let m = 1; m <= monthsActive; m++) {
-          totalRevenueEst += calculateSubscriptionPrice(u.subscription, m);
+          const monthPrice = calculateSubscriptionPrice(u.subscription, m);
+          totalRevenueEst += monthPrice;
+          totalRevenueEstNet += calculateNetValue(monthPrice, installments);
         }
       }
 
@@ -728,7 +765,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     return {
       mrr: totalMRR,
+      mrrNet: totalMRRNet,
       revenue: totalRevenueEst,
+      revenueNet: totalRevenueEstNet,
       activeUsers,
       totalFree,
       arpu,
@@ -946,25 +985,44 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       {/* KPI Cards Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
-          title="MRR Mensal"
+          title="MRR Bruto"
           value={stats.mrr}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#d97757"
           trendPercent={12.5}
-          footer="vs. mês passado"
+          footer="Receita mensal recorrente"
         />
         <KPICard
-          title="Lucro Total (Est.)"
-          value={stats.revenue}
+          title="MRR Líquido"
+          value={stats.mrrNet}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#10B981"
-          trendPercent={8.2}
-          footer="Crescimento constante"
+          footer={`Taxas: R$ ${(stats.mrr - stats.mrrNet).toFixed(2)}`}
         />
         <KPICard
-          title="Assinantes"
+          title="Receita Total (Bruta)"
+          value={stats.revenue}
+          prefix="R$"
+          trendData={stats.trends.mrr}
+          color="#3B82F6"
+          footer="Acumulado desde o início"
+        />
+        <KPICard
+          title="Receita Total (Líquida)"
+          value={stats.revenueNet}
+          prefix="R$"
+          trendData={stats.trends.mrr}
+          color="#8B5CF6"
+          footer={`Taxas: R$ ${(stats.revenue - stats.revenueNet).toFixed(2)}`}
+        />
+      </div>
+
+      {/* Secondary Metrics Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard
+          title="Assinantes Pagos"
           value={stats.activeUsers}
           trendData={stats.trends.usersValues}
           color="#3B82F6"
@@ -979,10 +1037,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           trendPercent={stats.newUsers > 0 ? 100 : 0}
           footer="Aquisição recente"
         />
-      </div>
-
-      {/* Secondary Metrics Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Ticket Médio (ARPU)"
           value={stats.arpu}

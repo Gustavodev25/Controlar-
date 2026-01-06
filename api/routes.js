@@ -1538,6 +1538,292 @@ router.post('/admin/revoke-plan-by-customer', async (req, res) => {
 });
 
 // ========================================
+// FIX SUBSCRIPTION - For customers with manual_recheck_needed status
+// ========================================
+router.post('/admin/fix-subscription', async (req, res) => {
+  const { userId, customerId, planId, billingCycle, cardToken } = req.body;
+
+  if (!userId && !customerId) {
+    return res.status(400).json({ error: 'userId ou customerId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    let userDoc;
+    let userData;
+
+    // Find user by userId or customerId
+    if (userId) {
+      userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+      userData = userDoc.data();
+    } else {
+      const snapshot = await db.collection('users')
+        .where('subscription.asaasCustomerId', '==', customerId)
+        .get();
+
+      if (snapshot.empty) {
+        return res.status(404).json({ error: 'Usuário não encontrado com esse customerId' });
+      }
+      userDoc = snapshot.docs[0];
+      userData = userDoc.data();
+    }
+
+    const subscription = userData.subscription || {};
+    const asaasCustomerId = customerId || subscription.asaasCustomerId;
+    const currentPlan = planId || subscription.plan || 'pro';
+    const cycle = billingCycle || subscription.billingCycle || 'monthly';
+
+    // Validate that subscription needs fixing
+    const subId = subscription.asaasSubscriptionId || '';
+    if (!subId.startsWith('manual_recheck_needed_')) {
+      return res.status(400).json({
+        error: 'Este usuário não precisa de correção',
+        currentSubscriptionId: subId
+      });
+    }
+
+    if (!asaasCustomerId) {
+      return res.status(400).json({ error: 'asaasCustomerId não encontrado para este usuário' });
+    }
+
+    // Calculate next due date (start of next month or year)
+    const getNextDueDate = () => {
+      const next = new Date();
+      if (cycle === 'annual' || cycle === 'YEARLY') {
+        next.setFullYear(next.getFullYear() + 1);
+      } else {
+        next.setMonth(next.getMonth() + 1);
+      }
+      const y = next.getFullYear();
+      const m = String(next.getMonth() + 1).padStart(2, '0');
+      const d = String(next.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    // Get plan value
+    const getPlanValue = (plan, billing) => {
+      const prices = {
+        pro: { monthly: 35.90, annual: 359.00 },
+        premium: { monthly: 79.90, annual: 799.00 }
+      };
+      const planPrices = prices[plan] || prices.pro;
+      return billing === 'annual' || billing === 'YEARLY' ? planPrices.annual : planPrices.monthly;
+    };
+
+    // Allow custom value override via request body
+    const value = req.body.value || getPlanValue(currentPlan, cycle);
+    const asaasCycle = cycle === 'annual' || cycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';
+
+    // Create subscription in Asaas
+    const subscriptionData = {
+      customer: asaasCustomerId,
+      billingType: 'CREDIT_CARD',
+      value: value,
+      nextDueDate: getNextDueDate(),
+      cycle: asaasCycle,
+      description: `Plano ${currentPlan} - ${asaasCycle === 'YEARLY' ? 'Anual' : 'Mensal'} (Correção Admin)`,
+      externalReference: `${userDoc.id}:${currentPlan}_${asaasCycle.toLowerCase()}_fix_${Date.now()}`
+    };
+
+    // If card token provided, use it (optional - Asaas may use saved card)
+    if (cardToken) {
+      subscriptionData.creditCardToken = cardToken;
+    }
+
+    console.log(`>>> [ADMIN] Creating subscription for user ${userDoc.id}:`, subscriptionData);
+
+    const newSubscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
+    console.log(`>>> [ADMIN] Subscription created: ${newSubscription.id}`);
+
+    // Update user's subscription in Firebase
+    await db.collection('users').doc(userDoc.id).update({
+      'subscription.asaasSubscriptionId': newSubscription.id,
+      'subscription.updatedAt': new Date().toISOString(),
+      'subscription.fixedAt': new Date().toISOString(),
+      'subscription.fixedBy': 'admin'
+    });
+
+    res.json({
+      success: true,
+      message: 'Assinatura criada com sucesso!',
+      subscription: newSubscription,
+      user: {
+        id: userDoc.id,
+        email: userData.email,
+        plan: currentPlan,
+        billingCycle: cycle
+      }
+    });
+  } catch (error) {
+    console.error('>>> [ADMIN] Fix subscription error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao criar assinatura',
+      details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
+// ========================================
+// CREATE SUBSCRIPTION - For users with COUPON_100 (no Asaas subscription)
+// ========================================
+router.post('/admin/create-subscription', async (req, res) => {
+  const { userId, value, billingType = 'BOLETO' } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    const userDoc = await db.collection('users').doc(userId).get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const userData = userDoc.data();
+    const profile = userData.profile || {};
+    const subscription = userData.subscription || {};
+    const address = profile.address || {};
+
+    // Log for debugging
+    console.log(`>>> [ADMIN] User data keys:`, Object.keys(userData));
+    console.log(`>>> [ADMIN] Profile keys:`, Object.keys(profile));
+
+    // Get user data - check multiple possible locations
+    const name = userData.name || profile.name;
+    const email = userData.email || profile.email;
+    const cpf = profile.cpf || userData.cpf;
+    const phone = profile.phone || userData.phone;
+
+    console.log(`>>> [ADMIN] Found: name=${name}, email=${email}, cpf=${cpf}`);
+
+    if (!name || !email || !cpf) {
+      return res.status(400).json({
+        error: 'Dados incompletos do usuário',
+        missing: { name: !name, email: !email, cpf: !cpf },
+        available: {
+          userDataKeys: Object.keys(userData),
+          profileKeys: Object.keys(profile)
+        }
+      });
+    }
+
+    // Check if user already has Asaas customer
+    let customerId = subscription.asaasCustomerId;
+
+    if (!customerId) {
+      // Search for existing customer by CPF
+      const cleanCpf = cpf.replace(/\D/g, '');
+      const searchResult = await asaasRequest('GET', `/customers?cpfCnpj=${cleanCpf}`);
+
+      if (searchResult.data && searchResult.data.length > 0) {
+        customerId = searchResult.data[0].id;
+        console.log(`>>> Found existing Asaas customer: ${customerId}`);
+      } else {
+        // Create new customer
+        const customerData = {
+          name,
+          email,
+          cpfCnpj: cleanCpf,
+          phone: phone?.replace(/\D/g, '') || undefined,
+          postalCode: address.cep?.replace(/\D/g, '') || undefined,
+          address: address.street || undefined,
+          addressNumber: address.number || undefined,
+          complement: address.complement || undefined,
+          province: address.neighborhood || undefined,
+          notificationDisabled: false
+        };
+
+        const newCustomer = await asaasRequest('POST', '/customers', customerData);
+        customerId = newCustomer.id;
+        console.log(`>>> Created new Asaas customer: ${customerId}`);
+      }
+    }
+
+    // Calculate next due date based on user's nextBillingDate or next month
+    const getNextDueDate = () => {
+      if (subscription.nextBillingDate) {
+        // Use existing nextBillingDate if it's in the future
+        const existing = new Date(subscription.nextBillingDate);
+        const today = new Date();
+        if (existing > today) {
+          return subscription.nextBillingDate;
+        }
+      }
+
+      // Otherwise, use next month
+      const next = new Date();
+      next.setMonth(next.getMonth() + 1);
+      const y = next.getFullYear();
+      const m = String(next.getMonth() + 1).padStart(2, '0');
+      const d = String(next.getDate()).padStart(2, '0');
+      return `${y}-${m}-${d}`;
+    };
+
+    const cycle = subscription.billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
+    const planValue = value || 35.90;
+    const nextDueDate = getNextDueDate();
+
+    // Create subscription
+    const subscriptionData = {
+      customer: customerId,
+      billingType: billingType, // BOLETO, PIX, or CREDIT_CARD (needs token)
+      value: planValue,
+      nextDueDate: nextDueDate,
+      cycle: cycle,
+      description: `Plano ${subscription.plan || 'pro'} - Mensal`,
+      externalReference: `${userId}:${subscription.plan || 'pro'}_monthly_admin_${Date.now()}`
+    };
+
+    console.log(`>>> [ADMIN] Creating subscription for user ${userId}:`, subscriptionData);
+
+    const newSubscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
+    console.log(`>>> [ADMIN] Subscription created: ${newSubscription.id}`);
+
+    // Update user's subscription in Firebase
+    await db.collection('users').doc(userId).update({
+      'subscription.asaasCustomerId': customerId,
+      'subscription.asaasSubscriptionId': newSubscription.id,
+      'subscription.paymentMethod': billingType,
+      'subscription.updatedAt': new Date().toISOString(),
+      'subscription.createdByAdmin': true
+    });
+
+    res.json({
+      success: true,
+      message: 'Assinatura criada com sucesso!',
+      subscription: newSubscription,
+      user: {
+        id: userId,
+        name: name,
+        email: email,
+        plan: subscription.plan || 'pro',
+        billingCycle: subscription.billingCycle || 'monthly',
+        nextDueDate: nextDueDate
+      }
+    });
+  } catch (error) {
+    console.error('>>> [ADMIN] Create subscription error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao criar assinatura',
+      details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
+// ========================================
 // PLUGGY OPEN FINANCE INTEGRATION
 // ========================================
 router.use('/pluggy', pluggyRouter);
