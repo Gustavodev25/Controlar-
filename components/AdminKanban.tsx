@@ -379,7 +379,7 @@ export const AdminKanban: React.FC = () => {
 
     return (
         <div className="flex flex-col h-full overflow-hidden p-2 lg:p-4 gap-4">
-            <header className="flex items-center justify-between shrink-0">
+            <header className="flex flex-col md:flex-row md:items-center justify-between shrink-0 gap-4">
                 <div>
                     <h1 className="text-3xl font-bold text-white mb-1">Kanban Controlar+</h1>
                     <p className="text-gray-400 text-sm">Gerencie tarefas e acompanhe o progresso da equipe</p>
@@ -396,7 +396,7 @@ export const AdminKanban: React.FC = () => {
                 </button>
             </header>
 
-            <div className="flex gap-6 h-full overflow-x-auto pb-4 items-start no-scrollbar">
+            <div className="flex gap-4 md:gap-6 h-full overflow-x-auto pb-4 items-start no-scrollbar snap-x snap-mandatory px-2 md:px-0">
                 <AnimatePresence mode="popLayout">
                     {columns.map(col => (
                         <div
@@ -404,7 +404,7 @@ export const AdminKanban: React.FC = () => {
                             onDragOver={(e) => handleDragOver(e, col.id)}
                             onDragLeave={handleDragLeave}
                             onDrop={() => handleDrop(col.id)}
-                            className={`min-w-[320px] w-[320px] shrink-0 flex flex-col gap-4 bg-[#30302E] border rounded-2xl p-4 h-full max-h-full transition-all duration-300 ${dragOverColId === col.id ? 'border-[#D97757] bg-[#D97757]/5 shadow-[0_0_30px_rgba(217,119,87,0.1)]' : 'border-[#373734]'}`}
+                            className={`min-w-[85vw] w-[85vw] md:min-w-[320px] md:w-[320px] snap-center shrink-0 flex flex-col gap-4 bg-[#30302E] border rounded-2xl p-4 h-full max-h-full transition-all duration-300 ${dragOverColId === col.id ? 'border-[#D97757] bg-[#D97757]/5 shadow-[0_0_30px_rgba(217,119,87,0.1)]' : 'border-[#373734]'}`}
                         >
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -563,7 +563,7 @@ export const AdminKanban: React.FC = () => {
 
                     <button
                         onClick={openAddColumnModal}
-                        className="min-w-[320px] h-[60px] flex items-center justify-center gap-2 rounded-2xl border border-dashed border-[#373734] text-gray-500 hover:text-white hover:border-gray-500 hover:bg-[#30302E] transition-all shrink-0"
+                        className="min-w-[85vw] md:min-w-[320px] snap-center h-[60px] flex items-center justify-center gap-2 rounded-2xl border border-dashed border-[#373734] text-gray-500 hover:text-white hover:border-gray-500 hover:bg-[#30302E] transition-all shrink-0"
                     >
                         <Plus size={20} />
                         <span className="font-medium">Adicionar Coluna</span>
