@@ -110,6 +110,11 @@ service cloud.firestore {
       allow read, write: if request.auth != null && isUserAdmin();
     }
 
+    // --- ADMIN KANBAN & GENERAL ADMIN DATA ---
+    match /admin/{document=**} {
+      allow read, write: if request.auth != null && isUserAdmin();
+    }
+
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/items/{itemId} {
       allow read: if request.auth != null && isUserAdmin();

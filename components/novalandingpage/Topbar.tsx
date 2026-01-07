@@ -332,6 +332,18 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
 
                   <div className="h-px bg-white/5 my-2 mx-2" />
 
+                  {!user && (
+                    <button
+                      onClick={() => {
+                        onLogin();
+                        setMobileMenuOpen(false);
+                      }}
+                      className="w-full p-3 mb-2 rounded-xl bg-white/5 hover:bg-white/10 text-white font-medium text-center transition-colors border border-white/5 hover:border-white/10"
+                    >
+                      Entrar
+                    </button>
+                  )}
+
                   <button
                     onClick={() => {
                       // Ir direto para checkout se onSubscribe disponível

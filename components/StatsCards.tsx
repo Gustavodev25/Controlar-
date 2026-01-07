@@ -754,22 +754,55 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     }, 0);
   }, [cardInvoices, cardInvoiceType, cardsIncludedInExpenses, creditAccounts]);
 
+  // Sort cards by value (highest to lowest) to ensure the most important ones are seen first
+  const sortedCards = useMemo(() => {
+    if (!creditAccounts.length) return [];
+
+    // Combine card with its calculated invoice data
+    const combined = creditAccounts.map((card, index) => ({
+      card,
+      invoiceData: cardInvoices[index] || {
+        invoice: 0, limit: 0, available: 0,
+        cardId: card.id, usedTotal: 0, payable: 0,
+        currentInvoice: 0, nextInvoice: 0, lastInvoice: 0, futureInvoices: []
+      }
+    }));
+
+    return combined.sort((a, b) => {
+      // Determine value to sort by based on current view settings
+      const getVal = (item: typeof combined[0]) => {
+        const invoice = item.invoiceData;
+        if (!invoice) return 0;
+
+        const type = cardInvoiceType[item.card.id] || 'current';
+        if (type === 'used_total') return invoice.usedTotal;
+        if (type === 'next') return invoice.nextInvoice;
+        if (type === 'last') return invoice.lastInvoice;
+        // Default: current
+        return invoice.currentInvoice ?? invoice.payable ?? invoice.invoice ?? 0;
+      };
+
+      return getVal(b) - getVal(a);
+    });
+  }, [creditAccounts, cardInvoices, cardInvoiceType]);
+
   // Navigation functions for credit card carousel
   const goToNextCard = () => {
-    if (creditAccounts.length > 0) {
-      setActiveCardIndex(prev => (prev + 1) % creditAccounts.length);
+    if (sortedCards.length > 0) {
+      setActiveCardIndex(prev => (prev + 1) % sortedCards.length);
     }
   };
 
   const goToPrevCard = () => {
-    if (creditAccounts.length > 0) {
-      setActiveCardIndex(prev => (prev - 1 + creditAccounts.length) % creditAccounts.length);
+    if (sortedCards.length > 0) {
+      setActiveCardIndex(prev => (prev - 1 + sortedCards.length) % sortedCards.length);
     }
   };
 
-  // Get current card data
-  const currentCard = creditAccounts[activeCardIndex];
-  const currentCardInvoice = cardInvoices[activeCardIndex] || {
+  // Get current card data from SORTED list
+  const currentCardEntry = sortedCards[activeCardIndex];
+  const currentCard = currentCardEntry?.card;
+  const currentCardInvoice = currentCardEntry?.invoiceData || {
     invoice: 0, limit: 0, available: 0,
     cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, futureInvoices: []
   };
@@ -1048,8 +1081,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
               </div>
             )}
             <AnimatePresence mode="popLayout">
-              {creditAccounts.length > 0 ? (
-                creditAccounts.map((card, index) => {
+              {sortedCards.length > 0 ? (
+                sortedCards.map((entry, index) => {
+                  const { card, invoiceData: cardInvoice } = entry;
+
                   // We only render the active card and the next 2 cards for the stack effect
                   // But to make it truly fluid with AnimatePresence, we can render them all 
                   // and control visibility via variants, OR simpler:
@@ -1061,22 +1096,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                   // 2. Active Card (The one draggable)
 
                   // Let's use the approach where we map all cards but style them based on offset
-                  const offset = (index - activeCardIndex + creditAccounts.length) % creditAccounts.length;
+                  const offset = (index - activeCardIndex + sortedCards.length) % sortedCards.length;
 
                   // We only want to render the top 3 cards visually to avoid DOM clutter and z-fighting
                   // But we need to render the "exiting" card too.
                   // Since we are mapping ALL cards, we can just control opacity/z-index.
 
-                  if (offset > 2 && offset !== creditAccounts.length - 1) {
+                  if (offset > 2 && offset !== sortedCards.length - 1) {
                     // Hide cards that are deep in the stack, unless it's the one that might be "previous" (for reverse anims)
                     // For simplicity in this specific requested flow "swiping", we focus on the forward stack.
                     return null;
                   }
 
-                  const cardInvoice = cardInvoices[index] || {
-                    invoice: 0, limit: 0, available: 0,
-                    cardId: '', usedTotal: 0, payable: 0, currentInvoice: 0, nextInvoice: 0, lastInvoice: 0, futureInvoices: []
-                  };
                   const currentInvoiceValue = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
                   const nextInvoiceValue = cardInvoice?.nextInvoice ?? 0;
                   const lastInvoiceValue = cardInvoice?.lastInvoice ?? 0;
@@ -1091,7 +1122,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                   const isNextNext = offset === 2;
 
                   // Dynamic z-index
-                  const zIndex = creditAccounts.length - offset;
+                  const zIndex = sortedCards.length - offset;
 
                   const selectedType = cardInvoiceType[card.id] || 'current';
                   const displayValue = selectedType === 'used_total'
@@ -1130,7 +1161,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                         x: 0
                       }}
                       // Only the current card gets the drag/swipe logic
-                      drag={isCurrent && creditAccounts.length > 1 ? "x" : false}
+                      drag={isCurrent && sortedCards.length > 1 ? "x" : false}
                       dragConstraints={{ left: 0, right: 0 }} // We want it to snap back or fly away
                       dragElastic={0.2}
                       onDragStart={() => setIsDragging(true)}
@@ -1173,9 +1204,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
                                 {card.institution || card.name || 'Cartao'}
                               </p>
-                              {isCurrent && creditAccounts.length > 1 && (
+                              {isCurrent && sortedCards.length > 1 && (
                                 <span className="text-[10px] text-[#D97757] bg-[#D97757]/10 px-1.5 py-0.5 rounded font-mono border border-[#D97757]/20">
-                                  {index + 1}/{creditAccounts.length}
+                                  {index + 1}/{sortedCards.length}
                                 </span>
                               )}
                             </div>
@@ -1225,8 +1256,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               <DropdownContent width="w-[90vw] sm:w-[400px]" align="right" className="max-h-[400px] overflow-y-auto custom-scrollbar max-sm:!left-1/2 max-sm:!-translate-x-1/2" portal>
                                 <DropdownLabel>Configurações dos Cartões</DropdownLabel>
                                 <div className="px-3 py-2 space-y-3">
-                                  {creditAccounts.map((card, index) => {
-                                    const cardInvoice = cardInvoices[index];
+                                  {sortedCards.map((entry, index) => {
+                                    const { card, invoiceData: cardInvoice } = entry;
                                     const isEnabled = cardsIncludedInExpenses.has(card.id);
                                     const selectedType = cardInvoiceType[card.id] || 'current';
 
@@ -1344,7 +1375,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               </DropdownContent>                             </Dropdown>
 
                             {/* Swipe Hint */}
-                            {creditAccounts.length > 1 && !isDragging && (
+                            {sortedCards.length > 1 && !isDragging && (
                               <motion.div
                                 initial={{ opacity: 0 }}
                                 animate={{ opacity: 1 }}
@@ -1409,9 +1440,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               Limite: {formatCurrency(cardInvoice.limit || 0)}
                             </span>
                             {/* Dot indicators */}
-                            {creditAccounts.length > 1 && (
+                            {sortedCards.length > 1 && (
                               <div className="flex gap-1.5">
-                                {creditAccounts.map((_, idx) => (
+                                {sortedCards.map((_, idx) => (
                                   <motion.div
                                     key={idx}
                                     animate={{

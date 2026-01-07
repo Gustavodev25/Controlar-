@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Users as UsersIcon, CreditCard } from 'lucide-react';
+import { Users as UsersIcon, CreditCard, Clock } from 'lucide-react';
 import { AdminUsers } from './AdminUsers';
 import { AdminSubscriptions } from './AdminSubscriptions';
+import { AdminWaitlist } from './AdminWaitlist';
 
-type ControlTab = 'users' | 'subscriptions';
+type ControlTab = 'users' | 'subscriptions' | 'waitlist';
 
 export const AdminControl: React.FC = () => {
     const [activeTab, setActiveTab] = useState<ControlTab>('subscriptions');
@@ -59,6 +60,24 @@ export const AdminControl: React.FC = () => {
                         <UsersIcon size={16} />
                         <span>Usuários</span>
                     </button>
+
+                    <button
+                        onClick={() => setActiveTab('waitlist')}
+                        className={`
+              relative px-4 py-2 rounded-lg text-sm font-medium transition-colors z-10 flex items-center gap-2
+              ${activeTab === 'waitlist' ? 'text-white' : 'text-gray-400 hover:text-white'}
+            `}
+                    >
+                        {activeTab === 'waitlist' && (
+                            <motion.div
+                                layoutId="controlTab"
+                                className="absolute inset-0 bg-[#373734] rounded-lg border border-gray-600/30 -z-10 shadow-sm"
+                                transition={{ type: "spring", duration: 0.5 }}
+                            />
+                        )}
+                        <Clock size={16} />
+                        <span>Waitlist</span>
+                    </button>
                 </div>
             </div>
 
@@ -69,13 +88,15 @@ export const AdminControl: React.FC = () => {
             <AnimatePresence mode="wait">
                 <motion.div
                     key={activeTab}
-                    initial={{ opacity: 0, y: 10, scale: 0.95, filter: "blur(10px)" }}
-                    animate={{ opacity: 1, y: 0, scale: 1, filter: "blur(0px)" }}
-                    exit={{ opacity: 0, y: -10, scale: 0.95, filter: "blur(10px)" }}
-                    transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    transition={{ duration: 0.2, ease: "easeOut" }}
                 >
                     {activeTab === 'users' ? (
                         <AdminUsers />
+                    ) : activeTab === 'waitlist' ? (
+                        <AdminWaitlist />
                     ) : (
                         <AdminSubscriptions />
                     )}

@@ -1217,11 +1217,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                         )}
                                         {billDate && (
                                           <span className="text-xs text-white/40 block mt-0.5">
-                                            Venc. {
-                                              bill.dueDate && !isNaN(new Date(bill.dueDate).getTime())
-                                                ? new Date(bill.dueDate).toLocaleDateString()
-                                                : 'N/A'
-                                            }
+                                            Venc. {(() => {
+                                              if (!bill.dueDate) return 'N/A';
+                                              // Extrair apenas a parte da data (YYYY-MM-DD) caso venha com timestamp
+                                              const dateOnly = bill.dueDate.split('T')[0];
+                                              const date = new Date(dateOnly + 'T12:00:00');
+                                              return !isNaN(date.getTime())
+                                                ? date.toLocaleDateString('pt-BR')
+                                                : 'N/A';
+                                            })()}
                                           </span>
                                         )}
                                       </div>

@@ -25,7 +25,7 @@ import * as dbService from '../services/database';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'categories' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire' | 'roadmap'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_pixels' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_control' | 'admin_changelog' | 'chat';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_kanban' | 'admin_control' | 'admin_changelog' | 'chat' | 'products';
 
 // --- NAVITEM: Item Individual ---
 // --- NAVITEM: Item Individual ---
@@ -428,19 +428,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     isOpen={isOpen}
                   />
                   <NavItem
+                    active={activeTab === 'admin_kanban'}
+                    onClick={() => handleNavClick('admin_kanban')}
+                    icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v10" /><path d="M12 7v10" /><path d="M16 7v10" /></svg>}
+                    label="Kanban"
+                    isOpen={isOpen}
+                  />
+                  <NavItem
                     active={activeTab === 'admin_control'}
                     onClick={() => handleNavClick('admin_control')}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none" /><path d="M7 10h3v-3l-3.5 -3.5a6 6 0 0 1 8 8l6 6a2 2 0 0 1 -3 3l-6 -6a6 6 0 0 1 -8 -8l3.5 3.5" /></svg>}
                     label="Controle"
                     isOpen={isOpen}
                   />
-                  <NavItem
-                    active={activeTab === 'admin_waitlist'}
-                    onClick={() => handleNavClick('admin_waitlist')}
-                    icon={<UsersIcon size={20} />}
-                    label="Waitlist"
-                    isOpen={isOpen}
-                  />
+
                   <NavItem
                     active={activeTab === 'admin_email'}
                     onClick={() => handleNavClick('admin_email')}
@@ -455,13 +456,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     label="Cupons"
                     isOpen={isOpen}
                   />
-                  <NavItem
-                    active={activeTab === 'admin_pixels'}
-                    onClick={() => handleNavClick('admin_pixels')}
-                    icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>}
-                    label="Pixels"
-                    isOpen={isOpen}
-                  />
+
                   <NavItem
                     active={activeTab === 'admin_feedbacks'}
                     onClick={() => handleNavClick('admin_feedbacks')}
@@ -554,13 +549,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />
 
-                  <NavItem active={activeTab === 'roadmap'} onClick={() => handleNavClick('roadmap')} icon={<Map size={20} />} label="Roadmap Público" isOpen={isOpen} badge="NOVO" />
+                  <NavItem active={activeTab === 'roadmap'} onClick={() => handleNavClick('roadmap')} icon={<Map size={20} />} label="Roadmap Público" isOpen={isOpen} />
+                  <NavItem active={activeTab === 'products'} onClick={() => handleNavClick('products')} icon={<ShoppingBag size={20} />} label="Produtos" isOpen={isOpen} badge="NOVO" />
 
                   {/* Em Breve Section */}
                   {isOpen && <p className="w-full text-xs font-bold text-gray-600 uppercase tracking-widest px-2 mt-4 mb-2">Em Breve</p>}
                   <NavItem active={false} onClick={() => { }} icon={<TrendingUp size={20} />} label="Investimentos" isOpen={isOpen} disabled />
                   <NavItem active={false} onClick={() => { }} icon={<BarChart3 size={20} />} label="Indicadores" isOpen={isOpen} disabled />
-                  <NavItem active={false} onClick={() => { }} icon={<ShoppingBag size={20} />} label="Produtos" isOpen={isOpen} disabled />
                 </>
               )}
             </div>

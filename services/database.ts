@@ -18,7 +18,7 @@ import {
   collectionGroup
 } from "firebase/firestore";
 import { database as db } from "./firebase";
-import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping } from "../types";
+import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping, KanbanColumn } from "../types";
 import { AppNotification } from "../types";
 
 
@@ -3048,6 +3048,7 @@ export const DEFAULT_CATEGORY_MAPPINGS: Omit<CategoryMapping, 'id' | 'updatedAt'
   // Lazer
   { originalKey: 'leisure', displayName: 'Lazer', isDefault: true },
   { originalKey: 'entertainment', displayName: 'Lazer', isDefault: true },
+  { originalKey: 'gaming', displayName: 'Lazer', isDefault: true },
 ];
 
 // Obter mapeamentos de categorias do usuário (com fallback para padrões)
@@ -3231,3 +3232,40 @@ export const deleteCategoryMapping = async (userId: string, categoryId: string):
   }
 };
 
+// --- Admin Kanban Services ---
+const sanitizeForFirestore = (obj: any): any => {
+  if (Array.isArray(obj)) {
+    return obj.map(sanitizeForFirestore);
+  } else if (obj !== null && typeof obj === 'object') {
+    return Object.entries(obj).reduce((acc, [key, value]) => {
+      if (value !== undefined) {
+        acc[key] = sanitizeForFirestore(value);
+      }
+      return acc;
+    }, {} as any);
+  }
+  return obj;
+};
+
+export const saveAdminKanbanBoard = async (columns: KanbanColumn[]) => {
+  if (!db) return;
+  try {
+    const cleanColumns = sanitizeForFirestore(columns);
+    const docRef = doc(db, 'admin', 'kanban');
+    await setDoc(docRef, { columns: cleanColumns }, { merge: true });
+  } catch (error) {
+    console.error("Erro ao salvar Kanban:", error);
+  }
+};
+
+export const listenToAdminKanbanBoard = (callback: (columns: KanbanColumn[]) => void) => {
+  if (!db) return () => { };
+  const docRef = doc(db, 'admin', 'kanban');
+  return onSnapshot(docRef, (snap) => {
+    if (snap.exists() && snap.data().columns) {
+      callback(snap.data().columns as KanbanColumn[]);
+    } else {
+      callback([]);
+    }
+  });
+};

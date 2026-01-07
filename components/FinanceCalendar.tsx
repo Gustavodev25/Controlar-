@@ -2,23 +2,27 @@ import React, { useCallback, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, X, Bell, TrendingUp } from './Icons';
 import { Reminder, Transaction } from '../types';
+import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 
 interface FinanceCalendarProps {
   month: string; // YYYY-MM
   transactions: Transaction[];
   reminders: Reminder[];
   isLoading?: boolean;
+  userId?: string;
 }
 
 export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
   month,
   transactions,
   reminders,
-  isLoading = false
+  isLoading = false,
+  userId
 }) => {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [isModalVisible, setModalVisible] = useState(false);
   const [isModalAnimating, setModalAnimating] = useState(false);
+  const { translateCategory } = useCategoryTranslation(userId);
 
   const months = ['Janeiro', 'Fevereiro', 'Marco', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const weekdays = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sab'];
@@ -120,11 +124,10 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
               requestAnimationFrame(() => setModalAnimating(true));
             });
           }}
-          className={`relative h-20 sm:h-24 w-full rounded-2xl border transition-all text-left p-3 ${
-            hasItems
+          className={`relative h-20 sm:h-24 w-full rounded-2xl border transition-all text-left p-3 ${hasItems
               ? 'border-[#d97757]/50 bg-[#30302E]/80 hover:border-[#e68e70] hover:bg-[#30302E]'
               : 'border-gray-800 bg-[#30302E]/40 hover:border-gray-700 hover:bg-[#30302E]/60'
-          } ${isToday ? 'ring-2 ring-[#d97757]/60 ring-offset-2 ring-offset-gray-950' : ''}`}
+            } ${isToday ? 'ring-2 ring-[#d97757]/60 ring-offset-2 ring-offset-gray-950' : ''}`}
         >
           <div className="flex items-start justify-between">
             <div>
@@ -195,15 +198,13 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
 
       {isModalVisible && createPortal(
         <div
-          className={`fixed inset-0 z-[120] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${
-            isModalAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'
-          }`}
+          className={`fixed inset-0 z-[120] flex items-center justify-center p-4 transition-all duration-300 ease-in-out ${isModalAnimating ? 'bg-black/90 backdrop-blur-sm' : 'bg-black/0 backdrop-blur-0'
+            }`}
           onClick={handleCloseModal}
         >
           <div
-            className={`bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl p-5 relative overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${
-              isModalAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'
-            }`}
+            className={`bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl p-5 relative overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isModalAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'
+              }`}
             onClick={e => e.stopPropagation()}
           >
             <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-[#d97757]/10 blur-3xl" />
@@ -245,20 +246,18 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <span
-                              className={`h-2.5 w-2.5 rounded-full ${
-                                t.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'
-                              }`}
+                              className={`h-2.5 w-2.5 rounded-full ${t.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'
+                                }`}
                             />
                             <div className="min-w-0">
                               <p className="text-sm text-white truncate">{t.description}</p>
-                              <p className="text-xs text-gray-400 truncate">{t.category}</p>
+                              <p className="text-xs text-gray-400 truncate">{translateCategory(t.category)}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p
-                              className={`text-sm font-semibold ${
-                                t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
-                              }`}
+                              className={`text-sm font-semibold ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
+                                }`}
                             >
                               {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
                             </p>
@@ -284,20 +283,18 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
                         >
                           <div className="flex items-center gap-3 min-w-0">
                             <span
-                              className={`h-2.5 w-2.5 rounded-full ${
-                                r.type === 'income' ? 'bg-emerald-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-amber-300'
-                              }`}
+                              className={`h-2.5 w-2.5 rounded-full ${r.type === 'income' ? 'bg-emerald-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-amber-300'
+                                }`}
                             />
                             <div className="min-w-0">
                               <p className="text-sm text-white truncate">{r.description}</p>
-                              <p className="text-xs text-gray-400 truncate">{r.category}</p>
+                              <p className="text-xs text-gray-400 truncate">{translateCategory(r.category)}</p>
                             </div>
                           </div>
                           <div className="text-right">
                             <p
-                              className={`text-sm font-semibold ${
-                                r.type === 'income' ? 'text-emerald-400' : r.type === 'expense' ? 'text-red-400' : 'text-amber-200'
-                              }`}
+                              className={`text-sm font-semibold ${r.type === 'income' ? 'text-emerald-400' : r.type === 'expense' ? 'text-red-400' : 'text-amber-200'
+                                }`}
                             >
                               {r.type === 'income' ? '+' : r.type === 'expense' ? '-' : ''} {formatCurrency(r.amount)}
                             </p>

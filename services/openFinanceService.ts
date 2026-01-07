@@ -172,6 +172,7 @@ export const translatePluggyCategory = (category: string | undefined | null): st
         'tickets': 'Ingressos',
         'leisure': 'Lazer',
         'entertainment': 'Lazer',
+        'gaming': 'Lazer',
 
         // Compras
         'online shopping': 'Compras Online',

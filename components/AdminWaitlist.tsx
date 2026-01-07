@@ -45,7 +45,7 @@ export const AdminWaitlist: React.FC = () => {
   }
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">Lista de Espera</h1>

@@ -34,7 +34,8 @@ try {
   // Force long polling and disable fetch streams to avoid QUIC/HTTP3 issues in some networks
   database = initializeFirestore(app, {
     experimentalForceLongPolling: true,
-    useFetchStreams: false
+    useFetchStreams: false,
+    ignoreUndefinedProperties: true
   });
   realtimeDb = getDatabase(app);
   storage = getStorage(app);
