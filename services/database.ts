@@ -258,6 +258,9 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
         connectionLogs: connectionLogs,
         birthDate: profile.birthDate || data.birthDate,
         createdAt: createdAt, // Include creation date (or fallback)
+        phone: profile.phone || data.phone,
+        cpf: profile.cpf || data.cpf,
+        address: profile.address || data.address,
         ...profile
       } as User & { id: string };
     });

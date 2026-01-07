@@ -972,6 +972,10 @@ export const AdminUsers: React.FC = () => {
                                                     <span className="text-sm text-gray-300">{selectedUser.cpf || '-'}</span>
                                                 </div>
                                                 <div className="flex justify-between items-center">
+                                                    <span className="text-xs text-gray-500 uppercase">Telefone</span>
+                                                    <span className="text-sm text-gray-300">{selectedUser.phone || '-'}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center">
                                                     <span className="text-xs text-gray-500 uppercase">Nascimento</span>
                                                     <span className="text-sm text-gray-300">{formatDate(selectedUser.birthDate)}</span>
                                                 </div>
