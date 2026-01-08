@@ -55,6 +55,7 @@ export async function sendSaleToUtmify(saleData) {
                 {
                     id: saleData.product?.id || 'pro',
                     name: saleData.product?.name || 'Plano Pro',
+                    planName: saleData.product?.name || 'Plano Pro', // [FIX] Required by Utmify
                     planId: saleData.product?.id || 'pro',
                     quantity: 1,
                     priceInCents: saleData.valueInCents || 0
@@ -72,7 +73,8 @@ export async function sendSaleToUtmify(saleData) {
             commission: {
                 totalPriceInCents: saleData.valueInCents || 0,
                 gatewayFeeInCents: 0,
-                totalCommissionInCents: saleData.valueInCents || 0
+                totalCommissionInCents: saleData.valueInCents || 0,
+                userCommissionInCents: saleData.valueInCents || 0 // [FIX] Required by Utmify
             }
         };
 
