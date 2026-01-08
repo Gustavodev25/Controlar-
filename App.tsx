@@ -73,6 +73,7 @@ import { getInvoiceMonthKey } from './services/invoiceCalculator';
 import { UAParser } from 'ua-parser-js';
 import { API_BASE } from './config/api';
 import foguete from './assets/foguete.png';
+import { captureUtmFromUrl } from './services/utmService';
 
 // Removed FilterMode type definition as it is imported from components/Header
 
@@ -323,6 +324,12 @@ const App: React.FC = () => {
     return () => window.removeEventListener('popstate', updateLandingVariant);
   }, []);
 
+  // Capture UTM parameters from URL for Utmify tracking
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      captureUtmFromUrl();
+    }
+  }, []);
 
 
   // Trigger Modal after Login
@@ -3009,7 +3016,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSalary = async (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => {
+  const handleUpdateSalary = async (newSalary: number, paymentDay?: number | string, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => {
     if (userId) {
       await dbService.updateUserProfile(userId, {
         baseSalary: newSalary,

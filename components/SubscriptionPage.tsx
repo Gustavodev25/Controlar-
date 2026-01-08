@@ -12,6 +12,7 @@ import NumberFlow from '@number-flow/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { WordPullUp } from './WordPullUp';
 import { usePixelEvent } from '../hooks/usePixelEvent';
+import { getCompleteUtmData } from '../services/utmService';
 
 interface SubscriptionPageProps {
     user: User;
@@ -215,6 +216,9 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
 
             console.log('>>> Customer created:', customerData.customer.id);
 
+            // Get UTM data for Utmify tracking
+            const utmData = getCompleteUtmData();
+
             // 2. Create subscription/payment in Asaas
             console.log('>>> Creating subscription in Asaas...');
             const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
@@ -244,6 +248,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                     },
                     couponId,
                     userId: user.id, // [NEW] Send User ID for server-side activation
+                    utmData, // [NEW] UTM tracking for Utmify
                 }),
             });
 

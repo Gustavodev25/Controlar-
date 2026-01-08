@@ -9,6 +9,7 @@ import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { updateUserProfile } from '../services/database';
 import { toLocalISODate } from '../utils/dateUtils';
 import { AnimatedGridPattern } from './AnimatedGridPattern';
+import { getCompleteUtmData } from '../services/utmService';
 
 interface LandingCheckoutPageProps {
     planId: 'pro';
@@ -176,6 +177,9 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             console.log('>>> Cliente criado:', customerData.customer.id);
 
             // 5. Criar assinatura/pagamento no Asaas
+            // Get UTM data for Utmify tracking
+            const utmData = getCompleteUtmData();
+
             console.log('>>> Criando assinatura no Asaas...');
             const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
                 method: 'POST',
@@ -204,6 +208,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                     },
                     couponId,
                     userId: firebaseUser.uid,
+                    utmData, // [NEW] UTM tracking for Utmify
                 }),
             });
 

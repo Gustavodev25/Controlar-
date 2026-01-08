@@ -14,7 +14,7 @@ import { CancellationModal as CancellationModalNew } from './CancellationModal';
 import { User as UserType, Transaction, FamilyGoal, Investment, Reminder, ConnectedAccount, Member } from '../types';
 import { useToasts } from './Toast';
 import { buildOtpAuthUrl, generateBase32Secret, verifyTOTP } from '../services/twoFactor';
-import { CurrencyInput } from './UIComponents';
+import { CurrencyInput, CustomSelect } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
 import { FamilyDashboard } from './FamilyDashboard';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
@@ -1921,7 +1921,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                         {/* Resumo da Conta */}
                         <div className="space-y-4">
-                           <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                           <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
                               Resumo da Conta
                            </h4>
                            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
@@ -2074,24 +2074,35 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                                  <div className="space-y-2">
                                     <label className="text-xs font-medium text-gray-400 ml-1">Dia do Pagamento</label>
-                                    <div className="relative max-w-[120px]">
-                                       <Calendar size={16} className="absolute left-3 top-3.5 text-gray-500" />
-                                       <input
-                                          type="number"
-                                          min="1"
-                                          max="31"
-                                          placeholder="Dia 5"
-                                          value={formData.salaryPaymentDay || ''}
-                                          onChange={(e) => {
-                                             const val = parseInt(e.target.value);
-                                             if (!isNaN(val) && val >= 1 && val <= 31) {
-                                                setFormData({ ...formData, salaryPaymentDay: val });
-                                             } else if (e.target.value === '') {
-                                                setFormData({ ...formData, salaryPaymentDay: undefined });
-                                             }
-                                          }}
-                                          className="input-primary pl-10 font-bold"
-                                       />
+                                    <div className="w-full">
+
+                                       <div className="relative z-20">
+                                          <CustomSelect
+                                             value={formData.salaryPaymentDay || ''}
+                                             onChange={(val) => {
+                                                const numVal = parseInt(val);
+                                                // If it's a valid number 1-31, store as number
+                                                if (!isNaN(numVal) && numVal >= 1 && numVal <= 31) {
+                                                   setFormData({ ...formData, salaryPaymentDay: numVal });
+                                                } else {
+                                                   // Otherwise store as string (variable date code)
+                                                   setFormData({ ...formData, salaryPaymentDay: val });
+                                                }
+                                             }}
+                                             options={[
+                                                { value: 'business_day_5', label: '5º Dia Útil' },
+                                                { value: 'business_day_last', label: 'Último Dia Útil' },
+                                                { value: 'last_day', label: 'Último Dia do Mês' },
+                                                ...Array.from({ length: 31 }, (_, i) => ({
+                                                   value: i + 1,
+                                                   label: `Dia ${i + 1}`
+                                                }))
+                                             ]}
+                                             placeholder="Selecione o dia"
+                                             portal={true}
+                                             icon={<span className="text-gray-500"><Calendar size={14} /></span>}
+                                          />
+                                       </div>
                                     </div>
                                     <p className="text-xs text-gray-500 ml-1">Dia usual de recebimento do salário.</p>
                                  </div>

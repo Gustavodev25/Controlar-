@@ -404,7 +404,7 @@ export const AdminKanban: React.FC = () => {
                             onDragOver={(e) => handleDragOver(e, col.id)}
                             onDragLeave={handleDragLeave}
                             onDrop={() => handleDrop(col.id)}
-                            className={`min-w-[85vw] w-[85vw] md:min-w-[320px] md:w-[320px] snap-center shrink-0 flex flex-col gap-4 bg-[#30302E] border rounded-2xl p-4 h-full max-h-full transition-all duration-300 ${dragOverColId === col.id ? 'border-[#D97757] bg-[#D97757]/5 shadow-[0_0_30px_rgba(217,119,87,0.1)]' : 'border-[#373734]'}`}
+                            className={`min-w-[85vw] w-[85vw] md:min-w-[450px] md:w-[450px] snap-center shrink-0 flex flex-col gap-4 bg-[#30302E] border rounded-2xl p-4 h-full max-h-full transition-all duration-300 ${dragOverColId === col.id ? 'border-[#D97757] bg-[#D97757]/5 shadow-[0_0_30px_rgba(217,119,87,0.1)]' : 'border-[#373734]'}`}
                         >
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-3">
@@ -505,7 +505,7 @@ export const AdminKanban: React.FC = () => {
                                             {task.dueDate && (
                                                 <div className="flex items-center gap-1 text-[10px] text-gray-500 bg-gray-800/50 px-2 py-0.5 rounded border border-gray-700">
                                                     <Calendar size={10} />
-                                                    <span>{new Date(task.dueDate).toLocaleDateString()}</span>
+                                                    <span>{new Date(task.dueDate + 'T12:00:00').toLocaleDateString()}</span>
                                                 </div>
                                             )}
 
@@ -563,7 +563,7 @@ export const AdminKanban: React.FC = () => {
 
                     <button
                         onClick={openAddColumnModal}
-                        className="min-w-[85vw] md:min-w-[320px] snap-center h-[60px] flex items-center justify-center gap-2 rounded-2xl border border-dashed border-[#373734] text-gray-500 hover:text-white hover:border-gray-500 hover:bg-[#30302E] transition-all shrink-0"
+                        className="min-w-[85vw] md:min-w-[450px] snap-center h-[60px] flex items-center justify-center gap-2 rounded-2xl border border-dashed border-[#373734] text-gray-500 hover:text-white hover:border-gray-500 hover:bg-[#30302E] transition-all shrink-0"
                     >
                         <Plus size={20} />
                         <span className="font-medium">Adicionar Coluna</span>
@@ -968,7 +968,7 @@ export const AdminKanban: React.FC = () => {
                                 {viewingTask.task.dueDate && (
                                     <div className="flex items-center gap-2 bg-[#30302E] px-3 py-1.5 rounded-lg border border-[#373734]">
                                         <Calendar size={14} />
-                                        <span>{new Date(viewingTask.task.dueDate).toLocaleDateString()}</span>
+                                        <span>{new Date(viewingTask.task.dueDate + 'T12:00:00').toLocaleDateString()}</span>
                                     </div>
                                 )}
                                 <div className="flex items-center gap-2 bg-[#30302E] px-3 py-1.5 rounded-lg border border-[#373734]">

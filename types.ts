@@ -7,7 +7,7 @@ export interface User {
   avatarUrl?: string;
   phone?: string;
   baseSalary?: number;
-  salaryPaymentDay?: number;
+  salaryPaymentDay?: number | string;
   salaryAdvanceDay?: number;
   salaryAdvancePercent?: number;
   salaryAdvanceValue?: number;

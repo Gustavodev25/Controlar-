@@ -35,6 +35,7 @@ import {
 } from 'lucide-react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { CustomDatePicker } from './UIComponents';
+import { toLocalISODate } from '../utils/dateUtils';
 
 import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
 import { scaleLinear } from 'd3-scale';
@@ -541,17 +542,49 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     const dailyCounts: Record<string, number> = {};
     let minDate = new Date();
 
+    const getBrazilDateKey = (dateStr: string) => {
+      if (dateStr.length === 10) return dateStr;
+      const date = new Date(dateStr);
+      // Force Brazil Date for formatting to avoid "Yesterday" issues on tight boundaries (00:20)
+      const ptBRDate = new Intl.DateTimeFormat('pt-BR', {
+        timeZone: 'America/Sao_Paulo',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      }).format(date);
+      // ptBRDate is dd/mm/yyyy
+      return ptBRDate.split('/').reverse().join('-');
+    };
+
     filteredUsers.forEach(u => {
-      // Use createdAt (preferred) or subscription start date or fallback
-      const dateStr = u.createdAt || u.subscription?.startDate;
+      // Heuristic: If User creation is close to Subscription start (e.g. same session/day),
+      // use Subscription Date to align "New User" with "New Subscriber" charts.
+      // This fixes the issue where a user signs up at 23:50 (Yesterday) but pays at 00:20 (Today),
+      // or if timezone shifts `createdAt` to yesterday.
+      let dateStr = u.createdAt;
+
+      if (u.createdAt && u.subscription?.startDate) {
+        const cDate = new Date(u.createdAt);
+        // Treat startDate as UTC midnight for comparison
+        const sDate = new Date(u.subscription.startDate.length === 10 ? u.subscription.startDate + 'T00:00:00Z' : u.subscription.startDate);
+
+        const diff = Math.abs(cDate.getTime() - sDate.getTime());
+        // If within 48h, prefer the definitive Subscription Date
+        if (diff < 1000 * 60 * 60 * 48) {
+          dateStr = u.subscription.startDate;
+        }
+      }
+
+      // Fallback
+      dateStr = dateStr || u.subscription?.startDate;
+
       if (!dateStr) return;
 
       const date = new Date(dateStr);
       if (date < minDate) minDate = date;
 
-      // Use Local Time for grouping (Fixes UTC-3 showing as next day)
-      // 'sv-SE' locale formats as YYYY-MM-DD which is sortable
-      const key = date.toLocaleDateString('sv-SE');
+      const key = getBrazilDateKey(dateStr);
+
       dailyCounts[key] = (dailyCounts[key] || 0) + 1;
     });
 
@@ -594,8 +627,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       if (!dateStr) return;
 
       let date = new Date(dateStr);
-      // Fix: If dateStr is YYYY-MM-DD (10 chars), it parses as UTC midnight => prev day in Brazil
-      // Append time or use splitting to ensure it counts as THAT day locally.
+      // Fix for min/max date calculation
       if (dateStr.length === 10) {
         date = new Date(dateStr + 'T12:00:00');
       }
@@ -603,8 +635,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       if (!subMinDate || date < subMinDate) subMinDate = date;
       if (!subMaxDate || date > subMaxDate) subMaxDate = date;
 
-      // 'sv-SE' for YYYY-MM-DD
-      const key = date.toLocaleDateString('sv-SE');
+      const key = getBrazilDateKey(dateStr);
+
       dailySubCounts[key] = (dailySubCounts[key] || 0) + 1;
     });
 

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { calculatePaymentDate, toLocalISODate } from '../utils/dateUtils';
 import { createPortal } from 'react-dom';
 import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building, Filter, CreditCard, Pig } from './Icons';
 import { useToasts } from './Toast';
@@ -11,11 +12,11 @@ interface SalaryManagerProps {
   baseSalary: number;
   currentIncome: number;
   estimatedSalary?: number; // Estimated salary from Open Finance transactions (Pro Mode)
-  paymentDay?: number;
+  paymentDay?: number | string;
   advanceValue?: number;
   advancePercent?: number;
   advanceDay?: number;
-  onUpdateSalary: (newSalary: number, paymentDay?: number, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => void;
+  onUpdateSalary: (newSalary: number, paymentDay?: number | string, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => void;
   onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
   onEditClick?: () => void;
   isSalaryLaunched?: boolean;
@@ -229,7 +230,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const handleSaveSalary = () => {
     setSalaryError(null);
     const val = parseInput(tempSalary);
-    const day = parseInt(tempPaymentDay);
+
+    // Handle variable date string or number
+    let day: number | string = parseInt(tempPaymentDay);
+    if (isNaN(day)) {
+      day = tempPaymentDay; // It's a string code
+    }
 
     if (isNaN(val)) {
       setSalaryError("Insira um número válido");
@@ -241,7 +247,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
       return;
     }
 
-    if (isNaN(day) || day < 1 || day > 31) {
+    // Validate only if it is a number
+    if (typeof day === 'number' && (day < 1 || day > 31)) {
       setSalaryError("Dia de pagamento inválido (1-31)");
       return;
     }
@@ -577,17 +584,26 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                     />
                   </div>
 
-                  <div className="w-24">
+                  <div className="w-32">
                     <label className="text-[10px] text-gray-400 block mb-0.5">Dia Pagto.</label>
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
+                    <select
                       value={tempPaymentDay}
                       onChange={(e) => setTempPaymentDay(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      className="bg-gray-800 text-white text-sm font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
-                    />
+                      className="bg-gray-800 text-white text-xs font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none appearance-none cursor-pointer"
+                    >
+                      <option value="" disabled>Selecione</option>
+                      <optgroup label="Datas Variáveis">
+                        <option value="business_day_5">5º Dia Útil</option>
+                        <option value="business_day_last">Último Dia Útil</option>
+                        <option value="last_day">Último Dia</option>
+                      </optgroup>
+                      <optgroup label="Dia Fixo">
+                        {Array.from({ length: 31 }, (_, i) => i + 1).map(day => (
+                          <option key={day} value={day}>{day}</option>
+                        ))}
+                      </optgroup>
+                    </select>
                   </div>
                 </div>
 
@@ -731,10 +747,13 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
                       <div className="flex flex-wrap gap-2 mt-2">
                         <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border border-gray-700/50">
-                          <Clock size={10} /> Recebe dia {paymentDay || 5}
+                          <Clock size={10} />
+                          {typeof paymentDay === 'string'
+                            ? (paymentDay === 'business_day_5' ? '5º Dia Útil' : paymentDay === 'business_day_last' ? 'Último Dia Útil' : 'Último Dia')
+                            : `Recebe dia ${paymentDay || 5}`}
                         </span>
 
-                        {(advancePercent || (advanceValue && advanceValue > 0)) && (
+                        {(!!advancePercent || (!!advanceValue && advanceValue > 0)) && (
                           <span className="text-xs text-[#eab3a3] flex items-center gap-1 bg-[#d97757]/10 px-2 py-1 rounded border border-[#d97757]/20">
                             <PieChart size={10} />
                             Vale {advancePercent}% (Dia {advanceDay || 20})
@@ -787,27 +806,45 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                     if (!paymentDay) return <span className="text-gray-600 text-xs font-sans">Definir dia</span>;
 
                     const today = new Date();
-                    const currentDay = today.getDate();
-                    let days = 0;
+                    today.setHours(0, 0, 0, 0);
 
-                    // Check upcoming payment (either Main or Advance)
-                    const dates = [paymentDay];
-                    if (advanceDay) dates.push(advanceDay);
-                    dates.sort((a, b) => a - b);
+                    // Calc payment dates near today
+                    // Look at current month and next month
+                    const candidates: Date[] = [];
 
-                    const nextDate = dates.find(d => d >= currentDay) || dates[0]; // Next in this month or first of next month
+                    // Helper to add candidate
+                    const addCandidate = (pDay: number | string | undefined, monthOffset: number) => {
+                      if (!pDay) return;
+                      const refDate = new Date(today.getFullYear(), today.getMonth() + monthOffset, 1);
+                      const date = calculatePaymentDate(pDay, refDate);
+                      date.setHours(0, 0, 0, 0);
+                      candidates.push(date);
+                    };
 
-                    if (currentDay === nextDate) return <span className="text-green-400">Hoje!</span>;
+                    // Current and Next Month for Salary
+                    addCandidate(paymentDay, 0);
+                    addCandidate(paymentDay, 1);
 
-                    if (nextDate > currentDay) {
-                      days = nextDate - currentDay;
-                    } else {
-                      // Get days in current month to find exact days until next month's date
-                      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
-                      days = (daysInMonth - currentDay) + nextDate;
+                    // Current and Next Month for Advance
+                    if (advanceDay) {
+                      // Advance is always number for now based on types, but let's be safe
+                      addCandidate(advanceDay, 0);
+                      addCandidate(advanceDay, 1);
                     }
 
-                    return <span className={days <= 5 ? 'text-[#d97757]' : ''}>{days} dias</span>;
+                    // Sort and find first future date (or today)
+                    candidates.sort((a, b) => a.getTime() - b.getTime());
+
+                    const nextDate = candidates.find(d => d >= today) || candidates[0];
+
+                    if (!nextDate) return <span className="text-gray-600">--</span>;
+
+                    const diffTime = nextDate.getTime() - today.getTime();
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+                    if (diffDays === 0) return <span className="text-green-400">Hoje!</span>;
+
+                    return <span className={diffDays <= 5 ? 'text-[#d97757]' : ''}>{diffDays} dias</span>;
                   })()}
                 </p>
               </div>
@@ -838,8 +875,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   const pDay = paymentDay || 5;
 
                   // Main Salary Date
-                  let targetDate = new Date(today.getFullYear(), today.getMonth(), pDay)
-                  const dateStr = targetDate.toISOString().split('T')[0];
+                  let targetDate = calculatePaymentDate(pDay, today);
+                  const dateStr = toLocalISODate(targetDate);
 
                   // 1. Calculate Advance (Vale) - Always based on Gross Base Salary
                   let advance = advanceValue || 0;

@@ -2806,7 +2806,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   </div>
                 )}
               </div>
-            </div >
+            </div>
           </UniversalModal>
 
           {/* Mobile Filters Modal */}
@@ -2893,9 +2893,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             </div>
           </UniversalModal>
 
-        </div >
+        </div>
       )}
-    </div >
+    </div>
   );
 };
 

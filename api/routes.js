@@ -10,6 +10,7 @@ import pluggyRouter from './pluggy.js';
 import cronSyncRouter from './cron-sync.js';
 import { firebaseAdmin, firebaseAuth } from './firebaseAdmin.js';
 import { loadEnv } from './env.js';
+import { sendSaleToUtmify, sendRefundToUtmify } from './utmifyService.js';
 
 loadEnv();
 
@@ -865,7 +866,8 @@ router.post('/asaas/subscription', async (req, res) => {
     creditCard,
     creditCardHolderInfo,
     installmentCount,
-    couponId // [NEW] Track coupon
+    couponId, // [NEW] Track coupon
+    utmData   // [NEW] UTM tracking data for Utmify
   } = req.body;
 
   if (!customerId || !value || !creditCard || !creditCardHolderInfo) {
@@ -957,6 +959,25 @@ router.post('/asaas/subscription', async (req, res) => {
 
         // [NEW] Activate on Server
         await activatePlanOnServer(userId, planId, cycle, payment.id, null);
+
+        // [NEW] Send sale to Utmify for tracking
+        sendSaleToUtmify({
+          orderId: payment.id,
+          paymentMethod: 'credit_card',
+          status: 'paid',
+          valueInCents: Math.round(value * 100),
+          customer: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            phone: creditCardHolderInfo.phone,
+            document: creditCardHolderInfo.cpfCnpj
+          },
+          product: {
+            id: planId,
+            name: `Plano ${planId} - Anual`
+          },
+          utmData: utmData || {}
+        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
 
         return res.json({
           success: true,
@@ -1091,6 +1112,25 @@ router.post('/asaas/subscription', async (req, res) => {
         // [NEW] Activate on Server (Even if subscription failed, because Payment was CONFIRMED)
         await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription?.id);
 
+        // [NEW] Send sale to Utmify for tracking
+        sendSaleToUtmify({
+          orderId: firstPayment.id,
+          paymentMethod: 'credit_card',
+          status: 'paid',
+          valueInCents: Math.round(value * 100),
+          customer: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            phone: creditCardHolderInfo.phone,
+            document: creditCardHolderInfo.cpfCnpj
+          },
+          product: {
+            id: planId,
+            name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
+          },
+          utmData: utmData || {}
+        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
+
         return res.json({
           success: true,
           payment: firstPayment,
@@ -1144,6 +1184,25 @@ router.post('/asaas/subscription', async (req, res) => {
 
         // [NEW] Activate on Server
         await activatePlanOnServer(userId, planId, cycle, firstPayment?.id, subscription.id);
+
+        // [NEW] Send sale to Utmify for tracking
+        sendSaleToUtmify({
+          orderId: subscription.id,
+          paymentMethod: 'credit_card',
+          status: 'paid',
+          valueInCents: Math.round(value * 100),
+          customer: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            phone: creditCardHolderInfo.phone,
+            document: creditCardHolderInfo.cpfCnpj
+          },
+          product: {
+            id: planId,
+            name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
+          },
+          utmData: utmData || {}
+        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
 
         return res.json({
           success: true,
@@ -1832,5 +1891,35 @@ router.use('/pluggy', pluggyRouter);
 // CRON JOB - AUTOMATIC SYNC
 // ========================================
 router.use('/cron/sync', cronSyncRouter);
+
+// ========================================
+// ASAAS WEBHOOK
+// ========================================
+router.post('/asaas/webhook', async (req, res) => {
+  try {
+    const { event, payment } = req.body;
+
+    // Log apenas eventos relevantes para não poluir
+    if (event === 'PAYMENT_REFUNDED' || event === 'PAYMENT_CHARGEBACK') {
+      console.log(`>>> [WEBHOOK] Event received: ${event}`);
+
+      if (payment && payment.id) {
+        console.log(`>>> [WEBHOOK] Processing refund for payment ${payment.id}`);
+        // Send to Utmify
+        await sendRefundToUtmify(payment.id);
+
+        // TODO: Aqui você também pode atualizar o status no Firestore se desejar
+        // Por enquanto, focando apenas no requisito do Utmify
+      }
+    }
+
+    // Sempre responder 200 OK para o Asaas não reenviar
+    res.status(200).json({ received: true });
+  } catch (error) {
+    console.error('>>> [WEBHOOK] Error processing event:', error);
+    // Ainda retornamos 200 para não travar a fila do Asaas se for erro nosso interno de logica nao critica
+    res.status(200).json({ received: true, error: error.message });
+  }
+});
 
 export default router;
