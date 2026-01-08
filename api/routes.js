@@ -961,23 +961,27 @@ router.post('/asaas/subscription', async (req, res) => {
         await activatePlanOnServer(userId, planId, cycle, payment.id, null);
 
         // [NEW] Send sale to Utmify for tracking
-        sendSaleToUtmify({
-          orderId: payment.id,
-          paymentMethod: 'credit_card',
-          status: 'paid',
-          valueInCents: Math.round(value * 100),
-          customer: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            phone: creditCardHolderInfo.phone,
-            document: creditCardHolderInfo.cpfCnpj
-          },
-          product: {
-            id: planId,
-            name: `Plano ${planId} - Anual`
-          },
-          utmData: utmData || {}
-        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
+        try {
+          sendSaleToUtmify({
+            orderId: payment.id,
+            paymentMethod: 'credit_card',
+            status: 'paid',
+            valueInCents: Math.round(value * 100),
+            customer: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              phone: creditCardHolderInfo.phone,
+              document: creditCardHolderInfo.cpfCnpj
+            },
+            product: {
+              id: planId,
+              name: `Plano ${planId} - Anual`
+            },
+            utmData: utmData || {}
+          }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));
+        } catch (utmError) {
+          console.error('>>> [UTMIFY] Error building payload:', utmError);
+        }
 
         return res.json({
           success: true,
@@ -1113,23 +1117,27 @@ router.post('/asaas/subscription', async (req, res) => {
         await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription?.id);
 
         // [NEW] Send sale to Utmify for tracking
-        sendSaleToUtmify({
-          orderId: firstPayment.id,
-          paymentMethod: 'credit_card',
-          status: 'paid',
-          valueInCents: Math.round(value * 100),
-          customer: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            phone: creditCardHolderInfo.phone,
-            document: creditCardHolderInfo.cpfCnpj
-          },
-          product: {
-            id: planId,
-            name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
-          },
-          utmData: utmData || {}
-        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
+        try {
+          sendSaleToUtmify({
+            orderId: firstPayment.id,
+            paymentMethod: 'credit_card',
+            status: 'paid',
+            valueInCents: Math.round(value * 100),
+            customer: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              phone: creditCardHolderInfo.phone,
+              document: creditCardHolderInfo.cpfCnpj
+            },
+            product: {
+              id: planId,
+              name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
+            },
+            utmData: utmData || {}
+          }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));
+        } catch (utmError) {
+          console.error('>>> [UTMIFY] Error building payload:', utmError);
+        }
 
         return res.json({
           success: true,
@@ -1186,23 +1194,27 @@ router.post('/asaas/subscription', async (req, res) => {
         await activatePlanOnServer(userId, planId, cycle, firstPayment?.id, subscription.id);
 
         // [NEW] Send sale to Utmify for tracking
-        sendSaleToUtmify({
-          orderId: subscription.id,
-          paymentMethod: 'credit_card',
-          status: 'paid',
-          valueInCents: Math.round(value * 100),
-          customer: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            phone: creditCardHolderInfo.phone,
-            document: creditCardHolderInfo.cpfCnpj
-          },
-          product: {
-            id: planId,
-            name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
-          },
-          utmData: utmData || {}
-        }).catch(err => console.error('>>> [UTMIFY] Error:', err));
+        try {
+          sendSaleToUtmify({
+            orderId: subscription.id,
+            paymentMethod: 'credit_card',
+            status: 'paid',
+            valueInCents: Math.round(value * 100),
+            customer: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              phone: creditCardHolderInfo.phone,
+              document: creditCardHolderInfo.cpfCnpj
+            },
+            product: {
+              id: planId,
+              name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`
+            },
+            utmData: utmData || {}
+          }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));
+        } catch (utmError) {
+          console.error('>>> [UTMIFY] Error building payload:', utmError);
+        }
 
         return res.json({
           success: true,
