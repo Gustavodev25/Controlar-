@@ -1905,6 +1905,168 @@ router.use('/pluggy', pluggyRouter);
 router.use('/cron/sync', cronSyncRouter);
 
 // ========================================
+// ASAAS ADMIN STATS - DASHBOARD METRICS
+// ========================================
+router.get('/asaas/admin/stats', async (req, res) => {
+  try {
+    // Fee constants (same as AdminDashboard.tsx)
+    const ASAAS_CARD_FEE_PERCENT = 2.99;
+    const ASAAS_ANTICIPATION_FEE_PERCENT = 1.15;
+    const ASAAS_ANTICIPATION_MIN_VALUE = 5.00;
+
+    const calculateNetValue = (grossValue, installments = 1) => {
+      if (grossValue <= 0) return 0;
+      let cardFeePercent = ASAAS_CARD_FEE_PERCENT;
+      if (installments >= 2 && installments <= 6) cardFeePercent = 3.49;
+      else if (installments >= 7 && installments <= 12) cardFeePercent = 3.99;
+      else if (installments >= 13) cardFeePercent = 4.29;
+
+      const cardFee = grossValue * (cardFeePercent / 100);
+      let anticipationFee = 0;
+      if (grossValue > ASAAS_ANTICIPATION_MIN_VALUE) {
+        anticipationFee = grossValue * (ASAAS_ANTICIPATION_FEE_PERCENT / 100);
+      }
+      return grossValue - cardFee - anticipationFee;
+    };
+
+    // 1. Fetch active subscriptions
+    let subscriptions = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const subsResult = await asaasRequest('GET', `/subscriptions?status=ACTIVE&limit=100&offset=${offset}`);
+      if (subsResult.data && subsResult.data.length > 0) {
+        subscriptions = subscriptions.concat(subsResult.data);
+        offset += subsResult.data.length;
+        hasMore = subsResult.hasMore || false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Calculate subscription metrics
+    let monthlyCount = 0;
+    let yearlyCount = 0;
+    let mrrGross = 0;
+
+    subscriptions.forEach(sub => {
+      const value = sub.value || 0;
+      if (sub.cycle === 'MONTHLY') {
+        monthlyCount++;
+        mrrGross += value;
+      } else if (sub.cycle === 'YEARLY') {
+        yearlyCount++;
+        mrrGross += value / 12; // Convert to monthly
+      } else if (sub.cycle === 'WEEKLY') {
+        mrrGross += value * 4; // Convert to monthly
+      }
+    });
+
+    const mrrNet = calculateNetValue(mrrGross, 1);
+
+    // 2. Fetch received/confirmed payments for total revenue
+    let payments = [];
+    offset = 0;
+    hasMore = true;
+
+    // Get payments from last 12 months
+    const oneYearAgo = new Date();
+    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+    const dateFilter = oneYearAgo.toISOString().split('T')[0];
+
+    while (hasMore) {
+      const paymentsResult = await asaasRequest(
+        'GET',
+        `/payments?status=RECEIVED&dateCreated[ge]=${dateFilter}&limit=100&offset=${offset}`
+      );
+      if (paymentsResult.data && paymentsResult.data.length > 0) {
+        payments = payments.concat(paymentsResult.data);
+        offset += paymentsResult.data.length;
+        hasMore = paymentsResult.hasMore || false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Also fetch CONFIRMED status
+    offset = 0;
+    hasMore = true;
+    while (hasMore) {
+      const confirmedResult = await asaasRequest(
+        'GET',
+        `/payments?status=CONFIRMED&dateCreated[ge]=${dateFilter}&limit=100&offset=${offset}`
+      );
+      if (confirmedResult.data && confirmedResult.data.length > 0) {
+        payments = payments.concat(confirmedResult.data);
+        offset += confirmedResult.data.length;
+        hasMore = confirmedResult.hasMore || false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Calculate total revenue
+    let totalRevenueGross = 0;
+    payments.forEach(payment => {
+      totalRevenueGross += payment.value || 0;
+    });
+
+    const totalRevenueNet = calculateNetValue(totalRevenueGross, 1);
+
+    // 3. Fetch pending payments
+    let pendingPayments = [];
+    offset = 0;
+    hasMore = true;
+
+    while (hasMore) {
+      const pendingResult = await asaasRequest(
+        'GET',
+        `/payments?status=PENDING&limit=100&offset=${offset}`
+      );
+      if (pendingResult.data && pendingResult.data.length > 0) {
+        pendingPayments = pendingPayments.concat(pendingResult.data);
+        offset += pendingResult.data.length;
+        hasMore = pendingResult.hasMore || false;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    let pendingRevenue = 0;
+    pendingPayments.forEach(payment => {
+      pendingRevenue += payment.value || 0;
+    });
+
+    console.log(`>>> [ADMIN STATS] Subs: ${subscriptions.length}, Payments: ${payments.length}, MRR: R$ ${mrrGross.toFixed(2)}`);
+
+    res.json({
+      success: true,
+      subscriptions: {
+        active: subscriptions.length,
+        monthly: monthlyCount,
+        yearly: yearlyCount
+      },
+      revenue: {
+        mrrGross: Math.round(mrrGross * 100) / 100,
+        mrrNet: Math.round(mrrNet * 100) / 100,
+        totalGross: Math.round(totalRevenueGross * 100) / 100,
+        totalNet: Math.round(totalRevenueNet * 100) / 100,
+        pending: Math.round(pendingRevenue * 100) / 100
+      },
+      paymentsCount: payments.length,
+      fetchedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('>>> [ADMIN STATS] Error:', error.response?.data || error.message);
+    res.status(500).json({
+      error: 'Erro ao buscar estatísticas do Asaas',
+      details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
+// ========================================
 // ASAAS WEBHOOK
 // ========================================
 router.post('/asaas/webhook', async (req, res) => {

@@ -86,6 +86,7 @@ export const AdminSubscriptions: React.FC = () => {
     const [couponFilter, setCouponFilter] = useState<string>('all');
     const [showAdmins, setShowAdmins] = useState(true);
     const [asaasFilter, setAsaasFilter] = useState<'all' | 'verified' | 'unverified'>('all');
+    const [sortOption, setSortOption] = useState<'name' | 'subscription_newest' | 'subscription_oldest' | 'next_billing'>('name');
     // Pagination removed
     const [selectedUser, setSelectedUser] = useState<SystemUser | null>(null);
     const [userPayments, setUserPayments] = useState<AsaasPayment[]>([]);
@@ -567,8 +568,30 @@ export const AdminSubscriptions: React.FC = () => {
             const matchesAdmin = showAdmins ? true : !user.isAdmin;
 
             return matchesSearch && matchesStatus && matchesPlan && matchesCoupon && matchesAdmin && matchesAsaas;
+        }).sort((a, b) => {
+            switch (sortOption) {
+                case 'name':
+                    return (a.name || '').localeCompare(b.name || '');
+                case 'subscription_newest': {
+                    const aDate = a.subscription?.startDate ? new Date(a.subscription.startDate).getTime() : 0;
+                    const bDate = b.subscription?.startDate ? new Date(b.subscription.startDate).getTime() : 0;
+                    return bDate - aDate;
+                }
+                case 'subscription_oldest': {
+                    const aDate = a.subscription?.startDate ? new Date(a.subscription.startDate).getTime() : 0;
+                    const bDate = b.subscription?.startDate ? new Date(b.subscription.startDate).getTime() : 0;
+                    return aDate - bDate;
+                }
+                case 'next_billing': {
+                    const aDate = a.subscription?.nextBillingDate ? new Date(a.subscription.nextBillingDate).getTime() : 0;
+                    const bDate = b.subscription?.nextBillingDate ? new Date(b.subscription.nextBillingDate).getTime() : 0;
+                    return aDate - bDate;
+                }
+                default:
+                    return 0;
+            }
         });
-    }, [users, searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter]);
+    }, [users, searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter, sortOption]);
 
     const displayedUsers = filteredUsers;
 
@@ -576,7 +599,7 @@ export const AdminSubscriptions: React.FC = () => {
     useEffect(() => {
         // Page reset removed
         setSelectedUserIds([]); // Clear selection on filter change to avoid confusion
-    }, [searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter]);
+    }, [searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter, sortOption]);
 
     // Stats
     const stats = useMemo(() => {
@@ -1141,6 +1164,29 @@ export const AdminSubscriptions: React.FC = () => {
                         {showAdmins && <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]" />}
                     </button>
 
+                    {/* Sort Dropdown */}
+                    <Dropdown>
+                        <DropdownTrigger className="h-full">
+                            <button className="flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap bg-[#30302E] border-[#373734] text-gray-400 hover:text-white">
+                                <Calendar size={16} />
+                                <span>
+                                    {sortOption === 'name' && 'Nome'}
+                                    {sortOption === 'subscription_newest' && 'Assinatura (Recente)'}
+                                    {sortOption === 'subscription_oldest' && 'Assinatura (Antigo)'}
+                                    {sortOption === 'next_billing' && 'Próx. Cobrança'}
+                                </span>
+                                <ChevronDown size={14} />
+                            </button>
+                        </DropdownTrigger>
+                        <DropdownContent>
+                            <DropdownLabel>Ordenar por</DropdownLabel>
+                            <DropdownItem onClick={() => setSortOption('name')}>Nome</DropdownItem>
+                            <DropdownItem onClick={() => setSortOption('subscription_newest')}>Assinatura (Recente)</DropdownItem>
+                            <DropdownItem onClick={() => setSortOption('subscription_oldest')}>Assinatura (Antigo)</DropdownItem>
+                            <DropdownItem onClick={() => setSortOption('next_billing')}>Próx. Cobrança</DropdownItem>
+                        </DropdownContent>
+                    </Dropdown>
+
                     {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all' || showAdmins) && (
                         <button
                             onClick={() => {
@@ -1150,6 +1196,7 @@ export const AdminSubscriptions: React.FC = () => {
                                 setCouponFilter('all');
                                 setAsaasFilter('all');
                                 setShowAdmins(true);
+                                setSortOption('name');
                             }}
                             className="p-2.5 text-gray-500 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
                             title="Limpar Filtros"
@@ -1263,6 +1310,7 @@ export const AdminSubscriptions: React.FC = () => {
                                             <th className="px-4 py-3 text-left">Plano</th>
                                             <th className="px-4 py-3 text-left">Status</th>
                                             <th className="px-4 py-3 text-left">Ciclo</th>
+                                            <th className="px-4 py-3 text-left">Data Assinatura</th>
                                             <th className="px-4 py-3 text-left">Próx. Cobrança</th>
                                             <th className="px-4 py-3 text-center">Ações</th>
                                         </>
@@ -1355,6 +1403,11 @@ export const AdminSubscriptions: React.FC = () => {
                                                     <td className="px-4 py-3">
                                                         <span className="text-gray-400 text-xs uppercase">
                                                             {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
+                                                        </span>
+                                                    </td>
+                                                    <td className="px-4 py-3">
+                                                        <span className="text-gray-400 text-xs font-mono">
+                                                            {formatDate(user.subscription?.startDate)}
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">

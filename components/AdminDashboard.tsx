@@ -159,6 +159,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const dateFilterRef = useRef<HTMLDivElement>(null);
   const [tooltipContent, setTooltipContent] = useState("");
 
+  // Asaas Stats from API
+  const [asaasStats, setAsaasStats] = useState<{
+    subscriptions: { active: number; monthly: number; yearly: number };
+    revenue: { mrrGross: number; mrrNet: number; totalGross: number; totalNet: number; pending: number };
+    paymentsCount: number;
+    fetchedAt: string;
+  } | null>(null);
+  const [isLoadingAsaas, setIsLoadingAsaas] = useState(true);
+
 
   useEffect(() => {
     localStorage.setItem('admin_dashboard_exclude_admins', JSON.stringify(excludeAdmins));
@@ -203,6 +212,27 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
     };
     loadData();
+  }, []);
+
+  // Fetch Asaas stats from API
+  useEffect(() => {
+    const fetchAsaasStats = async () => {
+      try {
+        setIsLoadingAsaas(true);
+        const response = await fetch('/api/asaas/admin/stats');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.success) {
+            setAsaasStats(data);
+          }
+        }
+      } catch (error) {
+        console.error('Error fetching Asaas stats:', error);
+      } finally {
+        setIsLoadingAsaas(false);
+      }
+    };
+    fetchAsaasStats();
   }, []);
 
   const stats = useMemo(() => {
@@ -1018,36 +1048,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="MRR Bruto"
-          value={stats.mrr}
+          value={asaasStats?.revenue.mrrGross ?? stats.mrr}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#d97757"
           trendPercent={12.5}
-          footer="Receita mensal recorrente"
+          footer={asaasStats ? `Asaas (${asaasStats.subscriptions.active} subs)` : "Receita mensal recorrente"}
         />
         <KPICard
           title="MRR Líquido"
-          value={stats.mrrNet}
+          value={asaasStats?.revenue.mrrNet ?? stats.mrrNet}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#10B981"
-          footer={`Taxas: R$ ${(stats.mrr - stats.mrrNet).toFixed(2)}`}
+          footer={`Taxas: R$ ${((asaasStats?.revenue.mrrGross ?? stats.mrr) - (asaasStats?.revenue.mrrNet ?? stats.mrrNet)).toFixed(2)}`}
         />
         <KPICard
           title="Receita Total (Bruta)"
-          value={stats.revenue}
+          value={asaasStats?.revenue.totalGross ?? stats.revenue}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#3B82F6"
-          footer="Acumulado desde o início"
+          footer={asaasStats ? `${asaasStats.paymentsCount} pagamentos (12m)` : "Acumulado desde o início"}
         />
         <KPICard
           title="Receita Total (Líquida)"
-          value={stats.revenueNet}
+          value={asaasStats?.revenue.totalNet ?? stats.revenueNet}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#8B5CF6"
-          footer={`Taxas: R$ ${(stats.revenue - stats.revenueNet).toFixed(2)}`}
+          footer={`Taxas: R$ ${((asaasStats?.revenue.totalGross ?? stats.revenue) - (asaasStats?.revenue.totalNet ?? stats.revenueNet)).toFixed(2)}`}
         />
       </div>
 
@@ -1055,11 +1085,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="Assinantes Pagos"
-          value={stats.activeUsers}
+          value={asaasStats?.subscriptions.active ?? stats.activeUsers}
           trendData={stats.trends.usersValues}
           color="#3B82F6"
           trendPercent={24}
-          footer={`+${stats.totalFree} gratuitos`}
+          footer={asaasStats ? `${asaasStats.subscriptions.monthly} mensal | ${asaasStats.subscriptions.yearly} anual` : `+${stats.totalFree} gratuitos`}
         />
         <KPICard
           title="Novos Usuários (30d)"
@@ -1089,11 +1119,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         />
         <KPICard
           title="Receita Pendente"
-          value={stats.pendingRevenue}
+          value={asaasStats?.revenue.pending ?? stats.pendingRevenue}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#EC4899"
-          footer="Total em atraso"
+          footer={asaasStats ? "Pagtos pendentes (Asaas)" : "Total em atraso"}
         />
         <KPICard
           title="Média Dias Ativos"

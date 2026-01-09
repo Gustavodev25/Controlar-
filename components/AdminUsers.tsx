@@ -44,7 +44,7 @@ interface SystemUser extends UserType {
 type PlanFilter = 'all' | 'starter' | 'pro' | 'family';
 type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due';
 type RoleFilter = 'all' | 'admin' | 'user';
-type SortOption = 'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'last_active' | 'most_active_days' | 'least_active_days';
+type SortOption = 'name_asc' | 'name_desc' | 'newest' | 'oldest' | 'last_active' | 'most_active_days' | 'least_active_days' | 'subscription_newest' | 'subscription_oldest';
 
 const planTabs: { value: PlanFilter; label: string }[] = [
     { value: 'all', label: 'Todos' },
@@ -150,6 +150,16 @@ export const AdminUsers: React.FC = () => {
                         return uniqueDates.size;
                     };
                     return getUniqueDays(a) - getUniqueDays(b);
+                }
+                case 'subscription_newest': {
+                    const aDate = a.subscription?.startDate ? new Date(a.subscription.startDate).getTime() : 0;
+                    const bDate = b.subscription?.startDate ? new Date(b.subscription.startDate).getTime() : 0;
+                    return bDate - aDate;
+                }
+                case 'subscription_oldest': {
+                    const aDate = a.subscription?.startDate ? new Date(a.subscription.startDate).getTime() : 0;
+                    const bDate = b.subscription?.startDate ? new Date(b.subscription.startDate).getTime() : 0;
+                    return aDate - bDate;
                 }
                 default:
                     return 0;
@@ -505,6 +515,8 @@ export const AdminUsers: React.FC = () => {
             case 'last_active': return 'Último Acesso';
             case 'most_active_days': return 'Mais Dias Ativos';
             case 'least_active_days': return 'Menos Dias Ativos';
+            case 'subscription_newest': return 'Assinatura (Recente)';
+            case 'subscription_oldest': return 'Assinatura (Antigo)';
             default: return sort;
         }
     };
@@ -705,6 +717,21 @@ export const AdminUsers: React.FC = () => {
                             >
                                 Nome (Z-A)
                             </DropdownItem>
+                            <DropdownSeparator />
+                            <DropdownItem
+                                onClick={() => setSortOption('subscription_newest')}
+                                icon={CreditCard}
+                                className={sortOption === 'subscription_newest' ? 'bg-white/5' : ''}
+                            >
+                                Assinatura (Recente)
+                            </DropdownItem>
+                            <DropdownItem
+                                onClick={() => setSortOption('subscription_oldest')}
+                                icon={CreditCard}
+                                className={sortOption === 'subscription_oldest' ? 'bg-white/5' : ''}
+                            >
+                                Assinatura (Antigo)
+                            </DropdownItem>
                         </DropdownContent>
                     </Dropdown>
                 </div>
@@ -761,6 +788,7 @@ export const AdminUsers: React.FC = () => {
                                         <th className="px-3 py-3 text-left">Plano</th>
                                         <th className="px-3 py-3 text-left">Status</th>
                                         <th className="px-3 py-3 text-left">Ciclo</th>
+                                        <th className="px-3 py-3 text-left">Data Assinatura</th>
                                         <th className="px-3 py-3 text-left">Último Acesso</th>
                                         <th className="px-3 py-3 text-left">Próx. Cobrança</th>
                                         <th className="px-3 py-3 text-center">Ações</th>
@@ -812,6 +840,11 @@ export const AdminUsers: React.FC = () => {
                                             <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-xs uppercase">
                                                     {user.subscription?.billingCycle === 'annual' ? 'Anual' : 'Mensal'}
+                                                </span>
+                                            </td>
+                                            <td className="px-3 py-3">
+                                                <span className="text-gray-400 text-xs font-mono">
+                                                    {formatDate(user.subscription?.startDate)}
                                                 </span>
                                             </td>
                                             <td className="px-3 py-3">
