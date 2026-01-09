@@ -16,6 +16,9 @@ import { BankConnectModal } from "./BankConnectModal";
 import Lottie from "lottie-react";
 import linkAnimation from "../assets/link.json";
 
+// API Base URL - uses Railway in production, local /api in development
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
+
 interface ConnectedAccountsProps {
   accounts: ConnectedAccount[];
   isLoading?: boolean;
@@ -300,7 +303,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const fetchItemStatuses = useCallback(async () => {
     if (!userId) return;
     try {
-      const response = await fetch(`/api/pluggy/items-status?userId=${userId}`);
+      const response = await fetch(`${API_BASE}/pluggy/items-status?userId=${userId}`);
       const data = await response.json();
       if (data.success && data.items) {
         const statusMap: Record<string, ItemSyncStatus> = {};
@@ -673,7 +676,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
     setIsSyncingItem(prev => ({ ...prev, [itemId]: true }));
     try {
-      const response = await fetch(`/api/pluggy/trigger-sync`, {
+      const response = await fetch(`${API_BASE}/pluggy/trigger-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ itemId, userId, force })
@@ -704,7 +707,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     if (!userId) return;
     const toastId = toast.loading('Removendo duplicatas...');
     try {
-      const response = await fetch('/api/pluggy/cleanup-duplicates', {
+      const response = await fetch(`${API_BASE}/pluggy/cleanup-duplicates`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ userId })
@@ -911,7 +914,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
               e.stopPropagation();
               if (!userId || !job.id) return;
               try {
-                await fetch('/api/pluggy/cancel-sync', {
+                await fetch(`${API_BASE}/pluggy/cancel-sync`, {
                   method: 'POST',
                   headers: { 'Content-Type': 'application/json' },
                   body: JSON.stringify({ userId, syncJobId: job.id })
