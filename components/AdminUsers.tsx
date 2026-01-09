@@ -248,11 +248,12 @@ export const AdminUsers: React.FC = () => {
     const formatDate = (dateStr?: string) => {
         if (!dateStr) return '-';
         const date = new Date(dateStr);
-        return date.toLocaleDateString('pt-BR', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric'
-        });
+        if (isNaN(date.getTime())) return '-';
+        // Usar UTC para evitar problema de timezone (dia anterior)
+        const day = String(date.getUTCDate()).padStart(2, '0');
+        const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const year = date.getUTCFullYear();
+        return `${day}/${month}/${year}`;
     };
 
     const getAge = (birthDate?: string) => {
