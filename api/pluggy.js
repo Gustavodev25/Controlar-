@@ -12,9 +12,11 @@ const CLIENT_ID = process.env.PLUGGY_CLIENT_ID?.trim();
 const CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET?.trim();
 const BASE_URL = 'https://api.pluggy.ai';
 
-// Vercel Pro timeout config (max 60s, use 55s for safety)
+// Railway config (no 60s limit, optimize for speed)
 const VERCEL_TIMEOUT = 55000;
-const AXIOS_TIMEOUT = 15000; // 15s per request max
+const AXIOS_TIMEOUT = 10000; // 10s per request - faster timeout
+const FAST_POLL_INTERVAL = 1500; // 1.5s between polls
+const QUICK_SYNC_TIMEOUT = 35000; // 35s max wait for item ready
 
 // Create optimized axios instance
 const pluggyApi = axios.create({
@@ -101,30 +103,7 @@ const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
     const currentDueDate = calculateDueDate(currentClosingDate);
     const nextDueDate = calculateDueDate(nextClosingDate);
 
-    // Log de debug detalhado
-    console.log('[InvoicePeriods] Calculado:', {
-        closingDay,
-        dueDay: safeDueDay,
-        today: toDateStr(today),
-        lastInvoice: {
-            start: toDateStr(lastInvoiceStart),
-            end: toDateStr(lastClosingDate),
-            due: toDateStr(lastDueDate),
-            monthKey: toMonthKey(lastClosingDate)
-        },
-        currentInvoice: {
-            start: toDateStr(currentInvoiceStart),
-            end: toDateStr(currentClosingDate),
-            due: toDateStr(currentDueDate),
-            monthKey: toMonthKey(currentClosingDate)
-        },
-        nextInvoice: {
-            start: toDateStr(nextInvoiceStart),
-            end: toDateStr(nextClosingDate),
-            due: toDateStr(nextDueDate),
-            monthKey: toMonthKey(nextClosingDate)
-        }
-    });
+    // Debug log removido para performance
 
     return {
         closingDay,
@@ -172,14 +151,6 @@ const calculateInvoiceMonthKey = (txDate, closingDay) => {
     }
 
     const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
-
-    console.log('[InvoiceMonthKey]', {
-        txDate,
-        closingDay: validClosingDay,
-        dayOfTx: new Date(txDate).getDate(),
-        result: monthKey
-    });
-
     return monthKey;
 };
 
@@ -277,7 +248,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
     const startTime = Date.now();
 
-    console.log('[SYNC-START] Iniciando sincronização:', { itemId, userId, timestamp: new Date().toISOString() });
+    console.log(`[SYNC] Start: item=${itemId} user=${userId.slice(0, 8)}...`);
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
@@ -312,54 +283,45 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             // Trigger Pluggy refresh
             await updateProgress(5, 'Atualizando conexão...');
 
-            // STEP 0: Capture item state BEFORE triggering sync
+            // STEP 0: Quick check - if item was UPDATED recently, skip PATCH
             let itemBeforeSync = null;
             try {
                 const beforeResp = await pluggyApi.get(`/items/${itemId}`, {
                     headers: { 'X-API-KEY': apiKey }
                 });
                 itemBeforeSync = beforeResp.data;
-                console.log(`[Trigger-Sync] Item ANTES do PATCH:`, {
-                    id: itemBeforeSync.id,
-                    status: itemBeforeSync.status,
-                    lastUpdatedAt: itemBeforeSync.lastUpdatedAt,
-                    executionStatus: itemBeforeSync.executionStatus,
-                    connector: itemBeforeSync.connector?.name || 'unknown'
-                });
+
+                // FAST PATH: If item was updated in last 5 minutes and is UPDATED, skip PATCH
+                if (itemBeforeSync.status === 'UPDATED' && itemBeforeSync.lastUpdatedAt) {
+                    const lastUpdate = new Date(itemBeforeSync.lastUpdatedAt).getTime();
+                    const fiveMinAgo = Date.now() - (5 * 60 * 1000);
+                    if (lastUpdate > fiveMinAgo) {
+                        console.log(`[SYNC] Fast path: Item updated ${Math.round((Date.now() - lastUpdate) / 1000)}s ago, skipping PATCH`);
+                        // Skip PATCH, go straight to fetching data
+                        await updateProgress(15, 'Dados recentes encontrados...');
+                        // Jump directly to fetching accounts
+                    }
+                }
             } catch (err) {
-                console.log('[Trigger-Sync] Could not fetch item before sync:', err.message);
+                // Continue anyway
             }
 
             try {
-                // Body vazio força sincronização real com o banco (não apenas atualiza webhook)
-                // Ref: https://docs.pluggy.ai/reference/items-update
-                console.log(`[Trigger-Sync] Enviando PATCH para /items/${itemId}...`);
-                const patchResp = await pluggyApi.patch(`/items/${itemId}`, {}, {
+                await pluggyApi.patch(`/items/${itemId}`, {}, {
                     headers: { 'X-API-KEY': apiKey }
                 });
-                console.log(`[Trigger-Sync] PATCH response status:`, patchResp.status, patchResp.data?.status);
             } catch (err) {
                 if (err.response?.status === 404) {
                     await jobDoc.update({ status: 'failed', error: 'Item not found', needsReconnect: true });
                     return;
                 }
-                // Other errors - continue anyway, item might still be valid
-                console.log('[Trigger-Sync] Patch warning:', err.message, err.response?.data);
+                // Continue anyway
             }
 
-            // CRITICAL: Wait for Pluggy to finish fetching data from bank
-            // Pass the old lastUpdatedAt so we can verify a NEW sync happened
-            // Use 50s timeout to fit within Vercel's 60s limit
+            // Wait for Pluggy with faster timeout (Railway has no 60s limit)
             await updateProgress(10, 'Aguardando dados do banco...');
-            const itemStatus = await waitForItemReady(apiKey, itemId, 50000, itemBeforeSync?.lastUpdatedAt);
-            console.log(`[Trigger-Sync] Item ready check:`, {
-                status: itemStatus.status,
-                executionStatus: itemStatus.item?.executionStatus,
-                lastUpdatedAtBefore: itemBeforeSync?.lastUpdatedAt,
-                lastUpdatedAtAfter: itemStatus.item?.lastUpdatedAt,
-                didUpdate: itemStatus.item?.lastUpdatedAt !== itemBeforeSync?.lastUpdatedAt,
-                connector: itemStatus.item?.connector?.name
-            });
+            const itemStatus = await waitForItemReady(apiKey, itemId, QUICK_SYNC_TIMEOUT, itemBeforeSync?.lastUpdatedAt);
+            console.log(`[SYNC] Ready: status=${itemStatus.status}`);
 
             if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
                 await jobDoc.update({
@@ -413,10 +375,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             const accounts = accountsResp.data.results || [];
 
-            // Debug: Log balances recebidos do Pluggy
-            console.log('[Trigger-Sync] Accounts with balances:', accounts.map(a => ({
-                id: a.id, name: a.name, balance: a.balance, type: a.type
-            })));
+            // Quick balance check log
+            console.log(`[SYNC] ${accounts.length} accounts fetched`);
 
             const existingMap = {};
             existingSnap.forEach(doc => {
@@ -451,14 +411,6 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
                 } : {};
 
-                console.log(`[Trigger-Sync] Account ${acc.id} (${acc.name}):`, {
-                    isCredit,
-                    rawClosingDay,
-                    validClosingDay,
-                    rawDueDay,
-                    validDueDay
-                });
-
                 accBatch.set(accountsRef.doc(acc.id), {
                     ...acc,
                     ...creditFields,
@@ -492,9 +444,6 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             // Determine if we need to force extended fetch (slow/problematic banks)
             const forceExtendedFetch = ['STALE', 'SLOW_BANK', 'TIMEOUT'].includes(itemStatus.status);
-            if (forceExtendedFetch) {
-                console.log(`[Trigger-Sync] ⚠️ Forcing extended fetch (30 days) due to status: ${itemStatus.status}`);
-            }
 
             const txPromises = accounts.map(async account => {
                 const existing = existingMap[account.id];
@@ -502,31 +451,21 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 let syncMode = 'first';
                 const connectorName = account.connector?.name || itemStatus.item?.connector?.name || 'unknown';
 
-                // If we detected a problematic sync, force at least 30 days to be safe
                 if (forceExtendedFetch) {
                     fromStr = thirtyDaysAgoStr;
                     syncMode = 'force-extended';
-                    console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync problemático detectado, buscando desde ${fromStr} (30 dias)`);
                 } else if (existing?.lastSyncedAt) {
-                    // If account was synced before, only fetch transactions since last sync
                     const lastSync = new Date(existing.lastSyncedAt);
                     const hoursSinceLastSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
 
-                    // If last sync was very recent (<6 hours), fetch at least 7 days
-                    // This helps catch transactions that might have been delayed
                     if (hoursSinceLastSync < 6) {
                         fromStr = oneWeekAgoStr;
                         syncMode = 'incremental-extended';
-                        console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync recente (${hoursSinceLastSync.toFixed(1)}h atrás), buscando desde ${fromStr} (7 dias)`);
                     } else {
-                        // Subtract 1 day as safety margin for timezone/timing issues
                         lastSync.setDate(lastSync.getDate() - 1);
                         fromStr = lastSync.toISOString().split('T')[0];
                         syncMode = 'incremental';
-                        console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync incremental desde ${fromStr}`);
                     }
-                } else {
-                    console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: primeiro sync, buscando desde ${fromStr} (12 meses)`);
                 }
 
                 // Use pagination to fetch ALL transactions
@@ -536,22 +475,12 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             const allTxResults = await Promise.all(txPromises);
 
-            // Log incremental fetch results
+            // Count transactions
             let totalNewTx = 0;
-            allTxResults.forEach(({ account, transactions, fromDate, syncMode, connectorName }) => {
+            allTxResults.forEach(({ transactions }) => {
                 totalNewTx += transactions.length;
-                console.log(`[Trigger-Sync] Account ${account.id} (${account.name}) [${connectorName}]:`, {
-                    syncMode,
-                    fromDate,
-                    transactionsFound: transactions.length,
-                    accountType: account.type
-                });
             });
-
-            if (totalNewTx === 0) {
-                console.log(`[Trigger-Sync] ⚠️ Nenhuma transação nova encontrada! Verifique se o banco retornou dados.`);
-            }
-            console.log(`[Trigger-Sync] Total new transactions to save: ${totalNewTx}`);
+            console.log(`[SYNC] Found ${totalNewTx} tx in ${accounts.length} accounts`);
 
             await updateProgress(50, `Salvando ${totalNewTx} transações...`);
 
@@ -662,11 +591,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     const current = sorted[0];
                     const previous = sorted[1] || null;
 
-                    // Extract finance charges from current bill
-                    // Pluggy types: IOF, LATE_PAYMENT_FEE, LATE_PAYMENT_INTEREST, LATE_PAYMENT_REMUNERATIVE_INTEREST, OTHER
-                    console.log(`[Bills] FATURA COMPLETA (JSON) para account ${account.id}:`, JSON.stringify(current, null, 2));
+                    // Extract finance charges
                     const financeCharges = current.financeCharges || [];
-                    console.log(`[Bills] Finance charges for account ${account.id}:`, JSON.stringify(financeCharges));
 
                     const iof = financeCharges.find(f => f.type === 'IOF')?.amount || 0;
                     const interest = financeCharges
@@ -814,26 +740,15 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
 
 // Helper: Wait for Pluggy item to be ready (UPDATED or LOGIN_ERROR)
-// Now also verifies that lastUpdatedAt changed (to ensure a real sync happened)
-// UPDATED: Better handling for C6 Bank and other banks with slower sync
-const waitForItemReady = async (apiKey, itemId, maxWaitMs = 50000, oldLastUpdatedAt = null) => {
+// OPTIMIZED: Fast polling for Railway deployment
+const waitForItemReady = async (apiKey, itemId, maxWaitMs = QUICK_SYNC_TIMEOUT, oldLastUpdatedAt = null) => {
     const startTime = Date.now();
-    const pollInterval = 3000; // 3 seconds between polls (more stable for slow banks like C6)
+    const pollInterval = FAST_POLL_INTERVAL;
     const readyStatuses = ['UPDATED', 'LOGIN_ERROR', 'OUTDATED'];
-    // executionStatus values that indicate sync is still in progress
     const inProgressExecutionStatuses = [
-        'COLLECTING_ACCOUNTS',
-        'COLLECTING_CREDIT_CARDS',
-        'COLLECTING_TRANSACTIONS',
-        'COLLECTING_IDENTITY',
-        'COLLECTING_INVESTMENTS',
-        'CREATING',
-        'CREATED',
-        'ANALYZING',
-        'MERGING'
+        'COLLECTING_ACCOUNTS', 'COLLECTING_CREDIT_CARDS', 'COLLECTING_TRANSACTIONS',
+        'COLLECTING_IDENTITY', 'COLLECTING_INVESTMENTS', 'CREATING', 'CREATED', 'ANALYZING', 'MERGING'
     ];
-
-    console.log(`[Sync] Waiting for item ${itemId} to be ready. Old lastUpdatedAt: ${oldLastUpdatedAt}, maxWait: ${maxWaitMs}ms`);
 
     let lastLoggedExecutionStatus = null;
 
@@ -847,67 +762,44 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 50000, oldLastUpdate
             const elapsed = Math.round((Date.now() - startTime) / 1000);
             const connectorName = item.connector?.name || 'unknown';
 
-            // Log detailed status (but only when execution status changes to reduce noise)
+            // Log only when status changes (reduce noise)
             if (item.executionStatus !== lastLoggedExecutionStatus) {
-                console.log(`[Sync] Item ${itemId} (${connectorName}) poll (${elapsed}s):`, {
-                    status: item.status,
-                    executionStatus: item.executionStatus,
-                    lastUpdatedAt: item.lastUpdatedAt,
-                    connector: connectorName,
-                    statusDetail: item.statusDetail || null
-                });
+                console.log(`[POLL] ${itemId}: ${item.status}/${item.executionStatus}`);
                 lastLoggedExecutionStatus = item.executionStatus;
             }
 
-            // Check for terminal error states first
+            // Error states
             if (item.status === 'LOGIN_ERROR' || item.status === 'WAITING_USER_INPUT') {
-                console.log(`[Sync] ❌ Item ${itemId} (${connectorName}) has error state: ${item.status}`);
                 return { ready: false, status: item.status, error: 'Login failed or needs user input', item };
             }
 
-            // CRITICAL FIX: Check executionStatus FIRST
-            // Some banks (like C6) may return status=UPDATING but executionStatus still in progress
+            // Still syncing?
             if (item.status === 'UPDATING' || inProgressExecutionStatuses.includes(item.executionStatus)) {
-                // Still syncing - continue waiting
-                console.log(`[Sync] ⏳ Item ${itemId} (${connectorName}) still syncing: status=${item.status}, executionStatus=${item.executionStatus}`);
                 await new Promise(resolve => setTimeout(resolve, pollInterval));
                 continue;
             }
 
             // Check if status is ready
             if (readyStatuses.includes(item.status)) {
-                // Extra check: ensure executionStatus is also in a terminal state
+                // Ensure executionStatus is terminal
                 const terminalExecutionStatuses = ['SUCCESS', 'PARTIAL_SUCCESS', 'ERROR', null, undefined];
                 if (!terminalExecutionStatuses.includes(item.executionStatus) && item.executionStatus) {
-                    console.log(`[Sync] ⏳ Item ${itemId} (${connectorName}) status is ${item.status} but executionStatus is still ${item.executionStatus}. Waiting...`);
                     await new Promise(resolve => setTimeout(resolve, pollInterval));
                     continue;
                 }
 
-                // If we have an old timestamp, verify it actually changed
+                // Verify timestamp changed
                 if (oldLastUpdatedAt && item.lastUpdatedAt === oldLastUpdatedAt) {
-                    // Same timestamp - Pluggy might not have actually fetched new data
-                    // Keep waiting a bit more (up to max time)
-                    console.log(`[Sync] Status is ${item.status} but lastUpdatedAt hasn't changed yet. Waiting...`);
                     await new Promise(resolve => setTimeout(resolve, pollInterval));
                     continue;
                 }
 
-                // Either we don't have old timestamp, or it changed - we're good!
-                console.log(`[Sync] ✅ Item ${itemId} (${connectorName}) is ready!`, {
-                    status: item.status,
-                    executionStatus: item.executionStatus,
-                    timestampChanged: item.lastUpdatedAt !== oldLastUpdatedAt,
-                    newLastUpdatedAt: item.lastUpdatedAt
-                });
+                // Ready!
                 return { ready: true, status: item.status, item };
             }
 
-            // Still updating, wait and poll again
             await new Promise(resolve => setTimeout(resolve, pollInterval));
         } catch (err) {
-            console.error(`[Sync] Error polling item status:`, err.message);
-            // If we can't check status, try to proceed anyway
             return { ready: true, status: 'UNKNOWN', item: null };
         }
     }
@@ -921,29 +813,20 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 50000, oldLastUpdate
         const finalItem = finalResp.data;
         const connectorName = finalItem.connector?.name || 'unknown';
 
-        console.log(`[Sync] ⏰ Timeout waiting for item ${itemId} (${connectorName}). Final state:`, {
-            status: finalItem.status,
-            executionStatus: finalItem.executionStatus,
-            lastUpdatedAt: finalItem.lastUpdatedAt,
-            oldLastUpdatedAt,
-            changed: finalItem.lastUpdatedAt !== oldLastUpdatedAt
-        });
+        console.log(`[SYNC] Timeout for ${itemId}: status=${finalItem.status}`);
 
         // If item is still UPDATING after timeout, it's a problem
         if (finalItem.status === 'UPDATING') {
-            console.log(`[Sync] ⚠️ Item ${itemId} (${connectorName}) is STILL UPDATING after ${maxWaitMs / 1000}s! Bank may be slow or experiencing issues.`);
             return {
                 ready: true,
                 status: 'SLOW_BANK',
                 item: finalItem,
-                warning: `${connectorName} is taking too long to sync. Data may be incomplete.`
+                warning: `${connectorName} is taking too long to sync.`
             };
         }
 
-        // If timestamp never changed after timeout, something is wrong
         if (oldLastUpdatedAt && finalItem.lastUpdatedAt === oldLastUpdatedAt && finalItem.status === 'UPDATED') {
-            console.log(`[Sync] ⚠️ Item ${itemId} (${connectorName}) lastUpdatedAt never changed! The bank might not have returned new data.`);
-            return { ready: true, status: 'STALE', item: finalItem, warning: 'Timestamp did not change - bank may not have returned new data' };
+            return { ready: true, status: 'STALE', item: finalItem, warning: 'Data may be stale' };
         }
 
         return { ready: true, status: finalItem.status || 'TIMEOUT', item: finalItem };
@@ -954,6 +837,7 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 50000, oldLastUpdate
 };
 
 // Helper: Fetch ALL transactions with pagination (Pluggy limits 500 per page)
+// OPTIMIZED: Reduced logging
 const fetchAllTransactions = async (apiKey, accountId, fromDate) => {
     const allTransactions = [];
     let page = 1;
@@ -961,34 +845,24 @@ const fetchAllTransactions = async (apiKey, accountId, fromDate) => {
 
     while (true) {
         try {
-            const url = `/transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`;
-            console.log(`[Sync] Fetching: ${url}`);
-
-            const response = await pluggyApi.get(url, { headers: { 'X-API-KEY': apiKey } });
+            const response = await pluggyApi.get(
+                `/transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`,
+                { headers: { 'X-API-KEY': apiKey } }
+            );
 
             const results = response.data.results || [];
             allTransactions.push(...results);
 
-            console.log(`[Sync] Account ${accountId} page ${page}: ${results.length} transactions`);
-
-            // Log detalhado se não houver transações
-            if (page === 1 && results.length === 0) {
-                console.log(`[Sync] ⚠️ AVISO: Conta ${accountId} retornou 0 transações.`);
-                console.log(`[Sync] URL chamada: /transactions?accountId=${accountId}&from=${fromDate}&pageSize=${pageSize}&page=${page}`);
-                console.log(`[Sync] Response data:`, JSON.stringify(response.data, null, 2));
+            // Only log on first page or if pagination occurs
+            if (page === 1) {
+                console.log(`[TX] ${accountId}: ${results.length} tx (page 1)`);
             }
 
-            // If returned less than pageSize, no more pages
             if (results.length < pageSize) break;
-
             page++;
-            // Safety limit: max 20 pages = 10,000 transactions
-            if (page > 20) {
-                console.log(`[Sync] Account ${accountId}: reached page limit (20)`);
-                break;
-            }
+            if (page > 20) break; // Safety limit
         } catch (err) {
-            console.error(`[Sync] Error fetching transactions page ${page}:`, err.message);
+            console.error(`[TX] Error: ${accountId} page ${page}`);
             break;
         }
     }
@@ -1029,10 +903,9 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
     }).catch(() => { }); // Silent fail for credits
 
     try {
-        // STEP 0: Wait for Pluggy item to be ready
-        console.log(`[Sync] Waiting for item ${itemId} to be ready...`);
+        // Wait for Pluggy item
         const itemStatus = await waitForItemReady(apiKey, itemId);
-        console.log(`[Sync] Item ready check: ${itemStatus.status}`);
+        console.log(`[SYNC] item=${itemId} status=${itemStatus.status}`);
 
         if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
             return res.json({
@@ -1042,22 +915,19 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             });
         }
 
-        // STEP 1: Fetch accounts
-        console.log(`[Sync] Fetching accounts...`);
+        console.log(`[SYNC] Fetching accounts...`);
         const [accountsResp, existingSnap] = await Promise.all([
             pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
             accountsRef.get()
         ]);
 
         const accounts = accountsResp.data.results || [];
-        console.log(`[Sync] Found ${accounts.length} accounts`);
+        console.log(`[SYNC] ${accounts.length} accounts`);
 
-        // If no accounts found, return early but mark as success
         if (accounts.length === 0) {
-            console.log('[Sync] No accounts found - item may still be updating');
             return res.json({
                 success: true,
-                message: '0 contas encontradas. O banco pode estar processando ainda.',
+                message: '0 contas encontradas.',
                 accountsFound: 0,
                 transactionsFound: 0
             });
@@ -1094,14 +964,6 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
             } : {};
 
-            console.log(`[Sync] Account ${acc.id} (${acc.name}):`, {
-                isCredit,
-                rawClosingDay,
-                validClosingDay,
-                rawDueDay,
-                validDueDay
-            });
-
             accBatch.set(accountsRef.doc(acc.id), {
                 ...acc,
                 ...creditFields,
@@ -1114,9 +976,8 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             }, { merge: true });
         }
         await accBatch.commit();
-        console.log(`[Sync] Accounts saved`);
 
-        // STEP 3: Fetch transactions IN PARALLEL with PAGINATION (INCREMENTAL - only new transactions)
+        // Fetch transactions
         // For each account, use lastSyncedAt as "from" date to avoid re-fetching old transactions
         const defaultFromDate = new Date();
         defaultFromDate.setFullYear(defaultFromDate.getFullYear() - 1); // 12 meses para contas novas
@@ -1127,15 +988,10 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             const existing = existingMap[account.id];
             let fromStr = defaultFromStr;
 
-            // If account was synced before, only fetch transactions since last sync
             if (existing?.lastSyncedAt) {
                 const lastSync = new Date(existing.lastSyncedAt);
-                // Subtract 1 day as safety margin for timezone/timing issues
                 lastSync.setDate(lastSync.getDate() - 1);
                 fromStr = lastSync.toISOString().split('T')[0];
-                console.log(`[Sync] Account ${account.id}: fetching from ${fromStr} (last sync: ${existing.lastSyncedAt})`);
-            } else {
-                console.log(`[Sync] Account ${account.id}: first sync, fetching from ${fromStr} (12 meses)`);
             }
 
             // Use pagination to fetch ALL transactions
