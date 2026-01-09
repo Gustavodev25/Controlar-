@@ -349,13 +349,16 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             // CRITICAL: Wait for Pluggy to finish fetching data from bank
             // Pass the old lastUpdatedAt so we can verify a NEW sync happened
+            // Use 90s timeout for slower banks like C6
             await updateProgress(10, 'Aguardando dados do banco...');
-            const itemStatus = await waitForItemReady(apiKey, itemId, 60000, itemBeforeSync?.lastUpdatedAt);
+            const itemStatus = await waitForItemReady(apiKey, itemId, 90000, itemBeforeSync?.lastUpdatedAt);
             console.log(`[Trigger-Sync] Item ready check:`, {
                 status: itemStatus.status,
+                executionStatus: itemStatus.item?.executionStatus,
                 lastUpdatedAtBefore: itemBeforeSync?.lastUpdatedAt,
                 lastUpdatedAtAfter: itemStatus.item?.lastUpdatedAt,
-                didUpdate: itemStatus.item?.lastUpdatedAt !== itemBeforeSync?.lastUpdatedAt
+                didUpdate: itemStatus.item?.lastUpdatedAt !== itemBeforeSync?.lastUpdatedAt,
+                connector: itemStatus.item?.connector?.name
             });
 
             if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
@@ -374,6 +377,15 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     needsReconnect: true
                 });
                 return;
+            }
+
+            // Handle SLOW_BANK status - bank is still syncing after timeout
+            if (itemStatus.status === 'SLOW_BANK') {
+                console.log(`[Trigger-Sync] ⚠️ SLOW_BANK: ${itemStatus.item?.connector?.name || 'O banco'} está demorando para sincronizar.`);
+                await jobDoc.update({
+                    warning: `${itemStatus.item?.connector?.name || 'O banco'} está demorando para sincronizar. Tente novamente em alguns minutos.`
+                });
+                // Continue anyway - try to fetch whatever data is available
             }
 
             // Handle STALE status - Pluggy didn't actually fetch new data
@@ -473,50 +485,66 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
             const oneWeekAgoStr = oneWeekAgo.toISOString().split('T')[0];
 
+            // NEW: For slow banks like C6, fetch at least 30 days to ensure we don't miss transactions
+            const thirtyDaysAgo = new Date();
+            thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+            const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+            // Determine if we need to force extended fetch (slow/problematic banks)
+            const forceExtendedFetch = ['STALE', 'SLOW_BANK', 'TIMEOUT'].includes(itemStatus.status);
+            if (forceExtendedFetch) {
+                console.log(`[Trigger-Sync] ⚠️ Forcing extended fetch (30 days) due to status: ${itemStatus.status}`);
+            }
+
             const txPromises = accounts.map(async account => {
                 const existing = existingMap[account.id];
                 let fromStr = defaultFromStr;
                 let syncMode = 'first';
+                const connectorName = account.connector?.name || itemStatus.item?.connector?.name || 'unknown';
 
-                // If account was synced before, only fetch transactions since last sync
-                if (existing?.lastSyncedAt) {
+                // If we detected a problematic sync, force at least 30 days to be safe
+                if (forceExtendedFetch) {
+                    fromStr = thirtyDaysAgoStr;
+                    syncMode = 'force-extended';
+                    console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync problemático detectado, buscando desde ${fromStr} (30 dias)`);
+                } else if (existing?.lastSyncedAt) {
+                    // If account was synced before, only fetch transactions since last sync
                     const lastSync = new Date(existing.lastSyncedAt);
                     const hoursSinceLastSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
 
-                    // If last sync was very recent (< 6 hours), fetch at least 7 days
+                    // If last sync was very recent (<6 hours), fetch at least 7 days
                     // This helps catch transactions that might have been delayed
                     if (hoursSinceLastSync < 6) {
                         fromStr = oneWeekAgoStr;
                         syncMode = 'incremental-extended';
-                        console.log(`[Sync] Conta ${account.id} (${account.name}): sync recente (${hoursSinceLastSync.toFixed(1)}h atrás), buscando desde ${fromStr} (7 dias)`);
+                        console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync recente (${hoursSinceLastSync.toFixed(1)}h atrás), buscando desde ${fromStr} (7 dias)`);
                     } else {
                         // Subtract 1 day as safety margin for timezone/timing issues
                         lastSync.setDate(lastSync.getDate() - 1);
                         fromStr = lastSync.toISOString().split('T')[0];
                         syncMode = 'incremental';
-                        console.log(`[Sync] Conta ${account.id} (${account.name}): sync incremental desde ${fromStr}`);
+                        console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: sync incremental desde ${fromStr}`);
                     }
                 } else {
-                    console.log(`[Sync] Conta ${account.id} (${account.name}): primeiro sync, buscando desde ${fromStr} (12 meses)`);
+                    console.log(`[Sync] Conta ${account.id} (${account.name}) [${connectorName}]: primeiro sync, buscando desde ${fromStr} (12 meses)`);
                 }
 
                 // Use pagination to fetch ALL transactions
                 const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
-                return { account, transactions, fromDate: fromStr, syncMode };
+                return { account, transactions, fromDate: fromStr, syncMode, connectorName };
             });
 
             const allTxResults = await Promise.all(txPromises);
 
             // Log incremental fetch results
             let totalNewTx = 0;
-            allTxResults.forEach(({ account, transactions, fromDate, syncMode }) => {
+            allTxResults.forEach(({ account, transactions, fromDate, syncMode, connectorName }) => {
                 totalNewTx += transactions.length;
-                console.log(`[Trigger-Sync] Account ${account.id} (${account.name}):`, {
+                console.log(`[Trigger-Sync] Account ${account.id} (${account.name}) [${connectorName}]:`, {
                     syncMode,
                     fromDate,
                     transactionsFound: transactions.length,
-                    accountType: account.type,
-                    connector: account.connector?.name || 'unknown'
+                    accountType: account.type
                 });
             });
 
@@ -787,12 +815,27 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
 // Helper: Wait for Pluggy item to be ready (UPDATED or LOGIN_ERROR)
 // Now also verifies that lastUpdatedAt changed (to ensure a real sync happened)
-const waitForItemReady = async (apiKey, itemId, maxWaitMs = 60000, oldLastUpdatedAt = null) => {
+// UPDATED: Better handling for C6 Bank and other banks with slower sync
+const waitForItemReady = async (apiKey, itemId, maxWaitMs = 90000, oldLastUpdatedAt = null) => {
     const startTime = Date.now();
-    const pollInterval = 2500; // 2.5 seconds between polls (slightly longer for stability)
+    const pollInterval = 3000; // 3 seconds between polls (more stable for slow banks like C6)
     const readyStatuses = ['UPDATED', 'LOGIN_ERROR', 'OUTDATED'];
+    // executionStatus values that indicate sync is still in progress
+    const inProgressExecutionStatuses = [
+        'COLLECTING_ACCOUNTS',
+        'COLLECTING_CREDIT_CARDS',
+        'COLLECTING_TRANSACTIONS',
+        'COLLECTING_IDENTITY',
+        'COLLECTING_INVESTMENTS',
+        'CREATING',
+        'CREATED',
+        'ANALYZING',
+        'MERGING'
+    ];
 
-    console.log(`[Sync] Waiting for item ${itemId} to be ready. Old lastUpdatedAt: ${oldLastUpdatedAt}`);
+    console.log(`[Sync] Waiting for item ${itemId} to be ready. Old lastUpdatedAt: ${oldLastUpdatedAt}, maxWait: ${maxWaitMs}ms`);
+
+    let lastLoggedExecutionStatus = null;
 
     while (Date.now() - startTime < maxWaitMs) {
         try {
@@ -802,21 +845,45 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 60000, oldLastUpdate
 
             const item = response.data;
             const elapsed = Math.round((Date.now() - startTime) / 1000);
+            const connectorName = item.connector?.name || 'unknown';
 
-            console.log(`[Sync] Item ${itemId} poll (${elapsed}s):`, {
-                status: item.status,
-                executionStatus: item.executionStatus,
-                lastUpdatedAt: item.lastUpdatedAt,
-                connector: item.connector?.name
-            });
+            // Log detailed status (but only when execution status changes to reduce noise)
+            if (item.executionStatus !== lastLoggedExecutionStatus) {
+                console.log(`[Sync] Item ${itemId} (${connectorName}) poll (${elapsed}s):`, {
+                    status: item.status,
+                    executionStatus: item.executionStatus,
+                    lastUpdatedAt: item.lastUpdatedAt,
+                    connector: connectorName,
+                    statusDetail: item.statusDetail || null
+                });
+                lastLoggedExecutionStatus = item.executionStatus;
+            }
 
             // Check for terminal error states first
             if (item.status === 'LOGIN_ERROR' || item.status === 'WAITING_USER_INPUT') {
+                console.log(`[Sync] ❌ Item ${itemId} (${connectorName}) has error state: ${item.status}`);
                 return { ready: false, status: item.status, error: 'Login failed or needs user input', item };
+            }
+
+            // CRITICAL FIX: Check executionStatus FIRST
+            // Some banks (like C6) may return status=UPDATING but executionStatus still in progress
+            if (item.status === 'UPDATING' || inProgressExecutionStatuses.includes(item.executionStatus)) {
+                // Still syncing - continue waiting
+                console.log(`[Sync] ⏳ Item ${itemId} (${connectorName}) still syncing: status=${item.status}, executionStatus=${item.executionStatus}`);
+                await new Promise(resolve => setTimeout(resolve, pollInterval));
+                continue;
             }
 
             // Check if status is ready
             if (readyStatuses.includes(item.status)) {
+                // Extra check: ensure executionStatus is also in a terminal state
+                const terminalExecutionStatuses = ['SUCCESS', 'PARTIAL_SUCCESS', 'ERROR', null, undefined];
+                if (!terminalExecutionStatuses.includes(item.executionStatus) && item.executionStatus) {
+                    console.log(`[Sync] ⏳ Item ${itemId} (${connectorName}) status is ${item.status} but executionStatus is still ${item.executionStatus}. Waiting...`);
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    continue;
+                }
+
                 // If we have an old timestamp, verify it actually changed
                 if (oldLastUpdatedAt && item.lastUpdatedAt === oldLastUpdatedAt) {
                     // Same timestamp - Pluggy might not have actually fetched new data
@@ -827,9 +894,11 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 60000, oldLastUpdate
                 }
 
                 // Either we don't have old timestamp, or it changed - we're good!
-                console.log(`[Sync] Item ${itemId} is ready!`, {
+                console.log(`[Sync] ✅ Item ${itemId} (${connectorName}) is ready!`, {
                     status: item.status,
-                    timestampChanged: item.lastUpdatedAt !== oldLastUpdatedAt
+                    executionStatus: item.executionStatus,
+                    timestampChanged: item.lastUpdatedAt !== oldLastUpdatedAt,
+                    newLastUpdatedAt: item.lastUpdatedAt
                 });
                 return { ready: true, status: item.status, item };
             }
@@ -850,17 +919,30 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 60000, oldLastUpdate
             headers: { 'X-API-KEY': apiKey }
         });
         const finalItem = finalResp.data;
+        const connectorName = finalItem.connector?.name || 'unknown';
 
-        console.log(`[Sync] Timeout waiting for item ${itemId}. Final state:`, {
+        console.log(`[Sync] ⏰ Timeout waiting for item ${itemId} (${connectorName}). Final state:`, {
             status: finalItem.status,
+            executionStatus: finalItem.executionStatus,
             lastUpdatedAt: finalItem.lastUpdatedAt,
             oldLastUpdatedAt,
             changed: finalItem.lastUpdatedAt !== oldLastUpdatedAt
         });
 
-        // If timestamp never changed after 60s, something is wrong
+        // If item is still UPDATING after timeout, it's a problem
+        if (finalItem.status === 'UPDATING') {
+            console.log(`[Sync] ⚠️ Item ${itemId} (${connectorName}) is STILL UPDATING after ${maxWaitMs / 1000}s! Bank may be slow or experiencing issues.`);
+            return {
+                ready: true,
+                status: 'SLOW_BANK',
+                item: finalItem,
+                warning: `${connectorName} is taking too long to sync. Data may be incomplete.`
+            };
+        }
+
+        // If timestamp never changed after timeout, something is wrong
         if (oldLastUpdatedAt && finalItem.lastUpdatedAt === oldLastUpdatedAt && finalItem.status === 'UPDATED') {
-            console.log(`[Sync] ⚠️ Item ${itemId} lastUpdatedAt never changed! The bank might not have returned new data.`);
+            console.log(`[Sync] ⚠️ Item ${itemId} (${connectorName}) lastUpdatedAt never changed! The bank might not have returned new data.`);
             return { ready: true, status: 'STALE', item: finalItem, warning: 'Timestamp did not change - bank may not have returned new data' };
         }
 
