@@ -888,16 +888,33 @@ router.post('/asaas/subscription', async (req, res) => {
         nextDate.setMonth(nextDate.getMonth() + 1);
       }
 
+      const billingCycleFormatted = cycle === 'YEARLY' ? 'annual' : 'monthly';
+      const nextBillingDateFormatted = nextDate.toISOString().split('T')[0];
+      const updatedAtFormatted = now.toISOString();
+      const subscriptionIdValue = subId || paymentId;
+      const couponValue = couponId || null;
+
+      // Update BOTH subscription.* (root) AND profile.subscription.* for consistency
+      // The frontend merges both, so we must update both to prevent stale data
       await db.collection('users').doc(uid).update({
         'subscription.plan': plan,
         'subscription.status': status,
-        'subscription.billingCycle': cycle === 'YEARLY' ? 'annual' : 'monthly',
-        'subscription.nextBillingDate': nextDate.toISOString().split('T')[0],
+        'subscription.billingCycle': billingCycleFormatted,
+        'subscription.nextBillingDate': nextBillingDateFormatted,
         'subscription.paymentMethod': 'CREDIT_CARD',
         'subscription.asaasCustomerId': customerId,
-        'subscription.asaasSubscriptionId': subId || paymentId, // Can be payment ID for annual installments
-        'subscription.couponUsed': couponId || null,
-        'subscription.updatedAt': now.toISOString()
+        'subscription.asaasSubscriptionId': subscriptionIdValue,
+        'subscription.couponUsed': couponValue,
+        'subscription.updatedAt': updatedAtFormatted,
+        'profile.subscription.plan': plan,
+        'profile.subscription.status': status,
+        'profile.subscription.billingCycle': billingCycleFormatted,
+        'profile.subscription.nextBillingDate': nextBillingDateFormatted,
+        'profile.subscription.paymentMethod': 'CREDIT_CARD',
+        'profile.subscription.asaasCustomerId': customerId,
+        'profile.subscription.asaasSubscriptionId': subscriptionIdValue,
+        'profile.subscription.couponUsed': couponValue,
+        'profile.subscription.updatedAt': updatedAtFormatted
       });
       console.log(`>>> [SERVER] User ${uid} plan ACTIVATED: ${plan} (${cycle})`);
     } catch (e) {
@@ -1310,12 +1327,19 @@ router.post('/asaas/webhook', async (req, res) => {
       }
 
       const batch = db.batch();
+      const now = new Date().toISOString();
       snapshot.forEach(doc => {
+        // Update BOTH subscription.* (root) AND profile.subscription.* for consistency
+        // The frontend merges both, so we must update both to prevent stale data
         batch.update(doc.ref, {
           'subscription.plan': 'starter',
           'subscription.status': newStatus,
           'subscription.autoRenew': false,
-          'subscription.updatedAt': new Date().toISOString()
+          'subscription.updatedAt': now,
+          'profile.subscription.plan': 'starter',
+          'profile.subscription.status': newStatus,
+          'profile.subscription.autoRenew': false,
+          'profile.subscription.updatedAt': now
         });
         console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);
       });
@@ -1342,12 +1366,19 @@ router.post('/asaas/webhook', async (req, res) => {
       }
 
       const batch = db.batch();
+      const now = new Date().toISOString();
       snapshot.forEach(doc => {
+        // Update BOTH subscription.* (root) AND profile.subscription.* for consistency
+        // The frontend merges both, so we must update both to prevent stale data
         batch.update(doc.ref, {
           'subscription.plan': 'starter',
           'subscription.status': newStatus,
           'subscription.autoRenew': false,
-          'subscription.updatedAt': new Date().toISOString()
+          'subscription.updatedAt': now,
+          'profile.subscription.plan': 'starter',
+          'profile.subscription.status': newStatus,
+          'profile.subscription.autoRenew': false,
+          'profile.subscription.updatedAt': now
         });
         console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);
       });
@@ -1529,13 +1560,24 @@ router.post('/admin/revoke-plan', async (req, res) => {
     const userData = userDoc.data();
     const previousPlan = userData.subscription?.plan || 'starter';
 
+    const now = new Date().toISOString();
+    const newStatus = reason === 'refund' ? 'refunded' : 'canceled';
+
+    // Update BOTH subscription.* (root) AND profile.subscription.* for consistency
+    // The frontend merges both, so we must update both to prevent stale data on reload
     await userRef.update({
       'subscription.plan': 'starter',
-      'subscription.status': reason === 'refund' ? 'refunded' : 'canceled',
+      'subscription.status': newStatus,
       'subscription.autoRenew': false,
-      'subscription.updatedAt': new Date().toISOString(),
-      'subscription.revokedAt': new Date().toISOString(),
-      'subscription.revokedReason': reason || 'admin_action'
+      'subscription.updatedAt': now,
+      'subscription.revokedAt': now,
+      'subscription.revokedReason': reason || 'admin_action',
+      'profile.subscription.plan': 'starter',
+      'profile.subscription.status': newStatus,
+      'profile.subscription.autoRenew': false,
+      'profile.subscription.updatedAt': now,
+      'profile.subscription.revokedAt': now,
+      'profile.subscription.revokedReason': reason || 'admin_action'
     });
 
     console.log(`>>> [ADMIN] Plan revoked for user ${userId}. Previous: ${previousPlan}, Reason: ${reason}`);
@@ -1583,13 +1625,23 @@ router.post('/admin/revoke-plan-by-customer', async (req, res) => {
         previousPlan: userData.subscription?.plan || 'starter'
       });
 
+      const now = new Date().toISOString();
+      const newStatus = reason === 'refund' ? 'refunded' : 'canceled';
+
+      // Update BOTH subscription.* (root) AND profile.subscription.* for consistency
       batch.update(doc.ref, {
         'subscription.plan': 'starter',
-        'subscription.status': reason === 'refund' ? 'refunded' : 'canceled',
+        'subscription.status': newStatus,
         'subscription.autoRenew': false,
-        'subscription.updatedAt': new Date().toISOString(),
-        'subscription.revokedAt': new Date().toISOString(),
-        'subscription.revokedReason': reason || 'admin_action'
+        'subscription.updatedAt': now,
+        'subscription.revokedAt': now,
+        'subscription.revokedReason': reason || 'admin_action',
+        'profile.subscription.plan': 'starter',
+        'profile.subscription.status': newStatus,
+        'profile.subscription.autoRenew': false,
+        'profile.subscription.updatedAt': now,
+        'profile.subscription.revokedAt': now,
+        'profile.subscription.revokedReason': reason || 'admin_action'
       });
     });
 
