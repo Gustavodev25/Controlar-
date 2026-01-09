@@ -83,9 +83,9 @@ const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
     const nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
 
     // Calcular datas de INÍCIO de cada período (dia após fechamento anterior)
-    const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24*60*60*1000);
-    const currentInvoiceStart = new Date(lastClosingDate.getTime() + 24*60*60*1000);
-    const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24*60*60*1000);
+    const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000);
+    const currentInvoiceStart = new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000);
+    const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24 * 60 * 60 * 1000);
 
     // Calcular datas de VENCIMENTO
     const safeDueDay = dueDay || closingDay + 10; // Default: 10 dias após fechamento
@@ -312,25 +312,51 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             // Trigger Pluggy refresh
             await updateProgress(5, 'Atualizando conexão...');
 
+            // STEP 0: Capture item state BEFORE triggering sync
+            let itemBeforeSync = null;
+            try {
+                const beforeResp = await pluggyApi.get(`/items/${itemId}`, {
+                    headers: { 'X-API-KEY': apiKey }
+                });
+                itemBeforeSync = beforeResp.data;
+                console.log(`[Trigger-Sync] Item ANTES do PATCH:`, {
+                    id: itemBeforeSync.id,
+                    status: itemBeforeSync.status,
+                    lastUpdatedAt: itemBeforeSync.lastUpdatedAt,
+                    executionStatus: itemBeforeSync.executionStatus,
+                    connector: itemBeforeSync.connector?.name || 'unknown'
+                });
+            } catch (err) {
+                console.log('[Trigger-Sync] Could not fetch item before sync:', err.message);
+            }
+
             try {
                 // Body vazio força sincronização real com o banco (não apenas atualiza webhook)
                 // Ref: https://docs.pluggy.ai/reference/items-update
-                await pluggyApi.patch(`/items/${itemId}`, {}, {
+                console.log(`[Trigger-Sync] Enviando PATCH para /items/${itemId}...`);
+                const patchResp = await pluggyApi.patch(`/items/${itemId}`, {}, {
                     headers: { 'X-API-KEY': apiKey }
                 });
+                console.log(`[Trigger-Sync] PATCH response status:`, patchResp.status, patchResp.data?.status);
             } catch (err) {
                 if (err.response?.status === 404) {
                     await jobDoc.update({ status: 'failed', error: 'Item not found', needsReconnect: true });
                     return;
                 }
                 // Other errors - continue anyway, item might still be valid
-                console.log('[Trigger-Sync] Patch warning:', err.message);
+                console.log('[Trigger-Sync] Patch warning:', err.message, err.response?.data);
             }
 
             // CRITICAL: Wait for Pluggy to finish fetching data from bank
+            // Pass the old lastUpdatedAt so we can verify a NEW sync happened
             await updateProgress(10, 'Aguardando dados do banco...');
-            const itemStatus = await waitForItemReady(apiKey, itemId, 45000);
-            console.log(`[Trigger-Sync] Item ready check: ${itemStatus.status}`);
+            const itemStatus = await waitForItemReady(apiKey, itemId, 60000, itemBeforeSync?.lastUpdatedAt);
+            console.log(`[Trigger-Sync] Item ready check:`, {
+                status: itemStatus.status,
+                lastUpdatedAtBefore: itemBeforeSync?.lastUpdatedAt,
+                lastUpdatedAtAfter: itemStatus.item?.lastUpdatedAt,
+                didUpdate: itemStatus.item?.lastUpdatedAt !== itemBeforeSync?.lastUpdatedAt
+            });
 
             if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
                 await jobDoc.update({
@@ -348,6 +374,21 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     needsReconnect: true
                 });
                 return;
+            }
+
+            // Handle STALE status - Pluggy didn't actually fetch new data
+            if (itemStatus.status === 'STALE') {
+                console.log(`[Trigger-Sync] ⚠️ STALE: O banco ${itemStatus.item?.connector?.name || 'desconhecido'} não retornou dados novos.`);
+                // Continue anyway - we'll still fetch whatever data is available
+                // But add a warning to the job
+                await jobDoc.update({
+                    warning: 'Banco pode não ter retornado dados novos. Se transações recentes não aparecerem, tente reconectar.'
+                });
+            }
+
+            // Handle OUTDATED status - connection might need refresh
+            if (itemStatus.status === 'OUTDATED') {
+                console.log(`[Trigger-Sync] ⚠️ OUTDATED: Conexão com ${itemStatus.item?.connector?.name || 'o banco'} pode precisar ser renovada.`);
             }
 
             await updateProgress(20, 'Buscando contas...');
@@ -427,36 +468,61 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             defaultFromDate.setFullYear(defaultFromDate.getFullYear() - 1); // 12 meses para contas novas
             const defaultFromStr = defaultFromDate.toISOString().split('T')[0];
 
+            // Alternative: Buscar última semana para contas com syncs muito recentes
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            const oneWeekAgoStr = oneWeekAgo.toISOString().split('T')[0];
+
             const txPromises = accounts.map(async account => {
                 const existing = existingMap[account.id];
                 let fromStr = defaultFromStr;
+                let syncMode = 'first';
 
                 // If account was synced before, only fetch transactions since last sync
                 if (existing?.lastSyncedAt) {
                     const lastSync = new Date(existing.lastSyncedAt);
-                    // Subtract 1 day as safety margin for timezone/timing issues
-                    lastSync.setDate(lastSync.getDate() - 1);
-                    fromStr = lastSync.toISOString().split('T')[0];
-                    console.log(`[Sync] Conta ${account.id} (${account.name}): sync incremental desde ${fromStr}`);
+                    const hoursSinceLastSync = (Date.now() - lastSync.getTime()) / (1000 * 60 * 60);
+
+                    // If last sync was very recent (< 6 hours), fetch at least 7 days
+                    // This helps catch transactions that might have been delayed
+                    if (hoursSinceLastSync < 6) {
+                        fromStr = oneWeekAgoStr;
+                        syncMode = 'incremental-extended';
+                        console.log(`[Sync] Conta ${account.id} (${account.name}): sync recente (${hoursSinceLastSync.toFixed(1)}h atrás), buscando desde ${fromStr} (7 dias)`);
+                    } else {
+                        // Subtract 1 day as safety margin for timezone/timing issues
+                        lastSync.setDate(lastSync.getDate() - 1);
+                        fromStr = lastSync.toISOString().split('T')[0];
+                        syncMode = 'incremental';
+                        console.log(`[Sync] Conta ${account.id} (${account.name}): sync incremental desde ${fromStr}`);
+                    }
                 } else {
                     console.log(`[Sync] Conta ${account.id} (${account.name}): primeiro sync, buscando desde ${fromStr} (12 meses)`);
                 }
 
                 // Use pagination to fetch ALL transactions
                 const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
-                return { account, transactions, fromDate: fromStr };
+                return { account, transactions, fromDate: fromStr, syncMode };
             });
 
             const allTxResults = await Promise.all(txPromises);
 
             // Log incremental fetch results
             let totalNewTx = 0;
-            allTxResults.forEach(({ account, transactions, fromDate }) => {
+            allTxResults.forEach(({ account, transactions, fromDate, syncMode }) => {
                 totalNewTx += transactions.length;
-                if (transactions.length > 0) {
-                    console.log(`[Trigger-Sync] Account ${account.id}: ${transactions.length} transactions since ${fromDate}`);
-                }
+                console.log(`[Trigger-Sync] Account ${account.id} (${account.name}):`, {
+                    syncMode,
+                    fromDate,
+                    transactionsFound: transactions.length,
+                    accountType: account.type,
+                    connector: account.connector?.name || 'unknown'
+                });
             });
+
+            if (totalNewTx === 0) {
+                console.log(`[Trigger-Sync] ⚠️ Nenhuma transação nova encontrada! Verifique se o banco retornou dados.`);
+            }
             console.log(`[Trigger-Sync] Total new transactions to save: ${totalNewTx}`);
 
             await updateProgress(50, `Salvando ${totalNewTx} transações...`);
@@ -614,7 +680,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             dueDate: current.dueDate,
                             closeDate: current.closeDate || null,
                             // Datas de período calculadas
-                            periodStart: new Date(lastClosingDate.getTime() + 24*60*60*1000).toISOString(), // dia após último fechamento
+                            periodStart: new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(), // dia após último fechamento
                             periodEnd: nextClosingDate.toISOString(), // próximo fechamento
                             status: current.status || 'OPEN',
                             // Valores
@@ -645,7 +711,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                                 id: previous.id,
                                 dueDate: previous.dueDate,
                                 closeDate: previous.closeDate || null,
-                                periodStart: new Date(beforeLastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                                periodStart: new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                                 periodEnd: lastClosingDate.toISOString(),
                                 status: previous.status || 'CLOSED',
                                 totalAmount: previous.totalAmount || null,
@@ -691,11 +757,21 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             await Promise.all(billUpdatePromises);
 
             const duration = Date.now() - startTime;
+
+            // Prepare message based on results
+            let finalMessage;
+            if (txCount === 0) {
+                finalMessage = `Sincronizado em ${(duration / 1000).toFixed(1)}s. Nenhuma transação nova.`;
+            } else {
+                finalMessage = `${txCount} transações em ${(duration / 1000).toFixed(1)}s`;
+            }
+
             await jobDoc.update({
                 status: 'completed',
                 progress: { current: 100, total: 100, step: 'Sincronização concluída!' },
                 updatedAt: syncTimestamp,
-                message: `${txCount} transações em ${(duration / 1000).toFixed(1)}s`,
+                message: finalMessage,
+                transactionsFound: txCount,
                 duration
             });
 
@@ -710,10 +786,13 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
 
 // Helper: Wait for Pluggy item to be ready (UPDATED or LOGIN_ERROR)
-const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
+// Now also verifies that lastUpdatedAt changed (to ensure a real sync happened)
+const waitForItemReady = async (apiKey, itemId, maxWaitMs = 60000, oldLastUpdatedAt = null) => {
     const startTime = Date.now();
-    const pollInterval = 2000; // 2 seconds between polls
+    const pollInterval = 2500; // 2.5 seconds between polls (slightly longer for stability)
     const readyStatuses = ['UPDATED', 'LOGIN_ERROR', 'OUTDATED'];
+
+    console.log(`[Sync] Waiting for item ${itemId} to be ready. Old lastUpdatedAt: ${oldLastUpdatedAt}`);
 
     while (Date.now() - startTime < maxWaitMs) {
         try {
@@ -722,14 +801,37 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
             });
 
             const item = response.data;
-            console.log(`[Sync] Item ${itemId} status: ${item.status}`);
+            const elapsed = Math.round((Date.now() - startTime) / 1000);
 
-            if (readyStatuses.includes(item.status)) {
-                return { ready: true, status: item.status, item };
+            console.log(`[Sync] Item ${itemId} poll (${elapsed}s):`, {
+                status: item.status,
+                executionStatus: item.executionStatus,
+                lastUpdatedAt: item.lastUpdatedAt,
+                connector: item.connector?.name
+            });
+
+            // Check for terminal error states first
+            if (item.status === 'LOGIN_ERROR' || item.status === 'WAITING_USER_INPUT') {
+                return { ready: false, status: item.status, error: 'Login failed or needs user input', item };
             }
 
-            if (item.status === 'LOGIN_ERROR' || item.status === 'WAITING_USER_INPUT') {
-                return { ready: false, status: item.status, error: 'Login failed or needs user input' };
+            // Check if status is ready
+            if (readyStatuses.includes(item.status)) {
+                // If we have an old timestamp, verify it actually changed
+                if (oldLastUpdatedAt && item.lastUpdatedAt === oldLastUpdatedAt) {
+                    // Same timestamp - Pluggy might not have actually fetched new data
+                    // Keep waiting a bit more (up to max time)
+                    console.log(`[Sync] Status is ${item.status} but lastUpdatedAt hasn't changed yet. Waiting...`);
+                    await new Promise(resolve => setTimeout(resolve, pollInterval));
+                    continue;
+                }
+
+                // Either we don't have old timestamp, or it changed - we're good!
+                console.log(`[Sync] Item ${itemId} is ready!`, {
+                    status: item.status,
+                    timestampChanged: item.lastUpdatedAt !== oldLastUpdatedAt
+                });
+                return { ready: true, status: item.status, item };
             }
 
             // Still updating, wait and poll again
@@ -737,13 +839,36 @@ const waitForItemReady = async (apiKey, itemId, maxWaitMs = 45000) => {
         } catch (err) {
             console.error(`[Sync] Error polling item status:`, err.message);
             // If we can't check status, try to proceed anyway
-            return { ready: true, status: 'UNKNOWN' };
+            return { ready: true, status: 'UNKNOWN', item: null };
         }
     }
 
-    // Timeout - try to proceed anyway (item might have accounts even if still updating)
-    console.log(`[Sync] Timeout waiting for item ${itemId}, proceeding anyway`);
-    return { ready: true, status: 'TIMEOUT' };
+    // Timeout reached
+    // Try one final check
+    try {
+        const finalResp = await pluggyApi.get(`/items/${itemId}`, {
+            headers: { 'X-API-KEY': apiKey }
+        });
+        const finalItem = finalResp.data;
+
+        console.log(`[Sync] Timeout waiting for item ${itemId}. Final state:`, {
+            status: finalItem.status,
+            lastUpdatedAt: finalItem.lastUpdatedAt,
+            oldLastUpdatedAt,
+            changed: finalItem.lastUpdatedAt !== oldLastUpdatedAt
+        });
+
+        // If timestamp never changed after 60s, something is wrong
+        if (oldLastUpdatedAt && finalItem.lastUpdatedAt === oldLastUpdatedAt && finalItem.status === 'UPDATED') {
+            console.log(`[Sync] ⚠️ Item ${itemId} lastUpdatedAt never changed! The bank might not have returned new data.`);
+            return { ready: true, status: 'STALE', item: finalItem, warning: 'Timestamp did not change - bank may not have returned new data' };
+        }
+
+        return { ready: true, status: finalItem.status || 'TIMEOUT', item: finalItem };
+    } catch (err) {
+        console.log(`[Sync] Timeout and final check failed for item ${itemId}, proceeding anyway`);
+        return { ready: true, status: 'TIMEOUT', item: null };
+    }
 };
 
 // Helper: Fetch ALL transactions with pagination (Pluggy limits 500 per page)
@@ -1094,7 +1219,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                             dueDate: current.dueDate,
                             closeDate: current.closeDate || null,
                             // Datas de período calculadas
-                            periodStart: new Date(lastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                            periodStart: new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                             periodEnd: nextClosingDate.toISOString(),
                             status: current.status || 'OPEN',
                             // Valores
@@ -1125,7 +1250,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                                 id: previous.id,
                                 dueDate: previous.dueDate,
                                 closeDate: previous.closeDate || null,
-                                periodStart: new Date(beforeLastClosingDate.getTime() + 24*60*60*1000).toISOString(),
+                                periodStart: new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                                 periodEnd: lastClosingDate.toISOString(),
                                 status: previous.status || 'CLOSED',
                                 totalAmount: previous.totalAmount || null,
