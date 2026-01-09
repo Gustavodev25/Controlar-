@@ -37,6 +37,18 @@ const validateClosingDay = (day) => {
     return Math.max(1, Math.min(28, day));
 };
 
+// HELPER: Remove undefined fields recursively for Firestore compatibility
+const removeUndefined = (obj) => {
+    if (obj === null || typeof obj !== 'object') return obj;
+    if (Array.isArray(obj)) return obj.map(removeUndefined);
+    const newObj = {};
+    for (const key in obj) {
+        const val = removeUndefined(obj[key]);
+        if (val !== undefined) newObj[key] = val;
+    }
+    return newObj;
+};
+
 // ============================================================
 // HELPER: Calcular períodos de fatura centralizados
 // Esta função é a fonte única de verdade para cálculos de período
@@ -248,7 +260,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const { itemId, userId } = req.body;
     const startTime = Date.now();
 
-    console.log(`[SYNC] Start: item=${itemId} user=${userId.slice(0, 8)}...`);
+    console.log(`[SYNC] Start: item=${itemId} user=${userId}`);
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
@@ -411,7 +423,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
                 } : {};
 
-                accBatch.set(accountsRef.doc(acc.id), {
+                accBatch.set(accountsRef.doc(acc.id), removeUndefined({
                     ...acc,
                     ...creditFields,
                     ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
@@ -419,7 +431,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     itemId,
                     lastSyncedAt: syncTimestamp,
                     updatedAt: syncTimestamp
-                }, { merge: true });
+                }), { merge: true });
             }
             await accBatch.commit();
 
@@ -556,7 +568,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                         };
                     }
 
-                    currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                    currentBatch.set(targetColl.doc(tx.id), removeUndefined(mappedTx), { merge: true });
                     opCount++;
                     txCount++;
 
@@ -569,7 +581,16 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             }
 
             if (opCount > 0) batchPromises.push(currentBatch.commit());
-            await Promise.all(batchPromises);
+
+            // Commit all batches and log results
+            try {
+                await Promise.all(batchPromises);
+                console.log(`[SYNC] ✅ Saved ${txCount} transactions for user ${userId}`);
+            } catch (batchError) {
+                console.error(`[SYNC] ❌ Batch write FAILED for user ${userId}:`, batchError.message);
+                console.error(`[SYNC] Batch error details:`, JSON.stringify(batchError, null, 2));
+                throw batchError; // Re-throw to be caught by outer catch
+            }
 
             await updateProgress(70, 'Buscando faturas...');
 
@@ -732,7 +753,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             console.log(`[Trigger-Sync] Done in ${duration}ms: ${txCount} tx`);
 
         } catch (err) {
-            console.error('[Trigger-Sync] Failed:', err.message);
+            console.error(`[SYNC] ❌ FAILED for user ${userId}:`, err.message);
+            console.error(`[SYNC] Error stack:`, err.stack);
             await jobDoc.update({ status: 'failed', error: err.message, updatedAt: new Date().toISOString() });
         }
     })();
@@ -964,7 +986,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
             } : {};
 
-            accBatch.set(accountsRef.doc(acc.id), {
+            accBatch.set(accountsRef.doc(acc.id), removeUndefined({
                 ...acc,
                 ...creditFields,
                 ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
@@ -973,7 +995,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 connector: itemStatus.item?.connector || null, // Save connector details provided by waitForItemReady
                 lastSyncedAt: syncTimestamp,
                 updatedAt: syncTimestamp
-            }, { merge: true });
+            }), { merge: true });
         }
         await accBatch.commit();
 
@@ -1073,7 +1095,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     };
                 }
 
-                currentBatch.set(targetColl.doc(tx.id), mappedTx, { merge: true });
+                currentBatch.set(targetColl.doc(tx.id), removeUndefined(mappedTx), { merge: true });
                 opCount++;
                 txCount++;
 
