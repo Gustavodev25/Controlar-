@@ -1310,8 +1310,7 @@ export const AdminSubscriptions: React.FC = () => {
                                             <th className="px-4 py-3 text-left">Plano</th>
                                             <th className="px-4 py-3 text-left">Status</th>
                                             <th className="px-4 py-3 text-left">Ciclo</th>
-                                            <th className="px-4 py-3 text-left">Data Assinatura</th>
-                                            <th className="px-4 py-3 text-left">Próx. Cobrança</th>
+                                            <th className="px-4 py-3 text-left">Datas</th>
                                             <th className="px-4 py-3 text-center">Ações</th>
                                         </>
                                     ) : (
@@ -1406,14 +1405,16 @@ export const AdminSubscriptions: React.FC = () => {
                                                         </span>
                                                     </td>
                                                     <td className="px-4 py-3">
-                                                        <span className="text-gray-400 text-xs font-mono">
-                                                            {formatDate(user.subscription?.startDate)}
-                                                        </span>
-                                                    </td>
-                                                    <td className="px-4 py-3">
-                                                        <span className="text-gray-400 text-xs font-mono">
-                                                            {formatDate(user.subscription?.nextBillingDate)}
-                                                        </span>
+                                                        <div className="flex flex-col gap-0.5 text-xs">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-gray-500 w-14">Assinou:</span>
+                                                                <span className="text-gray-300 font-mono">{user.subscription?.startDate ? formatDate(user.subscription.startDate) : '-'}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-gray-500 w-14">Próx:</span>
+                                                                <span className="text-gray-300 font-mono">{formatDate(user.subscription?.nextBillingDate)}</span>
+                                                            </div>
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-3 text-center">
                                                         <div className="flex items-center justify-center gap-2">

@@ -782,15 +782,11 @@ export const AdminUsers: React.FC = () => {
                                     <tr>
                                         <th className="px-3 py-3 text-left">Usuário</th>
                                         <th className="px-3 py-3 text-left">Email</th>
-                                        <th className="px-3 py-3 text-left">Membro Há</th>
                                         <th className="px-3 py-3 text-left">Idade</th>
-                                        <th className="px-3 py-3 text-left">Dias Ativos</th>
                                         <th className="px-3 py-3 text-left">Plano</th>
                                         <th className="px-3 py-3 text-left">Status</th>
                                         <th className="px-3 py-3 text-left">Ciclo</th>
-                                        <th className="px-3 py-3 text-left">Data Assinatura</th>
-                                        <th className="px-3 py-3 text-left">Último Acesso</th>
-                                        <th className="px-3 py-3 text-left">Próx. Cobrança</th>
+                                        <th className="px-3 py-3 text-left">Atividade</th>
                                         <th className="px-3 py-3 text-center">Ações</th>
                                     </tr>
                                 </thead>
@@ -820,16 +816,7 @@ export const AdminUsers: React.FC = () => {
                                                 <span className="text-gray-400 text-sm block truncate max-w-[150px]" title={user.email}>{user.email}</span>
                                             </td>
                                             <td className="px-3 py-3">
-                                                <div className="flex flex-col">
-                                                    <span className="text-white text-sm">{formatDate(user.createdAt)}</span>
-                                                    <span className="text-gray-500 text-xs">{getTimeSinceCreation(user.createdAt)}</span>
-                                                </div>
-                                            </td>
-                                            <td className="px-3 py-3">
                                                 <span className="text-gray-400 text-sm">{getAge(user.birthDate)}</span>
-                                            </td>
-                                            <td className="px-3 py-3">
-                                                {renderActiveDays(user)}
                                             </td>
                                             <td className="px-3 py-3">
                                                 {getPlanBadge(user.subscription?.plan)}
@@ -843,17 +830,28 @@ export const AdminUsers: React.FC = () => {
                                                 </span>
                                             </td>
                                             <td className="px-3 py-3">
-                                                <span className="text-gray-400 text-xs font-mono">
-                                                    {formatDate(user.subscription?.startDate)}
-                                                </span>
-                                            </td>
-                                            <td className="px-3 py-3">
-                                                {renderLastAccess(user)}
-                                            </td>
-                                            <td className="px-3 py-3">
-                                                <span className="text-gray-400 text-xs font-mono">
-                                                    {formatDate(user.subscription?.nextBillingDate)}
-                                                </span>
+                                                <div className="flex flex-col gap-0.5 text-xs">
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-500 w-16">Membro:</span>
+                                                        <span className="text-white">{getTimeSinceCreation(user.createdAt)}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-500 w-16">Ativos:</span>
+                                                        <span className="text-white">{getUniqueDaysCount(user)} dias</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-500 w-16">Assinou:</span>
+                                                        <span className="text-gray-300 font-mono">{user.subscription?.startDate ? formatDate(user.subscription.startDate) : '-'}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-500 w-16">Acesso:</span>
+                                                        <span className={`${getLastLogin(user).status === 'online' ? 'text-emerald-400' : getLastLogin(user).status === 'recent' ? 'text-emerald-400' : 'text-gray-400'}`}>{getLastLogin(user).relative}</span>
+                                                    </div>
+                                                    <div className="flex items-center gap-2">
+                                                        <span className="text-gray-500 w-16">Próx:</span>
+                                                        <span className="text-gray-300 font-mono">{formatDate(user.subscription?.nextBillingDate)}</span>
+                                                    </div>
+                                                </div>
                                             </td>
                                             <td className="px-3 py-3">
                                                 <div className="flex items-center justify-center gap-2">
