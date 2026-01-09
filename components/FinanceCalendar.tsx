@@ -125,8 +125,8 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
             });
           }}
           className={`relative h-20 sm:h-24 w-full rounded-2xl border transition-all text-left p-3 ${hasItems
-              ? 'border-[#d97757]/50 bg-[#30302E]/80 hover:border-[#e68e70] hover:bg-[#30302E]'
-              : 'border-gray-800 bg-[#30302E]/40 hover:border-gray-700 hover:bg-[#30302E]/60'
+            ? 'border-[#d97757]/50 bg-[#30302E]/80 hover:border-[#e68e70] hover:bg-[#30302E]'
+            : 'border-gray-800 bg-[#30302E]/40 hover:border-gray-700 hover:bg-[#30302E]/60'
             } ${isToday ? 'ring-2 ring-[#d97757]/60 ring-offset-2 ring-offset-gray-950' : ''}`}
         >
           <div className="flex items-start justify-between">
@@ -203,7 +203,7 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
           onClick={handleCloseModal}
         >
           <div
-            className={`bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl p-5 relative overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isModalAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'
+            className={`bg-gray-950 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-lg p-5 relative flex flex-col max-h-[600px] overflow-hidden transition-all duration-300 ease-[cubic-bezier(0.2,0.8,0.2,1)] ${isModalAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'
               }`}
             onClick={e => e.stopPropagation()}
           >
@@ -226,89 +226,91 @@ export const FinanceCalendar: React.FC<FinanceCalendarProps> = ({
               </button>
             </div>
 
-            {!selectedItems || (selectedItems.transactions.length === 0 && selectedItems.reminders.length === 0) ? (
-              <div className="relative z-10 p-4 rounded-xl border border-dashed border-gray-800 bg-[#30302E]/60 text-gray-400 text-sm">
-                Nenhuma transacao ou lembrete para este dia.
-              </div>
-            ) : (
-              <div className="space-y-4 relative z-10">
-                {selectedItems.transactions.length > 0 && (
-                  <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
-                    <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
-                      <TrendingUp size={14} className="text-emerald-400" />
-                      <span>Transacoes</span>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedItems.transactions.map(t => (
-                        <div
-                          key={t.id}
-                          className="flex items-center justify-between gap-3 p-2 rounded-lg bg-gray-800/60 border border-gray-800"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${t.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'
-                                }`}
-                            />
-                            <div className="min-w-0">
-                              <p className="text-sm text-white truncate">{t.description}</p>
-                              <p className="text-xs text-gray-400 truncate">{translateCategory(t.category)}</p>
+            <div className="overflow-y-auto no-scrollbar flex-1 relative z-10">
+              {!selectedItems || (selectedItems.transactions.length === 0 && selectedItems.reminders.length === 0) ? (
+                <div className="relative z-10 p-4 rounded-xl border border-dashed border-gray-800 bg-[#30302E]/60 text-gray-400 text-sm">
+                  Nenhuma transacao ou lembrete para este dia.
+                </div>
+              ) : (
+                <div className="space-y-4 relative z-10">
+                  {selectedItems.transactions.length > 0 && (
+                    <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
+                      <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
+                        <TrendingUp size={14} className="text-emerald-400" />
+                        <span>Transacoes</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedItems.transactions.map(t => (
+                          <div
+                            key={t.id}
+                            className="flex items-center justify-between gap-3 p-2 rounded-lg bg-gray-800/60 border border-gray-800"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${t.type === 'income' ? 'bg-emerald-400' : 'bg-red-400'
+                                  }`}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm text-white truncate">{t.description}</p>
+                                <p className="text-xs text-gray-400 truncate">{translateCategory(t.category)}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p
+                                className={`text-sm font-semibold ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
+                                  }`}
+                              >
+                                {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
+                              </p>
+                              <p className="text-[11px] text-gray-500 uppercase">{t.status === 'pending' ? 'Pendente' : 'Concluida'}</p>
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p
-                              className={`text-sm font-semibold ${t.type === 'income' ? 'text-emerald-400' : 'text-red-400'
-                                }`}
-                            >
-                              {t.type === 'income' ? '+' : '-'} {formatCurrency(t.amount)}
-                            </p>
-                            <p className="text-[11px] text-gray-500 uppercase">{t.status === 'pending' ? 'Pendente' : 'Concluida'}</p>
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {selectedItems.reminders.length > 0 && (
-                  <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
-                    <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
-                      <Bell size={14} className="text-amber-300" />
-                      <span>Lembretes</span>
-                    </div>
-                    <div className="space-y-2">
-                      {selectedItems.reminders.map(r => (
-                        <div
-                          key={r.id}
-                          className="flex items-center justify-between gap-3 p-2 rounded-lg bg-gray-800/60 border border-gray-800"
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <span
-                              className={`h-2.5 w-2.5 rounded-full ${r.type === 'income' ? 'bg-emerald-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-amber-300'
-                                }`}
-                            />
-                            <div className="min-w-0">
-                              <p className="text-sm text-white truncate">{r.description}</p>
-                              <p className="text-xs text-gray-400 truncate">{translateCategory(r.category)}</p>
+                  {selectedItems.reminders.length > 0 && (
+                    <div className="bg-[#30302E]/60 border border-gray-800 rounded-xl p-4">
+                      <div className="flex items-center gap-2 text-gray-200 font-semibold mb-3 text-sm">
+                        <Bell size={14} className="text-amber-300" />
+                        <span>Lembretes</span>
+                      </div>
+                      <div className="space-y-2">
+                        {selectedItems.reminders.map(r => (
+                          <div
+                            key={r.id}
+                            className="flex items-center justify-between gap-3 p-2 rounded-lg bg-gray-800/60 border border-gray-800"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`h-2.5 w-2.5 rounded-full ${r.type === 'income' ? 'bg-emerald-400' : r.type === 'expense' ? 'bg-red-400' : 'bg-amber-300'
+                                  }`}
+                              />
+                              <div className="min-w-0">
+                                <p className="text-sm text-white truncate">{r.description}</p>
+                                <p className="text-xs text-gray-400 truncate">{translateCategory(r.category)}</p>
+                              </div>
+                            </div>
+                            <div className="text-right">
+                              <p
+                                className={`text-sm font-semibold ${r.type === 'income' ? 'text-emerald-400' : r.type === 'expense' ? 'text-red-400' : 'text-amber-200'
+                                  }`}
+                              >
+                                {r.type === 'income' ? '+' : r.type === 'expense' ? '-' : ''} {formatCurrency(r.amount)}
+                              </p>
+                              {r.isRecurring && (
+                                <p className="text-[11px] text-gray-500 uppercase">Recorrente {r.frequency ? `(${r.frequency})` : ''}</p>
+                              )}
                             </div>
                           </div>
-                          <div className="text-right">
-                            <p
-                              className={`text-sm font-semibold ${r.type === 'income' ? 'text-emerald-400' : r.type === 'expense' ? 'text-red-400' : 'text-amber-200'
-                                }`}
-                            >
-                              {r.type === 'income' ? '+' : r.type === 'expense' ? '-' : ''} {formatCurrency(r.amount)}
-                            </p>
-                            {r.isRecurring && (
-                              <p className="text-[11px] text-gray-500 uppercase">Recorrente {r.frequency ? `(${r.frequency})` : ''}</p>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
-                  </div>
-                )}
-              </div>
-            )}
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>,
         document.body
