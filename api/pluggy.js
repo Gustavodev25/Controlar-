@@ -349,9 +349,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
             // CRITICAL: Wait for Pluggy to finish fetching data from bank
             // Pass the old lastUpdatedAt so we can verify a NEW sync happened
-            // Use 90s timeout for slower banks like C6
+            // Use 50s timeout to fit within Vercel's 60s limit
             await updateProgress(10, 'Aguardando dados do banco...');
-            const itemStatus = await waitForItemReady(apiKey, itemId, 90000, itemBeforeSync?.lastUpdatedAt);
+            const itemStatus = await waitForItemReady(apiKey, itemId, 50000, itemBeforeSync?.lastUpdatedAt);
             console.log(`[Trigger-Sync] Item ready check:`, {
                 status: itemStatus.status,
                 executionStatus: itemStatus.item?.executionStatus,
@@ -816,7 +816,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 // Helper: Wait for Pluggy item to be ready (UPDATED or LOGIN_ERROR)
 // Now also verifies that lastUpdatedAt changed (to ensure a real sync happened)
 // UPDATED: Better handling for C6 Bank and other banks with slower sync
-const waitForItemReady = async (apiKey, itemId, maxWaitMs = 90000, oldLastUpdatedAt = null) => {
+const waitForItemReady = async (apiKey, itemId, maxWaitMs = 50000, oldLastUpdatedAt = null) => {
     const startTime = Date.now();
     const pollInterval = 3000; // 3 seconds between polls (more stable for slow banks like C6)
     const readyStatuses = ['UPDATED', 'LOGIN_ERROR', 'OUTDATED'];
