@@ -483,17 +483,22 @@ export const AdminSubscriptions: React.FC = () => {
 
         setIsProcessingBulk(true);
         try {
-            // Update firestore for each user
-            const updatePayload: any = { couponUsed: bulkCouponId };
-            if (bulkCouponMonth) {
-                updatePayload.couponStartMonth = bulkCouponMonth;
+            // Call API to apply coupons (handles Firestore + Asaas)
+            const response = await fetch('/api/admin/apply-coupons', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userIds: selectedUserIds,
+                    couponId: bulkCouponId,
+                    month: bulkCouponMonth || undefined
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.error || 'Erro desconhecido');
             }
-
-            const updates = selectedUserIds.map(userId =>
-                dbService.updateUserSubscription(userId, updatePayload)
-            );
-
-            await Promise.all(updates);
 
             // Update local state
             setUsers(prev => prev.map(u => {
@@ -510,10 +515,16 @@ export const AdminSubscriptions: React.FC = () => {
                 return u;
             }));
 
-            toast.success(`Cupom aplicado para ${selectedUserIds.length} usuários.`);
-        } catch (error) {
+            if (data.processed > 0) {
+                toast.success(`Cupom aplicado para ${data.processed} usuários.`);
+            }
+            if (data.errors > 0) {
+                toast.error(`Erro ao aplicar para ${data.errors} usuários.`);
+            }
+
+        } catch (error: any) {
             console.error('Bulk coupon error:', error);
-            toast.error('Erro ao aplicar cupom em massa.');
+            toast.error('Erro ao aplicar cupom: ' + (error.message || 'Erro interno'));
         } finally {
             setIsProcessingBulk(false);
             setBulkActionMode('none');

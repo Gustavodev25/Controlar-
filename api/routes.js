@@ -1536,6 +1536,103 @@ router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
   }
 });
 
+// Endpoint to apply coupon to users (and update Asaas if needed)
+router.post('/admin/apply-coupons', async (req, res) => {
+  const { userIds, couponId, month } = req.body; // month: YYYY-MM
+
+  if (!userIds || !Array.isArray(userIds) || !couponId) {
+    return res.status(400).json({ error: 'Dados inválidos. userIds (array) e couponId são obrigatórios.' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado.' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+
+    // 1. Get Coupon Details
+    const couponDoc = await db.collection('coupons').doc(couponId).get();
+    if (!couponDoc.exists) {
+      return res.status(404).json({ error: 'Cupom não encontrado.' });
+    }
+    const coupon = { id: couponDoc.id, ...couponDoc.data() };
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const userId of userIds) {
+      try {
+        // 2. Update Firestore
+        // Update BOTH subscription.* (root) AND profile.subscription.*
+        const updatePayload = {
+          'subscription.couponUsed': couponId,
+          'profile.subscription.couponUsed': couponId
+        };
+
+        if (month) {
+          updatePayload['subscription.couponStartMonth'] = month;
+          updatePayload['profile.subscription.couponStartMonth'] = month;
+        } else {
+          // Remove start month if not provided (apply generally)
+          updatePayload['subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();
+          updatePayload['profile.subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();
+        }
+
+        await db.collection('users').doc(userId).update(updatePayload);
+
+        // 3. Update Asaas Payment (if month is provided)
+        if (month) {
+          const userDoc = await db.collection('users').doc(userId).get();
+          const user = userDoc.data();
+          const subId = user?.subscription?.asaasSubscriptionId;
+
+          if (subId) {
+            // Find pending payments for this subscription
+            const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subId}&status=PENDING`);
+            const payments = paymentsRes.data || [];
+
+            // Find payment due in the target month (YYYY-MM)
+            const targetPayment = payments.find(p => p.dueDate && p.dueDate.startsWith(month));
+
+            if (targetPayment) {
+              let discountObj = null;
+
+              if (coupon.type === 'percentage') {
+                discountObj = { value: coupon.value, type: 'PERCENTAGE' };
+              } else if (coupon.type === 'fixed') {
+                discountObj = { value: coupon.value, type: 'FIXED' };
+              }
+              // Note: 'progressive' logic is complex to map to a single payment update without context.
+              // For now, only simple coupons trigger immediate Asaas update.
+              // If progressive, we might need to calculate the specific value for this month manually.
+
+              if (discountObj) {
+                // Update the payment in Asaas
+                await asaasRequest('POST', `/payments/${targetPayment.id}`, {
+                  discount: discountObj
+                });
+                console.log(`>>> [ADMIN] Updated Asaas payment ${targetPayment.id} with coupon ${coupon.code}`);
+              }
+            }
+          }
+        }
+
+        successCount++;
+      } catch (err) {
+        console.error(`>>> Error applying coupon to user ${userId}:`, err);
+        errorCount++;
+      }
+    }
+
+    res.json({ success: true, processed: successCount, errors: errorCount });
+
+  } catch (error) {
+    console.error('>>> Apply Coupon Error:', error);
+    res.status(500).json({ error: 'Erro ao aplicar cupons.', details: error.message });
+  }
+});
+
 // Endpoint to revoke user plan (admin action)
 router.post('/admin/revoke-plan', async (req, res) => {
   const { userId, reason } = req.body;

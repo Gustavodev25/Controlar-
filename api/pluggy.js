@@ -25,8 +25,35 @@ const pluggyApi = axios.create({
     headers: { 'Content-Type': 'application/json' }
 });
 
-// Minimal startup log
-console.log('Pluggy: Ready', { hasCredentials: !!(CLIENT_ID && CLIENT_SECRET) });
+// Helper to determine Webhook URL
+const getWebhookUrl = () => {
+    // 1. Explicitly configured URL (best for production)
+    if (process.env.PLUGGY_WEBHOOK_URL) return process.env.PLUGGY_WEBHOOK_URL;
+
+    // 2. Railway Public Domain (fallback)
+    if (process.env.RAILWAY_PUBLIC_DOMAIN) {
+        return `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/api/pluggy/webhook`;
+    }
+
+    // 3. Railway Static URL (legacy)
+    if (process.env.RAILWAY_STATIC_URL) {
+        return `https://${process.env.RAILWAY_STATIC_URL}/api/pluggy/webhook`;
+    }
+
+    // 4. Local dev fallback (only if not in prod)
+    if (process.env.NODE_ENV !== 'production') {
+        return null;
+    }
+
+    return null;
+};
+
+// Minimal startup log with check
+const webhookUrl = getWebhookUrl();
+console.log('Pluggy: Ready', {
+    hasCredentials: !!(CLIENT_ID && CLIENT_SECRET),
+    webhookUrl: webhookUrl || 'NOT_CONFIGURED (Will default to manual flow or error)'
+});
 
 // ============================================================
 // HELPER: Validar e normalizar closingDay (1-28)
@@ -230,13 +257,21 @@ router.get('/test-auth', async (req, res) => {
 // 1. Create Connect Token (optimized)
 router.post('/create-token', withPluggyAuth, async (req, res) => {
     try {
-        const response = await pluggyApi.post('/connect_token', {
-            webhookUrl: process.env.PLUGGY_WEBHOOK_URL,
-            clientUserId: req.body.userId
-        }, { headers: { 'X-API-KEY': req.pluggyApiKey } });
+        const webhookUrl = getWebhookUrl();
+
+        // Only include webhookUrl if we have a valid one
+        const payload = {
+            clientUserId: req.body.userId,
+            ...(webhookUrl ? { webhookUrl } : {})
+        };
+
+        const response = await pluggyApi.post('/connect_token', payload, {
+            headers: { 'X-API-KEY': req.pluggyApiKey }
+        });
 
         res.json({ accessToken: response.data.accessToken });
     } catch (error) {
+        console.error('Pluggy Create Token Error:', error.response?.data || error.message);
         res.status(500).json({ error: 'Failed to create token' });
     }
 });
