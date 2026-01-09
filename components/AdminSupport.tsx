@@ -28,6 +28,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
 
     // Delete Confirmation State
     const [deleteTicketId, setDeleteTicketId] = useState<string | null>(null);
+    const [showReasonModal, setShowReasonModal] = useState(false);
 
     useEffect(() => {
         const unsub = listenToAllOpenTickets((data) => {
@@ -511,6 +512,13 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                 </div>
                                 <div className="flex items-center gap-2 w-full lg:w-auto">
                                     <button
+                                        onClick={() => setShowReasonModal(true)}
+                                        className="flex-1 lg:flex-initial px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-700 flex items-center justify-center gap-2"
+                                        title="Ver Motivo"
+                                    >
+                                        <MessageSquare size={14} /> <span className="hidden sm:inline">Ver Motivo</span>
+                                    </button>
+                                    <button
                                         onClick={handleAdminRefund}
                                         className="flex-1 lg:flex-initial px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-xs font-bold transition-colors border border-gray-700 flex items-center justify-center gap-2"
                                         title="Estornar Pagamento"
@@ -664,6 +672,20 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                 isDestructive={true}
                 position="bottom"
             />
+
+            {/* Reason Modal */}
+            <UniversalModal
+                isOpen={showReasonModal}
+                onClose={() => setShowReasonModal(false)}
+                title="Motivo do Cancelamento"
+                width="max-w-md"
+                themeColor="#ef4444"
+                icon={<MessageSquare size={20} />}
+            >
+                <div className="text-gray-300 text-sm leading-relaxed p-4 bg-[#373734] rounded-xl border border-[#454543]">
+                    <p className="italic">"{selectedTicket?.lastMessage || 'Nenhum motivo informado.'}"</p>
+                </div>
+            </UniversalModal>
         </div >
     );
 }

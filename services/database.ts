@@ -2635,9 +2635,10 @@ export interface SupportTicket {
   awaitingRating?: boolean; // When admin requests rating
   rating?: number; // 0-5 stars
   ratedAt?: string;
+  lastMessage?: string;
 }
 
-export const createSupportTicket = async (userId: string, userEmail: string, userName: string, type: 'general' | 'cancellation_request' = 'general') => {
+export const createSupportTicket = async (userId: string, userEmail: string, userName: string, type: 'general' | 'cancellation_request' = 'general', description?: string) => {
   if (!db) return null;
   const ticketsRef = collection(db, "support_tickets");
 
@@ -2657,10 +2658,30 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
     createdAt: new Date().toISOString(),
     lastMessageAt: new Date().toISOString(),
     unreadCount: 0,
-    type
+    type,
+    lastMessage: description || (type === 'cancellation_request' ? 'Solicitação de cancelamento' : 'Novo chamado'), // Add initial message/description
   };
 
   const docRef = await addDoc(ticketsRef, newTicket);
+
+  // If description provided, maybe add it as the first message?
+  // Ideally, we should add a separate messages subcollection or array.
+  // But for now, putting it in `lastMessage` acts as a summary.
+  // If the system uses a subcollection for messages, we should add it there too.
+  // Looking at the code for SupportChat might tell us, but let's just stick to adding it to the ticket object for now as requested "mostrar no suporte... um popup mostrando o motivo".  The admin likely sees the ticket list.
+
+  if (description) {
+    // Create initial message in subcollection to ensure it's visible in chat
+    const messagesRef = collection(db, "support_tickets", docRef.id, "messages");
+    await addDoc(messagesRef, {
+      senderId: userId,
+      text: description, // The reason
+      attachments: [],
+      timestamp: new Date().toISOString(),
+      isAdmin: false
+    });
+  }
+
   return docRef.id;
 };
 

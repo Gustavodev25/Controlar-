@@ -676,11 +676,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const [showCancellationModal, setShowCancellationModal] = useState(false);
    const [isProcessingCancellation, setIsProcessingCancellation] = useState(false);
 
-   const handleCancellationRequest = async () => {
+   const handleCancellationRequest = async (reason: string) => {
       try {
          setIsProcessingCancellation(true);
          const targetUserId = userId || user.id || ''; // Fallback to user.id or empty
-         const ticketId = await createSupportTicket(targetUserId, user.email || '', user.name || 'Usuário', 'cancellation_request');
+         const ticketId = await createSupportTicket(targetUserId, user.email || '', user.name || 'Usuário', 'cancellation_request', reason);
 
          if (ticketId) {
             toast.success("Solicitação enviada. Nossa equipe entrará em contato em breve.");
