@@ -662,8 +662,28 @@ export const AdminSubscriptions: React.FC = () => {
             const coupon = coupons.find(c => c.id === sub.couponUsed);
             if (coupon && price > 0) {
                 if (coupon.type === 'progressive') {
-                    // Find the rule for the CURRENT month index
-                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === monthIndex);
+                    // Calcular o índice do mês do cupom
+                    // Se couponStartMonth está definido, usar ele como referência
+                    let couponMonthIndex = monthIndex;
+
+                    const todayMonthIndex = today.getFullYear() * 12 + today.getMonth();
+
+                    if (sub.couponStartMonth) {
+                        // couponStartMonth está no formato "YYYY-MM"
+                        const [couponYear, couponMonth] = sub.couponStartMonth.split('-').map(Number);
+                        const couponStartIndex = couponYear * 12 + (couponMonth - 1);
+
+                        // Se o mês atual é antes do couponStartMonth, não aplica cupom
+                        if (todayMonthIndex < couponStartIndex) {
+                            couponMonthIndex = -1; // Valor negativo para não encontrar regra
+                        } else {
+                            // Mês do cupom começa a contar a partir do couponStartMonth
+                            couponMonthIndex = (todayMonthIndex - couponStartIndex) + 1;
+                        }
+                    }
+
+                    // Find the rule for the CURRENT coupon month index
+                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === couponMonthIndex);
                     // If no rule matches (e.g. we are past the discount period), price remains full
                     // If rule matches, apply discount
                     if (rule) {
@@ -828,18 +848,37 @@ export const AdminSubscriptions: React.FC = () => {
                 discountInfo = 'Cupom Primeiro Mês';
             } else if (coupon && finalPrice > 0) {
                 if (coupon.type === 'progressive') {
-                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === subscriberMonthIndex);
+                    // Calcular o índice do mês do cupom
+                    // Se couponStartMonth está definido, usar ele como referência
+                    // Senão, usar o startDate da assinatura (comportamento antigo)
+                    let couponMonthIndex = subscriberMonthIndex;
+
+                    if (sub.couponStartMonth) {
+                        // couponStartMonth está no formato "YYYY-MM"
+                        const [couponYear, couponMonth] = sub.couponStartMonth.split('-').map(Number);
+                        const couponStartIndex = couponYear * 12 + (couponMonth - 1);
+
+                        // Se o mês alvo é antes do couponStartMonth, não aplica cupom
+                        if (targetMonthIndex < couponStartIndex) {
+                            // Não aplica cupom, mantém preço cheio
+                            couponMonthIndex = -1; // Valor negativo para não encontrar regra
+                        } else {
+                            // Mês do cupom começa a contar a partir do couponStartMonth
+                            couponMonthIndex = (targetMonthIndex - couponStartIndex) + 1;
+                        }
+                    }
+
+                    const rule = coupon.progressiveDiscounts?.find((d: any) => d.month === couponMonthIndex);
                     if (rule) {
                         if (rule.discountType === 'fixed') {
                             finalPrice = Math.max(0, finalPrice - rule.discount);
-                            discountInfo = `R$ ${rule.discount.toFixed(2)} (Mês ${subscriberMonthIndex})`;
+                            discountInfo = `R$ ${rule.discount.toFixed(2)} (Cupom Mês ${couponMonthIndex})`;
                         } else {
                             finalPrice = Math.max(0, finalPrice * (1 - rule.discount / 100));
-                            discountInfo = `${rule.discount}% (Mês ${subscriberMonthIndex})`;
+                            discountInfo = `${rule.discount}% (Cupom Mês ${couponMonthIndex})`;
                         }
                     } else {
-                        // Check if we passed the last rule, might default to full price
-                        // The loop continues, price resets to base
+                        // Não há regra para este mês, volta ao preço cheio
                     }
                 } else if (coupon.type === 'percentage') {
                     finalPrice = Math.max(0, finalPrice * (1 - coupon.value / 100));

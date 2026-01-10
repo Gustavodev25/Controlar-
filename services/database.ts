@@ -2837,6 +2837,16 @@ export const acceptSupportTicket = async (ticketId: string, adminId: string, adm
   });
 };
 
+export const transferSupportTicket = async (ticketId: string, adminId: string, adminName: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  await updateDoc(ticketRef, {
+    status: 'in_progress',
+    assignedTo: adminId,
+    assignedByName: adminName
+  });
+};
+
 export const listenToTicket = (ticketId: string, callback: (ticket: SupportTicket | null) => void) => {
   if (!db) return () => { };
   const ticketRef = doc(db, "support_tickets", ticketId);

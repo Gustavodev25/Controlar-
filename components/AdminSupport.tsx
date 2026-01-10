@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets, deleteSupportTicket } from '../services/database';
+import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets, deleteSupportTicket, transferSupportTicket } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft, Trash2 } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft, Trash2, ArrowRightLeft } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -25,6 +25,11 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
     const [userSearchTerm, setUserSearchTerm] = useState('');
     const [isLoadingUsers, setIsLoadingUsers] = useState(false);
     const [pendingTicketId, setPendingTicketId] = useState<string | null>(null);
+
+    // Transfer Logic state
+    const [showTransferModal, setShowTransferModal] = useState(false);
+    const [adminUsers, setAdminUsers] = useState<UserType[]>([]);
+    const [loadingAdmins, setLoadingAdmins] = useState(false);
 
     // Delete Confirmation State
     const [deleteTicketId, setDeleteTicketId] = useState<string | null>(null);
@@ -206,6 +211,36 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         } catch (error) {
             console.error(error);
             toast.error("Erro ao processar estorno.");
+        }
+    };
+
+    const handleOpenTransfer = () => {
+        setShowTransferModal(true);
+        if (adminUsers.length === 0) {
+            setLoadingAdmins(true);
+            getAllUsers().then(users => {
+                // Filter admins, excluding current user if desired, or keep all admins
+                const admins = users.filter(u => u.isAdmin);
+                setAdminUsers(admins);
+                setLoadingAdmins(false);
+            }).catch(err => {
+                console.error("Error loading admins", err);
+                toast.error("Erro ao carregar lista de admins");
+                setLoadingAdmins(false);
+            });
+        }
+    };
+
+    const confirmTransfer = async (admin: UserType) => {
+        if (!selectedTicket || !admin.id) return;
+
+        try {
+            await transferSupportTicket(selectedTicket.id!, admin.id, admin.name);
+            toast.success(`Chamado transferido para ${admin.name}`);
+            setShowTransferModal(false);
+        } catch (error) {
+            console.error(error);
+            toast.error("Erro ao transferir chamado");
         }
     };
 
@@ -472,9 +507,9 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             )}
                         </div>
 
-                        {/* Assignment Banner - relative on mobile, absolute on desktop */}
+                        {/* Assignment Banner - relative on mobile/desktop */}
                         {!selectedTicket.assignedTo && (
-                            <div className="relative lg:absolute inset-x-0 lg:top-0 z-20 bg-blue-500/10 backdrop-blur-md border-b border-blue-500/20 p-2 lg:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-lg">
+                            <div className="relative z-20 w-full bg-blue-500/10 backdrop-blur-md border-b border-blue-500/20 p-2 lg:p-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 shadow-lg">
                                 <div className="flex items-center gap-2 text-blue-400 text-xs lg:text-sm font-medium">
                                     <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.6)]" />
                                     <span className="hidden lg:inline">Este chamado aguarda atendimento.</span>
@@ -490,9 +525,9 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             </div>
                         )}
 
-                        {/* Assigned Info Banner - Only if assigned to someone else (hidden on mobile - info is in mobile header) */}
+                        {/* Assigned Info Banner - relative to stack naturally */}
                         {selectedTicket.assignedTo && selectedTicket.assignedTo !== currentUser?.id && (
-                            <div className="hidden lg:flex absolute inset-x-0 top-0 z-20 bg-[#2A2A28] border-b border-[#454543] p-2 items-center justify-center text-xs text-gray-400">
+                            <div className="hidden lg:flex relative z-20 w-full bg-[#2A2A28] border-b border-[#454543] p-2 items-center justify-center text-xs text-gray-400">
                                 <User size={12} className="mr-1.5" />
                                 <strong className="ml-1 text-[#d97757]">{selectedTicket.assignedByName || 'Admin'}</strong>
                             </div>
@@ -536,7 +571,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                             </div>
                         )}
                         {/* Chat container - on mobile, assignment banner is hidden since we have mobile header */}
-                        <div className={`flex-1 min-h-0 overflow-hidden ${!selectedTicket.assignedTo ? 'lg:pt-[52px]' : ''}`}>
+                        <div className="flex-1 min-h-0 overflow-hidden">
                             <SupportChat
                                 isOpen={true}
                                 onClose={() => setSelectedTicket(null)}
@@ -547,6 +582,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                 ticketIdProp={selectedTicket.id}
                                 variant="embedded"
                                 onTerminate={() => setShowTerminationModal(true)}
+                                onTransfer={handleOpenTransfer}
                             />
                         </div>
                     </div>
@@ -684,6 +720,59 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
             >
                 <div className="text-gray-300 text-sm leading-relaxed p-4 bg-[#373734] rounded-xl border border-[#454543]">
                     <p className="italic">"{selectedTicket?.lastMessage || 'Nenhum motivo informado.'}"</p>
+                </div>
+            </UniversalModal>
+
+            {/* Transfer Modal */}
+            <UniversalModal
+                isOpen={showTransferModal}
+                onClose={() => setShowTransferModal(false)}
+                title="Transferir Atendimento"
+                width="max-w-md"
+                themeColor="#3b82f6" // Blue
+                icon={<ArrowRightLeft size={20} />}
+            >
+                <div className="space-y-4">
+                    <p className="text-sm text-gray-400">Selecione um administrador para assumir este chamado:</p>
+
+                    <div className="max-h-[300px] overflow-y-auto custom-scrollbar border border-[#373734]/50 rounded-xl bg-[#2A2A28] divide-y divide-[#373734]/50">
+                        {loadingAdmins ? (
+                            <div className="p-8 flex justify-center">
+                                <Loader size={24} className="animate-spin text-blue-500" />
+                            </div>
+                        ) : adminUsers.length === 0 ? (
+                            <div className="p-8 text-center text-gray-500 text-sm">
+                                Nenhum outro administrador encontrado.
+                            </div>
+                        ) : (
+                            adminUsers.map(admin => {
+                                const isCurrent = admin.id === currentUser?.id;
+                                const isAssigned = selectedTicket?.assignedTo === admin.id;
+
+                                if (isAssigned) return null; // Skip if already assigned
+
+                                return (
+                                    <button
+                                        key={admin.id}
+                                        onClick={() => confirmTransfer(admin)}
+                                        className="w-full p-3 hover:bg-[#373734] transition-colors flex items-center gap-3 group text-left"
+                                    >
+                                        <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs ${getAvatarColors(admin.name).bg} ${getAvatarColors(admin.name).text}`}>
+                                            {getInitials(admin.name)}
+                                        </div>
+                                        <div className="flex-1">
+                                            <div className="text-sm font-medium text-gray-200 group-hover:text-white flex items-center gap-2">
+                                                {admin.name}
+                                                {isCurrent && <span className="text-[10px] bg-[#373734] text-gray-400 px-1.5 rounded">Você</span>}
+                                            </div>
+                                            <div className="text-xs text-gray-500 truncate">{admin.email}</div>
+                                        </div>
+                                        <ArrowRightLeft size={16} className="text-gray-600 group-hover:text-blue-400 opacity-0 group-hover:opacity-100 transition-all" />
+                                    </button>
+                                );
+                            })
+                        )}
+                    </div>
                 </div>
             </UniversalModal>
         </div >

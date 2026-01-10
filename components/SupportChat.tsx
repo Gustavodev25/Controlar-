@@ -7,7 +7,7 @@ import { SupportMessage, SupportTicket, submitTicketRating, listenToTicket } fro
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { toast } from 'sonner';
-import { Star } from 'lucide-react';
+import { Star, ArrowRightLeft } from 'lucide-react';
 
 // Star Rating Component
 const StarRating: React.FC<{ onRate: (rating: number) => void; isSubmitting: boolean }> = ({ onRate, isSubmitting }) => {
@@ -101,10 +101,11 @@ interface SupportChatProps {
     variant?: 'sidebar' | 'embedded';
     sidebarOpen?: boolean; // Prop to know if sidebar is expanded (for positioning)
     onTerminate?: () => void;
+    onTransfer?: () => void;
 }
 
 export const SupportChat: React.FC<SupportChatProps> = ({
-    isOpen, onClose, userId, userEmail, userName, isAdmin = false, ticketIdProp, variant = 'sidebar', sidebarOpen = true, onTerminate
+    isOpen, onClose, userId, userEmail, userName, isAdmin = false, ticketIdProp, variant = 'sidebar', sidebarOpen = true, onTerminate, onTransfer
 }) => {
     const [activeTicketId, setActiveTicketId] = useState<string | null>(ticketIdProp || null);
     const [messages, setMessages] = useState<SupportMessage[]>([]);
@@ -113,7 +114,17 @@ export const SupportChat: React.FC<SupportChatProps> = ({
     const [ticket, setTicket] = useState<SupportTicket | null>(null);
     const [isSubmittingRating, setIsSubmittingRating] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lastEmailSentRef = useRef<number>(0); // Track last email sent timestamp
+
+    // Auto-resize textarea
+    useEffect(() => {
+        if (textareaRef.current) {
+            textareaRef.current.style.height = 'auto'; // Reset height
+            const scrollHeight = textareaRef.current.scrollHeight;
+            textareaRef.current.style.height = `${Math.min(scrollHeight, 200)}px`; // Limit max height in effect too if needed, but maxHeight CSS handles overflow
+        }
+    }, [newMessage]);
 
     // For User: listen to active ticket if not provided
     useEffect(() => {
@@ -397,11 +408,22 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                                             <>
                                                 <DropdownSeparator />
                                                 <DropdownItem
-                                                    icon={X}
-                                                    onClick={onTerminate}
                                                     className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                                                 >
                                                     Encerrar Atendimento
+                                                </DropdownItem>
+                                            </>
+                                        )}
+
+                                        {onTransfer && (
+                                            <>
+                                                <DropdownSeparator />
+                                                <DropdownItem
+                                                    icon={ArrowRightLeft}
+                                                    onClick={onTransfer}
+                                                    className="text-blue-400 hover:text-blue-300 hover:bg-blue-500/10"
+                                                >
+                                                    Transferir Atendimento
                                                 </DropdownItem>
                                             </>
                                         )}
@@ -477,13 +499,14 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                     <div className="p-4 bg-[#30302E] shrink-0">
                         <div className="relative flex items-center gap-2">
                             <textarea
+                                ref={textareaRef}
                                 value={newMessage}
                                 onChange={(e) => setNewMessage(e.target.value)}
                                 onKeyDown={handleKeyDown}
                                 placeholder="Digite sua mensagem..."
-                                className={`w-full bg-[#3d3d3b] text-white placeholder:text-gray-600 border border-transparent focus:border-[#373734] rounded-xl px-4 py-3 focus:outline-none transition-all resize-none custom-scrollbar ${isAdmin ? 'text-base' : 'text-sm'}`}
+                                className={`w-full bg-[#3d3d3b] text-white placeholder:text-gray-600 border border-transparent focus:border-[#373734] rounded-xl px-4 py-3 focus:outline-none transition-all custom-scrollbar ${isAdmin ? 'text-base' : 'text-sm'}`}
                                 rows={1}
-                                style={{ minHeight: '44px', maxHeight: '100px' }}
+                                style={{ minHeight: '44px', maxHeight: '200px', resize: 'none' }}
                             />
                             <button
                                 onClick={handleSendMessage}

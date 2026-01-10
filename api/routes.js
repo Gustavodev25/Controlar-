@@ -1758,6 +1758,106 @@ router.post('/admin/revoke-plan-by-customer', async (req, res) => {
 });
 
 // ========================================
+// UPDATE PLAN - For admin to manually update user's plan
+// ========================================
+router.post('/admin/update-plan', async (req, res) => {
+  const { userId, customerId, plan, status, billingCycle, couponUsed } = req.body;
+
+  if (!userId && !customerId) {
+    return res.status(400).json({ error: 'userId ou customerId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    let userDoc;
+    let userDocId;
+
+    // Find user by userId or customerId
+    if (userId) {
+      userDoc = await db.collection('users').doc(userId).get();
+      if (!userDoc.exists) {
+        return res.status(404).json({ error: 'Usuário não encontrado' });
+      }
+      userDocId = userId;
+    } else {
+      const snapshot = await db.collection('users')
+        .where('subscription.asaasCustomerId', '==', customerId)
+        .get();
+
+      if (snapshot.empty) {
+        return res.status(404).json({ error: 'Usuário não encontrado com esse customerId' });
+      }
+      userDoc = snapshot.docs[0];
+      userDocId = userDoc.id;
+    }
+
+    const userData = userDoc.data();
+    const now = new Date().toISOString();
+
+    // Build update payload
+    const updatePayload = {
+      'subscription.updatedAt': now,
+      'profile.subscription.updatedAt': now
+    };
+
+    if (plan) {
+      updatePayload['subscription.plan'] = plan;
+      updatePayload['profile.subscription.plan'] = plan;
+    }
+
+    if (status) {
+      updatePayload['subscription.status'] = status;
+      updatePayload['profile.subscription.status'] = status;
+    }
+
+    if (billingCycle) {
+      updatePayload['subscription.billingCycle'] = billingCycle;
+      updatePayload['profile.subscription.billingCycle'] = billingCycle;
+    }
+
+    if (couponUsed !== undefined) {
+      if (couponUsed === null || couponUsed === '') {
+        // Remove coupon
+        updatePayload['subscription.couponUsed'] = firebaseAdmin.firestore.FieldValue.delete();
+        updatePayload['profile.subscription.couponUsed'] = firebaseAdmin.firestore.FieldValue.delete();
+        updatePayload['subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();
+        updatePayload['profile.subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();
+      } else {
+        updatePayload['subscription.couponUsed'] = couponUsed;
+        updatePayload['profile.subscription.couponUsed'] = couponUsed;
+      }
+    }
+
+    await db.collection('users').doc(userDocId).update(updatePayload);
+
+    console.log(`>>> [ADMIN] Plan updated for user ${userDocId}. New plan: ${plan}, Status: ${status}`);
+
+    res.json({
+      success: true,
+      message: 'Plano atualizado com sucesso',
+      userId: userDocId,
+      updates: {
+        plan,
+        status,
+        billingCycle,
+        couponUsed
+      },
+      previousData: {
+        plan: userData.subscription?.plan,
+        status: userData.subscription?.status
+      }
+    });
+  } catch (error) {
+    console.error('>>> Error updating plan:', error);
+    res.status(500).json({ error: 'Erro ao atualizar plano', details: error.message });
+  }
+});
+
+// ========================================
 // FIX SUBSCRIPTION - For customers with manual_recheck_needed status
 // ========================================
 router.post('/admin/fix-subscription', async (req, res) => {
