@@ -291,7 +291,8 @@ router.get('/items', withPluggyAuth, async (req, res) => {
 
 router.get('/connectors', withPluggyAuth, async (req, res) => {
     try {
-        const response = await pluggyApi.get('/connectors?sandbox=true', {
+        // sandbox=false para produção, sandbox=true para testes
+        const response = await pluggyApi.get('/connectors?sandbox=false', {
             headers: { 'X-API-KEY': req.pluggyApiKey }
         });
         
@@ -304,6 +305,55 @@ router.get('/connectors', withPluggyAuth, async (req, res) => {
         res.status(500).json({ 
             success: false, 
             error: 'Failed to fetch connectors' 
+        });
+    }
+});
+// 11. Create Item (Connect Bank Account)
+router.post('/create-item', withPluggyAuth, async (req, res) => {
+    const { userId, connectorId, credentials } = req.body;
+    
+    console.log(`[Create-Item] Starting for user ${userId}, connector ${connectorId}`);
+    
+    try {
+        // Criar item no Pluggy
+        const response = await pluggyApi.post('/items', {
+            connectorId,
+            parameters: credentials
+        }, {
+            headers: { 'X-API-KEY': req.pluggyApiKey }
+        });
+        
+        const item = response.data;
+        console.log(`[Create-Item] Item created: ${item.id}, status: ${item.status}`);
+        
+        // Salvar referência no Firebase
+        if (firebaseAdmin) {
+            const db = firebaseAdmin.firestore();
+            await db.collection('users').doc(userId).collection('pluggyItems').doc(item.id).set({
+                itemId: item.id,
+                connectorId,
+                connectorName: item.connector?.name || null,
+                status: item.status,
+                createdAt: new Date().toISOString()
+            });
+        }
+        
+        res.json({ 
+            success: true, 
+            item,
+            message: 'Conexão iniciada com sucesso!'
+        });
+        
+    } catch (error) {
+        console.error('[Create-Item] Error:', error.response?.data || error.message);
+        
+        const errorMessage = error.response?.data?.message || 
+                            error.response?.data?.error || 
+                            'Falha ao conectar. Verifique suas credenciais.';
+        
+        res.status(error.response?.status || 500).json({ 
+            success: false, 
+            error: errorMessage
         });
     }
 });
