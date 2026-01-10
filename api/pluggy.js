@@ -289,6 +289,25 @@ router.get('/items', withPluggyAuth, async (req, res) => {
     }
 });
 
+router.get('/connectors', withPluggyAuth, async (req, res) => {
+    try {
+        const response = await pluggyApi.get('/connectors?sandbox=true', {
+            headers: { 'X-API-KEY': req.pluggyApiKey }
+        });
+        
+        res.json({
+            success: true,
+            results: response.data.results || []
+        });
+    } catch (error) {
+        console.error('Error fetching connectors:', error.message);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to fetch connectors' 
+        });
+    }
+});
+
 // 3. Trigger Sync (Update Item) - OPTIMIZED FOR VERCEL PRO
 // Ultra-fast parallel processing
 router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
