@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, Minus, HelpCircle, AlertTriangle
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -411,21 +411,41 @@ const calculateInvoiceSummary = (
   const nextMonthKey = invoicePeriods?.nextInvoice?.monthKey ||
     `${nextClosingDate.getFullYear()}-${String(nextClosingDate.getMonth() + 1).padStart(2, '0')}`;
 
-  paymentTransactions.forEach(tx => {
-    const amt = Math.abs(Number(tx.amount) || 0);
+  // ============================================================
+  // Processa pagamentos (associa à fatura que está sendo quitada)
+  // ============================================================
+  // REGRA: Um pagamento feito durante o período da fatura ATUAL
+  // está quitando a fatura FECHADA (anterior).
+  // Para cada fatura, mostramos apenas o pagamento que a quita.
+  // ============================================================
+
+  // Encontrar o pagamento que quita a fatura FECHADA
+  // (pagamento feito durante o período da fatura ATUAL)
+  const paymentForClosedInvoice = paymentTransactions.find(tx => {
+    if (!tx.date) return false;
+    const [py, pm, pd] = (tx.date || '').split('-').map(Number);
+    const paymentDate = new Date(py, pm - 1, pd);
+    const paymentDateNum = paymentDate.getFullYear() * 10000 + (paymentDate.getMonth() + 1) * 100 + paymentDate.getDate();
+    const currentStartNum = currentInvoiceStart.getFullYear() * 10000 + (currentInvoiceStart.getMonth() + 1) * 100 + currentInvoiceStart.getDate();
+    const currentEndNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
+    return paymentDateNum >= currentStartNum && paymentDateNum <= currentEndNum;
+  });
+
+  if (paymentForClosedInvoice) {
+    const amt = Math.abs(Number(paymentForClosedInvoice.amount) || 0);
     lastInvoiceTotal -= amt;
 
-    const [py, pm, pd] = (tx.date || '').split('-').map(Number);
+    const [py, pm, pd] = (paymentForClosedInvoice.date || '').split('-').map(Number);
     const paymentDate = new Date(py, pm - 1, pd);
     const daysLate = Math.floor((paymentDate.getTime() - lastDueDate.getTime()) / (1000 * 60 * 60 * 24));
 
     lastInvoiceTransactions.push({
-      ...tx,
+      ...paymentForClosedInvoice,
       isPayment: true,
       daysLate: daysLate > 0 ? daysLate : 0,
       isLate: daysLate > 0
     } as Transaction);
-  });
+  }
 
   // ========================================
   // CÁLCULO DA FATURA ATUAL (SOMA PURA)
@@ -544,14 +564,16 @@ const CHARGE_DESCRIPTIONS: Record<ChargeType, string> = {
 const useInvoiceBuilder = (
   card: ConnectedAccount | undefined,
   transactions: Transaction[],
-  cardId: string
+  cardId: string,
+  monthOffset: number = 0
 ) => {
   return useMemo(() => {
     console.log('[DEBUG] useInvoiceBuilder chamado:', {
       hasCard: !!card,
       cardId,
       cardName: card?.name || card?.institution,
-      transactionsCount: transactions.length
+      transactionsCount: transactions.length,
+      monthOffset
     });
 
     if (!card) {
@@ -559,7 +581,7 @@ const useInvoiceBuilder = (
       return null;
     }
 
-    const result = buildInvoices(card, transactions, cardId);
+    const result = buildInvoices(card, transactions, cardId, monthOffset);
 
     console.log('[DEBUG] useInvoiceBuilder resultado:', {
       closedInvoiceTotal: result.closedInvoice.total,
@@ -632,7 +654,7 @@ const useInvoiceBuilder = (
         nextMonthKey: result.futureInvoices[0]?.referenceMonth || ''
       }
     };
-  }, [card, transactions, cardId]);
+  }, [card, transactions, cardId, monthOffset]);
 };
 
 export const CreditCardTable: React.FC<CreditCardTableProps> = ({
@@ -685,6 +707,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Invoice Filter (Todas, Última, Atual, Próxima)
   const [selectedInvoice, setSelectedInvoice] = useState<'all' | 'last' | 'current' | 'next'>('current');
+
+  // Month Offset para navegação rotativa entre faturas
+  // 0 = mês base (hoje), -1 = um mês para trás, +1 = um mês para frente, etc.
+  const [monthOffset, setMonthOffset] = useState(0);
 
   // Auto-switch to "Histórico" when date filters are used
   React.useEffect(() => {
@@ -885,7 +911,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // ============================================================
   // NOVO SISTEMA DE FATURAS - Usa invoiceBuilder.ts
   // ============================================================
-  const invoiceBuilderData = useInvoiceBuilder(selectedCard, transactions, selectedCardId);
+  const invoiceBuilderData = useInvoiceBuilder(selectedCard, transactions, selectedCardId, monthOffset);
 
   // Calculate invoice summary - AGORA USA O NOVO SISTEMA
   const invoiceSummary = useMemo(() => {
@@ -1115,6 +1141,29 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         total: currentInvoiceTotal,
         payments: currentInvoicePayments
       }
+    };
+  }, [invoiceSummary, selectedCard]);
+
+  // ============================================================
+  // CÁLCULO DE TOTAIS VISUAIS (Para consistência com a tabela)
+  // Garante que o valor no card seja igual à soma das transações exibidas
+  // ============================================================
+  const visualTotals = useMemo(() => {
+    const calcTotal = (txs: Transaction[]) => txs.reduce((acc, tx) => {
+      // Usa isCreditCardPaymentBuilder para garantir consistência
+      if (isCreditCardPaymentBuilder(tx)) return acc;
+      const amt = Math.abs(Number(tx.amount) || 0);
+      return tx.type === 'income' ? acc - amt : acc + amt;
+    }, 0);
+
+    const lastTotal = calcTotal(invoiceSummary.lastInvoice.transactions);
+    // Adicionar encargos ao total visual da última fatura se houver
+    const charges = selectedCard?.currentBill?.financeCharges?.total || 0;
+
+    return {
+      last: lastTotal + charges,
+      current: calcTotal(invoiceSummary.currentInvoice.transactions),
+      next: calcTotal(invoiceSummary.nextInvoice.transactions)
     };
   }, [invoiceSummary, selectedCard]);
 
@@ -1468,6 +1517,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     )}
                   </div>
 
+
+
                   {/* Invoice Cards Grid - with Animation */}
                   <AnimatePresence>
                     {showInvoiceCards && (
@@ -1536,7 +1587,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               {invoicePaymentInfo.last.isPaid ? (
                                 <div className="flex flex-col">
                                   <span className={`text-xl font-bold font-mono tracking-tight line-through opacity-50 ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                    {formatCurrency(selectedCard.currentBill?.totalAmount || invoiceSummary.lastInvoice.total)}
+                                    {formatCurrency(visualTotals.last)}
                                   </span>
                                   <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
                                     <Check size={12} /> Pago: {formatCurrency(invoicePaymentInfo.last.paidAmount)}
@@ -1544,7 +1595,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 </div>
                               ) : (
                                 <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                  {formatCurrency(selectedCard.currentBill?.totalAmount || invoiceSummary.lastInvoice.total)}
+                                  {formatCurrency(visualTotals.last)}
                                 </span>
                               )}
                               <span className="text-[10px] text-gray-500">
@@ -1617,7 +1668,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                             <div className="flex flex-col gap-0.5 w-full">
                               <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'current' ? 'text-[#d97757]' : 'text-white'}`}>
-                                {formatCurrency(invoiceSummary.currentInvoice.total)}
+                                {formatCurrency(visualTotals.current)}
                               </span>
                               <span className="text-[10px] text-gray-500">
                                 {invoiceSummary.currentInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.currentInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -1647,7 +1698,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                             <div className="flex flex-col gap-0.5 w-full">
                               <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'next' ? 'text-blue-400' : 'text-white'}`}>
-                                {formatCurrency(invoiceSummary.nextInvoice.total)}
+                                {formatCurrency(visualTotals.next)}
                               </span>
                               <span className="text-[10px] text-gray-500">
                                 {invoiceSummary.nextInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.nextInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}

@@ -155,21 +155,29 @@ export interface InvoicePeriodDates {
 
 /**
  * Calcula todas as datas relevantes para faturas de um cartão
+ * @param monthOffset - Offset de meses: 0 = mês atual, -1 = mês anterior, +1 = próximo mês
  */
 export const calculateInvoicePeriodDates = (
   closingDayRaw: number | null | undefined,
   dueDay: number | null | undefined,
-  today: Date = new Date()
+  today: Date = new Date(),
+  monthOffset: number = 0
 ): InvoicePeriodDates => {
   const closingDay = validateClosingDay(closingDayRaw);
 
-  // Calcular fechamento da fatura ATUAL (próximo fechamento a partir de hoje)
+  // Aplicar o offset de meses à data de referência
+  const referenceDate = new Date(today);
+  if (monthOffset !== 0) {
+    referenceDate.setMonth(referenceDate.getMonth() + monthOffset);
+  }
+
+  // Calcular fechamento da fatura ATUAL (próximo fechamento a partir da data de referência)
   let currentClosingDate: Date;
-  if (today.getDate() <= closingDay) {
-    currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+  if (referenceDate.getDate() <= closingDay) {
+    currentClosingDate = getClosingDate(referenceDate.getFullYear(), referenceDate.getMonth(), closingDay);
   } else {
-    const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
-    const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
+    const nextMonth = referenceDate.getMonth() === 11 ? 0 : referenceDate.getMonth() + 1;
+    const nextYear = referenceDate.getMonth() === 11 ? referenceDate.getFullYear() + 1 : referenceDate.getFullYear();
     currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
   }
 
@@ -425,11 +433,14 @@ const determineInvoiceStatus = (
  * 1. Datas manuais (manualLastClosingDate / manualCurrentClosingDate) - usuário define
  * 2. invoicePeriods do backend (calculado no sync)
  * 3. Cálculo automático baseado no closingDay
+ * 
+ * @param monthOffset - Offset de meses para navegação rotativa (0 = hoje, -1 = mês anterior, +1 = próximo)
  */
 export const buildInvoices = (
   card: ConnectedAccount | undefined,
   transactions: Transaction[],
-  cardId: string = 'all'
+  cardId: string = 'all',
+  monthOffset: number = 0
 ): InvoiceBuildResult => {
   const today = new Date();
 
@@ -506,7 +517,7 @@ export const buildInvoices = (
     // ========================================
     // PRIORIDADE 2/3: Backend ou cálculo automático
     // ========================================
-    periods = calculateInvoicePeriodDates(closingDay, dueDay, today);
+    periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset);
   }
 
   // Filtra transações do cartão
@@ -629,37 +640,49 @@ export const buildInvoices = (
   });
 
   // ============================================================
-  // 3. Processa pagamentos (distribuídos por data)
+  // 3. Processa pagamentos (associa à fatura que está sendo quitada)
   // ============================================================
-  paymentTxs.forEach(tx => {
-    if (!tx.date) return;
+  // REGRA: Um pagamento feito durante o período da fatura ATUAL
+  // está quitando a fatura FECHADA (anterior).
+  // Pagamentos feitos durante o período da fatura FECHADA
+  // estavam quitando a fatura ANTES DA FECHADA (duas atrás).
+  // 
+  // Para cada fatura, mostramos apenas o pagamento que a quita.
+  // ============================================================
+
+  // Encontrar o pagamento mais adequado para a fatura FECHADA
+  // (pagamento feito durante o período da fatura ATUAL que quita a FECHADA)
+  const paymentForClosedInvoice = paymentTxs.find(tx => {
+    if (!tx.date) return false;
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
+    // Pagamento feito no período ATUAL quita a fatura FECHADA
+    return txDateNum >= currentStartNum && txDateNum <= currentEndNum;
+  });
 
+  // Se não encontrou pagamento no período atual, busca pagamento
+  // feito logo após o fechamento da fatura FECHADA (até o vencimento)
+  const paymentForClosedInvoiceAlt = !paymentForClosedInvoice ? paymentTxs.find(tx => {
+    if (!tx.date) return false;
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+    const lastDueDateNum = dateToNumber(periods.lastDueDate);
+    // Pagamento feito após fechamento e até o vencimento da fatura FECHADA
+    return txDateNum > lastEndNum && txDateNum <= lastDueDateNum;
+  }) : null;
+
+  const effectivePaymentForClosed = paymentForClosedInvoice || paymentForClosedInvoiceAlt;
+
+  if (effectivePaymentForClosed) {
     const item: InvoiceItem = {
-      ...transactionToInvoiceItem(tx),
+      ...transactionToInvoiceItem(effectivePaymentForClosed),
       isPayment: true
     };
-    const amount = Math.abs(item.amount);
+    closedItems.push(item);
+  }
 
-    if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
-      // Pagamento no período da fatura FECHADA
-      closedItems.push(item);
-      // NÃO subtraímos do total da fatura (que representa os gastos a pagar)
-      // O pagamento quita a fatura, não reduz seu valor original de gastos.
-    } else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) {
-      // Pagamento no período da fatura ATUAL
-      currentItems.push(item);
-      // NÃO subtraímos do total. O pagamento da fatura anterior não deve reduzir
-      // o valor dos novos gastos desta fatura.
-    } else if (txDateNum < lastStartNum) {
-      // Pagamento antigo
-      closedItems.push(item);
-    } else {
-      // Pagamento futuro
-      currentItems.push(item);
-    }
-  });
+  // Para a fatura ATUAL (ainda em aberto), pagamentos serão mostrados
+  // apenas quando ela fechar e virar "fechada" no próximo ciclo
 
   // Pega valor da última fatura da API se disponível
   const billTotalFromAPI = card?.currentBill?.totalAmount;

@@ -125,8 +125,8 @@ export const calculateFirstBillingMonth = (
   let year = date.getFullYear();
   let month = date.getMonth();
 
-  // Se compra foi no dia de fechamento ou depois, vai para o próximo mês
-  if (purchaseDay >= billingDay) {
+  // Se compra foi DEPOIS do dia de fechamento, vai para o próximo mês
+  if (purchaseDay > billingDay) {
     month += 1;
     if (month > 11) {
       month = 0;
@@ -339,8 +339,8 @@ export const calculateInstallmentReferenceMonth = (
   let currentInstallmentMonth = date.getMonth();
   let currentInstallmentYear = date.getFullYear();
 
-  // Se a data >= billingDay, a parcela atual cai no MÊS SEGUINTE
-  if (day >= billingDay) {
+  // Se a data > billingDay, a parcela atual cai no MÊS SEGUINTE
+  if (day > billingDay) {
     currentInstallmentMonth += 1;
     if (currentInstallmentMonth > 11) {
       currentInstallmentMonth = 0;
@@ -441,7 +441,9 @@ export const processTransactionsToInstallments = (
     installmentTxCount++;
 
     const descInstallment = extractInstallmentFromDesc(tx.description || '');
-    const totalInstallments = tx.totalInstallments || descInstallment?.total || 1;
+    const apiTotal = tx.totalInstallments || 0;
+    const descTotal = descInstallment?.total || 0;
+    const totalInstallments = Math.max(apiTotal, descTotal, 1);
 
     if (totalInstallments <= 1) return;
 

@@ -794,23 +794,49 @@ export const AdminSubscriptions: React.FC = () => {
             ? (sub.billingCycle === 'annual' ? 749.00 / 12 : 69.90)
             : (sub.plan === 'pro' ? (sub.billingCycle === 'annual' ? 399.00 / 12 : 35.90) : 0);
 
-        let startDate = sub.startDate ? new Date(sub.startDate) : null;
+        // Parse date avoiding timezone issues (YYYY-MM-DD format)
+        const parseDate = (dateStr: string): Date => {
+            if (!dateStr) return new Date();
+            // Handle ISO format with time (e.g., "2026-01-02T01:45:50.152Z")
+            if (dateStr.includes('T')) {
+                return new Date(dateStr);
+            }
+            // Handle date-only format (e.g., "2026-01-01") - parse as local date
+            const parts = dateStr.split('-').map(Number);
+            if (parts.length === 3) {
+                return new Date(parts[0], parts[1] - 1, parts[2]);
+            }
+            return new Date(dateStr);
+        };
+
+        let startDate = sub.startDate ? parseDate(sub.startDate) : null;
 
         // Fallback for old subscriptions
         if (!startDate) {
             // Priority 1: User creation date
             if (user.createdAt) {
-                startDate = new Date(user.createdAt);
+                startDate = parseDate(user.createdAt);
             }
             // Priority 2: Infer from nextBillingDate IS UNRELIABLE for history
             // If we have an active user without startDate, assume they are "old" enough for the view
             else {
                 // Default to well in the past to ensure projection shows up
-                startDate = new Date('2024-01-01');
+                startDate = new Date(2024, 0, 1); // Jan 1, 2024
             }
         }
 
         const coupon = coupons.find(c => c.id === sub.couponUsed);
+
+        // Determine the effective display start date
+        // If couponStartMonth is set and is BEFORE startDate, use it for display purposes
+        // This allows showing coupon discounts for months before the official subscription start
+        let displayStartDate = startDate;
+        if (sub.couponStartMonth && coupon) {
+            const couponStart = parseDate(sub.couponStartMonth + '-01');
+            if (couponStart < startDate) {
+                displayStartDate = couponStart;
+            }
+        }
 
         const today = new Date();
         // FIXED: View range always starts at Jan 1st of CURRENT YEAR (or allow toggle year later)
@@ -825,13 +851,13 @@ export const AdminSubscriptions: React.FC = () => {
             // Target month in the view
             const targetDate = new Date(viewStart.getFullYear(), viewStart.getMonth() + i, 1);
 
-            // Check if subscription was active during this month
-            // Only show months from startDate onwards (no changes based on couponStartMonth)
+            // Check if subscription/coupon was active during this month
+            const displayStartMonthIndex = displayStartDate.getFullYear() * 12 + displayStartDate.getMonth();
             const subStartMonthIndex = startDate.getFullYear() * 12 + startDate.getMonth();
             const targetMonthIndex = targetDate.getFullYear() * 12 + targetDate.getMonth();
 
-            if (targetMonthIndex < subStartMonthIndex) {
-                // Before subscription started - don't show
+            if (targetMonthIndex < displayStartMonthIndex) {
+                // Before display start (either subscription or coupon start)
                 continue;
             }
 
