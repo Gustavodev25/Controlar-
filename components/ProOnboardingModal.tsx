@@ -244,12 +244,12 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
     if (!isOpen) return null;
 
     return createPortal(
-        <div className="fixed inset-0 z-[9999] overflow-hidden">
+        <div className="fixed inset-0 z-[9999] overflow-hidden pointer-events-none">
             {/* Backdrop if no spotlight (spotlight handles its own backdrop) */}
             {(isCentered || isMobile) && (
                 <motion.div
                     initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-                    className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                    className="absolute inset-0 bg-black/80 backdrop-blur-sm pointer-events-auto"
                 />
             )}
 
@@ -257,7 +257,7 @@ export const ProOnboardingModal: React.FC<ProOnboardingModalProps> = ({
             {!isCentered && !isMobile && <Spotlight targetId={currentStep.targetId} />}
 
             {/* Content Container */}
-            <div className={`fixed inset-0 flex pointer-events-none z-[110] ${isCentered || isMobile ? 'items-end justify-center sm:items-center' : ''}`}>
+            <div className={`fixed inset-0 flex pointer-events-none z-[1100] ${isCentered || isMobile ? 'items-end justify-center sm:items-center' : ''}`}>
                 <AnimatePresence mode="wait">
                     <motion.div
                         key={step}

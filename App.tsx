@@ -80,6 +80,11 @@ import { captureUtmFromUrl } from './services/utmService';
 // Helper to capture connection details (runs in background, non-blocking)
 const captureDeviceDetails = async (uid: string) => {
   try {
+    // Prevent multiple captures per session
+    if (typeof window !== 'undefined' && sessionStorage.getItem(`device_details_captured_${uid}`)) {
+      return null;
+    }
+
     const parser = new UAParser();
     const result = parser.getResult();
 
@@ -114,6 +119,9 @@ const captureDeviceDetails = async (uid: string) => {
     };
 
     const updatedLogs = await dbService.logConnection(uid, log);
+    if (typeof window !== 'undefined') {
+      sessionStorage.setItem(`device_details_captured_${uid}`, 'true');
+    }
     return updatedLogs;
   } catch (err) {
     console.error("Error capturing device details:", err);
@@ -2540,7 +2548,7 @@ const App: React.FC = () => {
       }
       toast.message({
         text: "Membro removido.",
-        action: "Desfazer",
+        actionLabel: "Desfazer",
         onAction: async () => {
           if (toRestore) {
             await dbService.restoreMember(userId, toRestore);
