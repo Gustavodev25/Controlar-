@@ -1581,40 +1581,48 @@ router.post('/admin/apply-coupons', async (req, res) => {
 
         await db.collection('users').doc(userId).update(updatePayload);
 
-        // 3. Update Asaas Payment (if month is provided)
+        // 3. Try to update Asaas Payment (if month is provided)
+        // This is optional - if it fails, we still count as success since Firebase was updated
         if (month) {
-          const userDoc = await db.collection('users').doc(userId).get();
-          const user = userDoc.data();
-          const subId = user?.subscription?.asaasSubscriptionId;
+          try {
+            const userDoc = await db.collection('users').doc(userId).get();
+            const user = userDoc.data();
+            const subId = user?.subscription?.asaasSubscriptionId;
 
-          if (subId) {
-            // Find pending payments for this subscription
-            const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subId}&status=PENDING`);
-            const payments = paymentsRes.data || [];
+            if (subId) {
+              // Find pending payments for this subscription
+              const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subId}&status=PENDING`);
+              const payments = paymentsRes.data || [];
 
-            // Find payment due in the target month (YYYY-MM)
-            const targetPayment = payments.find(p => p.dueDate && p.dueDate.startsWith(month));
+              // Find payment due in the target month (YYYY-MM)
+              const targetPayment = payments.find(p => p.dueDate && p.dueDate.startsWith(month));
 
-            if (targetPayment) {
-              let discountObj = null;
+              if (targetPayment) {
+                let discountObj = null;
 
-              if (coupon.type === 'percentage') {
-                discountObj = { value: coupon.value, type: 'PERCENTAGE' };
-              } else if (coupon.type === 'fixed') {
-                discountObj = { value: coupon.value, type: 'FIXED' };
-              }
-              // Note: 'progressive' logic is complex to map to a single payment update without context.
-              // For now, only simple coupons trigger immediate Asaas update.
-              // If progressive, we might need to calculate the specific value for this month manually.
+                if (coupon.type === 'percentage') {
+                  discountObj = { value: coupon.value, type: 'PERCENTAGE' };
+                } else if (coupon.type === 'fixed') {
+                  discountObj = { value: coupon.value, type: 'FIXED' };
+                }
+                // Note: 'progressive' logic is complex to map to a single payment update without context.
+                // For now, only simple coupons trigger immediate Asaas update.
+                // If progressive, we might need to calculate the specific value for this month manually.
 
-              if (discountObj) {
-                // Update the payment in Asaas
-                await asaasRequest('POST', `/payments/${targetPayment.id}`, {
-                  discount: discountObj
-                });
-                console.log(`>>> [ADMIN] Updated Asaas payment ${targetPayment.id} with coupon ${coupon.code}`);
+                if (discountObj) {
+                  // Update the payment in Asaas
+                  await asaasRequest('POST', `/payments/${targetPayment.id}`, {
+                    discount: discountObj
+                  });
+                  console.log(`>>> [ADMIN] Updated Asaas payment ${targetPayment.id} with coupon ${coupon.code}`);
+                }
+              } else {
+                console.log(`>>> [ADMIN] No pending payment found for month ${month} - coupon applied to Firebase only`);
               }
             }
+          } catch (asaasErr) {
+            // Asaas update failed, but Firebase was updated successfully
+            console.warn(`>>> [ADMIN] Asaas update failed for user ${userId}, but Firebase was updated:`, asaasErr.message);
           }
         }
 

@@ -826,17 +826,16 @@ export const AdminSubscriptions: React.FC = () => {
             const targetDate = new Date(viewStart.getFullYear(), viewStart.getMonth() + i, 1);
 
             // Check if subscription was active during this month
-            // If startDate is AFTER this month, user hadn't subscribed yet -> "-"
-            // compare year and month
+            // Only show months from startDate onwards (no changes based on couponStartMonth)
             const subStartMonthIndex = startDate.getFullYear() * 12 + startDate.getMonth();
             const targetMonthIndex = targetDate.getFullYear() * 12 + targetDate.getMonth();
 
             if (targetMonthIndex < subStartMonthIndex) {
-                // Before subscription started
+                // Before subscription started - don't show
                 continue;
             }
 
-            // Calculate "Subscriber Month Index" (1=First Month, 2=Second...)
+            // Calculate "Subscriber Month Index" (1=First Month, 2=Second...) based on subscription start
             const subscriberMonthIndex = (targetMonthIndex - subStartMonthIndex) + 1;
 
             let finalPrice = planPrice;
