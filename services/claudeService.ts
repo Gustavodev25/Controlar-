@@ -204,9 +204,16 @@ REGRAS IMPORTANTES:
     "type": "income" ou "expense",
     "installments": número (1 se à vista),
     "isSubscription": true/false,
-    "accountName": "Nome da conta/banco se especificado (ex: Nubank, Carteira, BB)"
+    "accountName": "Nome da conta/banco/cartão se especificado ou inferido (ex: Nubank, Carteira, BB, Inter, C6, Itaú)",
+    "needsAccountConfirmation": true/false (true se o usuário NÃO especificou a conta e você precisa perguntar)
   }
 }
+
+IMPORTANTE SOBRE CONTAS E CARTÕES:
+- Se o usuário mencionar explicitamente um banco/conta/cartão (ex: "gastei 50 no Nubank", "paguei com Inter", "na carteira", "no C6"), preencha "accountName" com o nome e "needsAccountConfirmation": false
+- Se o usuário NÃO especificar onde gastou, defina "needsAccountConfirmation": true e "accountName": null
+- Nomes comuns de bancos/cartões: Nubank, Inter, C6, Itaú, Bradesco, Santander, BB (Banco do Brasil), Caixa, BTG, Original, Next, Neon, PicPay, Mercado Pago, Carteira, Dinheiro
+- Interprete variações como: "nu" = Nubank, "inter" = Inter, "c6" ou "cseis" = C6, "bb" = BB, "dinheiro"/"cash" = Carteira
 
 3. Se o usuário mencionar ITENS MISTOS (combinação de despesas, lembretes e/ou assinaturas), use o intent "mixed_items":
 Exemplo: "gastei 50 no uber, preciso lembrar de pagar a luz dia 20 que é 150 reais, e tenho netflix 55 por mês"
@@ -220,7 +227,9 @@ Exemplo: "gastei 50 no uber, preciso lembrar de pagar a luz dia 20 que é 150 re
       "date": "${todayISO}",
       "type": "expense",
       "installments": 1,
-      "isSubscription": false
+      "isSubscription": false,
+      "accountName": null,
+      "needsAccountConfirmation": true
     }
   ],
   "reminders": [
@@ -284,6 +293,8 @@ Exemplo: "gastei 50 no uber, preciso lembrar de pagar a luz dia 20 que é 150 re
 13. CORRIJA ERROS DE DIGITAÇÃO: Se o usuário escrever "ubeer", entenda como "Uber". "ifood", "iFood". "Restaurante", etc.
 14. Se a entrada for ambígua, tente inferir o contexto mais provável (ex: "luz 100" -> Provável conta de luz/Lembrete).
 15. FLEXIBILIDADE: Entenda frases informais como "Preciso receber 200 do João" (Transação de Receita ou Lembrete).
+16. CONTA/CARTÃO OBRIGATÓRIO: Se o usuário não mencionar em qual conta/cartão foi o gasto, defina needsAccountConfirmation como true. O sistema vai perguntar depois.
+17. Interprete corretamente quando o usuário disser onde foi: "no nubank", "pelo inter", "na carteira", "com o c6", etc.
 
 SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se não for possível extrair dados, use intent: "chat".`;
 
@@ -351,7 +362,8 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se
             category: t.category || "Outros",
             type: t.type || "expense",
             amount: t.amount || 0,
-            accountName: t.accountName
+            accountName: t.accountName || undefined,
+            needsAccountConfirmation: t.needsAccountConfirmation ?? (t.accountName ? false : true)
         });
 
         // Processar múltiplas transações

@@ -1030,8 +1030,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                               }`}
                           >
                             <div className="flex items-center gap-2 min-w-0">
-                              <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400 flex-shrink-0">
-                                <Building size={14} />
+                              <div className="flex-shrink-0">
+                                {acc.connector?.imageUrl ? (
+                                  <img
+                                    src={acc.connector.imageUrl}
+                                    alt=""
+                                    className="w-5 h-5 rounded object-contain"
+                                  />
+                                ) : (
+                                  <div className="p-1.5 rounded bg-emerald-900/30 text-emerald-400">
+                                    <Building size={14} />
+                                  </div>
+                                )}
                               </div>
                               <div className="min-w-0">
                                 <p className="text-sm text-white font-medium truncate">{acc.institution || acc.name || 'Conta'}</p>
@@ -1196,9 +1206,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                       {/* Card Content */}
                       <div className="flex items-start justify-between">
                         <div className="flex items-center gap-3">
-                          <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-[#D97757]/10 text-[#D97757]' : 'bg-gray-700/20 text-gray-500'}`}>
-                            <CreditCard size={20} />
-                          </div>
+                          {card.connector?.imageUrl ? (
+                            <img
+                              src={card.connector.imageUrl}
+                              alt=""
+                              className="w-10 h-10 rounded-lg object-contain"
+                            />
+                          ) : (
+                            <div className={`p-2.5 rounded-lg ${isCurrent ? 'bg-[#D97757]/10 text-[#D97757]' : 'bg-gray-700/20 text-gray-500'}`}>
+                              <CreditCard size={20} />
+                            </div>
+                          )}
                           <div>
                             <div className="flex items-center gap-2">
                               <p className={`text-sm font-medium truncate max-w-[120px] ${isCurrent ? 'text-gray-400' : 'text-gray-500'}`}>
@@ -1292,9 +1310,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                           className="flex items-center justify-between p-3 cursor-pointer hover:bg-gray-800/50 transition-colors"
                                         >
                                           <div className="flex items-center gap-2.5">
-                                            <div className={`w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center shadow-inner ${isEnabled ? 'text-[#D97757]' : 'text-gray-600'}`}>
-                                              <Building size={14} />
-                                            </div>
+                                            {card.connector?.imageUrl ? (
+                                              <img
+                                                src={card.connector.imageUrl}
+                                                alt=""
+                                                className="w-8 h-8 rounded-lg object-contain"
+                                              />
+                                            ) : (
+                                              <div className={`w-8 h-8 rounded-lg bg-gray-900 border border-gray-800 flex items-center justify-center shadow-inner ${isEnabled ? 'text-[#D97757]' : 'text-gray-600'}`}>
+                                                <Building size={14} />
+                                              </div>
+                                            )}
                                             <span className={`text-sm font-medium ${isEnabled ? 'text-gray-200' : 'text-gray-500'}`}>
                                               {card.institution || card.name || 'Cartão'}
                                             </span>

@@ -1475,9 +1475,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         transition={{ type: "spring", stiffness: 500, damping: 30 }}
                       />
                     )}
-                    <div className={`relative z-10 flex items-center justify-center p-1 rounded-md transition-all ${isSelected ? 'bg-[#d97757]/40 text-white shadow-md shadow-[#d97757]/10 mr-1' : 'bg-[#373734]/50 text-gray-500'}`}>
-                      <CreditCard size={12} className="" />
-                    </div>
+                    {/* Logo do banco ou ícone genérico */}
+                    {card.connector?.imageUrl ? (
+                      <img
+                        src={card.connector.imageUrl}
+                        alt=""
+                        className="relative z-10 w-5 h-5 rounded object-contain"
+                      />
+                    ) : (
+                      <div className={`relative z-10 flex items-center justify-center p-1 rounded-md transition-all ${isSelected ? 'bg-[#d97757]/40 text-white shadow-md shadow-[#d97757]/10 mr-1' : 'bg-[#373734]/50 text-gray-500'}`}>
+                        <CreditCard size={12} className="" />
+                      </div>
+                    )}
                     <span className="relative z-10 truncate max-w-[120px]">
                       {card.name || card.institution || 'Cartão'}
                     </span>
@@ -1544,9 +1553,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   {/* Card Header with Settings */}
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <div className="p-2.5 bg-[#d97757]/40 rounded-xl shadow-lg shadow-[#d97757]/10">
-                        <CreditCard size={20} className="text-white" />
-                      </div>
+                      {/* Logo do banco ou ícone genérico */}
+                      {selectedCard.connector?.imageUrl ? (
+                        <img
+                          src={selectedCard.connector.imageUrl}
+                          alt=""
+                          className="w-10 h-10 rounded-xl object-contain"
+                        />
+                      ) : (
+                        <div className="p-2.5 bg-[#d97757]/40 rounded-xl shadow-lg shadow-[#d97757]/10">
+                          <CreditCard size={20} className="text-white" />
+                        </div>
+                      )}
                       <div>
                         <div className="flex items-center gap-2">
                           <h3 className="text-lg font-bold text-white">{selectedCard.name || selectedCard.institution || 'Cartão'}</h3>

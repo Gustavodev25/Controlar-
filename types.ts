@@ -223,6 +223,7 @@ export interface AIParsedTransaction {
   installments?: number;
   isSubscription?: boolean;
   accountName?: string;
+  needsAccountConfirmation?: boolean; // True quando o usuário não especificou a conta/cartão
 }
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';

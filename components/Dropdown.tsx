@@ -89,6 +89,7 @@ export const DropdownContent = ({
 }) => {
   const context = useContext(DropdownContext);
   const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [openUpward, setOpenUpward] = useState(false);
 
   if (!context) throw new Error("DropdownContent must be used within a Dropdown");
 
@@ -109,8 +110,15 @@ export const DropdownContent = ({
           left = rect.left + (rect.width / 2);
         }
 
+        // Check if dropdown would go off screen (estimate dropdown height ~250px)
+        const estimatedDropdownHeight = 250;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const shouldOpenUpward = spaceBelow < estimatedDropdownHeight && rect.top > estimatedDropdownHeight;
+
+        setOpenUpward(shouldOpenUpward);
+
         setCoords({
-          top: rect.bottom + 8,
+          top: shouldOpenUpward ? rect.top - 8 : rect.bottom + 8,
           left: left
         });
       };
@@ -124,6 +132,9 @@ export const DropdownContent = ({
 
   // Determine X offset for alignment
   const xOffset = align === 'right' ? '-100%' : align === 'center' ? '-50%' : '0%';
+  // Y offset and transform origin based on direction
+  const yOffset = openUpward ? '-100%' : '0%';
+  const transformOrigin = openUpward ? 'bottom' : 'top';
 
   const style: React.CSSProperties = portal
     ? {
@@ -131,17 +142,20 @@ export const DropdownContent = ({
       top: coords.top,
       left: coords.left,
       zIndex: 9999,
-      // We use motion x for alignment to avoid CSS transform conflicts or race conditions
-    }
+      transformOrigin: transformOrigin,
+      // Hide scrollbar for all browsers
+      scrollbarWidth: 'none', // Firefox
+      msOverflowStyle: 'none', // IE/Edge
+    } as React.CSSProperties
     : {};
 
   const content = (
     <AnimatePresence>
       {isOpen && (
         <motion.div
-          initial={{ y: -5, x: xOffset, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: 0, x: xOffset, scale: 1, filter: "blur(0)", opacity: 1 }}
-          exit={{ y: -5, x: xOffset, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
+          initial={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
+          animate={{ y: yOffset, x: xOffset, scale: 1, filter: "blur(0)", opacity: 1 }}
+          exit={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
           transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
           style={style}
           data-dropdown-content

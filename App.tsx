@@ -2968,7 +2968,7 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddExtraIncome = async (amount: number, description: string, status: 'completed' | 'pending' = 'completed', date?: string) => {
+  const handleAddExtraIncome = async (amount: number, description: string, status: 'completed' | 'pending' = 'completed', date?: string, accountId?: string) => {
     const admin = members.find(m => m.role === 'admin') || members[0];
     if (!admin) return;
 
@@ -2979,7 +2979,8 @@ const App: React.FC = () => {
       type: 'income',
       date: date || toLocalISODate(),
       status: status,
-      memberId: activeMemberId === 'FAMILY_OVERVIEW' ? admin.id : activeMemberId
+      memberId: activeMemberId === 'FAMILY_OVERVIEW' ? admin.id : activeMemberId,
+      accountId: accountId
     };
     await handleAddTransaction(extraIncome);
   };
@@ -3491,6 +3492,7 @@ const App: React.FC = () => {
                       onToggleOpenFinance={setIncludeOpenFinanceInStats}
                       viewFilter={viewFilter}
                       onViewFilterChange={setViewFilter}
+                      connectedAccounts={connectedAccounts}
                     />
                   )}
                   <StatsCards

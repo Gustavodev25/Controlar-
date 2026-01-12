@@ -1041,9 +1041,23 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
                   <div className="flex items-center justify-between w-full">
                     <div className="flex items-center gap-3 flex-1 min-w-0">
-                      <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
-                        <Building size={20} />
-                      </div>
+                      {/* Logo do Banco ou ícone fallback */}
+                      {(() => {
+                        // Pega a primeira conta para obter a logo do connector
+                        const firstAcc = institutionAccounts[0];
+                        const imageUrl = firstAcc?.connector?.imageUrl;
+                        return imageUrl ? (
+                          <img
+                            src={imageUrl}
+                            alt={institutionName}
+                            className="w-10 h-10 rounded-xl object-contain flex-shrink-0"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl bg-gray-900 border border-gray-800 flex items-center justify-center text-[#d97757] shadow-inner flex-shrink-0">
+                            <Building size={20} />
+                          </div>
+                        );
+                      })()}
                       <div className="flex-1 min-w-0">
                         <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Instituição</p>
                         <h4 className="text-base font-bold text-white leading-tight truncate">
@@ -1198,14 +1212,23 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                               <div className="p-4">
                                 <div className="flex justify-between items-center gap-3 mb-3">
                                   <div className="flex gap-3 items-center flex-1 min-w-0">
-                                    {(() => {
-                                      const { icon, bgClass } = getAccountIcon(acc);
-                                      return (
-                                        <div className={`p-1.5 rounded-lg flex-shrink-0 ${bgClass} `}>
-                                          {icon}
-                                        </div>
-                                      );
-                                    })()}
+                                    {/* Logo do banco ou ícone de fallback */}
+                                    {acc.connector?.imageUrl ? (
+                                      <img
+                                        src={acc.connector.imageUrl}
+                                        alt=""
+                                        className="w-8 h-8 rounded-lg object-contain flex-shrink-0"
+                                      />
+                                    ) : (
+                                      (() => {
+                                        const { icon, bgClass } = getAccountIcon(acc);
+                                        return (
+                                          <div className={`p-1.5 rounded-lg flex-shrink-0 ${bgClass}`}>
+                                            {icon}
+                                          </div>
+                                        );
+                                      })()
+                                    )}
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2">
                                         <p className="text-sm font-bold text-gray-200 truncate">{acc.name}</p>

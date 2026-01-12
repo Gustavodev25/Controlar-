@@ -8,6 +8,8 @@ import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import Lottie from 'lottie-react';
 import coinAnimation from '../assets/coin.json';
+import { ConnectedAccount } from '../types';
+import { UniversalModal } from './UniversalModal';
 
 interface SalaryManagerProps {
   baseSalary: number;
@@ -18,7 +20,7 @@ interface SalaryManagerProps {
   advancePercent?: number;
   advanceDay?: number;
   onUpdateSalary: (newSalary: number, paymentDay?: number | string, advanceOptions?: { advanceValue?: number; advancePercent?: number; advanceDay?: number }, salaryExemptFromDiscounts?: boolean) => void;
-  onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string) => void;
+  onAddExtra: (amount: number, description: string, status?: 'completed' | 'pending', date?: string, accountId?: string) => void;
   onEditClick?: () => void;
   isSalaryLaunched?: boolean;
   salaryExemptFromDiscounts?: boolean;
@@ -28,6 +30,7 @@ interface SalaryManagerProps {
   onToggleOpenFinance?: (value: boolean) => void;
   viewFilter?: 'all' | 'credit_card' | 'savings' | 'checking';
   onViewFilterChange?: (filter: 'all' | 'credit_card' | 'savings' | 'checking') => void;
+  connectedAccounts?: ConnectedAccount[];
 }
 
 export const SalaryManager: React.FC<SalaryManagerProps> = ({
@@ -48,7 +51,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   includeOpenFinance = true,
   onToggleOpenFinance,
   viewFilter = 'all',
-  onViewFilterChange
+  onViewFilterChange,
+  connectedAccounts = []
 }) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
@@ -68,6 +72,18 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
   const [showTools, setShowTools] = useState(false);
+
+  // State for Account Selection when launching salary
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('');
+  const [pendingSalaryLaunch, setPendingSalaryLaunch] = useState<{
+    salaryRemaining: number;
+    advance: number;
+    dateStr: string;
+    valeDateStr?: string;
+    advanceDay?: number;
+    targetDate: Date;
+  } | null>(null);
 
   // State for Config Dropdown
   const [showConfigTooltip, setShowConfigTooltip] = useState(() => {
@@ -858,21 +874,45 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   const netSalary = baseSalary - totalTaxes;
                   const salaryRemaining = Math.max(0, netSalary - advance);
 
-                  onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
-
-                  if (advance > 0) {
-                    let valeDateStr = dateStr;
-                    if (advanceDay) {
-                      const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
-                      valeDateStr = vDate.toISOString().split('T')[0];
-                    }
-                    setTimeout(() => {
-                      onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
-                    }, 100);
-                    toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
-                  } else {
-                    toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+                  let valeDateStr = dateStr;
+                  if (advanceDay) {
+                    const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
+                    valeDateStr = vDate.toISOString().split('T')[0];
                   }
+
+                  // Filtrar apenas contas do tipo conta corrente (CHECKING) ou manuais
+                  const checkingAccounts = connectedAccounts.filter(acc => {
+                    const type = (acc.type || '').toUpperCase();
+                    const subtype = (acc.subtype || '').toUpperCase();
+                    const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+                    return !isCredit; // Excluir cartões de crédito
+                  });
+
+                  // Se não há contas, lançar diretamente sem accountId
+                  if (checkingAccounts.length === 0) {
+                    onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
+                    if (advance > 0) {
+                      setTimeout(() => {
+                        onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
+                      }, 100);
+                      toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
+                    } else {
+                      toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+                    }
+                    return;
+                  }
+
+                  // Preparar dados pendentes e abrir modal de seleção
+                  setPendingSalaryLaunch({
+                    salaryRemaining,
+                    advance,
+                    dateStr,
+                    valeDateStr: advance > 0 ? valeDateStr : undefined,
+                    advanceDay,
+                    targetDate
+                  });
+                  setSelectedAccountId(''); // Resetar seleção
+                  setShowAccountModal(true);
                 }}
                 className={`
                   relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border
@@ -1431,6 +1471,121 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           document.body
         )
       }
+
+      {/* Modal de Seleção de Conta para Lançar Salário */}
+      <UniversalModal
+        isOpen={showAccountModal && !!pendingSalaryLaunch}
+        onClose={() => {
+          setShowAccountModal(false);
+          setPendingSalaryLaunch(null);
+        }}
+        title="Selecionar Conta"
+        subtitle="Onde você receberá o salário?"
+        icon={<Wallet size={18} />}
+        width="max-w-md"
+        footer={
+          <button
+            onClick={() => {
+              if (!pendingSalaryLaunch) return;
+
+              const { salaryRemaining, advance, dateStr, valeDateStr, advanceDay: advDay, targetDate } = pendingSalaryLaunch;
+              const accountIdToUse = selectedAccountId || undefined;
+
+              onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr, accountIdToUse);
+
+              if (advance > 0 && valeDateStr) {
+                setTimeout(() => {
+                  onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr, accountIdToUse);
+                }, 100);
+                toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advDay || targetDate.getDate()})!`);
+              } else {
+                toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+              }
+
+              setShowAccountModal(false);
+              setPendingSalaryLaunch(null);
+            }}
+            className="w-full py-3 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all flex items-center justify-center gap-2"
+          >
+            <Check size={16} />
+            Confirmar
+          </button>
+        }
+      >
+        <div className="space-y-3">
+          {/* Opção sem conta específica */}
+          <button
+            onClick={() => setSelectedAccountId('')}
+            className={`w-full p-4 rounded-xl border transition-all flex items-center gap-4 ${selectedAccountId === ''
+              ? 'border-[#d97757] bg-[#d97757]/10'
+              : 'border-gray-800 bg-gray-900/50 hover:border-gray-700'
+              }`}
+          >
+            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedAccountId === '' ? 'bg-[#d97757]/20' : 'bg-gray-800'}`}>
+              <Wallet size={24} className={selectedAccountId === '' ? 'text-[#d97757]' : 'text-gray-400'} />
+            </div>
+            <div className="flex-1 text-left">
+              <p className={`font-medium ${selectedAccountId === '' ? 'text-white' : 'text-gray-300'}`}>
+                Sem conta específica
+              </p>
+              <p className="text-xs text-gray-500">Lançar sem vincular a uma conta</p>
+            </div>
+            {selectedAccountId === '' && (
+              <div className="w-5 h-5 rounded-full bg-[#d97757] flex items-center justify-center">
+                <Check size={12} className="text-white" />
+              </div>
+            )}
+          </button>
+
+          {/* Lista de contas */}
+          {connectedAccounts
+            .filter(acc => {
+              const type = (acc.type || '').toUpperCase();
+              const subtype = (acc.subtype || '').toUpperCase();
+              const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
+              return !isCredit;
+            })
+            .map(acc => (
+              <button
+                key={acc.id}
+                onClick={() => setSelectedAccountId(acc.id)}
+                className={`w-full p-4 rounded-xl border transition-all flex items-center gap-4 ${selectedAccountId === acc.id
+                  ? 'border-[#d97757] bg-[#d97757]/10'
+                  : 'border-gray-800 bg-gray-900/50 hover:border-gray-700'
+                  }`}
+              >
+                {/* Icon/Avatar - Sem fundo, logo maior */}
+                <div className="flex-shrink-0">
+                  {acc.connector?.imageUrl ? (
+                    <img src={acc.connector.imageUrl} alt="" className="w-10 h-10 rounded-lg object-contain" />
+                  ) : (
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${selectedAccountId === acc.id ? 'bg-[#d97757]/20' : 'bg-gray-800'}`}>
+                      <Building size={24} className={selectedAccountId === acc.id ? 'text-[#d97757]' : 'text-gray-400'} />
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex-1 text-left">
+                  <p className={`font-medium ${selectedAccountId === acc.id ? 'text-white' : 'text-gray-300'}`}>
+                    {acc.name || acc.institution || 'Conta'}
+                  </p>
+                  <p className="text-xs text-gray-500 flex items-center gap-2">
+                    <span>{acc.institution || 'Banco'}</span>
+                    {acc.connectionMode === 'MANUAL' && (
+                      <span className="px-1.5 py-0.5 bg-gray-800 rounded text-[9px] text-gray-400">Manual</span>
+                    )}
+                  </p>
+                </div>
+
+                {selectedAccountId === acc.id && (
+                  <div className="w-5 h-5 rounded-full bg-[#d97757] flex items-center justify-center">
+                    <Check size={12} className="text-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+        </div>
+      </UniversalModal>
     </>
   );
 };
