@@ -321,16 +321,20 @@ export const AdminUsers: React.FC = () => {
         return { text, relative, isRecent: diffDays < 7, status };
     };
 
-    const getUniqueDaysCount = (user: SystemUser) => {
-        if (!user.connectionLogs || user.connectionLogs.length === 0) return 0;
-        const uniqueDates = new Set<string>();
-        user.connectionLogs.forEach(log => {
-            if (log.timestamp) {
-                const date = new Date(log.timestamp).toISOString().split('T')[0];
-                uniqueDates.add(date);
-            }
-        });
-        return uniqueDates.size;
+    // Calculate Active Days = last access date - created date
+    const getActiveDaysCount = (user: SystemUser) => {
+        if (!user.createdAt) return 0;
+
+        const logs = user.connectionLogs;
+        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(); // fallback to today
+        const createdDate = new Date(user.createdAt);
+
+        if (isNaN(lastAccessDate.getTime()) || isNaN(createdDate.getTime())) return 0;
+
+        const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        return Math.max(0, diffDays);
     };
 
     const getTimeSinceCreation = (createdAt?: string) => {
@@ -344,14 +348,28 @@ export const AdminUsers: React.FC = () => {
 
         if (diffDays === 0) return 'Hoje';
         if (diffDays === 1) return '1 dia';
-        if (diffDays < 30) return `${diffDays} dias`;
+        if (diffDays < 7) return `${diffDays} dias`;
+        if (diffDays < 14) return '1 semana';
+        if (diffDays < 30) return `${Math.floor(diffDays / 7)} semanas`;
         if (diffDays < 60) return '1 mês';
         if (diffDays < 365) return `${Math.floor(diffDays / 30)} meses`;
         return `${Math.floor(diffDays / 365)} anos`;
     };
 
+    // Format active days as weeks/months/years
+    const formatActiveDays = (days: number) => {
+        if (days === 0) return 'Hoje';
+        if (days === 1) return '1 dia';
+        if (days < 7) return `${days} dias`;
+        if (days < 14) return '1 semana';
+        if (days < 30) return `${Math.floor(days / 7)} semanas`;
+        if (days < 60) return '1 mês';
+        if (days < 365) return `${Math.floor(days / 30)} meses`;
+        return `${Math.floor(days / 365)} anos`;
+    };
+
     const renderActiveDays = (user: SystemUser) => {
-        const uniqueDays = getUniqueDaysCount(user);
+        const uniqueDays = getActiveDaysCount(user);
         const memberDays = user.createdAt
             ? Math.max(1, Math.ceil((new Date().getTime() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
             : 1;
@@ -838,7 +856,7 @@ export const AdminUsers: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-gray-500 w-16">Ativos:</span>
-                                                        <span className="text-white">{getUniqueDaysCount(user)} dias</span>
+                                                        <span className="text-white">{formatActiveDays(getActiveDaysCount(user))}</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-gray-500 w-16">Assinou:</span>
@@ -1060,7 +1078,7 @@ export const AdminUsers: React.FC = () => {
                                             <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Atividade</label>
                                             <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl p-4 space-y-3">
                                                 {(() => {
-                                                    const uniqueDays = getUniqueDaysCount(selectedUser);
+                                                    const uniqueDays = getActiveDaysCount(selectedUser);
                                                     const memberDays = selectedUser.createdAt
                                                         ? Math.max(1, Math.ceil((new Date().getTime() - new Date(selectedUser.createdAt).getTime()) / (1000 * 60 * 60 * 24)))
                                                         : 1;
@@ -1103,9 +1121,9 @@ export const AdminUsers: React.FC = () => {
                                                     return (
                                                         <>
                                                             <div className="flex justify-between items-center">
-                                                                <span className="text-xs text-gray-500 uppercase">Dias Ativos</span>
+                                                                <span className="text-xs text-gray-500 uppercase">Tempo Ativo</span>
                                                                 <span className={`text-sm font-medium ${engagementColor}`}>
-                                                                    {uniqueDays} dias ({engagementRate}%)
+                                                                    {formatActiveDays(uniqueDays)}
                                                                 </span>
                                                             </div>
                                                             <div className="flex justify-between items-center">

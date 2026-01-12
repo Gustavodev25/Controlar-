@@ -125,5 +125,8 @@ service cloud.firestore {
     match /{path=**}/accounts/{accountId} {
       allow read: if request.auth != null && isUserAdmin();
     }
+    match /{path=**}/pluggyItems/{itemId} {
+      allow read: if request.auth != null && isUserAdmin();
+    }
   }
 }

@@ -24,7 +24,7 @@ import { twMerge } from "tailwind-merge";
 
 import { processClaudeAssistantMessage, AIParsedReminder, AIParsedSubscription } from '../services/claudeService';
 import { saveChatHistory, listenToChatHistory, clearChatHistory, ChatSession as DBChatSession } from '../services/database';
-import { Transaction, AIParsedTransaction, Budget, Investment, Reminder, Subscription } from '../types';
+import { Transaction, AIParsedTransaction, Budget, Investment, Reminder, Subscription, ConnectedAccount } from '../types';
 import coinzinhaImg from '../assets/coinzinha.png';
 
 // --- Utilitário simples para classes ---
@@ -337,6 +337,7 @@ interface AIChatAssistantProps {
     transactions: Transaction[];
     budgets: Budget[];
     investments: Investment[];
+    connectedAccounts?: ConnectedAccount[];
     userPlan?: 'starter' | 'pro' | 'family';
     userName?: string;
     userId?: string;
@@ -379,6 +380,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     transactions,
     budgets,
     investments,
+    connectedAccounts = [],
     userPlan = 'starter',
     userName = 'Você',
     userId,
@@ -739,26 +741,76 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
     };
 
     const handleConfirmTransaction = (msgId: string, data: AIParsedTransaction) => {
-        // Bloquear criação de transação no modo Pro (Auto)
-        if (isProMode) {
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                role: 'ai',
-                type: 'text',
-                content: `⚠️ Você está no modo **Auto** - transações são importadas automaticamente das suas contas conectadas.\n\nPara adicionar transações manualmente, troque para o modo **Manual** nas configurações.`,
-                timestamp: Date.now()
-            }]);
-            return;
+        // Blended Mode Logic
+
+        // 1. Check if specific account was requested
+        let targetAccount: ConnectedAccount | undefined;
+
+        if (data.accountName) {
+            const normalizedTarget = data.accountName.toLowerCase().trim();
+            targetAccount = connectedAccounts.find(acc => {
+                const accName = (acc.name || acc.institution || '').toLowerCase();
+                // Check nickname or institution name
+                return accName.includes(normalizedTarget);
+            });
         }
 
-        onAddTransaction({
-            description: data.description,
-            amount: data.amount,
-            category: data.category,
-            date: data.date,
-            type: data.type,
-            status: 'completed'
-        });
+        // 2. Logic based on Account Type
+        if (targetAccount) {
+            // If target is specific automatic account -> BLOCK
+            // An account is "Automatic" if connectionMode is NOT MANUAL (default is AUTO if undefined)
+            // AND it has an itemId (linked to Pluggy) or implies automation
+            const isAutoAccount = targetAccount.connectionMode !== 'MANUAL';
+
+            if (isAutoAccount) {
+                setMessages(prev => [...prev, {
+                    id: Date.now().toString(),
+                    role: 'ai',
+                    type: 'text',
+                    content: `⚠️ A conta **${targetAccount?.name || 'Selecionada'}** é automática (Open Finance).\n\nAs transações aparecerão aqui assim que o banco sincronizar. Não é necessário lançar manualmente.`,
+                    timestamp: Date.now()
+                }]);
+                return;
+            }
+
+            // If target is MANUAL -> ALLOW
+            // We pass accountId to onAddTransaction so it gets linked
+            onAddTransaction({
+                description: data.description,
+                amount: data.amount,
+                category: data.category,
+                date: data.date,
+                type: data.type,
+                status: 'completed',
+                accountId: targetAccount.id,
+                // If it's a credit card, we also set cardId
+                cardId: (targetAccount.type === 'CREDIT' || targetAccount.type === 'CREDIT_CARD') ? targetAccount.id : undefined
+            });
+        } else {
+            // No specific account identified
+
+            // If Global Pro Mode is ON -> BLOCK generic transactions to prevent duplicates with Auto Sync
+            if (isProMode) {
+                setMessages(prev => [...prev, {
+                    id: Date.now().toString(),
+                    role: 'ai',
+                    type: 'text',
+                    content: `⚠️ Você está no modo **Auto Global**.\n\nPara lançar uma transação manual, por favor especifique uma conta manual (ex: "gastei 50 no Dinheiro", "na Carteira").\n\nSe foi em um banco conectado, aguarde a sincronização automática.`,
+                    timestamp: Date.now()
+                }]);
+                return;
+            }
+
+            // If Manual Mode -> Allow generic transaction
+            onAddTransaction({
+                description: data.description,
+                amount: data.amount,
+                category: data.category,
+                date: data.date,
+                type: data.type,
+                status: 'completed'
+            });
+        }
 
         setMessages(prev => prev.map(m =>
             m.id === msgId ? { ...m, isConfirmed: true } : m
@@ -768,72 +820,144 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
             id: Date.now().toString(),
             role: 'ai',
             type: 'text',
-            content: `✅ Transação "${data.description}" adicionada com sucesso!`,
+            content: `✅ Transação "${data.description}" adicionada com sucesso!${targetAccount ? ` (em ${targetAccount.name})` : ''}`,
             timestamp: Date.now()
         }]);
     };
 
     // Handler para confirmar múltiplas transações separadas
     const handleConfirmSeparate = (msgId: string, transactions: AIParsedTransaction[]) => {
-        // Bloquear no modo Pro
-        if (isProMode) {
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                role: 'ai',
-                type: 'text',
-                content: `⚠️ Você está no modo **Auto** - transações são importadas automaticamente.\n\nPara adicionar manualmente, troque para o modo **Manual**.`,
-                timestamp: Date.now()
-            }]);
-            return;
-        }
+        let addedCount = 0;
+        let blockedCount = 0;
+        const blockedReasons: string[] = [];
 
         transactions.forEach(data => {
-            onAddTransaction({
-                description: data.description,
-                amount: data.amount,
-                category: data.category,
-                date: data.date,
-                type: data.type,
-                status: 'completed'
-            });
+            let targetAccount: ConnectedAccount | undefined;
+
+            if (data.accountName) {
+                const normalizedTarget = data.accountName.toLowerCase().trim();
+                targetAccount = connectedAccounts.find(acc => {
+                    const accName = (acc.name || acc.institution || '').toLowerCase();
+                    return accName.includes(normalizedTarget);
+                });
+            }
+
+            let shouldAdd = false;
+            let accountId: string | undefined;
+            let cardId: string | undefined;
+
+            if (targetAccount) {
+                const isAutoAccount = targetAccount.connectionMode !== 'MANUAL';
+                if (isAutoAccount) {
+                    blockedCount++;
+                    blockedReasons.push(`${data.description} (Conta Auto: ${targetAccount.name})`);
+                } else {
+                    shouldAdd = true;
+                    accountId = targetAccount.id;
+                    cardId = (targetAccount.type === 'CREDIT' || targetAccount.type === 'CREDIT_CARD') ? targetAccount.id : undefined;
+                }
+            } else {
+                if (isProMode) {
+                    blockedCount++;
+                    blockedReasons.push(`${data.description} (Modo Auto Global)`);
+                } else {
+                    shouldAdd = true;
+                }
+            }
+
+            if (shouldAdd) {
+                onAddTransaction({
+                    description: data.description,
+                    amount: data.amount,
+                    category: data.category,
+                    date: data.date,
+                    type: data.type,
+                    status: 'completed',
+                    accountId,
+                    cardId
+                });
+                addedCount++;
+            }
         });
 
         setMessages(prev => prev.map(m =>
             m.id === msgId ? { ...m, isConfirmed: true, confirmedChoice: 'separate' } : m
         ));
 
-        const descriptions = transactions.map(t => t.description).join(', ');
+        let responseText = '';
+        if (addedCount > 0) {
+            responseText += `✅ ${addedCount} transações adicionadas com sucesso!\n`;
+        }
+        if (blockedCount > 0) {
+            responseText += `⚠️ ${blockedCount} transações não foram adicionadas (automáticas ou modo auto):\n- ${blockedReasons.join('\n- ')}`;
+        }
+
         setMessages(prev => [...prev, {
             id: Date.now().toString(),
             role: 'ai',
             type: 'text',
-            content: `✅ ${transactions.length} transações adicionadas: ${descriptions}`,
+            content: responseText || 'Nenhuma transação foi processada.',
             timestamp: Date.now()
         }]);
     };
 
     // Handler para confirmar transação unificada
     const handleConfirmUnified = (msgId: string, unifiedData: AIParsedTransaction) => {
-        // Bloquear no modo Pro
-        if (isProMode) {
-            setMessages(prev => [...prev, {
-                id: Date.now().toString(),
-                role: 'ai',
-                type: 'text',
-                content: `⚠️ Você está no modo **Auto** - transações são importadas automaticamente.\n\nPara adicionar manualmente, troque para o modo **Manual**.`,
-                timestamp: Date.now()
-            }]);
-            return;
+        // Blended Mode Logic for Unified Transaction
+
+        let targetAccount: ConnectedAccount | undefined;
+        if (unifiedData.accountName) {
+            const normalizedTarget = unifiedData.accountName.toLowerCase().trim();
+            targetAccount = connectedAccounts.find(acc => {
+                const accName = (acc.name || acc.institution || '').toLowerCase();
+                return accName.includes(normalizedTarget);
+            });
         }
 
-        onAddTransaction({
-            description: unifiedData.description,
-            amount: unifiedData.amount,
-            category: unifiedData.category,
-            date: unifiedData.date,
-            type: unifiedData.type,
-            status: 'completed'
-        });
+        if (targetAccount) {
+            const isAutoAccount = targetAccount.connectionMode !== 'MANUAL';
+            if (isAutoAccount) {
+                setMessages(prev => [...prev, {
+                    id: Date.now().toString(),
+                    role: 'ai',
+                    type: 'text',
+                    content: `⚠️ A conta **${targetAccount?.name}** é automática. Aguarde a sincronização oficial para evitar duplicidade.`,
+                    timestamp: Date.now()
+                }]);
+                return;
+            }
+
+            onAddTransaction({
+                description: unifiedData.description,
+                amount: unifiedData.amount,
+                category: unifiedData.category,
+                date: unifiedData.date,
+                type: unifiedData.type,
+                status: 'completed',
+                accountId: targetAccount.id,
+                cardId: (targetAccount.type === 'CREDIT' || targetAccount.type === 'CREDIT_CARD') ? targetAccount.id : undefined
+            });
+        } else {
+            if (isProMode) {
+                setMessages(prev => [...prev, {
+                    id: Date.now().toString(),
+                    role: 'ai',
+                    type: 'text',
+                    content: `⚠️ Modo Auto Global: Especifique uma conta manual para lançar esta transação unificada.`,
+                    timestamp: Date.now()
+                }]);
+                return;
+            }
+
+            onAddTransaction({
+                description: unifiedData.description,
+                amount: unifiedData.amount,
+                category: unifiedData.category,
+                date: unifiedData.date,
+                type: unifiedData.type,
+                status: 'completed'
+            });
+        }
 
         setMessages(prev => prev.map(m =>
             m.id === msgId ? { ...m, isConfirmed: true, confirmedChoice: 'unified' } : m
@@ -843,7 +967,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
             id: Date.now().toString(),
             role: 'ai',
             type: 'text',
-            content: `✅ Transação unificada "${unifiedData.description}" (R$ ${unifiedData.amount.toFixed(2)}) adicionada!`,
+            content: `✅ Transação unificada "${unifiedData.description}" (R$ ${unifiedData.amount.toFixed(2)}) adicionada!${targetAccount ? ` (em ${targetAccount.name})` : ''}`,
             timestamp: Date.now()
         }]);
     };

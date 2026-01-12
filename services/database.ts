@@ -1190,6 +1190,8 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
   await updateDoc(txRef, cleanData);
 };
 
+
+
 export const bulkUpdateCreditCardTransactions = async (
   userId: string,
   transactionIds: string[],
@@ -2638,6 +2640,29 @@ export interface SupportTicket {
   lastMessage?: string;
 }
 
+// Helper to send email notifications
+const notifySupportEmails = async (recipients: string[], title: string, subject: string, bodyText: string) => {
+  try {
+    await fetch('/api/admin/send-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        recipients,
+        subject,
+        title,
+        body: bodyText,
+        buttonText: 'Acessar Painel',
+        buttonLink: 'https://www.controlarmais.com.br/',
+        headerAlign: 'center',
+        titleAlign: 'center',
+        bodyAlign: 'left'
+      })
+    });
+  } catch (error) {
+    console.error("Failed to notify support emails:", error);
+  }
+};
+
 export const createSupportTicket = async (userId: string, userEmail: string, userName: string, type: 'general' | 'cancellation_request' = 'general', description?: string) => {
   if (!db) return null;
   const ticketsRef = collection(db, "support_tickets");
@@ -2646,8 +2671,32 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
   const q = query(ticketsRef, where("userId", "==", userId), where("status", "in", ["open", "in_progress"]), limit(1));
   const snap = await getDocs(q);
 
+  // Helper to send auto-reply
+  const sendAutoReply = async (ticketId: string) => {
+    const messagesRef = collection(db, "support_tickets", ticketId, "messages");
+    const autoReplyText = 'Olá! Recebemos sua mensagem. Um de nossos administradores irá responder em até 48 horas. Nosso horário de atendimento é de segunda a sexta, até as 17hrs.';
+
+    await addDoc(messagesRef, {
+      senderId: 'system-auto-reply',
+      senderType: 'admin',
+      text: autoReplyText,
+      attachments: [],
+      timestamp: new Date(Date.now() + 100).toISOString(),
+      isAdmin: true,
+      read: false
+    });
+  };
+
   if (!snap.empty) {
-    return snap.docs[0].id; // Return existing ticket if open
+    const existingId = snap.docs[0].id;
+    // Check if it has messages (if empty, treat as new and send auto-reply)
+    const msgsRef = collection(db, "support_tickets", existingId, "messages");
+    const msgsSnap = await getDocs(query(msgsRef, limit(1)));
+
+    if (msgsSnap.empty) {
+      await sendAutoReply(existingId);
+    }
+    return existingId;
   }
 
   const newTicket: SupportTicket = {
@@ -2670,17 +2719,30 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
   // If the system uses a subcollection for messages, we should add it there too.
   // Looking at the code for SupportChat might tell us, but let's just stick to adding it to the ticket object for now as requested "mostrar no suporte... um popup mostrando o motivo".  The admin likely sees the ticket list.
 
+  const messagesRef = collection(db, "support_tickets", docRef.id, "messages");
+
+  // If description provided (e.g. Cancellation), add it as the first User message
   if (description) {
-    // Create initial message in subcollection to ensure it's visible in chat
-    const messagesRef = collection(db, "support_tickets", docRef.id, "messages");
     await addDoc(messagesRef, {
       senderId: userId,
-      text: description, // The reason
+      senderType: 'user',
+      text: description,
       attachments: [],
       timestamp: new Date().toISOString(),
       isAdmin: false
     });
   }
+
+  // ALWAYS send Auto-Reply for new tickets
+  await sendAutoReply(docRef.id);
+
+  // Notify Admin (Gui)
+  await notifySupportEmails(
+    ['Guilherme.luz@controlarmais.com.br'],
+    'Novo Chamado de Suporte',
+    `Novo Chamado: ${userName}`,
+    `O usuário ${userName} (${userEmail}) abriu um novo chamado.\n\nAssunto/Mensagem: "${description || 'Sem descrição inicial'}"`
+  );
 
   return docRef.id;
 };
@@ -2698,6 +2760,47 @@ export const sendSupportMessage = async (ticketId: string, message: Omit<Support
   await updateDoc(ticketRef, {
     lastMessageAt: message.createdAt
   });
+
+  // Notify Gui if message is from User
+  if ((message as any).senderType === 'user') {
+    // Check if we need to send an Auto-Reply (e.g. if this is the first message in an existing re-opened session)
+    try {
+      const qAuto = query(messagesRef, where('senderId', '==', 'system-auto-reply'), limit(1));
+      const snapAuto = await getDocs(qAuto);
+
+      if (snapAuto.empty) {
+        const autoReplyText = 'Olá! Recebemos sua mensagem. Um de nossos administradores irá responder em até 48 horas. Nosso horário de atendimento é de segunda a sexta, até as 17hrs.';
+
+        await addDoc(messagesRef, {
+          senderId: 'system-auto-reply',
+          senderType: 'admin',
+          text: autoReplyText,
+          attachments: [],
+          timestamp: new Date(Date.now() + 100).toISOString(),
+          isAdmin: true,
+          read: false
+        });
+      }
+    } catch (err) {
+      console.error("Auto-reply check error:", err);
+    }
+
+    // Fetch ticket to get user name
+    try {
+      const ticketDoc = await getDoc(ticketRef);
+      const tData = ticketDoc.data() as SupportTicket;
+      const uName = tData?.userName || 'Usuário';
+
+      await notifySupportEmails(
+        ['Guilherme.luz@controlarmais.com.br'],
+        'Nova Mensagem no Suporte',
+        `Nova Mensagem: ${uName}`,
+        `O usuário ${uName} enviou uma nova mensagem:\n\n"${(message as any).text}"`
+      );
+    } catch (e) {
+      console.error("Error sending notification for message:", e);
+    }
+  }
 };
 
 export const markMessagesAsRead = async (ticketId: string, role: 'user' | 'admin') => {
@@ -2795,7 +2898,10 @@ export const closeSupportTicket = async (ticketId: string) => {
 export const requestTicketRating = async (ticketId: string) => {
   if (!db) return;
   const ticketRef = doc(db, "support_tickets", ticketId);
-  await updateDoc(ticketRef, { awaitingRating: true });
+  await updateDoc(ticketRef, {
+    awaitingRating: true,
+    status: 'closed' // Close ticket so it moves to 'Finalizados' list
+  });
 };
 
 // Submit user rating and close ticket
@@ -2845,6 +2951,28 @@ export const transferSupportTicket = async (ticketId: string, adminId: string, a
     assignedTo: adminId,
     assignedByName: adminName
   });
+
+  // Notify the assigned admin
+  try {
+    // 1. Get Admin Email
+    const adminProfile = await getUserProfile(adminId);
+    if (adminProfile && adminProfile.email) {
+      // 2. Get Ticket Info for context
+      const ticketDoc = await getDoc(ticketRef);
+      const ticketData = ticketDoc.data() as SupportTicket;
+      const userName = ticketData?.userName || 'Usuário';
+
+      // 3. Send Email
+      await notifySupportEmails(
+        [adminProfile.email],
+        'Novo Chamado Atribuído',
+        `Chamado Atribuído: ${userName}`,
+        `O chamado de ${userName} foi atribuído a você (${adminName}).\n\nAcesse o painel para responder.`
+      );
+    }
+  } catch (error) {
+    console.error("Error notifying assigned admin:", error);
+  }
 };
 
 export const listenToTicket = (ticketId: string, callback: (ticket: SupportTicket | null) => void) => {
@@ -2887,6 +3015,25 @@ export const getAllConnectedAccounts = async (): Promise<ConnectedAccount[]> => 
 
 
 // --- Admin Message Logs ---
+
+// --- Manual Account Services ---
+
+export const addManualAccount = async (userId: string, account: Omit<ConnectedAccount, 'id'>) => {
+  if (!db) return "";
+  const accountsRef = collection(db, "users", userId, "accounts");
+  // Ensure connectionMode is MANUAL
+  const payload = {
+    ...account,
+    connectionMode: 'MANUAL',
+    lastUpdated: new Date().toISOString(),
+    connectedAt: new Date().toISOString()
+  };
+
+  const docRef = await addDoc(accountsRef, payload);
+  return docRef.id;
+};
+
+
 
 export interface AdminMessageLog {
   id?: string;

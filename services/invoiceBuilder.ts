@@ -572,9 +572,10 @@ export const buildInvoices = (
   const currentItems: InvoiceItem[] = [];
   const futureItemsByMonth: Record<string, InvoiceItem[]> = {};
 
-  let closedTotal = 0;
-  let currentTotal = 0;
-  let allFutureTotal = 0;
+  // TOTAIS BRUTOS (apenas despesas, sem subtrair pagamentos)
+  let closedTotalGross = 0;
+  let currentTotalGross = 0;
+  let allFutureTotalGross = 0;
 
   // Helper para comparação de datas (numero YYYYMMDD)
   const dateToNumber = (d: Date) => d.getFullYear() * 10000 + (d.getMonth() + 1) * 100 + d.getDate();
@@ -593,21 +594,22 @@ export const buildInvoices = (
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
     const item = transactionToInvoiceItem(tx);
-    const signedAmt = tx.type === 'income' ? -item.amount : item.amount;
+    // TOTAL BRUTO: apenas despesas, income não subtrai
+    const amt = tx.type === 'expense' ? item.amount : 0;
 
     if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
       closedItems.push(item);
-      closedTotal += signedAmt;
+      closedTotalGross += amt;
     } else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) {
       currentItems.push(item);
-      currentTotal += signedAmt;
+      currentTotalGross += amt;
     } else if (txDateNum > currentEndNum) {
       const monthKey = toMonthKey(txDate);
       if (!futureItemsByMonth[monthKey]) {
         futureItemsByMonth[monthKey] = [];
       }
       futureItemsByMonth[monthKey].push(item);
-      allFutureTotal += signedAmt;
+      allFutureTotalGross += amt;
     }
   });
 
@@ -618,22 +620,22 @@ export const buildInvoices = (
   purchasesWithInstallments.forEach(({ purchase, installments }) => {
     installments.forEach(inst => {
       const item = installmentToInvoiceItem(inst);
-      const signedAmt = item.amount; // Parcelas são sempre despesas
+      const amt = item.amount; // Parcelas são sempre despesas (valor absoluto)
 
       // Aloca baseado no referenceMonth da parcela (calculado corretamente pelo installmentService)
       if (inst.referenceMonth === periods.lastMonthKey) {
         closedItems.push(item);
-        closedTotal += signedAmt;
+        closedTotalGross += amt;
       } else if (inst.referenceMonth === periods.currentMonthKey) {
         currentItems.push(item);
-        currentTotal += signedAmt;
+        currentTotalGross += amt;
       } else if (inst.referenceMonth > periods.currentMonthKey) {
         // Parcela futura
         if (!futureItemsByMonth[inst.referenceMonth]) {
           futureItemsByMonth[inst.referenceMonth] = [];
         }
         futureItemsByMonth[inst.referenceMonth].push(item);
-        allFutureTotal += signedAmt;
+        allFutureTotalGross += amt;
       }
       // Parcelas de meses anteriores são ignoradas (já foram pagas)
     });
@@ -697,14 +699,14 @@ export const buildInvoices = (
   // ============================================================
 
   // Totais já calculados anteriormente pela soma dos itens:
-  // closedTotal (já calculado na iteração de simpleTxs e parcelas)
-  // currentTotal (já calculado na iteração de simpleTxs e parcelas)
-  // allFutureTotal (já calculado na iteração de simpleTxs e parcelas)
+  // closedTotalGross (apenas despesas, sem pagamentos)
+  // currentTotalGross (apenas despesas, sem pagamentos)
+  // allFutureTotalGross (apenas despesas, sem pagamentos)
 
-  console.log('[InvoiceBuilder] TOTAIS CALCULADOS (SOMA DE TRANSAÇÕES):', {
-    closedTotal,
-    currentTotal,
-    allFutureTotal
+  console.log('[InvoiceBuilder] TOTAIS BRUTOS (SEM SUBTRAIR PAGAMENTOS):', {
+    closedTotal: closedTotalGross,
+    currentTotal: currentTotalGross,
+    allFutureTotal: allFutureTotalGross
   });
 
   // Constrói Invoice da fatura fechada
@@ -712,12 +714,12 @@ export const buildInvoices = (
     id: `${cardId}_${periods.lastMonthKey}`,
     creditCardId: cardId,
     referenceMonth: periods.lastMonthKey,
-    status: determineInvoiceStatus(true, periods.lastDueDate, paidAmount, billTotalFromAPI || closedTotal, billStatus),
+    status: determineInvoiceStatus(true, periods.lastDueDate, paidAmount, billTotalFromAPI || closedTotalGross, billStatus),
     billingDate: toDateStr(periods.lastClosingDate),
     dueDate: toDateStr(periods.lastDueDate),
     periodStart: toDateStr(periods.lastInvoiceStart),
     periodEnd: toDateStr(periods.lastClosingDate),
-    total: billTotalFromAPI || closedTotal, // Mantém API para fechada se disponível
+    total: closedTotalGross, // TOTAL BRUTO - sem subtrair pagamentos
     totalExpenses: closedItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: closedItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     minimumPayment: card?.currentBill?.minimumPaymentAmount,
@@ -736,7 +738,7 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.currentDueDate),
     periodStart: toDateStr(periods.currentInvoiceStart),
     periodEnd: toDateStr(periods.currentClosingDate),
-    total: currentTotal, // SEMPRE a soma das transações
+    total: currentTotalGross, // TOTAL BRUTO - sem subtrair pagamentos
     totalExpenses: currentItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: currentItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     projectedInstallments: currentItems.filter(i => i.isProjected).length,
@@ -777,7 +779,7 @@ export const buildInvoices = (
     closedInvoice,
     currentInvoice,
     futureInvoices,
-    allFutureTotal: allFutureTotal,
+    allFutureTotal: allFutureTotalGross,
     periods
   };
 };

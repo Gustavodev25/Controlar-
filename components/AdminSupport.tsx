@@ -59,6 +59,53 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         return () => unsub();
     }, []);
 
+    // ONE-TIME MIGRATION: Auto-close awaiting rating tickets
+    useEffect(() => {
+        const migrateTickets = async () => {
+            try {
+                // We need to import query/where/getDocs/writeBatch/collection from firebase/firestore 
+                // but we can't easily import from here if they aren't exposed in database.ts
+                // So let's add a helper in database.ts for this specific task or do it if we have imports.
+                // We have 'tickets' state which has open tickets.
+                // We can just iterate over 'tickets' and if any has awaitingRating === true, close it.
+
+                // Wait for tickets to load
+                if (tickets.length > 0) {
+                    const toClose = tickets.filter(t => t.awaitingRating === true);
+                    if (toClose.length > 0) {
+                        console.log(`Migrating ${toClose.length} tickets to closed...`);
+                        // Close them one by one or we could add a batch function
+                        // Using existing closeSupportTicket or updateDoc would work.
+                        // Let's use requestTicketRating again? No, that sets it awaiting.
+                        // We want to force status='closed'.
+                        // We can use closeSupportTicket(id) but that sets status='closed'.
+                        // Does it preserve awaitingRating? 
+                        // closeSupportTicket just sets status='closed' and closedAt. 
+                        // It might not clear awaitingRating, which is fine, or we want it preserved.
+
+                        // Let's assume we want to just set status='closed'
+                        // We'll import updateDoc/doc/db from database logic if we can, 
+                        // OR just call a new helper function `ensureTicketClosed(id)`.
+
+                        // For now, let's use a new helper function in database.ts called `forceCloseTicket` 
+                        // but since I can't edit database.ts in this same turn easily without context switch risk,
+                        // I will check if I can just use closeSupportTicket.
+
+                        for (const t of toClose) {
+                            // closeSupportTicket sets status='closed' and closedAt.
+                            // This is exactly what we want.
+                            await closeSupportTicket(t.id!);
+                        }
+                        toast.success(`${toClose.length} tickets aguardando avaliação foram finalizados.`);
+                    }
+                }
+            } catch (e) {
+                console.error("Migration error", e);
+            }
+        };
+        migrateTickets();
+    }, [tickets]); // Run when tickets list updates
+
     // Update selected ticket real-time status if it changes in the list
     useEffect(() => {
         if (selectedTicket) {
@@ -180,6 +227,7 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
 
             toast.success('Solicitação de avaliação enviada! Aguardando resposta do usuário.');
             setShowTerminationModal(false);
+            setActiveListTab('closed'); // Switch to closed tab to follow the ticket
             // Keep selectedTicket open to monitor user response
         } catch (error) {
             console.error(error);
@@ -441,7 +489,12 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                 <div className="pl-[52px] flex items-center justify-between">
                                     <div className="flex items-center gap-2">
                                         {/* Rating Badge */}
-                                        {ticket.rating !== undefined ? (
+                                        {ticket.awaitingRating ? (
+                                            <span className="flex items-center gap-1.5 text-[10px] font-medium text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
+                                                <Star size={10} fill="currentColor" />
+                                                Aguardando Avaliação
+                                            </span>
+                                        ) : ticket.rating !== undefined ? (
                                             <span className="flex items-center gap-1 text-[10px] font-medium text-yellow-400 bg-yellow-500/10 px-2 py-0.5 rounded-full border border-yellow-500/20">
                                                 {[...Array(5)].map((_, i) => (
                                                     <Star

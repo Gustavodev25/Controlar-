@@ -35,7 +35,7 @@ interface SubscriptionsProps {
   onUpdateSubscription: (sub: Subscription) => void;
   onDeleteSubscription: (id: string) => void;
   currentDate?: string;
-  isProMode?: boolean;
+
   userPlan?: 'starter' | 'pro' | 'family';
   onUpgrade?: () => void;
 }
@@ -177,7 +177,7 @@ const SubscriptionCard: React.FC<{
 };
 
 
-export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate, isProMode = false, userPlan = 'starter', onUpgrade }) => {
+export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, transactions, onAddSubscription, onUpdateSubscription, onDeleteSubscription, currentDate, userPlan = 'starter', onUpgrade }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
@@ -354,7 +354,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
       }, 300);
     }
     return () => clearTimeout(timeoutId);
-  }, [isModalOpen, isProMode]);
+  }, [isModalOpen]);
 
   // Scroll automático para novas mensagens
   useEffect(() => {

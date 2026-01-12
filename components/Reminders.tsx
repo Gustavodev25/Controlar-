@@ -23,7 +23,7 @@ interface RemindersProps {
   onPayReminder: (reminder: Reminder) => void;
   onUpdateReminder: (reminder: Reminder) => void;
   onOpenAIModal?: (context?: 'transaction' | 'reminder') => void;
-  isProMode?: boolean;
+
   userPlan?: 'starter' | 'pro' | 'family';
   onUpgrade?: () => void;
   userId?: string;
@@ -205,7 +205,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 };
 
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, isProMode = false, userPlan = 'starter', onUpgrade, userId }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, userPlan = 'starter', onUpgrade, userId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
 
@@ -316,7 +316,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         }]);
       }
     }
-  }, [isModalOpen, isProMode]);
+  }, [isModalOpen]);
 
   // Scroll automático para novas mensagens
   useEffect(() => {
@@ -934,13 +934,11 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                 <div className="relative">
                   <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                   <input
-                    required
                     type="text"
                     value={newReminder.description}
                     onChange={e => setNewReminder({ ...newReminder, description: e.target.value })}
                     className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
                     placeholder={newReminder.type === 'income' ? "Ex: Salário" : "Ex: Almoço"}
-                    autoFocus
                   />
                 </div>
               </div>
@@ -972,12 +970,13 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   <CustomDatePicker
                     value={newReminder.dueDate}
                     onChange={(val) => setNewReminder({ ...newReminder, dueDate: val })}
+                    dropdownMode="fixed"
                   />
                 </div>
               </div>
 
               {/* Categoria */}
-              <div className="space-y-1.5">
+              <div className="space-y-1.5 relative z-20">
                 <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
                 <CustomAutocomplete
                   value={newReminder.category}
@@ -985,7 +984,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   options={categories}
                   icon={<Tag size={16} />}
                   placeholder="Selecione ou digite..."
-                  portal
+                  portal={true}
                 />
               </div>
 
@@ -1018,6 +1017,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     options={frequencies}
                     className="text-sm"
                     placeholder="Selecione a frequência"
+                    portal={true}
                   />
                 </div>
               )}

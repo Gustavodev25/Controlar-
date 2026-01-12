@@ -299,8 +299,9 @@ export const Investments: React.FC<InvestmentsProps> = ({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
 
-  // Merge connected accounts - filter out accounts with invalid balance
+  // Merge connected accounts - filter out accounts with invalid balance and hidden accounts
   const validSavingsAccounts = connectedSavingsAccounts.filter(acc => {
+    if (acc.hidden) return false;
     const balance = acc.balance;
     return balance !== undefined && balance !== null && !isNaN(balance);
   });

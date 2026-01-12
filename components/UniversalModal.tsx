@@ -98,7 +98,7 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 overflow-hidden relative z-10 p-5 overflow-y-auto custom-scrollbar">
+                <div className="flex-1 relative z-10 p-5 overflow-y-auto custom-scrollbar">
                     {children}
                 </div>
 

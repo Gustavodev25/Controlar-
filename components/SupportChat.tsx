@@ -408,6 +408,7 @@ export const SupportChat: React.FC<SupportChatProps> = ({
                                             <>
                                                 <DropdownSeparator />
                                                 <DropdownItem
+                                                    onClick={onTerminate}
                                                     className="text-red-400 hover:text-red-300 hover:bg-red-500/10"
                                                 >
                                                     Encerrar Atendimento

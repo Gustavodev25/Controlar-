@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
+import { ChevronsUpDown } from 'lucide-react';
 import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus, HelpCircle } from './Icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
@@ -277,7 +278,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
 
 
-          {isManualMode && onAdd && (
+          {onAdd && (
             <button
               onClick={() => {
                 setNewTransaction({
@@ -635,9 +636,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   </Dropdown>
                 </th>
                 <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-                {isManualMode && (
-                  <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
-                )}
+                <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#373734]">
@@ -702,8 +701,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                       {t.status === 'completed' ? 'Pago' : 'Pendente'}
                     </span>
                   </td>
-                  {isManualMode && (
-                    <td className="px-6 py-4">
+                  <td className="px-6 py-4">
+                    {(!t.importSource && !t.providerId) && (
                       <div className="flex items-center justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
                         <button
                           onClick={() => handleEditClick(t)}
@@ -720,8 +719,8 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                           <Trash2 size={16} />
                         </button>
                       </div>
-                    </td>
-                  )}
+                    )}
+                  </td>
                 </tr>
               ))}
               {filteredTransactions.length === 0 && (
@@ -786,26 +785,17 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             onClose={handleCloseEdit}
             title="Editar Lançamento"
             icon={<Edit2 size={18} />}
-            themeColor={editTransaction.type === 'income' ? '#10b981' : '#d97757'}
+            themeColor="#d97757"
             footer={
-              <div className="flex gap-3">
-                <Button
-                  variant="dark"
-                  size="lg"
-                  className="flex-1 text-gray-400 hover:text-white"
-                  onClick={handleCloseEdit}
-                >
-                  Cancelar
-                </Button>
-                <Button
-                  variant="primary"
-                  size="lg"
-                  className="flex-[2]"
-                  onClick={handleSaveEdit}
-                >
-                  Salvar
-                </Button>
-              </div>
+              <Button
+                variant="primary"
+                size="lg"
+                fullWidth
+                onClick={handleSaveEdit}
+              >
+                <Check size={18} strokeWidth={2.5} />
+                Salvar
+              </Button>
             }
           >
             <div className="space-y-5">
@@ -815,7 +805,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
                   style={{
                     left: editTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
-                    backgroundColor: editTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
+                    backgroundColor: 'rgba(217, 119, 87, 0.9)'
                   }}
                 />
                 <button
@@ -856,13 +846,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   <div className="relative">
                     <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                     <input
-                      type="number"
-                      step="0.01"
-                      value={editTransaction.amount?.toString()}
-                      onChange={(e) => setEditTransaction({ ...editTransaction, amount: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                      placeholder="0,00"
+                      type="text"
+                      inputMode="numeric"
+                      value={editTransaction.amount ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(editTransaction.amount) : ''}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        const numberValue = Number(value) / 100;
+                        setEditTransaction({ ...editTransaction, amount: numberValue });
+                      }}
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                      placeholder="R$ 0,00"
                     />
+                    <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
                   </div>
                 </div>
 
@@ -872,6 +867,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                   <CustomDatePicker
                     value={editTransaction.date || ''}
                     onChange={(val) => setEditTransaction({ ...editTransaction, date: val })}
+                    dropdownMode="fixed"
                   />
                 </div>
               </div>
@@ -886,6 +882,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                     options={CATEGORIES}
                     icon={<Tag size={16} />}
                     placeholder="Selecione ou digite..."
+                    portal
                   />
                 </div>
               )}
@@ -932,7 +929,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
 
             </div>
-          </UniversalModal>
+          </UniversalModal >
         )
       }
 
@@ -942,10 +939,10 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
         onClose={() => setIsAddModalOpen(false)}
         title="Novo Lançamento"
         icon={<Plus size={18} />}
-        themeColor={newTransaction.type === 'income' ? '#10b981' : '#d97757'}
+        themeColor="#d97757"
         footer={
           <Button
-            variant={newTransaction.type === 'income' ? 'success' : 'primary'}
+            variant="primary"
             size="lg"
             fullWidth
             onClick={async () => {
@@ -959,7 +956,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                 setIsAddModalOpen(false);
               }
             }}
-            className={newTransaction.type === 'income' ? '!bg-emerald-500 hover:!bg-emerald-400' : ''}
+            className=""
           >
             <Check size={18} strokeWidth={2.5} />
             Confirmar
@@ -973,7 +970,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
               style={{
                 left: newTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
-                backgroundColor: newTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
+                backgroundColor: 'rgba(217, 119, 87, 0.9)'
               }}
             />
             <button
@@ -1008,6 +1005,24 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             </div>
           </div>
 
+          {/* Conta */}
+          <div className="space-y-1.5">
+            <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Conta</label>
+            <CustomSelect
+              value={newTransaction.accountId || ''}
+              onChange={(val) => setNewTransaction({ ...newTransaction, accountId: val })}
+              options={[
+                { value: '', label: 'Sem conta específica' },
+                ...accounts
+                  .filter(acc => acc.connectionMode === 'MANUAL')
+                  .map(acc => ({ value: acc.id, label: acc.name || acc.institution || 'Conta' }))
+              ]}
+              placeholder="Selecione a conta..."
+              icon={<Landmark size={16} />}
+              portal
+            />
+          </div>
+
           <div className="grid grid-cols-2 gap-3">
             {/* Valor */}
             <div className="space-y-1.5">
@@ -1015,13 +1030,18 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               <div className="relative">
                 <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                 <input
-                  type="number"
-                  step="0.01"
-                  value={newTransaction.amount?.toString()}
-                  onChange={(e) => setNewTransaction({ ...newTransaction, amount: parseFloat(e.target.value) || 0 })}
-                  className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                  placeholder="0,00"
+                  type="text"
+                  inputMode="numeric"
+                  value={newTransaction.amount ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(newTransaction.amount) : ''}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, '');
+                    const numberValue = Number(value) / 100;
+                    setNewTransaction({ ...newTransaction, amount: numberValue });
+                  }}
+                  className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                  placeholder="R$ 0,00"
                 />
+                <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
               </div>
             </div>
 
@@ -1031,6 +1051,7 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               <CustomDatePicker
                 value={newTransaction.date || ''}
                 onChange={(val) => setNewTransaction({ ...newTransaction, date: val })}
+                dropdownMode="fixed"
               />
             </div>
           </div>
@@ -1044,46 +1065,11 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
               options={CATEGORIES}
               icon={<Tag size={16} />}
               placeholder="Selecione ou digite..."
+              portal
             />
           </div>
 
-          {/* Status Toggle */}
-          <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
-            <div className="flex items-center gap-2.5">
-              {newTransaction.status === 'completed'
-                ? <Check size={16} className="text-emerald-500" />
-                : <AlertCircle size={16} className="text-amber-500" />
-              }
-              <div>
-                <span className="block text-sm font-medium text-gray-300">Status</span>
-                <span className="block text-[10px] text-gray-500">
-                  {newTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
-                </span>
-              </div>
-            </div>
 
-            <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
-              <div
-                className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
-                  ${newTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
-                `}
-              />
-              <button
-                type="button"
-                onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
-                className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                PENDENTE
-              </button>
-              <button
-                type="button"
-                onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
-                className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
-              >
-                PAGO
-              </button>
-            </div>
-          </div>
         </div>
       </UniversalModal>
       {/* Mobile Filter Modal */}

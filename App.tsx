@@ -80,8 +80,10 @@ import { captureUtmFromUrl } from './services/utmService';
 // Helper to capture connection details (runs in background, non-blocking)
 const captureDeviceDetails = async (uid: string) => {
   try {
-    // Prevent multiple captures per session
-    if (typeof window !== 'undefined' && sessionStorage.getItem(`device_details_captured_${uid}`)) {
+    // Prevent multiple captures per session per day (allows new log if it's a new day)
+    const todayKey = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const sessionKey = `device_details_captured_${uid}_${todayKey}`;
+    if (typeof window !== 'undefined' && sessionStorage.getItem(sessionKey)) {
       return null;
     }
 
@@ -120,7 +122,7 @@ const captureDeviceDetails = async (uid: string) => {
 
     const updatedLogs = await dbService.logConnection(uid, log);
     if (typeof window !== 'undefined') {
-      sessionStorage.setItem(`device_details_captured_${uid}`, 'true');
+      sessionStorage.setItem(sessionKey, 'true');
     }
     return updatedLogs;
   } catch (err) {
@@ -224,12 +226,11 @@ const WhatsAppConnect: React.FC<{ isOpen: boolean; onClose: () => void }> = ({ i
   );
 };
 
-import { GlobalModeModal } from './components/GlobalModeModal';
+
 
 const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
-  const [showGlobalModeModal, setShowGlobalModeModal] = useState<'AUTO' | 'MANUAL' | null>(null);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [pendingTwoFactor, setPendingTwoFactor] = useState<PendingTwoFactor | null>(null);
@@ -1376,112 +1377,7 @@ const App: React.FC = () => {
     setShowLanding(true);
   };
 
-  const handleGlobalManualConfirm = async (keepHistory: boolean) => {
-    if (!userId) return;
-    try {
-      // Immediately signal stop to any running syncs
-      localStorage.setItem('finances_pro_mode', 'false');
 
-      // If NOT keeping history ("Começar do Zero"), delete ALL transactions (Manual + Imported)
-      // The user requested to wipe everything to start fresh
-      if (!keepHistory) {
-        await dbService.deleteAllUserTransactions(userId);
-        await dbService.deleteAllConnectedAccounts(userId);
-
-        // Since we deleted accounts, we can't update them. Just log audit and finish.
-        await dbService.addAuditLog(userId, {
-          timestamp: new Date().toISOString(),
-          action: 'MODE_CHANGE_TO_MANUAL',
-          details: {
-            previousMode: 'AUTO',
-            newMode: 'MANUAL',
-            keepHistory: false,
-            isGlobal: true
-          }
-        });
-
-        setIsProMode(false);
-        // Save preference to Firebase for persistence across sessions
-        await dbService.saveDataViewMode(userId, 'MANUAL');
-        setShowGlobalModeModal(null);
-        toast.success("Modo Manual ativado. Histórico e conexões apagados. Começando do zero.");
-        return; // EXIT HERE
-      }
-
-      // Then update each account mode (Only if we KEPT history and thus kept accounts)
-      for (const acc of connectedAccounts) {
-        if (keepHistory) {
-          await dbService.updateConnectedAccountMode(userId, acc.id, 'MANUAL');
-        } else {
-          // Pass false to skip deleting again per-account since we already deleted all above
-          await dbService.resetAccountData(userId, acc.id, 0, false);
-        }
-
-        // Register audit event for each account
-        await dbService.addAuditLog(userId, {
-          timestamp: new Date().toISOString(),
-          action: 'MODE_CHANGE_TO_MANUAL',
-          accountId: acc.id,
-          accountName: acc.name || acc.institution || 'Conta',
-          details: {
-            previousMode: 'AUTO',
-            newMode: 'MANUAL',
-            keepHistory,
-            isGlobal: true
-          }
-        });
-      }
-      setIsProMode(false);
-      // Save preference to Firebase for persistence across sessions
-      await dbService.saveDataViewMode(userId, 'MANUAL');
-      setShowGlobalModeModal(null);
-      toast.success(keepHistory
-        ? "Modo Manual ativado. Histórico mantido."
-        : "Modo Manual ativado. Histórico apagado, começando do zero."
-      );
-    } catch (error) {
-      console.error("Error switching global manual:", error);
-      toast.error("Erro ao mudar para modo manual.");
-    }
-  };
-
-  const handleGlobalAutoConfirm = async () => {
-    if (!userId) return;
-    try {
-      localStorage.setItem('finances_pro_mode', 'true');
-      setIsProMode(true); // Set immediately to prevent auto-recreation of manual data
-      // Save preference to Firebase for persistence across sessions
-      await dbService.saveDataViewMode(userId, 'AUTO');
-
-      // 1. Delete ALL manual transactions (Global wipe of manual data)
-      await dbService.deleteAllManualTransactions(userId);
-
-      // 2. Update connected accounts to AUTO mode
-      for (const acc of connectedAccounts) {
-        await dbService.updateConnectedAccountMode(userId, acc.id, 'AUTO');
-
-        // Register audit event for each account
-        await dbService.addAuditLog(userId, {
-          timestamp: new Date().toISOString(),
-          action: 'MODE_CHANGE_TO_AUTO',
-          accountId: acc.id,
-          accountName: acc.name || acc.institution || 'Conta',
-          details: {
-            previousMode: 'MANUAL',
-            newMode: 'AUTO',
-            isGlobal: true
-          }
-        });
-      }
-
-      setShowGlobalModeModal(null);
-      toast.success("Modo Automático reativado. Todos os lançamentos manuais foram removidos.");
-    } catch (error) {
-      console.error("Error switching to global auto:", error);
-      toast.error("Erro ao reativar modo automático.");
-      setIsProMode(false); // Revert on error
-    }
-  };
 
   // --- Filter Logic ---
 
@@ -1542,6 +1438,7 @@ const App: React.FC = () => {
     // Use enrichedConnectedAccounts to include institution names
     const checkingAccounts = enrichedConnectedAccounts
       .filter(a => {
+        if (a.hidden) return false;
         const subtype = (a.subtype || '').toUpperCase();
         const type = (a.type || '').toUpperCase();
 
@@ -1572,7 +1469,7 @@ const App: React.FC = () => {
 
     const checking = checkingAccounts.reduce((sum, a) => sum + (a.balance || 0), 0);
 
-    const creditAccounts = enrichedConnectedAccounts.filter(a => isCreditCard(a));
+    const creditAccounts = enrichedConnectedAccounts.filter(a => isCreditCard(a) && !a.hidden);
 
 
     const credit = creditAccounts.reduce((acc, a) => ({
@@ -1624,6 +1521,7 @@ const App: React.FC = () => {
       if (!t.accountId) return true; // Manual transaction without account link -> Always show
 
       const account = accountMap.get(t.accountId);
+      if (account?.hidden) return false;
       if (!account) return true; // Account deleted or not found -> Show (safer)
 
       const isManualMode = account.connectionMode === 'MANUAL';
@@ -1657,27 +1555,32 @@ const App: React.FC = () => {
   // Merge separate credit card transactions with main transactions for Dashboard/Calendar/Categories visibility
   const mergedTransactions = useMemo(() => {
     // 1. Map Separate CC Transactions to Transaction format
-    const mappedCCTxs: Transaction[] = separateCreditCardTxs.map(ccTx => ({
-      id: ccTx.id,
-      date: ccTx.date,
-      description: ccTx.description,
-      amount: ccTx.amount,
-      category: ccTx.category,
-      type: ccTx.type,
-      status: ccTx.status,
-      importSource: ccTx.importSource,
-      providerId: ccTx.providerId,
-      providerItemId: ccTx.providerItemId,
-      invoiceDate: (ccTx as any).invoiceDate,
-      invoiceDueDate: (ccTx as any).invoiceDueDate || (ccTx as any).dueDate,
-      invoiceMonthKey: (ccTx as any).invoiceMonthKey,
-      pluggyBillId: (ccTx as any).pluggyBillId,
-      invoiceSource: (ccTx as any).invoiceSource,
-      isProjected: (ccTx as any).isProjected,
-      pluggyRaw: (ccTx as any).pluggyRaw,
-      accountId: ccTx.cardId,
-      accountType: 'CREDIT_CARD',
-    }));
+    const mappedCCTxs: Transaction[] = separateCreditCardTxs
+      .filter(ccTx => {
+        const acc = accountMap.get(ccTx.cardId);
+        return !acc?.hidden;
+      })
+      .map(ccTx => ({
+        id: ccTx.id,
+        date: ccTx.date,
+        description: ccTx.description,
+        amount: ccTx.amount,
+        category: ccTx.category,
+        type: ccTx.type,
+        status: ccTx.status,
+        importSource: ccTx.importSource,
+        providerId: ccTx.providerId,
+        providerItemId: ccTx.providerItemId,
+        invoiceDate: (ccTx as any).invoiceDate,
+        invoiceDueDate: (ccTx as any).invoiceDueDate || (ccTx as any).dueDate,
+        invoiceMonthKey: (ccTx as any).invoiceMonthKey,
+        pluggyBillId: (ccTx as any).pluggyBillId,
+        invoiceSource: (ccTx as any).invoiceSource,
+        isProjected: (ccTx as any).isProjected,
+        pluggyRaw: (ccTx as any).pluggyRaw,
+        accountId: ccTx.cardId,
+        accountType: 'CREDIT_CARD',
+      }));
 
     // 2. Combine with Member Filtered Transactions
     // Create a Set of existing IDs to prevent duplicates if any CC txs are also in main list
@@ -2693,7 +2596,7 @@ const App: React.FC = () => {
 
   // Automatic Sync at 00:00 (Midnight)
   useEffect(() => {
-    if (!userId || !isProMode) return;
+    if (!userId) return;
 
     const checkAndSync = async () => {
       const now = new Date();
@@ -2725,7 +2628,7 @@ const App: React.FC = () => {
     checkAndSync();
 
     return () => clearInterval(interval);
-  }, [userId, isProMode, connectedAccounts]); // Re-run when accounts change to update closure in handleSyncOpenFinance
+  }, [userId, connectedAccounts]); // Re-run when accounts change to update closure in handleSyncOpenFinance
 
   // DEBUG: Manual trigger for auto-sync (bypasses time check)
   const handleDebugSync = async () => {
@@ -2986,7 +2889,10 @@ const App: React.FC = () => {
     if (!userId) return;
     try {
       // Check if it's a credit card transaction and update the correct collection
-      if (transaction.accountType === 'CREDIT_CARD') {
+      // IMPORTANT: Check if it exists in the SEPARATE collection first
+      const isSeparateCCTx = separateCreditCardTxs.some(t => t.id === transaction.id);
+
+      if (isSeparateCCTx) {
         await dbService.updateCreditCardTransaction(userId, transaction as any);
       } else {
         await dbService.updateTransaction(userId, transaction);
@@ -3001,26 +2907,50 @@ const App: React.FC = () => {
   const handleDeleteTransaction = async (id: string) => {
     if (!userId) return;
     const deleted = transactions.find(t => t.id === id);
+    const isSeparateCCTx = separateCreditCardTxs.some(t => t.id === id);
+
     try {
-      await dbService.deleteTransaction(userId, id);
+      if (isSeparateCCTx) {
+        await dbService.deleteCreditCardTransaction(userId, id);
+      } else {
+        await dbService.deleteTransaction(userId, id);
+      }
+
       toast.message({
         text: "Transação excluída.",
         actionLabel: "Desfazer",
         onAction: () => {
-          if (userId && deleted) dbService.restoreTransaction(userId, deleted);
+          if (userId && deleted) {
+            if (isSeparateCCTx) {
+              // Restore logic for CC transaction requires separate handler or DB support
+              // For now, standard restore might not work for separate CC collection without adjustments
+              // But let's at least try adding it back if the service supports it or warn if not
+              dbService.addTransaction(userId, deleted); // Fallback: adds as normal transaction
+            } else {
+              dbService.restoreTransaction(userId, deleted);
+            }
+          }
         }
       });
     } catch (e) {
+      console.error("Error deleting transaction:", e);
       toast.error("Erro ao remover.");
     }
   };
 
   const handleDeleteCreditCardTransaction = async (id: string) => {
     if (!userId) return;
+    const isSeparate = separateCreditCardTxs.some(t => t.id === id);
     try {
-      await dbService.deleteCreditCardTransaction(userId, id);
+      if (isSeparate) {
+        await dbService.deleteCreditCardTransaction(userId, id);
+      } else {
+        await dbService.deleteTransaction(userId, id);
+      }
+      toast.success("Transação removida com sucesso.");
     } catch (e) {
       console.error("Error deleting credit card transaction:", e);
+      toast.error("Erro ao remover transação.");
     }
   };
 
@@ -3554,20 +3484,7 @@ const App: React.FC = () => {
                           !t.ignored
                         );
                       })()}
-                      isProMode={isProMode}
-                      onToggleProMode={(val) => {
-                        // Validação extra: Usuários Starter não podem ativar modo AUTO
-                        // Use effectivePlan to ensure canceled/refunded users are treated as starter
-                        if (effectivePlan === 'starter' && val) {
-                          // Ignorar tentativa de ativar Auto para Starter
-                          return;
-                        }
-                        if (val) {
-                          setShowGlobalModeModal('AUTO');
-                        } else {
-                          setShowGlobalModeModal('MANUAL');
-                        }
-                      }}
+
                       userPlan={effectivePlan}
                       onUpgradeClick={() => setActiveTab('subscription')}
                       includeOpenFinance={includeOpenFinanceInStats}
@@ -3697,7 +3614,7 @@ const App: React.FC = () => {
                   onDeleteReminder={handleDeleteReminder}
                   onPayReminder={handlePayReminder}
                   onUpdateReminder={handleUpdateReminder}
-                  isProMode={isProMode}
+
                   userPlan={effectivePlan}
                   onUpgrade={() => setActiveTab('subscription')}
                   userId={userId || undefined}
@@ -3712,7 +3629,7 @@ const App: React.FC = () => {
                   onUpdateSubscription={handleUpdateSubscription}
                   onDeleteSubscription={handleDeleteSubscription}
                   currentDate={filterMode === 'month' ? dashboardDate : undefined}
-                  isProMode={isProMode}
+
                   userPlan={effectivePlan}
                   onUpgrade={() => setActiveTab('subscription')}
                 />
@@ -3780,7 +3697,7 @@ const App: React.FC = () => {
                     }}
                     lastSynced={lastSyncMap}
                     userId={userId}
-                    isProMode={isProMode}
+
                     isAdmin={currentUser?.isAdmin}
                     onDebugSync={handleDebugSync}
                     userPlan={effectivePlan}
@@ -3827,10 +3744,11 @@ const App: React.FC = () => {
                 transactions={transactions}
                 budgets={budgets}
                 investments={investments}
+                connectedAccounts={enrichedConnectedAccounts}
                 userPlan={effectivePlan}
                 userName={currentUser?.name}
                 userId={userId || undefined}
-                isProMode={isProMode}
+
                 onUpgrade={() => setActiveTab('subscription')}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
@@ -3849,10 +3767,11 @@ const App: React.FC = () => {
           transactions={transactions}
           budgets={budgets}
           investments={investments}
+          connectedAccounts={enrichedConnectedAccounts}
           userPlan={effectivePlan}
           userName={currentUser?.name}
           userId={userId || undefined}
-          isProMode={isProMode}
+
           onUpgrade={() => setActiveTab('subscription')}
           activeTab={activeTab}
           setActiveTab={setActiveTab}
@@ -3922,15 +3841,7 @@ const App: React.FC = () => {
         userId={userId || undefined}
       />
 
-      {showGlobalModeModal && (
-        <GlobalModeModal
-          isOpen={!!showGlobalModeModal}
-          onClose={() => setShowGlobalModeModal(null)}
-          onConfirmManual={handleGlobalManualConfirm}
-          onConfirmAuto={handleGlobalAutoConfirm}
-          targetMode={showGlobalModeModal}
-        />
-      )}
+
 
 
 

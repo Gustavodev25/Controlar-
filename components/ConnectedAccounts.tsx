@@ -2,7 +2,7 @@ import React, { useMemo, useState, useEffect, useCallback, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import { ConnectedAccount } from "../types";
 import { Wallet, Building, CreditCard, RotateCcw, ChevronLeft, ChevronRight, Trash2, Lock, Plus, Pig, Clock, CheckCircle, Check, AlertCircle, Loader2, LinkIcon, AnimatedClock, Info, X } from "./Icons";
-import { Plus as LucidePlus, RotateCcw as LucideRotateCcw, Trash2 as LucideTrash2, Clock as LucideClock, AlertCircle as LucideAlertCircle, Calendar, ChevronRight as LucideChevronRight, ChevronLeft as LucideChevronLeft, Wallet as LucideWallet, CreditCard as LucideCreditCard, PiggyBank as LucidePiggyBank, Coins, RefreshCw } from "lucide-react";
+import { Plus as LucidePlus, RotateCcw as LucideRotateCcw, Trash2 as LucideTrash2, Clock as LucideClock, AlertCircle as LucideAlertCircle, Calendar, ChevronRight as LucideChevronRight, ChevronLeft as LucideChevronLeft, Wallet as LucideWallet, CreditCard as LucideCreditCard, PiggyBank as LucidePiggyBank, Coins, RefreshCw, Eye, EyeOff, Pencil } from "lucide-react";
 import NumberFlow from '@number-flow/react';
 import { toast as sonnerToast } from "sonner";
 
@@ -13,6 +13,7 @@ import { useToasts } from "./Toast";
 import { TooltipIcon } from "./UIComponents";
 import { UniversalModal } from "./UniversalModal";
 import { BankConnectModal } from "./BankConnectModal";
+import { ManageManualAccountModal } from "./ManageManualAccountModal";
 import Lottie from "lottie-react";
 import linkAnimation from "../assets/link.json";
 
@@ -27,7 +28,7 @@ interface ConnectedAccountsProps {
   lastSynced?: Record<string, string>;
   userId?: string | null;
   selectedMemberId?: string;
-  isProMode?: boolean;
+
   isAdmin?: boolean;
   userPlan?: string;
   onUpgrade?: () => void;
@@ -94,7 +95,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   onDebugSync,
   lastSynced = {},
   userId,
-  isProMode = true,
+
   isAdmin = false,
   userPlan = 'starter',
   onUpgrade,
@@ -106,6 +107,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
   const [deleteData, setDeleteData] = useState<{ accounts: ConnectedAccount[], institutionName: string } | null>(null);
   const [showBankModal, setShowBankModal] = useState(false);
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<ConnectedAccount | null>(null);
   const [forceSyncItemId, setForceSyncItemId] = useState<string | null>(null);
   const [timers, setTimers] = useState<Record<string, { auto: { h: number; m: number; s: number }; cooldownMs: number; syncedToday: boolean; connectedToday?: boolean; isFresh: boolean } | null>>({});
 
@@ -771,6 +774,20 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     }
   };
 
+  const handleToggleHidden = async (acc: ConnectedAccount) => {
+    if (!userId) return;
+    try {
+      const newHiddenState = !acc.hidden;
+      await dbService.updateConnectedAccount(userId, acc.id, { hidden: newHiddenState });
+      toast.success(newHiddenState ? "Conta ocultada das caixinhas." : "Conta visível novamente.");
+      // No need to manual refresh if using real-time listener in parent, but good to ensure
+      if (onRefresh) onRefresh();
+    } catch (error) {
+      console.error("Erro ao alterar visibilidade:", error);
+      toast.error("Erro ao atualizar conta.");
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
@@ -790,24 +807,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     );
   }
 
-  if (!isProMode) {
-    return (
-      <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
-        <div className="flex items-center justify-between">
-          <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Open Finance Bloqueado</h2>
-            <p className="text-gray-400 text-sm mt-1">Sincronização bancária desativada</p>
-          </div>
-        </div>
 
-        <EmptyState
-          title="Modo Manual Ativado"
-          description="Para conectar seus bancos e sincronizar transações automaticamente, ative o Modo Automático na Visão Geral."
-          icon={<Lock size={48} className="text-[#d97757]" />}
-        />
-      </div>
-    );
-  }
 
   return (
     <div className="w-full space-y-8 animate-fade-in font-sans pb-10">
@@ -815,7 +815,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       <div className="flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-2xl font-bold text-white tracking-tight">Contas Conectadas</h2>
+            <h2 className="text-2xl font-bold text-white tracking-tight">Gestão de Contas</h2>
             <div className="flex items-center gap-1.5 mt-1 text-gray-400">
               {userPlan !== 'starter' && (
                 <div className="w-5 h-5 flex items-center justify-center -ml-1">
@@ -856,6 +856,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             </div>
           )}
 
+          <button
+            onClick={() => {
+              setEditingAccount(null);
+              setShowManualModal(true);
+            }}
+            className="px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all shadow-lg font-bold text-sm bg-gray-800 text-gray-300 hover:bg-gray-700 hover:text-white border border-gray-700"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Banco (Manual)</span>
+          </button>
+
           <TooltipIcon content={connectButtonTooltip || (isAdmin ? "Conectar nova instituição" : "Conectar nova instituição (Consome 1 crédito)")}>
             <button
               id="open-finance-connect-btn"
@@ -882,7 +893,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                   ? 'Desbloquear Conexão'
                   : !isCreditsLoaded
                     ? 'Carregando...'
-                    : 'Conectar Banco'}
+                    : 'Banco (Automático)'}
               </span>
             </button>
           </TooltipIcon>
@@ -1207,9 +1218,32 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                                   </div>
 
                                   <div className="text-right flex-shrink-0 flex flex-col items-end">
-                                    <p className={`text-base font-mono font-bold whitespace-nowrap ${isCard ? "text-amber-400" : acc.balance < 0 ? "text-red-400" : "text-emerald-400"} `}>
-                                      {formatCurrency(acc.balance, acc.currency)}
-                                    </p>
+                                    <div className="flex items-center gap-3">
+                                      {isManual && (
+                                        <TooltipIcon content="Editar conta">
+                                          <button
+                                            onClick={() => {
+                                              setEditingAccount(acc);
+                                              setShowManualModal(true);
+                                            }}
+                                            className="p-1.5 rounded-lg transition-colors text-gray-500 hover:text-white hover:bg-gray-800/30"
+                                          >
+                                            <Pencil size={14} />
+                                          </button>
+                                        </TooltipIcon>
+                                      )}
+                                      <TooltipIcon content={acc.hidden ? "Mostrar nas caixinhas" : "Ocultar das caixinhas"}>
+                                        <button
+                                          onClick={() => handleToggleHidden(acc)}
+                                          className={`p-1.5 rounded-lg transition-colors ${acc.hidden ? 'text-gray-500 hover:text-gray-300 bg-gray-800/50' : 'text-gray-600 hover:text-gray-400 hover:bg-gray-800/30'}`}
+                                        >
+                                          {acc.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                                        </button>
+                                      </TooltipIcon>
+                                      <p className={`text-base font-mono font-bold whitespace-nowrap ${acc.hidden ? 'opacity-50' : ''} ${isCard ? "text-amber-400" : acc.balance < 0 ? "text-red-400" : "text-emerald-400"} `}>
+                                        {formatCurrency(acc.balance, acc.currency)}
+                                      </p>
+                                    </div>
                                     {/* Show bill info for credit cards */}
                                     {isCard && bill && (billDate || billStateInfo) && (
                                       <div className="flex items-center gap-1.5 mt-0.5">
@@ -1429,6 +1463,16 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         maxCreditsPerDay={MAX_CREDITS_PER_DAY}
         userPlan={userPlan}
         isAdmin={isAdmin}
+      />
+
+      <ManageManualAccountModal
+        isOpen={showManualModal}
+        onClose={() => setShowManualModal(false)}
+        userId={userId || undefined}
+        existingAccount={editingAccount}
+        onSuccess={() => {
+          if (onRefresh) onRefresh();
+        }}
       />
 
     </div >

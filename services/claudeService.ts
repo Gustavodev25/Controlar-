@@ -203,7 +203,8 @@ REGRAS IMPORTANTES:
     "date": "${todayISO}",
     "type": "income" ou "expense",
     "installments": número (1 se à vista),
-    "isSubscription": true/false
+    "isSubscription": true/false,
+    "accountName": "Nome da conta/banco se especificado (ex: Nubank, Carteira, BB)"
   }
 }
 
@@ -349,7 +350,8 @@ SEMPRE responda EXCLUSIVAMENTE com o JSON válido, sem texto antes ou depois. Se
             description: t.description || "Transação",
             category: t.category || "Outros",
             type: t.type || "expense",
-            amount: t.amount || 0
+            amount: t.amount || 0,
+            accountName: t.accountName
         });
 
         // Processar múltiplas transações

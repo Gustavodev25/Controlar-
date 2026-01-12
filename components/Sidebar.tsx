@@ -544,7 +544,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                   </NavGroup>
                   <NavItem id="sidebar-nav-metas" active={activeTab === 'budgets'} onClick={() => handleNavClick('budgets')} icon={<MathMaxMin size={20} />} label="Metas" isOpen={isOpen} />
-                  <NavItem id="sidebar-nav-connections" active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Open Finance" isOpen={isOpen} />
+                  <NavItem id="sidebar-nav-connections" active={activeTab === 'connections'} onClick={() => handleNavClick('connections')} icon={<Wallet size={20} />} label="Gestão de Contas" isOpen={isOpen} />
 
                   <NavItem active={activeTab === 'fire'} onClick={() => handleNavClick('fire')} icon={<Flame size={20} />} label="FIRE" isOpen={isOpen} />
                   <NavItem active={activeTab === 'investments'} onClick={() => handleNavClick('investments')} icon={<Pig size={20} />} label="Caixinhas" isOpen={isOpen} />

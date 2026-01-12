@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo, type JSX } from 'react';
 import { createPortal } from 'react-dom';
 import { motion } from 'framer-motion';
-import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X } from './Icons';
+import { ChevronDown, Calendar, ChevronLeft, ChevronRight, AlertTriangle, Check, Search, Plus, X, ChevronsUpDown } from './Icons';
 
 // --- UTILS ---
 function cn(...classes: (string | undefined | null | false)[]) {

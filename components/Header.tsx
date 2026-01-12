@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
       case 'fire': return { title: 'Simulador FIRE', desc: 'Planeje sua aposentadoria antecipada com a regra dos 4%.' };
       case 'budgets': return { title: 'Metas', desc: 'Planejamento e controle de gastos.' };
       case 'subscriptions': return { title: 'Assinaturas', desc: 'Gestão de serviços recorrentes.' };
-      case 'connections': return { title: 'Contas Conectadas', desc: 'Bancos vinculados via Open Finance.' };
+      case 'connections': return { title: 'Gestão de Contas', desc: 'Bancos vinculados via Open Finance.' };
       case 'admin_overview': return { title: 'Painel Administrativo', desc: 'Visão geral do sistema.' };
       case 'admin_waitlist': return { title: 'Lista de Espera', desc: 'Gerenciar solicitações de acesso.' };
       case 'admin_email': return { title: 'Mensagem em Geral', desc: 'Criar e enviar mensagens.' };

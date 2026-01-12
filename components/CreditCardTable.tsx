@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import { ChevronsUpDown } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
@@ -281,27 +282,28 @@ const calculateInvoiceSummary = (
 
   nonInstallmentTxs.forEach(tx => {
     const amt = Math.abs(Number(tx.amount) || 0);
-    const signedAmt = tx.type === 'income' ? -amt : amt;
+    // TOTAL BRUTO: apenas despesas, income não subtrai
+    const grossAmt = tx.type === 'expense' ? amt : 0;
 
     const [ty, tm, td] = (tx.date || '').split('-').map(Number);
     const txDate = new Date(ty, tm - 1, td, 12, 0, 0);
 
-    totalUsed += signedAmt;
+    totalUsed += grossAmt;
 
     if (txDate >= lastInvoiceStart && txDate <= lastClosingDate) {
-      lastInvoiceTotal += signedAmt;
+      lastInvoiceTotal += grossAmt;
       lastInvoiceTransactions.push(tx);
     } else if (txDate >= currentInvoiceStart && txDate <= currentClosingDate) {
-      currentInvoiceTotal += signedAmt;
+      currentInvoiceTotal += grossAmt;
       currentInvoiceTransactions.push(tx);
     } else if (txDate >= nextInvoiceStart && txDate <= nextClosingDate) {
-      nextInvoiceTotal += signedAmt;
+      nextInvoiceTotal += grossAmt;
       nextInvoiceTransactions.push(tx);
     }
 
     // Calcular Total Futuro (Tudo após a fatura atual)
     if (txDate > currentClosingDate) {
-      allFutureTotal += signedAmt;
+      allFutureTotal += grossAmt;
     }
   });
 
@@ -331,7 +333,8 @@ const calculateInvoiceSummary = (
     // Compatibilidade: dados antigos usam 'installments', novos usam 'totalInstallments'
     const totalInst = transactions[0]?.totalInstallments || (transactions[0] as any)?.installments || 1;
     const amt = Math.abs(Number(transactions[0]?.amount) || 0);
-    const signedAmt = transactions[0]?.type === 'income' ? -amt : amt;
+    // TOTAL BRUTO: parcelas são sempre despesas (valor absoluto)
+    const grossAmt = amt;
 
     for (let instNum = 1; instNum <= totalInst; instNum++) {
       const instDate = new Date(firstInstDate);
@@ -355,22 +358,22 @@ const calculateInvoiceSummary = (
         };
       }
 
-      totalUsed += signedAmt;
+      totalUsed += grossAmt;
 
       if (instDateNum >= lastInvoiceStartNum && instDateNum <= lastClosingDateNum) {
-        lastInvoiceTotal += signedAmt;
+        lastInvoiceTotal += grossAmt;
         lastInvoiceTransactions.push(txToAdd);
       } else if (instDateNum >= currentInvoiceStartNum && instDateNum <= currentClosingDateNum) {
-        currentInvoiceTotal += signedAmt;
+        currentInvoiceTotal += grossAmt;
         currentInvoiceTransactions.push(txToAdd);
       } else if (instDateNum >= nextInvoiceStartNum && instDateNum <= nextClosingDateNum) {
-        nextInvoiceTotal += signedAmt;
+        nextInvoiceTotal += grossAmt;
         nextInvoiceTransactions.push(txToAdd);
       }
 
       // Calcular Total Futuro (Tudo após a fatura atual)
       if (instDate > currentClosingDate) {
-        allFutureTotal += signedAmt;
+        allFutureTotal += grossAmt;
       }
     }
   });
@@ -432,8 +435,8 @@ const calculateInvoiceSummary = (
   });
 
   if (paymentForClosedInvoice) {
-    const amt = Math.abs(Number(paymentForClosedInvoice.amount) || 0);
-    lastInvoiceTotal -= amt;
+    // NÃO subtraimos o pagamento do total - mostramos apenas para referência
+    // lastInvoiceTotal permanece como total BRUTO da fatura
 
     const [py, pm, pd] = (paymentForClosedInvoice.date || '').split('-').map(Number);
     const paymentDate = new Date(py, pm - 1, pd);
@@ -672,6 +675,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   onOpenFeedback,
   onBulkUpdate
 }) => {
+  // Filter hidden accounts
+  const visibleCreditCardAccounts = React.useMemo(() =>
+    creditCardAccounts.filter(acc => !acc.hidden),
+    [creditCardAccounts]
+  );
+
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
@@ -684,15 +693,24 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // Bank/Card Filter
   const [selectedCardId, setSelectedCardId] = useState<string>('');
 
+  const isManualModeActive = React.useMemo(() => {
+    if (isManualMode && selectedCardId !== 'all') return true;
+    const card = visibleCreditCardAccounts.find(acc => acc.id === selectedCardId);
+    return card?.connectionMode === 'MANUAL';
+  }, [isManualMode, visibleCreditCardAccounts, selectedCardId]);
+
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
-  // Enforce selecting the first card on load
+  // Enforce selecting the first visible card on load or if selected card becomes hidden
   React.useEffect(() => {
-    if ((selectedCardId === 'all' || !selectedCardId) && creditCardAccounts.length > 0) {
-      setSelectedCardId(creditCardAccounts[0].id);
+    const isSelectedVisible = visibleCreditCardAccounts.some(acc => acc.id === selectedCardId);
+    if ((selectedCardId === 'all' || !selectedCardId || !isSelectedVisible) && visibleCreditCardAccounts.length > 0) {
+      setSelectedCardId(visibleCreditCardAccounts[0].id);
     }
-  }, [creditCardAccounts, selectedCardId]);
+    // If no visible accounts and we have hidden ones, maybe select 'all'? 
+    // But better to just let it be (or empty)
+  }, [visibleCreditCardAccounts, selectedCardId]);
 
   // DEBUG: Log das transações e cartões recebidos
   React.useEffect(() => {
@@ -732,13 +750,80 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     description: '',
     amount: 0,
     date: new Date().toISOString().split('T')[0],
-    category: '',
+    category: 'Geral',
     type: 'expense',
-    status: 'pending',
+    status: 'completed',
     accountType: 'CREDIT_CARD',
     totalInstallments: 1,
     installmentNumber: 1
   });
+
+  const handleAddTransaction = async () => {
+    if (!newTransaction.description || !newTransaction.amount || !newTransaction.date) {
+      toast.warning('Preencha os campos obrigatórios');
+      return;
+    }
+
+    try {
+      if (onAdd && selectedCardId) {
+        const totalInstallments = newTransaction.totalInstallments || 1;
+        const installmentAmount = totalInstallments > 1 ? ((newTransaction.amount || 0) / totalInstallments) : (newTransaction.amount || 0);
+
+        // Parse date correctly
+        const [year, month, day] = (newTransaction.date as string).split('-').map(Number);
+        const baseDate = new Date(year, month - 1, day);
+
+        const promises: Promise<void>[] = [];
+
+        for (let i = 0; i < totalInstallments; i++) {
+          const installmentDate = new Date(baseDate);
+          installmentDate.setMonth(installmentDate.getMonth() + i);
+          const installmentDateStr = installmentDate.toISOString().split('T')[0];
+
+          const description = totalInstallments > 1
+            ? `${newTransaction.description} ${i + 1}/${totalInstallments}`
+            : newTransaction.description;
+
+          const payload: Omit<Transaction, 'id'> = {
+            ...newTransaction as Transaction,
+            description,
+            amount: installmentAmount,
+            date: installmentDateStr,
+            cardId: selectedCardId,
+            accountId: selectedCardId,
+            status: 'completed',
+            type: 'expense',
+            accountType: 'CREDIT_CARD',
+            installmentNumber: i + 1,
+            totalInstallments: totalInstallments
+          };
+          promises.push(onAdd(payload));
+        }
+
+        await Promise.all(promises);
+        toast.success(totalInstallments > 1
+          ? `${totalInstallments} parcelas adicionadas com sucesso!`
+          : 'Compra adicionada com sucesso!');
+
+        setIsAddModalOpen(false);
+        // Reset form
+        setNewTransaction({
+          description: '',
+          amount: 0,
+          date: new Date().toISOString().split('T')[0],
+          category: 'Geral',
+          type: 'expense',
+          status: 'completed',
+          accountType: 'CREDIT_CARD',
+          totalInstallments: 1,
+          installmentNumber: 1
+        });
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error('Erro ao adicionar compra');
+    }
+  };
 
   // Card Settings Modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
@@ -1342,7 +1427,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             <span className="hidden sm:inline">Exportar</span>
           </button>
 
-          {isManualMode && onAdd && (
+          {((isManualMode || selectedCard?.connectionMode === 'MANUAL') && onAdd) && (
             <button
               onClick={() => {
                 setNewTransaction({
@@ -1353,7 +1438,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   type: 'expense',
                   status: 'pending',
                   accountType: 'CREDIT_CARD',
-                  accountId: creditCardAccounts[0]?.id || undefined,
+                  accountId: selectedCard?.id || creditCardAccounts[0]?.id || undefined,
                   totalInstallments: 1,
                   installmentNumber: 1
                 });
@@ -1362,7 +1447,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               className="flex items-center gap-2 px-4 py-2 bg-[#d97757] hover:bg-[#c56a4d] text-white text-sm rounded-lg font-semibold transition-all shadow-md shadow-[#d97757]/20"
             >
               <Plus size={18} strokeWidth={3} />
-              <span className="hidden sm:inline">Novo Lançamento</span>
+              <span className="hidden sm:inline">Lançar Compra</span>
             </button>
           )}
 
@@ -1375,7 +1460,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           {/* Cards Selector - Smooth Tabs with Motion */}
           <div className="mb-8">
             <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar p-1">
-              {creditCardAccounts.map((card, index) => {
+              {visibleCreditCardAccounts.map((card, index) => {
                 const isSelected = selectedCardId === card.id;
                 return (
                   <button
@@ -1499,22 +1584,26 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         </div>
                       </div>
                     </div>
-                    {onUpdateAccount && (
-                      <button
-                        onClick={() => {
-                          setCardSettings({
-                            closingDay: selectedCard.closingDay || 10,
-                            manualLastClosingDate: selectedCard.manualLastClosingDate,
-                            manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
-                          });
-                          setIsSettingsModalOpen(true);
-                        }}
-                        className="p-2.5 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] rounded-xl text-gray-400 hover:text-white transition-all"
-                        title="Configurar cartão"
-                      >
-                        <Settings size={18} />
-                      </button>
-                    )}
+
+                    <div className="flex items-center gap-2">
+
+                      {onUpdateAccount && (
+                        <button
+                          onClick={() => {
+                            setCardSettings({
+                              closingDay: selectedCard.closingDay || 10,
+                              manualLastClosingDate: selectedCard.manualLastClosingDate,
+                              manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
+                            });
+                            setIsSettingsModalOpen(true);
+                          }}
+                          className="p-2.5 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] rounded-xl text-gray-400 hover:text-white transition-all"
+                          title="Configurar cartão"
+                        >
+                          <Settings size={18} />
+                        </button>
+                      )}
+                    </div>
                   </div>
 
 
@@ -2031,7 +2120,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           </th>
 
                           <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-                          {isManualMode && (
+                          {isManualModeActive && (
                             <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
                           )}
                         </tr>
@@ -2209,10 +2298,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   </span>
                                 )}
                               </td>
-                              {isManualMode && (
-                                <td className="px-6 py-4">
+                              {isManualModeActive && (
+                                <td className="px-6 py-4 text-center">
                                   {!isCharge && !isPayment && !isAdjustment && (
-                                    <div className="flex items-center justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                                    <div className="flex items-center justify-center gap-2">
                                       <button
                                         onClick={() => handleEditClick(t)}
                                         className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
@@ -2237,7 +2326,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                         {transactionsWithCharges.length === 0 && (
                           <tr className="h-full">
-                            <td colSpan={6} className="p-4 h-full">
+                            <td colSpan={isManualModeActive ? 7 : 6} className="p-4 h-full">
                               <EmptyState
                                 title="Nenhum lançamento de cartão encontrado"
                                 description="Seus gastos com cartão aparecerão aqui."
@@ -2304,17 +2393,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 footer={
                   <div className="flex gap-3">
                     <Button
-                      variant="dark"
-                      size="lg"
-                      className="flex-1 text-gray-400 hover:text-white"
-                      onClick={handleCloseEdit}
-                    >
-                      Cancelar
-                    </Button>
-                    <Button
                       variant="primary"
                       size="lg"
-                      className="flex-[2]"
+                      className="w-full"
                       onClick={handleSaveEdit}
                     >
                       Salvar
@@ -2323,30 +2404,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 }
               >
                 <div className="space-y-5">
-                  {/* Tipo Segmentado com Smooth */}
-                  <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
-                    <div
-                      className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
-                      style={{
-                        left: editTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
-                        backgroundColor: editTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
-                      }}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setEditTransaction({ ...editTransaction, type: 'expense' })}
-                      className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                      <TrendingDown size={14} /> Despesa
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditTransaction({ ...editTransaction, type: 'income' })}
-                      className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${editTransaction.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                    >
-                      <TrendingUp size={14} /> Receita
-                    </button>
-                  </div>
+
 
                   {/* Descrição */}
                   <div className="space-y-1.5">
@@ -2370,13 +2428,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       <div className="relative">
                         <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                         <input
-                          type="number"
-                          step="0.01"
-                          value={editTransaction.amount?.toString()}
-                          onChange={(e) => setEditTransaction({ ...editTransaction, amount: parseFloat(e.target.value) || 0 })}
-                          className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                          placeholder="0,00"
+                          type="text"
+                          inputMode="numeric"
+                          value={editTransaction.amount ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(editTransaction.amount) : ''}
+                          onChange={(e) => {
+                            const value = e.target.value.replace(/\D/g, '');
+                            const numberValue = Number(value) / 100;
+                            setEditTransaction({ ...editTransaction, amount: numberValue });
+                          }}
+                          className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                          placeholder="R$ 0,00"
                         />
+                        <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
                       </div>
                     </div>
 
@@ -2390,17 +2453,53 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     </div>
                   </div>
 
-                  {/* Categoria - Apenas Modo Manual */}
+                  {/* Categoria e Parcelas */}
                   {isManualMode && (
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
-                      <CustomAutocomplete
-                        value={editTransaction.category || ''}
-                        onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
-                        options={CATEGORIES}
-                        icon={<Tag size={16} />}
-                        placeholder="Selecione ou digite..."
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                        <CustomAutocomplete
+                          value={editTransaction.category || ''}
+                          onChange={(val) => setEditTransaction({ ...editTransaction, category: val })}
+                          options={CATEGORIES}
+                          icon={<Tag size={16} />}
+                          placeholder="Selecione ou digite..."
+                          portal={true}
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between h-[17px] mb-1.5">
+                          <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Parcelado?</span>
+                          <label className="relative inline-flex items-center cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(editTransaction.totalInstallments || 1) > 1}
+                              onChange={(e) => setEditTransaction({
+                                ...editTransaction,
+                                totalInstallments: e.target.checked ? 2 : 1
+                              })}
+                              className="sr-only peer"
+                            />
+                            <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#d97757]"></div>
+                          </label>
+                        </div>
+                        <div
+                          className={`overflow-hidden transition-all duration-300 ease-in-out ${(editTransaction.totalInstallments || 1) > 1 ? 'max-h-20 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
+                            }`}
+                        >
+                          <div className="relative">
+                            <input
+                              type="number"
+                              min="2"
+                              max="99"
+                              value={editTransaction.totalInstallments || 2}
+                              onChange={(e) => setEditTransaction({ ...editTransaction, totalInstallments: parseInt(e.target.value) || 2 })}
+                              className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-4 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   )}
 
@@ -2450,254 +2549,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             )
           }
 
-          {/* Add Transaction Modal */}
-          <UniversalModal
-            isOpen={isAddModalOpen}
-            onClose={() => setIsAddModalOpen(false)}
-            title="Novo Lançamento (Cartão)"
-            icon={<CreditCard size={18} />}
-            themeColor={newTransaction.type === 'income' ? '#10b981' : '#d97757'}
-            footer={
-              <Button
-                variant={newTransaction.type === 'income' ? 'success' : 'primary'}
-                size="lg"
-                fullWidth
-                onClick={async () => {
-                  if (!newTransaction.description || !newTransaction.amount || newTransaction.amount <= 0 || !newTransaction.date) {
-                    toast.error("Preencha a descrição, valor e data.");
-                    return;
-                  }
-                  if (onAdd) {
-                    const acc = creditCardAccounts.find(a => a.id === newTransaction.accountId);
-                    const totalInstallments = newTransaction.totalInstallments || 1;
-                    const installmentAmount = totalInstallments > 1 ? (newTransaction.amount / totalInstallments) : newTransaction.amount;
 
-                    // Parse the initial date
-                    const [year, month, day] = (newTransaction.date || '').split('-').map(Number);
-                    const baseDate = new Date(year, month - 1, day);
-
-                    // Create all installments
-                    const promises: Promise<void>[] = [];
-                    for (let i = 0; i < totalInstallments; i++) {
-                      // Calculate the date for this installment (increment by i months)
-                      const installmentDate = new Date(baseDate);
-                      installmentDate.setMonth(installmentDate.getMonth() + i);
-
-                      // Format the date back to YYYY-MM-DD
-                      const installmentDateStr = `${installmentDate.getFullYear()}-${String(installmentDate.getMonth() + 1).padStart(2, '0')}-${String(installmentDate.getDate()).padStart(2, '0')}`;
-
-                      // Create the description with installment info if > 1 total
-                      const description = totalInstallments > 1
-                        ? `${newTransaction.description} ${i + 1}/${totalInstallments}`
-                        : newTransaction.description;
-
-                      const finalTx = {
-                        ...newTransaction,
-                        description,
-                        amount: installmentAmount,
-                        date: installmentDateStr,
-                        cardId: newTransaction.accountId,
-                        cardName: acc?.name || 'Cartão Manual',
-                        accountType: 'CREDIT_CARD',
-                        installmentNumber: i + 1,
-                        totalInstallments: totalInstallments
-                      };
-
-                      promises.push(onAdd(finalTx as any));
-                    }
-
-                    await Promise.all(promises);
-                    toast.success(totalInstallments > 1
-                      ? `${totalInstallments} parcelas criadas com sucesso!`
-                      : "Lançamento de cartão adicionado!");
-                    setIsAddModalOpen(false);
-                  }
-                }}
-                className={newTransaction.type === 'income' ? '!bg-emerald-500 hover:!bg-emerald-400' : ''}
-              >
-                <Check size={18} strokeWidth={2.5} />
-                Confirmar
-              </Button>
-            }
-          >
-            <div className="space-y-5">
-              {/* Tipo Segmentado com Smooth */}
-              <div className="relative flex p-1 bg-gray-900/50 rounded-xl">
-                <div
-                  className="absolute top-1 bottom-1 w-[calc(50%-4px)] rounded-lg transition-all duration-300 ease-out"
-                  style={{
-                    left: newTransaction.type === 'expense' ? '4px' : 'calc(50% + 0px)',
-                    backgroundColor: newTransaction.type === 'expense' ? 'rgba(239, 68, 68, 0.9)' : 'rgba(16, 185, 129, 0.9)'
-                  }}
-                />
-                <button
-                  type="button"
-                  onClick={() => setNewTransaction({ ...newTransaction, type: 'expense' })}
-                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${newTransaction.type === 'expense' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                >
-                  <TrendingDown size={14} /> Despesa
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setNewTransaction({ ...newTransaction, type: 'income' })}
-                  className={`relative z-10 flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg text-xs font-semibold transition-colors duration-200 ${newTransaction.type === 'income' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
-                >
-                  <TrendingUp size={14} /> Receita
-                </button>
-              </div>
-
-              {/* Account Selector (if multiple cards) */}
-              {creditCardAccounts.length > 0 && (
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide ml-1">Cartão</label>
-                  <CustomSelect
-                    value={newTransaction.accountId}
-                    onChange={(val) => {
-                      const acc = creditCardAccounts.find(a => a.id === val);
-                      setNewTransaction({
-                        ...newTransaction,
-                        accountId: val as string,
-                        cardId: val as string,
-                        cardName: acc?.name
-                      });
-                    }}
-                    options={creditCardAccounts.map(acc => ({
-                      value: acc.id,
-                      label: `${acc.name} (${acc.institution || 'Banco'})`
-                    }))}
-                    placeholder="Selecione o cartão"
-                    className="w-full"
-                  />
-                </div>
-              )}
-
-              {/* Descrição */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
-                <div className="relative">
-                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                  <input
-                    type="text"
-                    value={newTransaction.description}
-                    onChange={(e) => setNewTransaction({ ...newTransaction, description: e.target.value })}
-                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
-                    placeholder="Ex: Compra Online"
-                    autoFocus
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                {/* Valor */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
-                  <div className="relative">
-                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                    <input
-                      type="number"
-                      step="0.01"
-                      value={newTransaction.amount?.toString()}
-                      onChange={(e) => setNewTransaction({ ...newTransaction, amount: parseFloat(e.target.value) || 0 })}
-                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                      placeholder="0,00"
-                    />
-                  </div>
-                </div>
-
-                {/* Data */}
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data da Compra</label>
-                  <CustomDatePicker
-                    value={newTransaction.date || ''}
-                    onChange={(val) => setNewTransaction({ ...newTransaction, date: val })}
-                  />
-                </div>
-              </div>
-
-              {/* Categoria */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
-                <CustomAutocomplete
-                  value={newTransaction.category || ''}
-                  onChange={(val) => setNewTransaction({ ...newTransaction, category: val })}
-                  options={CATEGORIES}
-                  icon={<Tag size={16} />}
-                  placeholder="Selecione ou digite..."
-                />
-              </div>
-
-              {/* Parcelas */}
-              <div className="space-y-1.5">
-                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Parcelamento</label>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="1"
-                      max="24"
-                      value={newTransaction.totalInstallments || 1}
-                      onChange={(e) => setNewTransaction({ ...newTransaction, totalInstallments: parseInt(e.target.value) || 1 })}
-                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white py-3 px-4 text-center text-sm font-medium focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-xs text-gray-500 font-bold">x</div>
-                  </div>
-
-                  <div className="bg-gray-900/40 border border-gray-800/60 rounded-xl flex flex-col justify-center px-4 py-1.5">
-                    <span className="block text-[10px] text-gray-500 uppercase tracking-wide">Valor da Parcela</span>
-                    <span className="block font-mono font-bold text-gray-200 text-sm">
-                      R$ {((newTransaction.amount || 0) / (newTransaction.totalInstallments || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                </div>
-                {/* Informative note when installments > 1 */}
-                {(newTransaction.totalInstallments || 1) > 1 && (
-                  <div className="mt-2 p-2.5 bg-[#d97757]/10 border border-[#d97757]/20 rounded-lg">
-                    <p className="text-[11px] text-[#d97757]/90 leading-relaxed">
-                      <span className="font-semibold">✓</span> Serão criadas <span className="font-bold">{newTransaction.totalInstallments} parcelas</span> de <span className="font-bold">R$ {((newTransaction.amount || 0) / (newTransaction.totalInstallments || 1)).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> cada, distribuídas nos próximos meses a partir de {formatDate(newTransaction.date || '')}.
-                    </p>
-                  </div>
-                )}
-              </div>
-
-              {/* Status Toggle com Smooth */}
-              <div className="flex items-center justify-between py-3 border-t border-gray-800/40">
-                <div className="flex items-center gap-2.5">
-                  {newTransaction.status === 'completed'
-                    ? <Check size={16} className="text-emerald-500" />
-                    : <AlertCircle size={16} className="text-amber-500" />
-                  }
-                  <div>
-                    <span className="block text-sm font-medium text-gray-300">Status</span>
-                    <span className="block text-[10px] text-gray-500">
-                      {newTransaction.status === 'completed' ? 'Pago / Recebido' : 'Pendente'}
-                    </span>
-                  </div>
-                </div>
-
-                <div className="relative flex bg-gray-900 rounded-lg p-0.5 border border-gray-800 w-48">
-                  <div
-                    className={`absolute top-0.5 bottom-0.5 w-[calc(50%-2px)] rounded-md transition-all duration-300 ease-out
-                      ${newTransaction.status === 'pending' ? 'left-0.5 bg-amber-500/20' : 'left-1/2 bg-emerald-500/20'}
-                    `}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setNewTransaction({ ...newTransaction, status: 'pending' })}
-                    className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'pending' ? 'text-amber-500' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    PENDENTE
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewTransaction({ ...newTransaction, status: 'completed' })}
-                    className={`relative z-10 flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-wider transition-colors duration-200 ${newTransaction.status === 'completed' ? 'text-emerald-500' : 'text-gray-500 hover:text-gray-300'}`}
-                  >
-                    PAGO
-                  </button>
-                </div>
-              </div>
-            </div>
-          </UniversalModal>
 
           {/* Card Settings Modal */}
           <UniversalModal
@@ -2751,21 +2603,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-400 uppercase tracking-wide">Dia de Fechamento</label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      min="1"
-                      max="31"
-                      value={cardSettings.closingDay}
-                      onChange={(e) => setCardSettings({ ...cardSettings, closingDay: parseInt(e.target.value) || 1 })}
-                      className="w-full bg-[#1a1a19] border border-[#373734] rounded-lg px-4 py-3 text-white focus:border-[#d97757] outline-none transition-colors"
-                    />
-                    <Calendar className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500" size={16} />
-                  </div>
-                  <p className="text-[10px] text-gray-500">Dia em que a fatura fecha e novas compras vão para o próximo mês.</p>
-                </div>
+
               </div>
 
               <div className="space-y-4">
@@ -2860,6 +2698,113 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             </div>
           </UniversalModal>
 
+          {/* Add Manual Transaction Modal */}
+          <UniversalModal
+            isOpen={isAddModalOpen}
+            onClose={() => setIsAddModalOpen(false)}
+            title="Lançar Compra Manual"
+            icon={<CreditCard size={18} />}
+            themeColor="#d97757"
+            footer={
+              <div className="flex gap-3 w-full">
+                <Button variant="primary" size="lg" className="w-full" onClick={handleAddTransaction}>Adicionar</Button>
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Descrição</label>
+                <div className="relative">
+                  <FileText className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                  <input
+                    type="text"
+                    value={newTransaction.description || ''}
+                    onChange={e => setNewTransaction({ ...newTransaction, description: e.target.value })}
+                    placeholder="Ex: Almoço, Netflix..."
+                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={newTransaction.amount ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(newTransaction.amount) : ''}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, '');
+                        const numberValue = Number(value) / 100;
+                        setNewTransaction({ ...newTransaction, amount: numberValue });
+                      }}
+                      placeholder="R$ 0,00"
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                    />
+                    <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Data</label>
+                  <CustomDatePicker
+                    value={newTransaction.date || ''}
+                    onChange={val => setNewTransaction({ ...newTransaction, date: val })}
+                    placeholder="Data da compra"
+                    dropdownMode="fixed"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Categoria</label>
+                  <CustomSelect
+                    value={newTransaction.category || 'Outros'}
+                    onChange={val => setNewTransaction({ ...newTransaction, category: val })}
+                    options={availableCategories.map(cat => ({ value: cat, label: translateCategory(cat) }))}
+                    placeholder="Selecione"
+                    portal={true}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between h-[17px] mb-1.5">
+                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Parcelado?</span>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={(newTransaction.totalInstallments || 1) > 1}
+                      onChange={(e) => setNewTransaction({
+                        ...newTransaction,
+                        totalInstallments: e.target.checked ? 2 : 1
+                      })}
+                      className="sr-only peer"
+                    />
+                    <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#d97757]"></div>
+                  </label>
+                </div>
+                <div
+                  className={`overflow-hidden transition-all duration-300 ease-in-out ${(newTransaction.totalInstallments || 1) > 1 ? 'max-h-20 opacity-100 mt-2' : 'max-h-0 opacity-0 mt-0'
+                    }`}
+                >
+                  <div className="relative">
+                    <input
+                      type="number"
+                      min="2"
+                      max="99"
+                      value={newTransaction.totalInstallments || 2}
+                      onChange={(e) => setNewTransaction({ ...newTransaction, totalInstallments: parseInt(e.target.value) || 2 })}
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-4 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    />
+                    <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </UniversalModal>
+
           {/* Mobile Filters Modal */}
           <UniversalModal
             isOpen={isFilterModalOpen}
@@ -2944,9 +2889,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             </div>
           </UniversalModal>
 
-        </div>
+        </div >
       )}
-    </div>
+    </div >
   );
 };
 

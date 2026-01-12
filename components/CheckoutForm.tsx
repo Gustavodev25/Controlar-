@@ -363,11 +363,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       return { brand: 'MASTER', color: 'bg-red-600' };
     }
 
-    // American Express: 34 or 37
-    if (/^3[47]/.test(cleaned)) {
-      return { brand: 'AMEX', color: 'bg-sky-600' };
-    }
-
     // Elo: Brazilian card with specific ranges
     if (/^(636368|636297|504175|438935|451416|636369|5067|4576|4011|509)/.test(cleaned)) {
       return { brand: 'ELO', color: 'bg-yellow-500' };

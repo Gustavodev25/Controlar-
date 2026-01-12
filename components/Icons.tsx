@@ -117,7 +117,8 @@ import {
   Hammer,
   Ticket,
   MessageSquarePlus,
-  Minus
+  Minus,
+  ChevronsUpDown
 } from 'lucide-react';
 
 // Helper to get icon based on category
@@ -256,7 +257,8 @@ export {
   Ban,
   Ticket,
   MessageSquarePlus,
-  Minus
+  Minus,
+  ChevronsUpDown
 };
 
 export const CheckCircleFilled = ({ size = 24, className = "" }: { size?: number, className?: string }) => (

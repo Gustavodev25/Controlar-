@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { calculatePaymentDate, toLocalISODate } from '../utils/dateUtils';
 import { createPortal } from 'react-dom';
 import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building, Filter, CreditCard, Pig } from './Icons';
@@ -21,8 +22,6 @@ interface SalaryManagerProps {
   onEditClick?: () => void;
   isSalaryLaunched?: boolean;
   salaryExemptFromDiscounts?: boolean;
-  isProMode?: boolean;
-  onToggleProMode?: (value: boolean) => void;
   userPlan?: 'starter' | 'pro' | 'family';
   onUpgradeClick?: () => void;
   includeOpenFinance?: boolean;
@@ -44,8 +43,6 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   onEditClick,
   isSalaryLaunched,
   salaryExemptFromDiscounts,
-  isProMode = false,
-  onToggleProMode,
   userPlan = 'starter',
   onUpgradeClick,
   includeOpenFinance = true,
@@ -70,6 +67,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [showTools, setShowTools] = useState(false);
 
   // State for Config Dropdown
   const [showConfigTooltip, setShowConfigTooltip] = useState(() => {
@@ -386,7 +384,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
         {/* Linha 2: Controles */}
         <div className="flex items-center gap-2">
           {/* Config Dropdown Trigger */}
-          {onToggleOpenFinance && isProMode && (
+          {onToggleOpenFinance && (
             <Dropdown>
               <DropdownTrigger className={`p-2 px-3 rounded-xl border transition-all flex items-center gap-2 data-[state=open]:bg-[#30302E] data-[state=open]:border-gray-800 data-[state=open]:text-gray-400 data-[state=open]:hover:text-white ${includeOpenFinance ? 'bg-[#30302E] border-gray-800 text-gray-500 hover:text-gray-400' : 'bg-[#30302E] border-gray-800 text-gray-500 hover:text-gray-400'}`}>
                 <Settings size={16} />
@@ -490,37 +488,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             </Dropdown>
           )}
 
-          <div id="salary-auto-mode-toggle" className="flex items-center gap-3 bg-[#30302E] border border-gray-800 rounded-xl px-3 py-2">
-            <span className={`text-xs font-medium transition-colors ${!isProMode ? 'text-white' : 'text-gray-500'}`}>
-              Manual
-            </span>
-            <button
-              onClick={() => {
-                // Usuários Starter (gratuito) estão sempre bloqueados em modo Manual
-                // Não podem ativar Auto - redireciona para upgrade
-                if (userPlan === 'starter') {
-                  onUpgradeClick?.();
-                  return;
-                }
-                // Pro/Family podem alternar livremente - o sistema mantém a constância da escolha
-                onToggleProMode?.(!isProMode);
-              }}
-              className={`relative w-12 h-6 rounded-full transition-colors ${isProMode
-                ? 'bg-[#d97757]'
-                : 'bg-gray-700'
-                } ${userPlan === 'starter' ? 'cursor-pointer opacity-100' : 'cursor-pointer'}`}
-            >
-              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform shadow-md ${isProMode ? 'translate-x-7' : 'translate-x-1'}`} />
-            </button>
-            <div className="flex items-center gap-1">
-              <span className={`text-xs font-medium transition-colors ${isProMode ? 'text-[#d97757]' : 'text-gray-500'}`}>
-                Auto
-              </span>
-              {userPlan === 'starter' && (
-                <Lock size={12} className="text-amber-500" />
-              )}
-            </div>
-          </div>
+
         </div>
       </div>
 
@@ -528,7 +496,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
       <div className="bg-[#30302E] rounded-xl border border-gray-800 shadow-sm overflow-hidden mb-6 flex flex-col lg:flex-row animate-fade-in">
 
         {/* Lado Esquerdo: Visualização e Edição do Salário */}
-        <div className="p-6 flex-1 relative overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-800">
+        <div className="p-4 flex-1 relative overflow-hidden border-b lg:border-b-0 lg:border-r border-gray-800">
           {/* Blur using Primary Color (Terracotta) - Pulsante */}
           <div className="absolute top-0 right-0 w-48 h-48 bg-[#d97757] rounded-full blur-3xl pointer-events-none animate-blur-pulse"></div>
 
@@ -536,15 +504,10 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             <div className="flex items-center gap-2">
               <Coins size={18} className="text-[#d97757]" />
               <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wide">
-                {isProMode ? 'Renda Configurada' : 'Salário Base'}
+                Salário Base
               </h3>
-              {isProMode && (
-                <span className="text-[9px] bg-[#d97757]/20 text-[#d97757] px-1.5 py-0.5 rounded font-medium">
-                  AUTO
-                </span>
-              )}
             </div>
-            {!isEditing && baseSalary > 0 && !isProMode && (
+            {!isEditing && baseSalary > 0 && (
               <button
                 onClick={() => {
                   if (onEditClick) {
@@ -782,8 +745,8 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           </div>
 
           {/* Salary Insights Grid */}
-          {baseSalary > 0 && !isEditing && !isProMode && (
-            <div className="mt-6 grid grid-cols-2 gap-2 animate-fade-in">
+          {baseSalary > 0 && !isEditing && (
+            <div className="mt-4 grid grid-cols-2 gap-2 animate-fade-in">
               {/* Hourly Rate Card */}
               <div className="bg-gray-800/30 rounded-lg p-2.5 border border-gray-800/50 flex flex-col justify-center relative group hover:bg-gray-800/50 transition-colors">
                 <div className="flex items-center gap-1.5 mb-1">
@@ -852,20 +815,23 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           )}
         </div>
 
-        {/* Lado Direito: Botão de Ação - Apenas no Modo Manual */}
-        {!isProMode && (
-          <div className="p-6 lg:w-80 bg-[#30302E]/30 flex flex-col justify-center gap-3 border-t lg:border-t-0 border-gray-800">
-            <div className="text-center mb-1">
-              <p className="text-base font-medium text-gray-200">Gerenciar Renda</p>
-              <p className="text-xs text-gray-500">Lançamentos e Ferramentas</p>
+        {/* Lado Direito: Botão de Ação */}
+        {
+          <div className="p-4 lg:w-80 bg-[#30302E]/30 flex flex-col justify-center border-t lg:border-t-0 border-gray-800 relative">
+            {/* Decoration */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full blur-3xl pointer-events-none -mr-10 -mt-10"></div>
+
+            <div className="flex items-center gap-2 mb-3 px-1">
+              <Sparkles size={14} className="text-[#d97757]" />
+              <span className="text-xs font-bold text-gray-400 uppercase tracking-widest">Ações Rápidas</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-2 mt-1 w-full">
+            <div className="grid grid-cols-2 gap-2 relative z-10">
+              {/* Button 1: Lançar Salário */}
               <button
                 disabled={isSalaryLaunched}
                 onClick={() => {
                   if (isSalaryLaunched) return;
-
                   if (baseSalary <= 0) {
                     toast.error("Defina um salário base primeiro.");
                     return;
@@ -874,85 +840,100 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   const today = new Date();
                   const pDay = paymentDay || 5;
 
-                  // Main Salary Date
                   let targetDate = calculatePaymentDate(pDay, today);
                   const dateStr = toLocalISODate(targetDate);
 
-                  // 1. Calculate Advance (Vale) - Always based on Gross Base Salary
                   let advance = advanceValue || 0;
                   if (advancePercent && advancePercent > 0) {
                     advance = baseSalary * (advancePercent / 100);
                   }
-                  // Round Vale
                   advance = Math.round((advance + Number.EPSILON) * 100) / 100;
 
-                  // 2. Calculate Taxes (if not exempt)
                   let totalTaxes = 0;
                   if (!salaryExemptFromDiscounts) {
-                    // Assuming 0 dependents for quick launch. Ideally this should be a user setting.
                     const { inss, irrf } = calculateCLT(baseSalary, 0);
                     totalTaxes = inss + irrf;
                   }
 
-                  // 3. Calculate Net & Remaining
                   const netSalary = baseSalary - totalTaxes;
                   const salaryRemaining = Math.max(0, netSalary - advance);
 
-                  // 1. Register Remaining Salary (Main Payment)
-                  // Note: If taxes are high, remaining might be low.
                   onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
 
-                  // 2. Register Advance (Vale)
                   if (advance > 0) {
-                    // Determine Vale Date
                     let valeDateStr = dateStr;
                     if (advanceDay) {
                       const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
                       valeDateStr = vDate.toISOString().split('T')[0];
                     }
-
                     setTimeout(() => {
                       onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
                     }, 100);
-
                     toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
                   } else {
                     toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
                   }
                 }}
-                className={`col-span-2 py-3 rounded-xl font-bold transition-all flex items-center justify-center gap-2 text-xs mb-1 border ${isSalaryLaunched
-                  ? 'bg-green-900/20 text-green-500 border-green-900/30 cursor-default'
-                  : 'bg-[#d97757]/10 hover:bg-[#d97757]/20 text-[#d97757] hover:text-white border-[#d97757]/20 hover:border-[#d97757]'
-                  }`}
+                className={`
+                  relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border
+                  ${isSalaryLaunched
+                    ? 'bg-green-500/5 border-green-500/10 cursor-default grayscale opacity-50'
+                    : 'bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer'
+                  }
+                `}
               >
-                {isSalaryLaunched ? <CheckCircleFilled size={14} /> : <Calendar size={14} />}
-                {isSalaryLaunched ? 'Salário Lançado' : 'Lançar Salário Atual'}
+                <div className={`
+                  p-2 rounded-full transition-all duration-300
+                  ${isSalaryLaunched ? 'bg-green-500/10 text-green-500' : 'bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 group-hover:scale-105'}
+                `}>
+                  {isSalaryLaunched ? <Check size={16} /> : <Calendar size={16} />}
+                </div>
+                <span className={`text-[10px] font-medium transition-colors uppercase tracking-wide ${isSalaryLaunched ? 'text-gray-400' : 'text-gray-400 group-hover:text-orange-100'}`}>
+                  {isSalaryLaunched ? 'Lançado' : 'Lançar Mês'}
+                </span>
               </button>
 
+              {/* Button 2: Lançar Extra */}
               <button
                 onClick={() => { setActiveTab('simple'); setIsModalOpen(true); }}
-                className="col-span-2 py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex items-center justify-center gap-2 text-xs"
+                className="relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer"
               >
-                <PlusCircle size={14} className="text-[#d97757]" />
-                Lançar Extra
+                <div className="p-2 rounded-full bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 transition-all duration-300 group-hover:scale-105">
+                  <PlusCircle size={16} />
+                </div>
+                <span className="text-[10px] font-medium text-gray-400 group-hover:text-orange-100 transition-colors uppercase tracking-wide">
+                  Novo Extra
+                </span>
               </button>
+
+              {/* Button 3: Calc CLT */}
               <button
                 onClick={() => { setActiveTab('clt'); setIsModalOpen(true); }}
-                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+                className="relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer"
               >
-                <Briefcase size={14} className="text-[#d97757]" />
-                Calc. CLT
+                <div className="p-2 rounded-full bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 transition-all duration-300 group-hover:scale-105">
+                  <Briefcase size={16} />
+                </div>
+                <span className="text-[10px] font-medium text-gray-400 group-hover:text-orange-100 transition-colors uppercase tracking-wide">
+                  Calc. CLT
+                </span>
               </button>
+
+              {/* Button 4: Hora Extra */}
               <button
                 onClick={() => { setActiveTab('calculator'); setIsModalOpen(true); }}
-                className="py-3 bg-gray-800 hover:bg-gray-700 text-gray-300 hover:text-white rounded-xl font-medium transition-all border border-gray-700 hover:border-gray-600 flex flex-col items-center justify-center gap-1 text-xs"
+                className="relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer"
               >
-                <Clock size={14} className="text-[#d97757]" />
-                Calc. Hora Extra
+                <div className="p-2 rounded-full bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 transition-all duration-300 group-hover:scale-105">
+                  <Clock size={16} />
+                </div>
+                <span className="text-[10px] font-medium text-gray-400 group-hover:text-orange-100 transition-colors uppercase tracking-wide">
+                  Hora Extra
+                </span>
               </button>
             </div>
           </div>
-        )}
+        }
       </div >
 
       {/* MODAL DE INSERÇÃO DE RENDA */}

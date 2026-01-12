@@ -295,25 +295,25 @@ router.get('/connectors', withPluggyAuth, async (req, res) => {
         const response = await pluggyApi.get('/connectors?sandbox=false', {
             headers: { 'X-API-KEY': req.pluggyApiKey }
         });
-        
+
         res.json({
             success: true,
             results: response.data.results || []
         });
     } catch (error) {
         console.error('Error fetching connectors:', error.message);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to fetch connectors' 
+        res.status(500).json({
+            success: false,
+            error: 'Failed to fetch connectors'
         });
     }
 });
 // 11. Create Item (Connect Bank Account)
 router.post('/create-item', withPluggyAuth, async (req, res) => {
     const { userId, connectorId, credentials } = req.body;
-    
+
     console.log(`[Create-Item] Starting for user ${userId}, connector ${connectorId}`);
-    
+
     try {
         // Criar item no Pluggy
         const response = await pluggyApi.post('/items', {
@@ -322,10 +322,10 @@ router.post('/create-item', withPluggyAuth, async (req, res) => {
         }, {
             headers: { 'X-API-KEY': req.pluggyApiKey }
         });
-        
+
         const item = response.data;
         console.log(`[Create-Item] Item created: ${item.id}, status: ${item.status}`);
-        
+
         // Salvar referência no Firebase
         if (firebaseAdmin) {
             const db = firebaseAdmin.firestore();
@@ -337,22 +337,22 @@ router.post('/create-item', withPluggyAuth, async (req, res) => {
                 createdAt: new Date().toISOString()
             });
         }
-        
-        res.json({ 
-            success: true, 
+
+        res.json({
+            success: true,
             item,
             message: 'Conexão iniciada com sucesso!'
         });
-        
+
     } catch (error) {
         console.error('[Create-Item] Error:', error.response?.data || error.message);
-        
-        const errorMessage = error.response?.data?.message || 
-                            error.response?.data?.error || 
-                            'Falha ao conectar. Verifique suas credenciais.';
-        
-        res.status(error.response?.status || 500).json({ 
-            success: false, 
+
+        const errorMessage = error.response?.data?.message ||
+            error.response?.data?.error ||
+            'Falha ao conectar. Verifique suas credenciais.';
+
+        res.status(error.response?.status || 500).json({
+            success: false,
             error: errorMessage
         });
     }
@@ -1725,12 +1725,345 @@ router.get('/webhook-worker', async (req, res) => {
     }
 });
 
-// 9. Webhook Receiver (instant response)
+// 9. Webhook Receiver - ACTIVE PROCESSING
+// Receives events from Pluggy and triggers sync automatically
 router.post('/webhook', async (req, res) => {
-    res.json({ success: true, received: true }); // Immediate response
+    // Immediate response to Pluggy (required within 5s)
+    res.json({ success: true, received: true });
 
-    const { event: eventType, itemId } = req.body || {};
-    if (eventType) console.log(`[Webhook] ${eventType} - ${itemId}`);
+    const { event: eventType, itemId, data } = req.body || {};
+
+    if (!eventType || !itemId) {
+        console.log('[Webhook] Invalid payload - missing event or itemId');
+        return;
+    }
+
+    console.log(`[Webhook] Received: ${eventType} - Item: ${itemId}`);
+
+    // Only process relevant events
+    const syncEvents = [
+        'item/updated',      // Item data was refreshed
+        'item/created',      // New item connected
+        'connector/status_updated' // Connector status changed
+    ];
+
+    if (!syncEvents.includes(eventType)) {
+        console.log(`[Webhook] Ignoring event type: ${eventType}`);
+        return;
+    }
+
+    if (!firebaseAdmin) {
+        console.log('[Webhook] Firebase Admin not initialized, skipping sync');
+        return;
+    }
+
+    // Background processing - find userId and sync
+    (async () => {
+        try {
+            const db = firebaseAdmin.firestore();
+
+            // Find which user owns this itemId by searching pluggyItems subcollections
+            // We use a collection group query to search across all users
+            const pluggyItemsQuery = db.collectionGroup('pluggyItems')
+                .where('itemId', '==', itemId)
+                .limit(1);
+
+            const snapshot = await pluggyItemsQuery.get();
+
+            if (snapshot.empty) {
+                // Fallback: Try to find in accounts collection
+                const accountsQuery = db.collectionGroup('accounts')
+                    .where('itemId', '==', itemId)
+                    .limit(1);
+
+                const accountsSnapshot = await accountsQuery.get();
+
+                if (accountsSnapshot.empty) {
+                    console.log(`[Webhook] No user found for item ${itemId}`);
+                    return;
+                }
+
+                // Extract userId from the path: users/{userId}/accounts/{accountId}
+                const accountPath = accountsSnapshot.docs[0].ref.path;
+                const userId = accountPath.split('/')[1];
+
+                await processWebhookSync(db, userId, itemId, eventType);
+                return;
+            }
+
+            // Extract userId from the path: users/{userId}/pluggyItems/{itemId}
+            const docPath = snapshot.docs[0].ref.path;
+            const userId = docPath.split('/')[1];
+
+            await processWebhookSync(db, userId, itemId, eventType);
+
+        } catch (err) {
+            console.error(`[Webhook] Error processing ${eventType}:`, err.message);
+        }
+    })();
 });
 
+// Helper function to process webhook sync
+async function processWebhookSync(db, userId, itemId, eventType) {
+    console.log(`[Webhook] Processing sync for user ${userId}, item ${itemId}`);
+
+    const syncTimestamp = new Date().toISOString();
+
+    // Create a sync job to track progress
+    const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
+        itemId,
+        status: 'processing',
+        progress: 0,
+        type: 'WEBHOOK',
+        triggerEvent: eventType,
+        createdAt: syncTimestamp
+    });
+
+    const accountsRef = db.collection('users').doc(userId).collection('accounts');
+    const txCollection = db.collection('users').doc(userId).collection('transactions');
+    const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
+
+    try {
+        const apiKey = await getApiKey();
+
+        // Wait for item to be ready
+        const itemStatus = await waitForItemReady(apiKey, itemId, 30000);
+
+        if (!itemStatus.ready && itemStatus.status === 'WAITING_USER_INPUT') {
+            await jobDoc.update({
+                status: 'failed',
+                error: 'O banco requer ação adicional',
+                needsReconnect: true,
+                updatedAt: new Date().toISOString()
+            });
+            return;
+        }
+
+        if (itemStatus.status === 'LOGIN_ERROR') {
+            await jobDoc.update({
+                status: 'failed',
+                error: 'Erro de login no banco',
+                needsReconnect: true,
+                updatedAt: new Date().toISOString()
+            });
+            return;
+        }
+
+        // Fetch accounts
+        const [accountsResp, existingSnap] = await Promise.all([
+            pluggyApi.get(`/accounts?itemId=${itemId}`, { headers: { 'X-API-KEY': apiKey } }),
+            accountsRef.get()
+        ]);
+
+        const accounts = accountsResp.data.results || [];
+        console.log(`[Webhook] Found ${accounts.length} accounts for item ${itemId}`);
+
+        const existingMap = {};
+        existingSnap.forEach(doc => {
+            const d = doc.data();
+            existingMap[doc.id] = {
+                connectedAt: d.connectedAt,
+                lastSyncedAt: d.lastSyncedAt
+            };
+        });
+
+        // Save accounts
+        const accBatch = db.batch();
+        for (const acc of accounts) {
+            const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
+            const existing = existingMap[acc.id];
+
+            const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
+            const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+            const validClosingDay = validateClosingDay(rawClosingDay);
+            const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
+
+            const creditFields = isCredit && acc.creditData ? {
+                creditLimit: acc.creditData.creditLimit || null,
+                availableCreditLimit: acc.creditData.availableCreditLimit || null,
+                brand: acc.creditData.brand || null,
+                balanceCloseDate: acc.creditData.balanceCloseDate || null,
+                balanceDueDate: acc.creditData.balanceDueDate || null,
+                closingDay: validClosingDay,
+                dueDay: validDueDay,
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+            } : {};
+
+            accBatch.set(accountsRef.doc(acc.id), removeUndefined({
+                ...acc,
+                ...creditFields,
+                ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
+                accountNumber: acc.number || null,
+                itemId,
+                lastSyncedAt: syncTimestamp,
+                updatedAt: syncTimestamp
+            }), { merge: true });
+        }
+        await accBatch.commit();
+
+        // Fetch transactions (last 30 days for webhook - incremental)
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const fromStr = thirtyDaysAgo.toISOString().split('T')[0];
+
+        const txPromises = accounts.map(async account => {
+            const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+            return { account, transactions };
+        });
+
+        const allTxResults = await Promise.all(txPromises);
+
+        // Process and save transactions
+        let txCount = 0;
+        let opCount = 0;
+        let currentBatch = db.batch();
+        const batchPromises = [];
+
+        for (const { account, transactions } of allTxResults) {
+            const isCredit = account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD';
+            const isSavings = account.subtype === 'SAVINGS' || account.subtype === 'SAVINGS_ACCOUNT';
+            const targetColl = isCredit ? ccTxCollection : txCollection;
+
+            for (const tx of transactions) {
+                let mappedTx;
+
+                if (isCredit) {
+                    let invoiceMonthKey = tx.date.slice(0, 7);
+                    if (account.creditData?.balanceCloseDate) {
+                        const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                        const txDate = new Date(tx.date);
+                        if (txDate.getDate() > closingDay) {
+                            txDate.setMonth(txDate.getMonth() + 1);
+                        }
+                        invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
+                    }
+
+                    let totalInstallments = 1;
+                    let installmentNumber = 1;
+                    if (tx.installments) {
+                        if (typeof tx.installments === 'object') {
+                            totalInstallments = tx.installments.total || 1;
+                            installmentNumber = tx.installments.number || 1;
+                        } else if (typeof tx.installments === 'number') {
+                            totalInstallments = tx.installments;
+                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+                            if (descMatch) {
+                                installmentNumber = parseInt(descMatch[1]) || 1;
+                            }
+                        }
+                    }
+
+                    mappedTx = {
+                        cardId: account.id,
+                        date: tx.date.split('T')[0],
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount > 0 ? 'expense' : 'income',
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        totalInstallments,
+                        installmentNumber,
+                        invoiceMonthKey,
+                        pluggyRaw: tx
+                    };
+                } else {
+                    mappedTx = {
+                        providerId: tx.id,
+                        description: tx.description,
+                        amount: Math.abs(tx.amount),
+                        type: tx.amount < 0 ? 'expense' : 'income',
+                        date: tx.date.split('T')[0],
+                        accountId: tx.accountId,
+                        category: tx.category || 'Uncategorized',
+                        status: 'completed',
+                        updatedAt: syncTimestamp,
+                        isInvestment: isSavings,
+                        pluggyRaw: tx
+                    };
+                }
+
+                currentBatch.set(targetColl.doc(tx.id), removeUndefined(mappedTx), { merge: true });
+                opCount++;
+                txCount++;
+
+                if (opCount >= 450) {
+                    batchPromises.push(currentBatch.commit());
+                    currentBatch = db.batch();
+                    opCount = 0;
+                }
+            }
+        }
+
+        if (opCount > 0) batchPromises.push(currentBatch.commit());
+        await Promise.all(batchPromises);
+
+        // Fetch bills for credit cards
+        const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+
+        const billPromises = creditAccounts.map(account =>
+            pluggyApi.get(`/bills?accountId=${account.id}`, { headers: { 'X-API-KEY': apiKey } })
+                .then(resp => ({ account, bills: resp.data.results || [] }))
+                .catch(() => ({ account, bills: [] }))
+        );
+
+        const allBillResults = await Promise.all(billPromises);
+
+        const billUpdatePromises = allBillResults
+            .filter(({ bills }) => bills.length > 0)
+            .map(({ account, bills }) => {
+                const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+                const current = sorted[0];
+
+                return accountsRef.doc(account.id).update({
+                    currentBill: {
+                        id: current.id,
+                        dueDate: current.dueDate,
+                        closeDate: current.closeDate || null,
+                        status: current.status || 'OPEN',
+                        totalAmount: current.totalAmount || null
+                    },
+                    bills: sorted.slice(0, 6).map(b => ({
+                        id: b.id,
+                        dueDate: b.dueDate,
+                        status: b.status || 'UNKNOWN',
+                        totalAmount: b.totalAmount || null
+                    })),
+                    billsUpdatedAt: syncTimestamp
+                });
+            });
+
+        await Promise.all(billUpdatePromises);
+
+        // Update job as completed
+        await jobDoc.update({
+            status: 'completed',
+            progress: 100,
+            transactionsFound: txCount,
+            accountsFound: accounts.length,
+            updatedAt: new Date().toISOString(),
+            message: `Webhook sync: ${txCount} transações em ${accounts.length} contas`
+        });
+
+        // Add notification for user
+        await db.collection('users').doc(userId).collection('notifications').add({
+            type: 'sync_complete',
+            title: 'Sincronização automática',
+            message: `${txCount} transações atualizadas via conexão bancária`,
+            date: new Date().toISOString(),
+            read: false
+        });
+
+        console.log(`[Webhook] ✅ Sync completed for user ${userId}: ${txCount} transactions`);
+
+    } catch (err) {
+        console.error(`[Webhook] ❌ Sync failed for user ${userId}:`, err.message);
+        await jobDoc.update({
+            status: 'failed',
+            error: err.message,
+            updatedAt: new Date().toISOString()
+        });
+    }
+}
+
 export default router;
+

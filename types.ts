@@ -222,6 +222,7 @@ export interface AIParsedTransaction {
   type: TransactionType;
   installments?: number;
   isSubscription?: boolean;
+  accountName?: string;
 }
 
 export type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -532,7 +533,7 @@ export interface InstallmentForecast {
 
 export interface ConnectedAccount {
   id: string;
-  itemId: string;
+  itemId?: string;
   name: string;
   type?: string;
   subtype?: string;
@@ -620,6 +621,7 @@ export interface ConnectedAccount {
   // Manual closing date overrides
   manualLastClosingDate?: string; // YYYY-MM-DD
   manualCurrentClosingDate?: string; // YYYY-MM-DD
+  hidden?: boolean;
 }
 
 export interface AppNotification {

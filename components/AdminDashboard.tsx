@@ -388,17 +388,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           }
         }
 
-        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt);
+        // Calculate Active Days = last access date - created date
+        const lastLogForActiveDays = logs && logs.length > 0 ? logs[0] : null;
+        const lastAccessDate = lastLogForActiveDays?.timestamp ? new Date(lastLogForActiveDays.timestamp) : new Date(); // fallback to today if no logs
         const createdDate = new Date(u.createdAt);
+
         if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
           const diffTime = lastAccessDate.getTime() - createdDate.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          // If they have logs but diff is 0 (same millisecond?), let's allow 0, but usually ceil gives 1 for >0.
-          // Users expect to see at least '1 day' if they did anything.
-          // But if they just created account and left, 0 is correct retention.
-          // However, user complaint "não é 0 dias" suggests they want to see value.
-          // Let's use Math.floor but create a fallback?
-          // No, Math.ceil is safer to avoid "0 days" for active users on day 1.
           totalActiveDays += Math.max(0, diffDays);
           usersWithActiveDaysCount++;
         }
@@ -748,11 +745,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
 
-      // Active Days Distribution
+      // Active Days Distribution = last access date - created date
       if (u.createdAt) {
-        const logs = u.connectionLogs;
-        const lastLog = logs && logs.length > 0 ? logs[0] : null;
-        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt);
+        const userLogs = u.connectionLogs;
+        const lastLog = userLogs && userLogs.length > 0 ? userLogs[0] : null;
+        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(); // fallback to today
         const createdDate = new Date(u.createdAt);
 
         if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
