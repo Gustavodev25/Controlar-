@@ -388,13 +388,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           }
         }
 
-        // Calculate Active Days = last access date - created date
-        const lastLogForActiveDays = logs && logs.length > 0 ? logs[0] : null;
-        const lastAccessDate = lastLogForActiveDays?.timestamp ? new Date(lastLogForActiveDays.timestamp) : new Date(); // fallback to today if no logs
+        // Calculate Active Days = TODAY - created date
+        const today = new Date();
         const createdDate = new Date(u.createdAt);
 
-        if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
-          const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+        if (!isNaN(createdDate.getTime())) {
+          const diffTime = today.getTime() - createdDate.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           totalActiveDays += Math.max(0, diffDays);
           usersWithActiveDaysCount++;
@@ -727,15 +726,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
 
-      // Active Days Distribution = last access date - created date
+      // Active Days Distribution = TODAY - created date
       if (u.createdAt) {
-        const userLogs = u.connectionLogs;
-        const lastLog = userLogs && userLogs.length > 0 ? userLogs[0] : null;
-        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(); // fallback to today
+        const today = new Date();
         const createdDate = new Date(u.createdAt);
 
-        if (!isNaN(lastAccessDate.getTime()) && !isNaN(createdDate.getTime())) {
-          const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+        if (!isNaN(createdDate.getTime())) {
+          const diffTime = today.getTime() - createdDate.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
           const days = Math.max(0, diffDays);
 
@@ -1108,7 +1105,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           title="Média Dias Ativos"
           value={stats.avgActiveDays}
           color="#06b6d4"
-          footer="Do cadastro ao último acesso"
+          footer="Do cadastro até hoje"
           suffix=" dias"
         />
       </div>

@@ -124,32 +124,28 @@ export const AdminUsers: React.FC = () => {
                     const lastLoginB = b.connectionLogs?.[0]?.timestamp ? new Date(b.connectionLogs[0].timestamp).getTime() : 0;
                     return lastLoginB - lastLoginA;
                 case 'most_active_days': {
-                    const getUniqueDays = (u: SystemUser) => {
-                        if (!u.connectionLogs || u.connectionLogs.length === 0) return 0;
-                        const uniqueDates = new Set<string>();
-                        u.connectionLogs.forEach(log => {
-                            if (log.timestamp) {
-                                const date = new Date(log.timestamp).toISOString().split('T')[0];
-                                uniqueDates.add(date);
-                            }
-                        });
-                        return uniqueDates.size;
+                    const getActiveDays = (u: SystemUser) => {
+                        if (!u.createdAt) return 0;
+                        const today = new Date();
+                        const createdDate = new Date(u.createdAt);
+                        if (isNaN(createdDate.getTime())) return 0;
+                        const diffTime = today.getTime() - createdDate.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        return Math.max(0, diffDays);
                     };
-                    return getUniqueDays(b) - getUniqueDays(a);
+                    return getActiveDays(b) - getActiveDays(a);
                 }
                 case 'least_active_days': {
-                    const getUniqueDays = (u: SystemUser) => {
-                        if (!u.connectionLogs || u.connectionLogs.length === 0) return 0;
-                        const uniqueDates = new Set<string>();
-                        u.connectionLogs.forEach(log => {
-                            if (log.timestamp) {
-                                const date = new Date(log.timestamp).toISOString().split('T')[0];
-                                uniqueDates.add(date);
-                            }
-                        });
-                        return uniqueDates.size;
+                    const getActiveDays = (u: SystemUser) => {
+                        if (!u.createdAt) return 0;
+                        const today = new Date();
+                        const createdDate = new Date(u.createdAt);
+                        if (isNaN(createdDate.getTime())) return 0;
+                        const diffTime = today.getTime() - createdDate.getTime();
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        return Math.max(0, diffDays);
                     };
-                    return getUniqueDays(a) - getUniqueDays(b);
+                    return getActiveDays(a) - getActiveDays(b);
                 }
                 case 'subscription_newest': {
                     const aDate = a.subscription?.startDate ? new Date(a.subscription.startDate).getTime() : 0;
@@ -321,16 +317,16 @@ export const AdminUsers: React.FC = () => {
         return { text, relative, isRecent: diffDays < 7, status };
     };
 
-    // Calculate Active Days = Today - created date (per user request)
+    // Calculate Active Days = Today (last active day) - First day in system (createdAt)
     const getActiveDaysCount = (user: SystemUser) => {
         if (!user.createdAt) return 0;
 
-        const endDate = new Date();
+        const today = new Date();
         const createdDate = new Date(user.createdAt);
 
         if (isNaN(createdDate.getTime())) return 0;
 
-        const diffTime = endDate.getTime() - createdDate.getTime();
+        const diffTime = today.getTime() - createdDate.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return Math.max(0, diffDays);
     };
@@ -854,7 +850,7 @@ export const AdminUsers: React.FC = () => {
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-gray-500 w-16">Ativos:</span>
-                                                        <span className="text-white">{formatActiveDays(getActiveDaysCount(user))}</span>
+                                                        <span className="text-white">{getActiveDaysCount(user)} dias</span>
                                                     </div>
                                                     <div className="flex items-center gap-2">
                                                         <span className="text-gray-500 w-16">Assinou:</span>
