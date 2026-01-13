@@ -1051,7 +1051,7 @@ router.post('/asaas/subscription', async (req, res) => {
         const paymentData = {
           customer: customerId,
           billingType: 'CREDIT_CARD',
-          value: value, // Discounted value from coupon
+          value: Math.round(value * 100) / 100, // Discounted value from coupon
           dueDate: dueDateStr,
           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
           creditCard: {
@@ -1094,7 +1094,7 @@ router.post('/asaas/subscription', async (req, res) => {
         const subscriptionData = {
           customer: customerId,
           billingType: 'CREDIT_CARD',
-          value: recurringValue, // Full price for future months
+          value: Math.round(recurringValue * 100) / 100, // Full price for future months
           nextDueDate: getNextMonthDate(), // Starts next month
           cycle: cycle,
           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
@@ -1170,7 +1170,7 @@ router.post('/asaas/subscription', async (req, res) => {
       const subscriptionData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
-        value: recurringValue,
+        value: Math.round(recurringValue * 100) / 100,
         nextDueDate: dueDateStr,
         cycle: cycle,
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
