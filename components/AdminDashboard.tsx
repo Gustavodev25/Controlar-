@@ -388,14 +388,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           }
         }
 
-        // Calculate Active Days = TODAY - created date
-        const today = new Date();
+
+        // Calculate Active Days = LAST LOGIN - created date
+        const lastLoginDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt || 0);
         const createdDate = new Date(u.createdAt);
 
-        if (!isNaN(createdDate.getTime())) {
-          const diffTime = today.getTime() - createdDate.getTime();
+        if (!isNaN(createdDate.getTime()) && !isNaN(lastLoginDate.getTime())) {
+          const diffTime = lastLoginDate.getTime() - createdDate.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          totalActiveDays += Math.max(0, diffDays);
+          totalActiveDays += Math.max(1, diffDays);
           usersWithActiveDaysCount++;
         }
       }
@@ -726,15 +727,17 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       const key = state.length === 2 ? state : 'N/A';
       if (key !== 'N/A') locationData[key] = (locationData[key] || 0) + 1;
 
-      // Active Days Distribution = TODAY - created date
+      // Active Days Distribution = LAST LOGIN - created date
       if (u.createdAt) {
-        const today = new Date();
+        const logs = u.connectionLogs;
+        const lastLog = logs && logs.length > 0 ? logs[0] : null;
+        const lastLoginDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(u.createdAt);
         const createdDate = new Date(u.createdAt);
 
-        if (!isNaN(createdDate.getTime())) {
-          const diffTime = today.getTime() - createdDate.getTime();
+        if (!isNaN(createdDate.getTime()) && !isNaN(lastLoginDate.getTime())) {
+          const diffTime = lastLoginDate.getTime() - createdDate.getTime();
           const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-          const days = Math.max(0, diffDays);
+          const days = Math.max(1, diffDays);
 
           if (days <= 7) activeDaysBuckets['0-7']++;
           else if (days <= 14) activeDaysBuckets['8-14']++;

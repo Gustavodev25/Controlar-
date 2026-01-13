@@ -126,24 +126,28 @@ export const AdminUsers: React.FC = () => {
                 case 'most_active_days': {
                     const getActiveDays = (u: SystemUser) => {
                         if (!u.createdAt) return 0;
-                        const today = new Date();
+                        const lastLogin = u.connectionLogs?.[0]?.timestamp
+                            ? new Date(u.connectionLogs[0].timestamp)
+                            : new Date(u.createdAt);
                         const createdDate = new Date(u.createdAt);
-                        if (isNaN(createdDate.getTime())) return 0;
-                        const diffTime = today.getTime() - createdDate.getTime();
+                        if (isNaN(createdDate.getTime()) || isNaN(lastLogin.getTime())) return 0;
+                        const diffTime = lastLogin.getTime() - createdDate.getTime();
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        return Math.max(0, diffDays);
+                        return Math.max(1, diffDays);
                     };
                     return getActiveDays(b) - getActiveDays(a);
                 }
                 case 'least_active_days': {
                     const getActiveDays = (u: SystemUser) => {
                         if (!u.createdAt) return 0;
-                        const today = new Date();
+                        const lastLogin = u.connectionLogs?.[0]?.timestamp
+                            ? new Date(u.connectionLogs[0].timestamp)
+                            : new Date(u.createdAt);
                         const createdDate = new Date(u.createdAt);
-                        if (isNaN(createdDate.getTime())) return 0;
-                        const diffTime = today.getTime() - createdDate.getTime();
+                        if (isNaN(createdDate.getTime()) || isNaN(lastLogin.getTime())) return 0;
+                        const diffTime = lastLogin.getTime() - createdDate.getTime();
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                        return Math.max(0, diffDays);
+                        return Math.max(1, diffDays);
                     };
                     return getActiveDays(a) - getActiveDays(b);
                 }
@@ -317,18 +321,20 @@ export const AdminUsers: React.FC = () => {
         return { text, relative, isRecent: diffDays < 7, status };
     };
 
-    // Calculate Active Days = Today (last active day) - First day in system (createdAt)
+    // Calculate Active Days = Last Login - First day in system (createdAt)
     const getActiveDaysCount = (user: SystemUser) => {
         if (!user.createdAt) return 0;
 
-        const today = new Date();
+        const lastLogin = user.connectionLogs?.[0]?.timestamp
+            ? new Date(user.connectionLogs[0].timestamp)
+            : new Date(user.createdAt);
         const createdDate = new Date(user.createdAt);
 
-        if (isNaN(createdDate.getTime())) return 0;
+        if (isNaN(createdDate.getTime()) || isNaN(lastLogin.getTime())) return 0;
 
-        const diffTime = today.getTime() - createdDate.getTime();
+        const diffTime = lastLogin.getTime() - createdDate.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        return Math.max(0, diffDays);
+        return Math.max(1, diffDays);
     };
 
     const getTimeSinceCreation = (createdAt?: string) => {
@@ -374,10 +380,16 @@ export const AdminUsers: React.FC = () => {
         let engagementBg: string;
         let engagementLabel: string;
 
-        if (uniqueDays === 0) {
-            engagementColor = 'text-gray-500';
-            engagementBg = 'bg-gray-500/10';
-            engagementLabel = 'Inativo';
+        if (uniqueDays <= 1) {
+            if (memberDays <= 1) {
+                engagementColor = 'text-blue-400';
+                engagementBg = 'bg-blue-500/10';
+                engagementLabel = 'Novo';
+            } else {
+                engagementColor = 'text-gray-500';
+                engagementBg = 'bg-gray-500/10';
+                engagementLabel = 'Inativo';
+            }
         } else if (engagementRate >= 70) {
             engagementColor = 'text-emerald-400';
             engagementBg = 'bg-emerald-500/10';
