@@ -1102,6 +1102,30 @@ const App: React.FC = () => {
     return () => unsubscribe();
   }, []);
 
+  // Periodic connection logging for long-running sessions (check every hour and on focus)
+  useEffect(() => {
+    if (!userId) return;
+
+    const performLogCheck = () => {
+      captureDeviceDetails(userId).catch(console.error);
+    };
+
+    // Check regularly (e.g., every hour) to handle day rollovers
+    const interval = setInterval(performLogCheck, 1000 * 60 * 60);
+
+    // Check when user returns to the tab
+    const handleFocus = () => {
+      performLogCheck();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [userId]);
+
   // Poll for pending subscription status
   useEffect(() => {
     if (userId && currentUser?.subscription?.status === 'pending_payment' && currentUser.subscription.asaasSubscriptionId) {
