@@ -1417,7 +1417,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                         >
                                                                             Sem conta específica
                                                                         </DropdownItem>
-                                                                        {connectedAccounts.map(acc => (
+                                                                        {connectedAccounts.filter(acc => acc.connectionMode === 'MANUAL').map(acc => (
                                                                             <DropdownItem
                                                                                 key={acc.id}
                                                                                 onClick={() => setSelectedAccountByMsg(prev => ({ ...prev, [msg.id]: acc.id }))}
@@ -1429,7 +1429,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                                     )}
                                                                                     <span>{acc.name || acc.institution}</span>
                                                                                     <span className="text-[10px] text-gray-500">
-                                                                                        {acc.connectionMode === 'MANUAL' ? 'Manual' : 'Auto'}
+                                                                                        Manual
                                                                                     </span>
                                                                                 </span>
                                                                             </DropdownItem>
@@ -1921,13 +1921,87 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                                                                 </p>
                                                             </div>
 
+                                                            {/* Account Selector - Only show for manual accounts */}
+                                                            {!msg.isConfirmed && connectedAccounts.filter(acc => acc.connectionMode === 'MANUAL').length > 0 && (
+                                                                <div className="px-3 pb-2">
+                                                                    <p className="text-[10px] text-gray-500 mb-2 text-center">Selecione onde foi o gasto:</p>
+                                                                    <Dropdown className="w-full">
+                                                                        <DropdownTrigger className="w-full">
+                                                                            <div className="w-full bg-[#333] text-gray-200 text-xs rounded-lg px-3 py-2.5 border border-[#444] hover:border-[#d97757] transition-colors cursor-pointer flex items-center justify-between gap-2">
+                                                                                <div className="flex items-center gap-2 min-w-0">
+                                                                                    {selectedAccountByMsg[msg.id] ? (
+                                                                                        <>
+                                                                                            {(() => {
+                                                                                                const acc = connectedAccounts.find(a => a.id === selectedAccountByMsg[msg.id]);
+                                                                                                return acc?.connector?.imageUrl ? (
+                                                                                                    <img src={acc.connector.imageUrl} alt="" className="w-4 h-4 rounded" />
+                                                                                                ) : (
+                                                                                                    <Building size={14} className="text-gray-400 flex-shrink-0" />
+                                                                                                );
+                                                                                            })()}
+                                                                                            <span className="truncate">
+                                                                                                {connectedAccounts.find(a => a.id === selectedAccountByMsg[msg.id])?.name || 'Conta'}
+                                                                                            </span>
+                                                                                        </>
+                                                                                    ) : (
+                                                                                        <>
+                                                                                            <CreditCard size={14} className="text-gray-400 flex-shrink-0" />
+                                                                                            <span className="text-gray-400">Sem conta específica</span>
+                                                                                        </>
+                                                                                    )}
+                                                                                </div>
+                                                                                <ChevronDown size={14} className="text-gray-500 flex-shrink-0" />
+                                                                            </div>
+                                                                        </DropdownTrigger>
+                                                                        <DropdownContent width="w-56" align="left" className="max-h-[200px] overflow-y-auto scrollbar-none">
+                                                                            <DropdownLabel>Selecionar Conta</DropdownLabel>
+                                                                            <DropdownItem
+                                                                                onClick={() => setSelectedAccountByMsg(prev => ({ ...prev, [msg.id]: '' }))}
+                                                                                icon={CreditCard}
+                                                                            >
+                                                                                Sem conta específica
+                                                                            </DropdownItem>
+                                                                            {connectedAccounts.filter(acc => acc.connectionMode === 'MANUAL').map(acc => (
+                                                                                <DropdownItem
+                                                                                    key={acc.id}
+                                                                                    onClick={() => setSelectedAccountByMsg(prev => ({ ...prev, [msg.id]: acc.id }))}
+                                                                                    icon={Building}
+                                                                                >
+                                                                                    <span className="flex items-center gap-2">
+                                                                                        {acc.connector?.imageUrl && (
+                                                                                            <img src={acc.connector.imageUrl} alt="" className="w-4 h-4 rounded" />
+                                                                                        )}
+                                                                                        <span>{acc.name || acc.institution}</span>
+                                                                                    </span>
+                                                                                </DropdownItem>
+                                                                            ))}
+                                                                        </DropdownContent>
+                                                                    </Dropdown>
+                                                                </div>
+                                                            )}
+
                                                             {/* Bottom: Action */}
                                                             <div className="p-3 pt-0">
                                                                 {!msg.isConfirmed ? (
                                                                     <motion.button
                                                                         whileHover={{ scale: 1.02 }}
                                                                         whileTap={{ scale: 0.98 }}
-                                                                        onClick={() => msg.transactionData && handleConfirmTransaction(msg.id, msg.transactionData)}
+                                                                        onClick={() => {
+                                                                            if (!msg.transactionData) return;
+                                                                            const selectedAccId = selectedAccountByMsg[msg.id];
+                                                                            if (selectedAccId) {
+                                                                                const selectedAcc = connectedAccounts.find(a => a.id === selectedAccId);
+                                                                                if (selectedAcc) {
+                                                                                    handleConfirmTransaction(msg.id, {
+                                                                                        ...msg.transactionData,
+                                                                                        accountName: selectedAcc.name || selectedAcc.institution,
+                                                                                        needsAccountConfirmation: false
+                                                                                    });
+                                                                                    return;
+                                                                                }
+                                                                            }
+                                                                            handleConfirmTransaction(msg.id, msg.transactionData);
+                                                                        }}
                                                                         className="w-full bg-[#d97757] hover:bg-[#c56a4d] text-white py-3 rounded-xl text-sm font-bold transition-all shadow-lg shadow-[#d97757]/10 flex items-center justify-center gap-2"
                                                                     >
                                                                         <Check size={16} />

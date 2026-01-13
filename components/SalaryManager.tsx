@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Edit2, Check, PlusCircle, Briefcase, Coins, Calculator, X, HelpCircle, Clock, AlertCircle, ChevronRight, Users, Wallet, Trash2, Calendar, Percent, PieChart, CheckCircleFilled, TrendingUp, Lock, Sparkles, Settings, Building, Filter, CreditCard, Pig } from './Icons';
 import { useToasts } from './Toast';
 import NumberFlow from '@number-flow/react';
-import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
+import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel } from './Dropdown';
 import Lottie from 'lottie-react';
 import coinAnimation from '../assets/coin.json';
 import { ConnectedAccount } from '../types';
@@ -116,6 +116,9 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const [tempBaseSalary, setTempBaseSalary] = useState('');
   const [deductTaxes, setDeductTaxes] = useState(false);
 
+  // Extra Modal State (Simple/Calc/CLT Account Selector)
+  const [selectedExtraAccountId, setSelectedExtraAccountId] = useState<string>('');
+
   // CLT Mode State
   const [cltGross, setCltGross] = useState('');
   const [cltDependents, setCltDependents] = useState('0');
@@ -222,6 +225,22 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   const cltResults = calculateCLT(safeCltGross, safeCltDependents);
   const finalCltNet = Math.max(0, cltResults.net - safeCltOtherDiscounts + safeCltBenefits);
 
+  // Filter accounts for selectors (exclude investments/loans AND Auto Credit Cards)
+  const validAccounts = connectedAccounts.filter(acc => {
+    const type = (acc.type || '').toUpperCase();
+    const subtype = (acc.subtype || '').toUpperCase();
+    const isInvestment = type.includes('INVESTMENT') || subtype.includes('INVESTMENT');
+    const isLoan = type.includes('LOAN') || subtype.includes('LOAN');
+
+    // Check for Auto Credit Card
+    const isCredit = type === 'CREDIT' || subtype === 'CREDIT_CARD';
+    const isAuto = acc.connectionMode !== 'MANUAL';
+
+    if (isCredit && isAuto) return false;
+
+    return !isInvestment && !isLoan;
+  });
+
   // --- Effects for Animation ---
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout>;
@@ -309,7 +328,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
     if (finalSimpleValue > 0) {
       const desc = `${extraDesc}${simpleDeductTaxes ? ' - Líq.' : ''}`;
-      onAddExtra(finalSimpleValue, desc);
+      onAddExtra(finalSimpleValue, desc, 'completed', undefined, selectedExtraAccountId || undefined);
       handleCloseModal();
     } else {
       toast.error("Por favor, insira um valor válido.");
@@ -335,7 +354,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
       // Arredondamos para 2 casas decimais para o registro
       const finalAmount = Math.round((finalOtValue + Number.EPSILON) * 100) / 100;
 
-      onAddExtra(finalAmount, desc);
+      onAddExtra(finalAmount, desc, 'completed', undefined, selectedExtraAccountId || undefined);
       handleCloseModal();
     } else {
       toast.error("O valor total deve ser maior que zero.");
@@ -344,7 +363,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
   const handleAddCLT = () => {
     if (finalCltNet > 0) {
-      onAddExtra(finalCltNet, "Salário Líquido (CLT)");
+      onAddExtra(finalCltNet, "Salário Líquido (CLT)", 'completed', undefined, selectedExtraAccountId || undefined);
       handleCloseModal();
     } else {
       toast.error("Valor inválido.");
@@ -366,6 +385,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
       setSalaryError(null);
       setDeductTaxes(false);
       setSimpleDeductTaxes(false);
+      setSelectedExtraAccountId('');
       setActiveTab('simple');
     }, 300);
   };
@@ -880,12 +900,13 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                     valeDateStr = vDate.toISOString().split('T')[0];
                   }
 
-                  // Filtrar apenas contas do tipo conta corrente (CHECKING) ou manuais
+                  // Filtrar apenas contas válidas (Excluir Investimentos e Empréstimos)
                   const checkingAccounts = connectedAccounts.filter(acc => {
                     const type = (acc.type || '').toUpperCase();
                     const subtype = (acc.subtype || '').toUpperCase();
-                    const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
-                    return !isCredit; // Excluir cartões de crédito
+                    const isInvestment = type.includes('INVESTMENT') || subtype.includes('INVESTMENT');
+                    const isLoan = type.includes('LOAN') || subtype.includes('LOAN');
+                    return !isInvestment && !isLoan;
                   });
 
                   // Se não há contas, lançar diretamente sem accountId
@@ -1082,6 +1103,66 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                             </div>
                           </div>
 
+                          {/* Account Selector */}
+                          <div>
+                            <label className="text-xs font-medium text-gray-400 mb-1.5 block">Conta de Destino</label>
+                            <Dropdown className="w-full">
+                              <DropdownTrigger className="w-full">
+                                <div className="bg-gray-800/50 hover:bg-gray-800 transition-colors text-white text-sm rounded-lg px-3 py-2.5 border border-gray-700 focus:border-[#d97757] flex items-center justify-between group">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <div className={`p-1 rounded ${selectedExtraAccountId ? 'bg-white/5' : 'bg-[#d97757]/10'}`}>
+                                      {selectedExtraAccountId ? (
+                                        (() => {
+                                          const acc = validAccounts.find(a => a.id === selectedExtraAccountId);
+                                          if (acc?.connector?.imageUrl) return <img src={acc.connector.imageUrl} className="w-4 h-4 rounded-full" />;
+                                          return <Building size={14} className="text-gray-300" />;
+                                        })()
+                                      ) : (
+                                        <Wallet size={14} className="text-[#d97757]" />
+                                      )}
+                                    </div>
+                                    <span className={`truncate ${selectedExtraAccountId ? 'text-gray-200' : 'text-gray-400'}`}>
+                                      {selectedExtraAccountId
+                                        ? (validAccounts.find(a => a.id === selectedExtraAccountId)?.name || 'Conta Selecionada')
+                                        : 'Sem conta específica'
+                                      }
+                                    </span>
+                                  </div>
+                                  <ChevronRight size={14} className="text-gray-500 rotate-90 group-data-[state=open]:rotate-[-90deg] transition-transform" />
+                                </div>
+                              </DropdownTrigger>
+                              <DropdownContent width="w-[320px]" align="left" className="max-h-60 overflow-y-auto">
+                                <DropdownLabel>Selecione a Conta</DropdownLabel>
+                                <DropdownItem onClick={() => setSelectedExtraAccountId('')}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-[#d97757]/10 rounded text-[#d97757]"><Wallet size={14} /></div>
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">Sem conta específica</span>
+                                      <span className="text-[10px] text-gray-500">Apenas registro</span>
+                                    </div>
+                                    {selectedExtraAccountId === '' && <Check size={14} className="ml-auto text-[#d97757]" />}
+                                  </div>
+                                </DropdownItem>
+                                {validAccounts.map(acc => (
+                                  <DropdownItem key={acc.id} onClick={() => setSelectedExtraAccountId(acc.id)}>
+                                    <div className="flex items-center gap-2 w-full">
+                                      {acc.connector?.imageUrl ? (
+                                        <img src={acc.connector.imageUrl} className="w-6 h-6 rounded-md object-contain bg-white/5 p-0.5" />
+                                      ) : (
+                                        <div className="w-6 h-6 rounded-md bg-gray-800 flex items-center justify-center text-gray-400"><Building size={12} /></div>
+                                      )}
+                                      <div className="flex flex-col overflow-hidden">
+                                        <span className="text-sm font-medium truncate text-gray-200">{acc.name || acc.institution}</span>
+                                        <span className="text-[10px] text-gray-500 truncate">{acc.type === 'CREDIT' ? 'Cartão' : 'Conta'} • {acc.connectionMode === 'MANUAL' ? 'Manual' : 'Auto'}</span>
+                                      </div>
+                                      {selectedExtraAccountId === acc.id && <Check size={14} className="ml-auto text-[#d97757] shrink-0" />}
+                                    </div>
+                                  </DropdownItem>
+                                ))}
+                              </DropdownContent>
+                            </Dropdown>
+                          </div>
+
                           <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
                             <label className="relative inline-flex items-center cursor-pointer group">
                               <input
@@ -1235,7 +1316,68 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                               />
                             </div>
                           </div>
+
+                          {/* Account Selector for CLT */}
+                          <div>
+                            <label className="text-xs font-medium text-gray-400 mb-1.5 block">Conta de Destino</label>
+                            <Dropdown className="w-full">
+                              <DropdownTrigger className="w-full">
+                                <div className="bg-gray-800/50 hover:bg-gray-800 transition-colors text-white text-sm rounded-lg px-3 py-2.5 border border-gray-700 focus:border-[#d97757] flex items-center justify-between group">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <div className={`p-1 rounded ${selectedExtraAccountId ? 'bg-white/5' : 'bg-[#d97757]/10'}`}>
+                                      {selectedExtraAccountId ? (
+                                        (() => {
+                                          const acc = validAccounts.find(a => a.id === selectedExtraAccountId);
+                                          if (acc?.connector?.imageUrl) return <img src={acc.connector.imageUrl} className="w-4 h-4 rounded-full" />;
+                                          return <Building size={14} className="text-gray-300" />;
+                                        })()
+                                      ) : (
+                                        <Wallet size={14} className="text-[#d97757]" />
+                                      )}
+                                    </div>
+                                    <span className={`truncate ${selectedExtraAccountId ? 'text-gray-200' : 'text-gray-400'}`}>
+                                      {selectedExtraAccountId
+                                        ? (validAccounts.find(a => a.id === selectedExtraAccountId)?.name || 'Conta Selecionada')
+                                        : 'Sem conta específica'
+                                      }
+                                    </span>
+                                  </div>
+                                  <ChevronRight size={14} className="text-gray-500 rotate-90 group-data-[state=open]:rotate-[-90deg] transition-transform" />
+                                </div>
+                              </DropdownTrigger>
+                              <DropdownContent width="w-[320px]" align="left" className="max-h-60 overflow-y-auto">
+                                <DropdownLabel>Selecione a Conta</DropdownLabel>
+                                <DropdownItem onClick={() => setSelectedExtraAccountId('')}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-[#d97757]/10 rounded text-[#d97757]"><Wallet size={14} /></div>
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">Sem conta específica</span>
+                                      <span className="text-[10px] text-gray-500">Apenas registro</span>
+                                    </div>
+                                    {selectedExtraAccountId === '' && <Check size={14} className="ml-auto text-[#d97757]" />}
+                                  </div>
+                                </DropdownItem>
+                                {validAccounts.map(acc => (
+                                  <DropdownItem key={acc.id} onClick={() => setSelectedExtraAccountId(acc.id)}>
+                                    <div className="flex items-center gap-2 w-full">
+                                      {acc.connector?.imageUrl ? (
+                                        <img src={acc.connector.imageUrl} className="w-6 h-6 rounded-md object-contain bg-white/5 p-0.5" />
+                                      ) : (
+                                        <div className="w-6 h-6 rounded-md bg-gray-800 flex items-center justify-center text-gray-400"><Building size={12} /></div>
+                                      )}
+                                      <div className="flex flex-col overflow-hidden">
+                                        <span className="text-sm font-medium truncate text-gray-200">{acc.name || acc.institution}</span>
+                                        <span className="text-[10px] text-gray-500 truncate">{acc.type === 'CREDIT' ? 'Cartão' : 'Conta'} • {acc.connectionMode === 'MANUAL' ? 'Manual' : 'Auto'}</span>
+                                      </div>
+                                      {selectedExtraAccountId === acc.id && <Check size={14} className="ml-auto text-[#d97757] shrink-0" />}
+                                    </div>
+                                  </DropdownItem>
+                                ))}
+                              </DropdownContent>
+                            </Dropdown>
+                          </div>
                         </div>
+
 
                         {/* Result Card */}
                         <div className="bg-[#30302E]/50 rounded-2xl border border-gray-800 p-5 flex flex-col h-full justify-between relative overflow-hidden">
@@ -1391,6 +1533,66 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                             </div>
                           </div>
 
+                          {/* Account Selector */}
+                          <div>
+                            <label className="text-xs font-medium text-gray-400 mb-1.5 block">Conta de Destino</label>
+                            <Dropdown className="w-full">
+                              <DropdownTrigger className="w-full">
+                                <div className="bg-gray-800/50 hover:bg-gray-800 transition-colors text-white text-sm rounded-lg px-3 py-2.5 border border-gray-700 focus:border-[#d97757] flex items-center justify-between group">
+                                  <div className="flex items-center gap-2 overflow-hidden">
+                                    <div className={`p-1 rounded ${selectedExtraAccountId ? 'bg-white/5' : 'bg-[#d97757]/10'}`}>
+                                      {selectedExtraAccountId ? (
+                                        (() => {
+                                          const acc = validAccounts.find(a => a.id === selectedExtraAccountId);
+                                          if (acc?.connector?.imageUrl) return <img src={acc.connector.imageUrl} className="w-4 h-4 rounded-full" />;
+                                          return <Building size={14} className="text-gray-300" />;
+                                        })()
+                                      ) : (
+                                        <Wallet size={14} className="text-[#d97757]" />
+                                      )}
+                                    </div>
+                                    <span className={`truncate ${selectedExtraAccountId ? 'text-gray-200' : 'text-gray-400'}`}>
+                                      {selectedExtraAccountId
+                                        ? (validAccounts.find(a => a.id === selectedExtraAccountId)?.name || 'Conta Selecionada')
+                                        : 'Sem conta específica'
+                                      }
+                                    </span>
+                                  </div>
+                                  <ChevronRight size={14} className="text-gray-500 rotate-90 group-data-[state=open]:rotate-[-90deg] transition-transform" />
+                                </div>
+                              </DropdownTrigger>
+                              <DropdownContent width="w-[320px]" align="left" className="max-h-60 overflow-y-auto">
+                                <DropdownLabel>Selecione a Conta</DropdownLabel>
+                                <DropdownItem onClick={() => setSelectedExtraAccountId('')}>
+                                  <div className="flex items-center gap-2">
+                                    <div className="p-1.5 bg-[#d97757]/10 rounded text-[#d97757]"><Wallet size={14} /></div>
+                                    <div className="flex flex-col">
+                                      <span className="text-sm font-medium">Sem conta específica</span>
+                                      <span className="text-[10px] text-gray-500">Apenas registro</span>
+                                    </div>
+                                    {selectedExtraAccountId === '' && <Check size={14} className="ml-auto text-[#d97757]" />}
+                                  </div>
+                                </DropdownItem>
+                                {validAccounts.map(acc => (
+                                  <DropdownItem key={acc.id} onClick={() => setSelectedExtraAccountId(acc.id)}>
+                                    <div className="flex items-center gap-2 w-full">
+                                      {acc.connector?.imageUrl ? (
+                                        <img src={acc.connector.imageUrl} className="w-6 h-6 rounded-md object-contain bg-white/5 p-0.5" />
+                                      ) : (
+                                        <div className="w-6 h-6 rounded-md bg-gray-800 flex items-center justify-center text-gray-400"><Building size={12} /></div>
+                                      )}
+                                      <div className="flex flex-col overflow-hidden">
+                                        <span className="text-sm font-medium truncate text-gray-200">{acc.name || acc.institution}</span>
+                                        <span className="text-[10px] text-gray-500 truncate">{acc.type === 'CREDIT' ? 'Cartão' : 'Conta'} • {acc.connectionMode === 'MANUAL' ? 'Manual' : 'Auto'}</span>
+                                      </div>
+                                      {selectedExtraAccountId === acc.id && <Check size={14} className="ml-auto text-[#d97757] shrink-0" />}
+                                    </div>
+                                  </DropdownItem>
+                                ))}
+                              </DropdownContent>
+                            </Dropdown>
+                          </div>
+
                           <div className="flex items-center gap-3 pt-2 border-t border-gray-800">
                             <label className="relative inline-flex items-center cursor-pointer group">
                               <input
@@ -1467,7 +1669,7 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
               </div>
 
             </div>
-          </div>,
+          </div >,
           document.body
         )
       }
@@ -1537,13 +1739,11 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             )}
           </button>
 
-          {/* Lista de contas */}
+          {/* Lista de contas - Apenas contas manuais */}
           {connectedAccounts
             .filter(acc => {
-              const type = (acc.type || '').toUpperCase();
-              const subtype = (acc.subtype || '').toUpperCase();
-              const isCredit = type.includes('CREDIT') || subtype.includes('CREDIT');
-              return !isCredit;
+              // Mostrar apenas contas manuais
+              return acc.connectionMode === 'MANUAL';
             })
             .map(acc => (
               <button
