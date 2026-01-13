@@ -35,6 +35,24 @@ export const deleteSubscription = async (userId: string, subscriptionId: string)
   await deleteDoc(subRef);
 };
 
+// Helper to convert Firebase Timestamp to ISO date string (YYYY-MM-DD)
+const convertTimestampToDateString = (value: any): string | undefined => {
+  if (!value) return undefined;
+  // Check if it's a Firebase Timestamp (has toDate method or seconds/nanoseconds)
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.toDate === 'function') {
+      const date = value.toDate();
+      return date.toISOString().split('T')[0];
+    }
+    if (value.seconds !== undefined) {
+      const date = new Date(value.seconds * 1000);
+      return date.toISOString().split('T')[0];
+    }
+  }
+  // Already a string, return as-is
+  return String(value);
+};
+
 export const listenToSubscriptions = (userId: string, callback: (subscriptions: Subscription[]) => void) => {
   if (!db) return () => { };
   const subRef = collection(db, "users", userId, "subscriptions");
@@ -42,7 +60,14 @@ export const listenToSubscriptions = (userId: string, callback: (subscriptions: 
   return onSnapshot(subRef, (snapshot) => {
     const subs: Subscription[] = [];
     snapshot.forEach(doc => {
-      subs.push({ id: doc.id, ...doc.data() } as Subscription);
+      const data = doc.data();
+      // Convert lastPaymentDate if it's a Timestamp
+      const sub: Subscription = {
+        id: doc.id,
+        ...data,
+        lastPaymentDate: data.lastPaymentDate ? convertTimestampToDateString(data.lastPaymentDate) : undefined,
+      } as Subscription;
+      subs.push(sub);
     });
     callback(subs);
   });

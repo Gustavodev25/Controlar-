@@ -21,6 +21,8 @@ export interface User {
     status: 'active' | 'canceled' | 'past_due' | 'pending_payment' | 'refunded';
     billingCycle: 'monthly' | 'annual';
     nextBillingDate?: string;
+    accessUntil?: string; // Data até qual o usuário mantém acesso PRO após cancelamento
+    canceledAt?: string; // Data em que foi cancelado
     installments?: number;
     asaasCustomerId?: string;
     asaasSubscriptionId?: string;

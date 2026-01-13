@@ -584,26 +584,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     filteredUsers.forEach(u => {
-      // Heuristic: If User creation is close to Subscription start (e.g. same session/day),
-      // use Subscription Date to align "New User" with "New Subscriber" charts.
-      // This fixes the issue where a user signs up at 23:50 (Yesterday) but pays at 00:20 (Today),
-      // or if timezone shifts `createdAt` to yesterday.
-      let dateStr = u.createdAt;
-
-      if (u.createdAt && u.subscription?.startDate) {
-        const cDate = new Date(u.createdAt);
-        // Treat startDate as UTC midnight for comparison
-        const sDate = new Date(u.subscription.startDate.length === 10 ? u.subscription.startDate + 'T00:00:00Z' : u.subscription.startDate);
-
-        const diff = Math.abs(cDate.getTime() - sDate.getTime());
-        // If within 48h, prefer the definitive Subscription Date
-        if (diff < 1000 * 60 * 60 * 48) {
-          dateStr = u.subscription.startDate;
-        }
-      }
-
-      // Fallback
-      dateStr = dateStr || u.subscription?.startDate;
+      // Use subscription.startDate as the source of truth since all users must subscribe to enter.
+      // This ensures "New Users per Day" matches "New Subscribers per Day".
+      const dateStr = u.subscription?.startDate;
 
       if (!dateStr) return;
 
@@ -640,16 +623,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       cumulativeGrowth.push({ date: 'Hoje', rawDate: new Date().toISOString(), total: 0, daily: 0 });
     }
 
-    // --- DAILY NEW SUBSCRIBERS (PAID) ---
+    // --- DAILY NEW SUBSCRIBERS ---
+    // Since all users must subscribe to enter, this now counts ALL users (not just paid)
+    // to match the "New Users per Day" chart exactly.
     const dailySubCounts: Record<string, number> = {};
     let subMinDate: Date | null = null;
     let subMaxDate: Date | null = null;
 
     filteredUsers.forEach(u => {
-      // Only count PAID plans (Pro/Family)
-      const plan = (u.subscription?.plan || 'starter').toLowerCase();
-      if (plan === 'starter') return;
-
+      // Count ALL users since everyone must subscribe to enter
       const dateStr = u.subscription?.startDate;
       if (!dateStr) return;
 
@@ -1260,13 +1242,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           </div>
         </div>
 
-        {/* Daily New Paid Subscribers Chart (NEW) */}
+        {/* Daily New Subscribers Chart */}
         <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6">
           <h3 className="text-lg font-bold text-white mb-1 flex items-center gap-2">
             <TrendingUp size={18} className="text-[#d97757]" />
-            Novos Assinantes (Pagos) por Dia
+            Novos Assinantes por Dia
           </h3>
-          <p className="text-gray-500 text-sm mb-6">Quantidade de novas assinaturas Pro iniciadas diariamente</p>
+          <p className="text-gray-500 text-sm mb-6">Quantidade de novas assinaturas iniciadas diariamente</p>
           <div className="h-[300px] w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={stats.newSubscribersGrowth}>

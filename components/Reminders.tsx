@@ -33,10 +33,16 @@ type ModalMode = 'ai' | 'manual';
 
 // Helpers
 const getDaysDiff = (dateStr: string) => {
+  if (!dateStr) return 0;
+
+  // Parse YYYY-MM-DD explicitly as local time midnight
+  const [year, month, day] = dateStr.split('-').map(Number);
+  const due = new Date(year, month - 1, day);
+  due.setHours(0, 0, 0, 0);
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const due = new Date(dateStr);
-  due.setHours(0, 0, 0, 0);
+
   const diffTime = due.getTime() - today.getTime();
   return Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 };

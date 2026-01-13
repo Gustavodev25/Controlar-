@@ -15,7 +15,8 @@ import {
   limit,
   writeBatch,
   runTransaction,
-  collectionGroup
+  collectionGroup,
+  increment
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping, KanbanColumn } from "../types";
@@ -1333,6 +1334,24 @@ export const updateReminder = async (userId: string, reminder: Reminder) => {
   await updateDoc(remRef, data);
 };
 
+// Helper to convert Firebase Timestamp to ISO date string (YYYY-MM-DD)
+const convertTimestampToDateString = (value: any): string => {
+  if (!value) return '';
+  // Check if it's a Firebase Timestamp (has toDate method or seconds/nanoseconds)
+  if (typeof value === 'object' && value !== null) {
+    if (typeof value.toDate === 'function') {
+      const date = value.toDate();
+      return date.toISOString().split('T')[0];
+    }
+    if (value.seconds !== undefined) {
+      const date = new Date(value.seconds * 1000);
+      return date.toISOString().split('T')[0];
+    }
+  }
+  // Already a string, return as-is
+  return String(value);
+};
+
 export const listenToReminders = (userId: string, callback: (reminders: Reminder[]) => void) => {
   if (!db) return () => { };
   const remRef = collection(db, "users", userId, "reminders");
@@ -1340,7 +1359,14 @@ export const listenToReminders = (userId: string, callback: (reminders: Reminder
   return onSnapshot(remRef, (snapshot) => {
     const reminders: Reminder[] = [];
     snapshot.forEach(doc => {
-      reminders.push({ id: doc.id, ...doc.data() } as Reminder);
+      const data = doc.data();
+      // Convert dueDate if it's a Timestamp
+      const reminder: Reminder = {
+        id: doc.id,
+        ...data,
+        dueDate: convertTimestampToDateString(data.dueDate),
+      } as Reminder;
+      reminders.push(reminder);
     });
     callback(reminders);
   });
@@ -2643,7 +2669,7 @@ export interface SupportTicket {
 // Helper to send email notifications
 const notifySupportEmails = async (recipients: string[], title: string, subject: string, bodyText: string) => {
   try {
-    await fetch('/api/admin/send-email', {
+    const res = await fetch('/api/admin/send-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -2658,6 +2684,11 @@ const notifySupportEmails = async (recipients: string[], title: string, subject:
         bodyAlign: 'left'
       })
     });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error || 'Failed to send email');
+    }
   } catch (error) {
     console.error("Failed to notify support emails:", error);
   }
@@ -2738,7 +2769,7 @@ export const createSupportTicket = async (userId: string, userEmail: string, use
 
   // Notify Admin (Gui)
   await notifySupportEmails(
-    ['Guilherme.luz@controlarmais.com.br'],
+    ['guilherme.luz@controlarmais.com.br'],
     'Novo Chamado de Suporte',
     `Novo Chamado: ${userName}`,
     `O usuário ${userName} (${userEmail}) abriu um novo chamado.\n\nAssunto/Mensagem: "${description || 'Sem descrição inicial'}"`
@@ -2757,8 +2788,11 @@ export const sendSupportMessage = async (ticketId: string, message: Omit<Support
     read: false
   });
 
+  const isUserSender = (message as any).senderType === 'user';
+
   await updateDoc(ticketRef, {
-    lastMessageAt: message.createdAt
+    lastMessageAt: message.createdAt,
+    unreadCount: isUserSender ? increment(1) : undefined
   });
 
   // Notify Gui if message is from User
@@ -2792,7 +2826,7 @@ export const sendSupportMessage = async (ticketId: string, message: Omit<Support
       const uName = tData?.userName || 'Usuário';
 
       await notifySupportEmails(
-        ['Guilherme.luz@controlarmais.com.br'],
+        ['guilherme.luz@controlarmais.com.br'],
         'Nova Mensagem no Suporte',
         `Nova Mensagem: ${uName}`,
         `O usuário ${uName} enviou uma nova mensagem:\n\n"${(message as any).text}"`
@@ -2805,6 +2839,20 @@ export const sendSupportMessage = async (ticketId: string, message: Omit<Support
 
 export const markMessagesAsRead = async (ticketId: string, role: 'user' | 'admin') => {
   if (!db) return;
+
+  // If Admin is reading, ALWAYS clear the unread count on the ticket (even if no messages are unread)
+  // This ensures that if it was manually marked as unread, opening it clears the flag.
+  if (role === 'admin') {
+    const ticketRef = doc(db, "support_tickets", ticketId);
+    // Use updateDoc to just update the count.
+    // Note: We swallow errors in case ticket doesn't exist (e.g. deleted)
+    try {
+      await updateDoc(ticketRef, { unreadCount: 0 });
+    } catch (e) {
+      // Ignore
+    }
+  }
+
   const messagesRef = collection(db, "support_tickets", ticketId, "messages");
   // Query messages not read and SENT BY THE OTHER PARTY
   // If I am user, I want to mark messages sent by 'admin' as read
@@ -2821,6 +2869,13 @@ export const markMessagesAsRead = async (ticketId: string, role: 'user' | 'admin
     batch.update(doc.ref, { read: true });
   });
   await batch.commit();
+};
+
+export const markTicketAsUnread = async (ticketId: string) => {
+  if (!db) return;
+  const ticketRef = doc(db, "support_tickets", ticketId);
+  // Set to 1 to ensure it shows as unread
+  await updateDoc(ticketRef, { unreadCount: 1 });
 };
 
 // ... (existing code)
@@ -3081,11 +3136,28 @@ export const listenToAdminMessageLogs = (callback: (logs: AdminMessageLog[]) => 
 
 export const cancelUserSubscription = async (userId: string) => {
   if (!db) return;
-  // Use existing helper to update subscription status
-  await updateUserSubscription(userId, {
-    status: 'canceled',
-    autoRenew: false
-  });
+
+  // Use the new graceful cancel API that cancels Asaas subscription
+  // but maintains PRO access until nextBillingDate
+  try {
+    const response = await fetch('/api/admin/cancel-plan', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId })
+    });
+
+    const data = await response.json();
+
+    if (!data.success) {
+      console.error('Cancel subscription failed:', data.error);
+      throw new Error(data.error || 'Erro ao cancelar assinatura');
+    }
+
+    console.log(`Subscription canceled for user ${userId}. Access until: ${data.accessUntil}`);
+  } catch (error) {
+    console.error('Error calling cancel-plan API:', error);
+    throw error;
+  }
 };
 
 export const refundUserPayment = async (userId: string, amount?: number) => {

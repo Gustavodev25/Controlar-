@@ -9,6 +9,7 @@ import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel
 import Lottie from 'lottie-react';
 import coinAnimation from '../assets/coin.json';
 import { ConnectedAccount } from '../types';
+import { ConfirmationBar } from './ConfirmationBar';
 import { UniversalModal } from './UniversalModal';
 
 interface SalaryManagerProps {
@@ -31,6 +32,7 @@ interface SalaryManagerProps {
   viewFilter?: 'all' | 'credit_card' | 'savings' | 'checking';
   onViewFilterChange?: (filter: 'all' | 'credit_card' | 'savings' | 'checking') => void;
   connectedAccounts?: ConnectedAccount[];
+  onDeleteSalary?: () => void;
 }
 
 export const SalaryManager: React.FC<SalaryManagerProps> = ({
@@ -52,10 +54,12 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
   onToggleOpenFinance,
   viewFilter = 'all',
   onViewFilterChange,
-  connectedAccounts = []
+  connectedAccounts = [],
+  onDeleteSalary
 }) => {
   // State for Base Salary Editing
   const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [tempSalary, setTempSalary] = useState(baseSalary.toString());
   const [tempPaymentDay, setTempPaymentDay] = useState(paymentDay?.toString() || '5');
   const [tempSalaryTaxExempt, setTempSalaryTaxExempt] = useState(!!salaryExemptFromDiscounts);
@@ -864,95 +868,122 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
 
             <div className="grid grid-cols-2 gap-2 relative z-10">
               {/* Button 1: Lançar Salário */}
-              <button
-                disabled={isSalaryLaunched}
-                onClick={() => {
-                  if (isSalaryLaunched) return;
-                  if (baseSalary <= 0) {
-                    toast.error("Defina um salário base primeiro.");
-                    return;
-                  }
-
-                  const today = new Date();
-                  const pDay = paymentDay || 5;
-
-                  let targetDate = calculatePaymentDate(pDay, today);
-                  const dateStr = toLocalISODate(targetDate);
-
-                  let advance = advanceValue || 0;
-                  if (advancePercent && advancePercent > 0) {
-                    advance = baseSalary * (advancePercent / 100);
-                  }
-                  advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-
-                  let totalTaxes = 0;
-                  if (!salaryExemptFromDiscounts) {
-                    const { inss, irrf } = calculateCLT(baseSalary, 0);
-                    totalTaxes = inss + irrf;
-                  }
-
-                  const netSalary = baseSalary - totalTaxes;
-                  const salaryRemaining = Math.max(0, netSalary - advance);
-
-                  let valeDateStr = dateStr;
-                  if (advanceDay) {
-                    const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
-                    valeDateStr = vDate.toISOString().split('T')[0];
-                  }
-
-                  // Filtrar apenas contas válidas (Excluir Investimentos e Empréstimos)
-                  const checkingAccounts = connectedAccounts.filter(acc => {
-                    const type = (acc.type || '').toUpperCase();
-                    const subtype = (acc.subtype || '').toUpperCase();
-                    const isInvestment = type.includes('INVESTMENT') || subtype.includes('INVESTMENT');
-                    const isLoan = type.includes('LOAN') || subtype.includes('LOAN');
-                    return !isInvestment && !isLoan;
-                  });
-
-                  // Se não há contas, lançar diretamente sem accountId
-                  if (checkingAccounts.length === 0) {
-                    onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
-                    if (advance > 0) {
-                      setTimeout(() => {
-                        onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
-                      }, 100);
-                      toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
-                    } else {
-                      toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+              {isSalaryLaunched ? (
+                <Dropdown className="w-full h-full">
+                  <DropdownTrigger className="w-full h-full">
+                    <button
+                      className={`
+                        w-full h-full relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border
+                        bg-green-500/5 border-green-500/10 hover:bg-green-500/10 hover:border-green-500/30 cursor-pointer
+                      `}
+                    >
+                      <div className={`
+                        p-2 rounded-full transition-all duration-300
+                        bg-green-500/10 text-green-500 group-hover:scale-110
+                      `}>
+                        <Check size={16} />
+                      </div>
+                      <span className={`text-[10px] font-medium transition-colors uppercase tracking-wide text-green-600/70 group-hover:text-green-500`}>
+                        Lançado
+                      </span>
+                    </button>
+                  </DropdownTrigger>
+                  <DropdownContent width="w-40" align="center">
+                    <DropdownItem
+                      onClick={() => setShowDeleteConfirm(true)}
+                      danger
+                      icon={Trash2}
+                    >
+                      Deslançar
+                    </DropdownItem>
+                  </DropdownContent>
+                </Dropdown>
+              ) : (
+                <button
+                  onClick={() => {
+                    if (baseSalary <= 0) {
+                      toast.error("Defina um salário base primeiro.");
+                      return;
                     }
-                    return;
-                  }
 
-                  // Preparar dados pendentes e abrir modal de seleção
-                  setPendingSalaryLaunch({
-                    salaryRemaining,
-                    advance,
-                    dateStr,
-                    valeDateStr: advance > 0 ? valeDateStr : undefined,
-                    advanceDay,
-                    targetDate
-                  });
-                  setSelectedAccountId(''); // Resetar seleção
-                  setShowAccountModal(true);
-                }}
-                className={`
+                    const today = new Date();
+                    const pDay = paymentDay || 5;
+
+                    let targetDate = calculatePaymentDate(pDay, today);
+                    const dateStr = toLocalISODate(targetDate);
+
+                    let advance = advanceValue || 0;
+                    if (advancePercent && advancePercent > 0) {
+                      advance = baseSalary * (advancePercent / 100);
+                    }
+                    advance = Math.round((advance + Number.EPSILON) * 100) / 100;
+
+                    let totalTaxes = 0;
+                    if (!salaryExemptFromDiscounts) {
+                      const { inss, irrf } = calculateCLT(baseSalary, 0);
+                      totalTaxes = inss + irrf;
+                    }
+
+                    const netSalary = baseSalary - totalTaxes;
+                    const salaryRemaining = Math.max(0, netSalary - advance);
+
+                    let valeDateStr = dateStr;
+                    if (advanceDay) {
+                      const vDate = new Date(today.getFullYear(), today.getMonth(), advanceDay);
+                      valeDateStr = vDate.toISOString().split('T')[0];
+                    }
+
+                    // Filtrar apenas contas válidas (Excluir Investimentos e Empréstimos)
+                    const checkingAccounts = connectedAccounts.filter(acc => {
+                      const type = (acc.type || '').toUpperCase();
+                      const subtype = (acc.subtype || '').toUpperCase();
+                      const isInvestment = type.includes('INVESTMENT') || subtype.includes('INVESTMENT');
+                      const isLoan = type.includes('LOAN') || subtype.includes('LOAN');
+                      return !isInvestment && !isLoan;
+                    });
+
+                    // Se não há contas, lançar diretamente sem accountId
+                    if (checkingAccounts.length === 0) {
+                      onAddExtra(salaryRemaining, "Salário Mensal", "pending", dateStr);
+                      if (advance > 0) {
+                        setTimeout(() => {
+                          onAddExtra(advance, "Vale / Adiantamento", "pending", valeDateStr);
+                        }, 100);
+                        toast.success(`Lançados: Salário (${targetDate.getDate()}) e Vale (${advanceDay || targetDate.getDate()})!`);
+                      } else {
+                        toast.success(`Salário lançado para dia ${targetDate.getDate()}!`);
+                      }
+                      return;
+                    }
+
+                    // Preparar dados pendentes e abrir modal de seleção
+                    setPendingSalaryLaunch({
+                      salaryRemaining,
+                      advance,
+                      dateStr,
+                      valeDateStr: advance > 0 ? valeDateStr : undefined,
+                      advanceDay,
+                      targetDate
+                    });
+                    setSelectedAccountId(''); // Resetar seleção
+                    setShowAccountModal(true);
+                  }}
+                  className={`
                   relative overflow-hidden group p-3 rounded-2xl flex flex-col items-center justify-center gap-2 transition-all duration-300 border
-                  ${isSalaryLaunched
-                    ? 'bg-green-500/5 border-green-500/10 cursor-default grayscale opacity-50'
-                    : 'bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer'
-                  }
+                  bg-gray-800/40 hover:bg-gray-800 border-gray-800 hover:border-[#d97757]/50 cursor-pointer
                 `}
-              >
-                <div className={`
+                >
+                  <div className={`
                   p-2 rounded-full transition-all duration-300
-                  ${isSalaryLaunched ? 'bg-green-500/10 text-green-500' : 'bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 group-hover:scale-105'}
+                  bg-[#2a2a28] text-gray-400 group-hover:text-[#d97757] group-hover:bg-[#d97757]/10 group-hover:scale-105
                 `}>
-                  {isSalaryLaunched ? <Check size={16} /> : <Calendar size={16} />}
-                </div>
-                <span className={`text-[10px] font-medium transition-colors uppercase tracking-wide ${isSalaryLaunched ? 'text-gray-400' : 'text-gray-400 group-hover:text-orange-100'}`}>
-                  {isSalaryLaunched ? 'Lançado' : 'Lançar Mês'}
-                </span>
-              </button>
+                    <Calendar size={16} />
+                  </div>
+                  <span className={`text-[10px] font-medium transition-colors uppercase tracking-wide text-gray-400 group-hover:text-orange-100`}>
+                    Lançar Mês
+                  </span>
+                </button>
+              )}
 
               {/* Button 2: Lançar Extra */}
               <button
@@ -1786,6 +1817,19 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
             ))}
         </div>
       </UniversalModal>
+
+      <ConfirmationBar
+        isOpen={showDeleteConfirm}
+        onCancel={() => setShowDeleteConfirm(false)}
+        onConfirm={() => {
+          onDeleteSalary?.();
+          setShowDeleteConfirm(false);
+        }}
+        label="Deslançar Salário?"
+        description="A transação do mês atual será removida."
+        confirmText="Sim, deslançar"
+        isDestructive
+      />
     </>
   );
 };

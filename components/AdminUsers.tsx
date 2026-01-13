@@ -321,18 +321,16 @@ export const AdminUsers: React.FC = () => {
         return { text, relative, isRecent: diffDays < 7, status };
     };
 
-    // Calculate Active Days = last access date - created date
+    // Calculate Active Days = Today - created date (per user request)
     const getActiveDaysCount = (user: SystemUser) => {
         if (!user.createdAt) return 0;
 
-        const logs = user.connectionLogs;
-        const lastLog = logs && logs.length > 0 ? logs[0] : null;
-        const lastAccessDate = lastLog?.timestamp ? new Date(lastLog.timestamp) : new Date(); // fallback to today
+        const endDate = new Date();
         const createdDate = new Date(user.createdAt);
 
-        if (isNaN(lastAccessDate.getTime()) || isNaN(createdDate.getTime())) return 0;
+        if (isNaN(createdDate.getTime())) return 0;
 
-        const diffTime = lastAccessDate.getTime() - createdDate.getTime();
+        const diffTime = endDate.getTime() - createdDate.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         return Math.max(0, diffDays);
     };

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets, deleteSupportTicket, transferSupportTicket } from '../services/database';
+import { SupportTicket, listenToAllOpenTickets, closeSupportTicket, acceptSupportTicket, getAllUsers, createSupportTicket, cancelUserSubscription, refundUserPayment, sendSupportMessage, requestTicketRating, listenToClosedTickets, deleteSupportTicket, transferSupportTicket, markTicketAsUnread } from '../services/database';
 import { SupportChat } from './SupportChat';
-import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft, Trash2, ArrowRightLeft } from 'lucide-react';
+import { MessageSquare, CheckCircle, Shield, X, User, Play, Plus, Search, Loader, AlertTriangle, Ban, CreditCard, Star, Archive, ArrowLeft, Trash2, ArrowRightLeft, Mail } from 'lucide-react';
 import { User as UserType } from '../types';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import { UniversalModal } from './UniversalModal';
@@ -163,6 +163,12 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
         }
     };
 
+    const handleMarkAsUnread = async (e: React.MouseEvent, id: string) => {
+        e.stopPropagation();
+        await markTicketAsUnread(id);
+        toast.success("Marcado como não lido");
+    };
+
     const handleAcceptTicket = async () => {
         if (!selectedTicket || !currentUser || !currentUser.id) return;
         await acceptSupportTicket(selectedTicket.id!, currentUser.id, currentUser.name);
@@ -237,11 +243,11 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
 
     const handleAdminCancelSubscription = async () => {
         if (!selectedTicket || !selectedTicket.userId) return;
-        if (!confirm("Tem certeza que deseja cancelar a assinatura deste usuário?")) return;
+        if (!confirm("Tem certeza que deseja cancelar a assinatura deste usuário? Ele manterá acesso PRO até a data de renovação.")) return;
 
         try {
             await cancelUserSubscription(selectedTicket.userId);
-            toast.success("Assinatura cancelada com sucesso.");
+            toast.success("Assinatura cancelada. Usuário mantém acesso até a próxima renovação.");
             // Optionally auto-close ticket or add system message
         } catch (error) {
             console.error(error);
@@ -395,6 +401,13 @@ export const AdminSupport: React.FC<AdminSupportProps> = ({ currentUser }) => {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
+                                        <button
+                                            onClick={(e) => handleMarkAsUnread(e, ticket.id!)}
+                                            className="p-1.5 text-gray-500 hover:text-blue-400 hover:bg-black/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all mr-1"
+                                            title="Marcar como não lido"
+                                        >
+                                            <Mail size={12} />
+                                        </button>
                                         <button
                                             onClick={(e) => handleDeleteTicket(e, ticket.id!)}
                                             className="p-1.5 text-gray-500 hover:text-red-400 hover:bg-black/20 rounded-lg opacity-0 group-hover:opacity-100 transition-all"

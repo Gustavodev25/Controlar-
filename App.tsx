@@ -2968,6 +2968,30 @@ const App: React.FC = () => {
     }
   };
 
+  const handleDeleteSalary = async () => {
+    if (!userId) return;
+    const today = new Date();
+    const currentMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`;
+
+    // Find salary transactions for the current month
+    const txsToDelete = transactions.filter(t =>
+      t.description === "Salário Mensal" &&
+      t.date.startsWith(currentMonth) &&
+      !t.ignored
+    );
+
+    if (txsToDelete.length === 0) return;
+
+    try {
+      const promises = txsToDelete.map(tx => tx.id ? dbService.deleteTransaction(userId, tx.id) : Promise.resolve());
+      await Promise.all(promises);
+      toast.success("Lançamento de salário removido.");
+    } catch (error) {
+      console.error("Erro ao remover salário:", error);
+      toast.error("Erro ao remover o lançamento.");
+    }
+  };
+
   const handleAddExtraIncome = async (amount: number, description: string, status: 'completed' | 'pending' = 'completed', date?: string, accountId?: string) => {
     const admin = members.find(m => m.role === 'admin') || members[0];
     if (!admin) return;
@@ -3471,6 +3495,7 @@ const App: React.FC = () => {
                       advanceDay={currentUser.salaryAdvanceDay}
                       onUpdateSalary={handleUpdateSalary}
                       onAddExtra={handleAddExtraIncome}
+                      onDeleteSalary={handleDeleteSalary}
                       salaryExemptFromDiscounts={currentUser.salaryExemptFromDiscounts}
                       onEditClick={() => {
                         setSettingsInitialTab('finance');

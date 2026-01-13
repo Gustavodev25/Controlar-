@@ -1424,11 +1424,55 @@ router.post('/asaas/webhook', async (req, res) => {
 
       case 'SUBSCRIPTION_CANCELED':
       case 'SUBSCRIPTION_DELETED':
-        // Revoke plan when subscription is canceled
+        // Check if user has accessUntil set (graceful cancellation by admin)
+        // If so, don't revoke immediately - user keeps access until that date
         console.log(`>>> Subscription canceled: ${event.subscription?.id}`);
-        if (event.subscription?.id) {
-          const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');
-          console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+        if (event.subscription?.id && firebaseAdmin) {
+          try {
+            const db = firebaseAdmin.firestore();
+            const usersRef = db.collection('users');
+            const snapshot = await usersRef.where('subscription.asaasSubscriptionId', '==', event.subscription.id).get();
+
+            if (!snapshot.empty) {
+              const userDoc = snapshot.docs[0];
+              const userData = userDoc.data();
+              const accessUntil = userData.subscription?.accessUntil;
+
+              if (accessUntil) {
+                // User has graceful cancellation - check if access period has passed
+                const accessUntilDate = new Date(accessUntil);
+                const now = new Date();
+
+                if (now < accessUntilDate) {
+                  // Access period not expired - do NOT revoke now
+                  console.log(`>>> User ${userDoc.id} has accessUntil ${accessUntil} - keeping plan active until then`);
+                  // Just ensure status is marked as canceled (in case webhook fired first)
+                  await userDoc.ref.update({
+                    'subscription.status': 'canceled',
+                    'subscription.autoRenew': false,
+                    'profile.subscription.status': 'canceled',
+                    'profile.subscription.autoRenew': false
+                  });
+                } else {
+                  // Access period expired - revoke now
+                  console.log(`>>> User ${userDoc.id} accessUntil ${accessUntil} has passed - revoking now`);
+                  const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');
+                  console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+                }
+              } else {
+                // No accessUntil set - immediate revocation (legacy behavior or immediate cancel)
+                const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');
+                console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+              }
+            } else {
+              console.log(`>>> No user found with subscription ${event.subscription.id}`);
+            }
+          } catch (checkError) {
+            console.error('>>> Error checking accessUntil:', checkError);
+            // Fallback to immediate revocation on error
+            const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');
+            console.log(`>>> Fallback plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
+          }
         }
         break;
 
@@ -1638,6 +1682,92 @@ router.post('/admin/apply-coupons', async (req, res) => {
   } catch (error) {
     console.error('>>> Apply Coupon Error:', error);
     res.status(500).json({ error: 'Erro ao aplicar cupons.', details: error.message });
+  }
+});
+
+// ========================================
+// CANCEL PLAN (GRACEFUL) - Cancel subscription but maintain access until next billing date
+// User keeps PRO access until nextBillingDate, then gets revoked automatically
+// ========================================
+router.post('/admin/cancel-plan', async (req, res) => {
+  const { userId, subscriptionId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId é obrigatório' });
+  }
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firebase não inicializado' });
+  }
+
+  try {
+    const db = firebaseAdmin.firestore();
+    const userRef = db.collection('users').doc(userId);
+    const userDoc = await userRef.get();
+
+    if (!userDoc.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado' });
+    }
+
+    const userData = userDoc.data();
+    const subscription = userData.subscription || {};
+    const currentPlan = subscription.plan || 'starter';
+    const nextBillingDate = subscription.nextBillingDate;
+    const asaasSubId = subscriptionId || subscription.asaasSubscriptionId;
+
+    // Cancel subscription on Asaas if we have the ID
+    if (asaasSubId && !asaasSubId.startsWith('manual_')) {
+      try {
+        await asaasRequest('DELETE', `/subscriptions/${asaasSubId}`);
+        console.log(`>>> [ADMIN] Canceled Asaas subscription: ${asaasSubId}`);
+      } catch (asaasError) {
+        console.warn(`>>> [ADMIN] Failed to cancel Asaas subscription ${asaasSubId}:`, asaasError.message);
+        // Continue anyway - maybe already canceled
+      }
+    }
+
+    const now = new Date().toISOString();
+
+    // Determine accessUntil date (use nextBillingDate, fallback to end of current month)
+    let accessUntil = nextBillingDate;
+    if (!accessUntil) {
+      // Fallback: end of current billing period (assume monthly, end of next month)
+      const fallbackDate = new Date();
+      fallbackDate.setMonth(fallbackDate.getMonth() + 1);
+      accessUntil = fallbackDate.toISOString().split('T')[0];
+    }
+
+    // Update subscription: status = canceled, BUT keep current plan until accessUntil
+    const updatePayload = {
+      'subscription.status': 'canceled',
+      'subscription.autoRenew': false,
+      'subscription.canceledAt': now,
+      'subscription.accessUntil': accessUntil,
+      'subscription.updatedAt': now,
+      'profile.subscription.status': 'canceled',
+      'profile.subscription.autoRenew': false,
+      'profile.subscription.canceledAt': now,
+      'profile.subscription.accessUntil': accessUntil,
+      'profile.subscription.updatedAt': now
+    };
+
+    // NOTE: We do NOT change subscription.plan here - user keeps PRO/Family until accessUntil
+
+    await userRef.update(updatePayload);
+
+    console.log(`>>> [ADMIN] Plan canceled gracefully for user ${userId}. Plan: ${currentPlan}, Access until: ${accessUntil}`);
+
+    res.json({
+      success: true,
+      message: `Assinatura cancelada. Usuário mantém acesso ${currentPlan.toUpperCase()} até ${accessUntil}`,
+      userId,
+      currentPlan,
+      accessUntil,
+      canceledAt: now
+    });
+  } catch (error) {
+    console.error('>>> Error canceling plan:', error);
+    res.status(500).json({ error: 'Erro ao cancelar plano', details: error.message });
   }
 });
 

@@ -40,7 +40,7 @@ import {
     DropdownItem,
     DropdownLabel
 } from './Dropdown';
-import { CustomSelect, CustomMonthPicker, Tooltip } from './UIComponents';
+import { CustomSelect, CustomMonthPicker, CustomDatePicker, Tooltip } from './UIComponents';
 import NumberFlow from '@number-flow/react';
 import { toast } from 'sonner';
 import { getAvatarColors, getInitials } from '../utils/avatarUtils';
@@ -71,6 +71,12 @@ interface AsaasPayment {
     creditCard?: {
         creditCardBrand: string;
         creditCardNumber: string;
+        holderName?: string; // Sometimes directly here
+    };
+    creditCardHolderInfo?: {
+        name: string;
+        email?: string;
+        cpfCnpj?: string;
     };
 }
 
@@ -85,6 +91,8 @@ export const AdminSubscriptions: React.FC = () => {
     const [planFilter, setPlanFilter] = useState<'all' | 'starter' | 'pro' | 'family'>('all');
     const [couponFilter, setCouponFilter] = useState<string>('all');
     const [showAdmins, setShowAdmins] = useState(true);
+    const [startDateFilter, setStartDateFilter] = useState('');
+    const [endDateFilter, setEndDateFilter] = useState('');
     const [asaasFilter, setAsaasFilter] = useState<'all' | 'verified' | 'unverified'>('all');
     const [sortOption, setSortOption] = useState<'name' | 'subscription_newest' | 'subscription_oldest' | 'next_billing'>('name');
     // Pagination removed
@@ -188,28 +196,24 @@ export const AdminSubscriptions: React.FC = () => {
         if (!cancelSubscriptionId) return;
         setIsCancelling(true);
 
-        // Find the user to revoke their plan
+        // Find the user to cancel their plan gracefully
         const userToCancel = users.find(u => u.subscription?.asaasSubscriptionId === cancelSubscriptionId);
 
         try {
-            // Cancel subscription on Asaas
-            const response = await fetch(`/api/asaas/subscription/${cancelSubscriptionId}`, {
-                method: 'DELETE'
+            // Use the new graceful cancel endpoint that maintains access until nextBillingDate
+            const response = await fetch('/api/admin/cancel-plan', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    userId: userToCancel?.id,
+                    subscriptionId: cancelSubscriptionId
+                })
             });
             const data = await response.json();
 
             if (data.success) {
-                // Also revoke the plan in Firestore
-                if (userToCancel?.id) {
-                    await fetch('/api/admin/revoke-plan', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId: userToCancel.id, reason: 'cancel' })
-                    });
-                }
-
-                toast.success('Assinatura cancelada e plano revogado com sucesso.');
-                // Update local state - change both status AND plan
+                toast.success(`Assinatura cancelada. Acesso ${data.currentPlan?.toUpperCase() || 'PRO'} mantido até ${data.accessUntil ? new Date(data.accessUntil).toLocaleDateString('pt-BR') : 'próximo vencimento'}.`);
+                // Update local state - change status to canceled but KEEP the plan
                 setUsers(prev => prev.map(u => {
                     if (u.subscription?.asaasSubscriptionId === cancelSubscriptionId) {
                         return {
@@ -217,8 +221,10 @@ export const AdminSubscriptions: React.FC = () => {
                             subscription: {
                                 ...u.subscription,
                                 status: 'canceled',
-                                plan: 'starter',
-                                autoRenew: false
+                                autoRenew: false,
+                                canceledAt: data.canceledAt,
+                                accessUntil: data.accessUntil
+                                // NOTE: plan stays the same (pro/family) until accessUntil
                             }
                         };
                     }
@@ -369,6 +375,7 @@ export const AdminSubscriptions: React.FC = () => {
         setIsProcessingBulk(true);
         let successCount = 0;
         let errorCount = 0;
+        const canceledUsers: { id: string; accessUntil?: string; canceledAt?: string }[] = [];
 
         try {
             // Filter selected users that are eligible for cancellation
@@ -381,18 +388,22 @@ export const AdminSubscriptions: React.FC = () => {
             for (const user of usersToCancel) {
                 try {
                     const subId = user.subscription!.asaasSubscriptionId!;
-                    // Cancel on Asaas
-                    const response = await fetch(`/api/asaas/subscription/${subId}`, {
-                        method: 'DELETE'
+                    // Use the new graceful cancel endpoint
+                    const response = await fetch('/api/admin/cancel-plan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: user.id,
+                            subscriptionId: subId
+                        })
                     });
                     const data = await response.json();
 
                     if (data.success) {
-                        // Revoke plan locally
-                        await fetch('/api/admin/revoke-plan', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ userId: user.id, reason: 'bulk_cancel' })
+                        canceledUsers.push({
+                            id: user.id,
+                            accessUntil: data.accessUntil,
+                            canceledAt: data.canceledAt
                         });
                         successCount++;
                     } else {
@@ -404,24 +415,26 @@ export const AdminSubscriptions: React.FC = () => {
                 }
             }
 
-            // Update local state
+            // Update local state - maintain plan, just update status
             if (successCount > 0) {
-                const canceledIds = usersToCancel.map(u => u.id);
                 setUsers(prev => prev.map(u => {
-                    if (canceledIds.includes(u.id)) {
+                    const canceledUser = canceledUsers.find(cu => cu.id === u.id);
+                    if (canceledUser) {
                         return {
                             ...u,
                             subscription: {
                                 ...u.subscription,
                                 status: 'canceled',
-                                plan: 'starter',
-                                autoRenew: false
+                                autoRenew: false,
+                                canceledAt: canceledUser.canceledAt,
+                                accessUntil: canceledUser.accessUntil
+                                // plan stays the same until accessUntil
                             }
                         };
                     }
                     return u;
                 }));
-                toast.success(`${successCount} assinaturas canceladas com sucesso.`);
+                toast.success(`${successCount} assinaturas canceladas. Usuários mantêm acesso até renovação.`);
             }
 
             if (errorCount > 0) {
@@ -576,9 +589,46 @@ export const AdminSubscriptions: React.FC = () => {
                 (asaasFilter === 'verified' && hasAsaas) ||
                 (asaasFilter === 'unverified' && !hasAsaas);
 
+            // Date Filter
+            const matchesDate = (() => {
+                if (!startDateFilter && !endDateFilter) return true;
+                const subStart = user.subscription?.startDate;
+                if (!subStart) return false;
+
+                const getLocalDateStr = (dateInput: any) => {
+                    if (!dateInput) return '';
+                    let d: Date;
+                    try {
+                        // Handle Firestore Timestamp
+                        if (dateInput && typeof dateInput === 'object' && 'toDate' in dateInput && typeof dateInput.toDate === 'function') {
+                            d = dateInput.toDate();
+                        } else {
+                            d = new Date(dateInput);
+                        }
+
+                        if (isNaN(d.getTime())) return '';
+
+                        // Format YYYY-MM-DD in Local Time
+                        const year = d.getFullYear();
+                        const month = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        return `${year}-${month}-${day}`;
+                    } catch (e) {
+                        return '';
+                    }
+                };
+
+                const dateStr = getLocalDateStr(subStart);
+                if (!dateStr) return false;
+
+                if (startDateFilter && dateStr < startDateFilter) return false;
+                if (endDateFilter && dateStr > endDateFilter) return false;
+                return true;
+            })();
+
             const matchesAdmin = showAdmins ? true : !user.isAdmin;
 
-            return matchesSearch && matchesStatus && matchesPlan && matchesCoupon && matchesAdmin && matchesAsaas;
+            return matchesSearch && matchesStatus && matchesPlan && matchesCoupon && matchesAdmin && matchesAsaas && matchesDate;
         }).sort((a, b) => {
             switch (sortOption) {
                 case 'name':
@@ -610,7 +660,7 @@ export const AdminSubscriptions: React.FC = () => {
     useEffect(() => {
         // Page reset removed
         setSelectedUserIds([]); // Clear selection on filter change to avoid confusion
-    }, [searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter, sortOption]);
+    }, [searchTerm, statusFilter, planFilter, couponFilter, showAdmins, asaasFilter, sortOption, startDateFilter, endDateFilter]);
 
     // Stats
     const stats = useMemo(() => {
@@ -711,7 +761,21 @@ export const AdminSubscriptions: React.FC = () => {
         };
     }, [users, coupons, showAdmins]);
 
-    const getStatusBadge = (status: string | undefined) => {
+    const getStatusBadge = (status: string | undefined, accessUntil?: string, plan?: string) => {
+        // Special case: canceled but still has access (accessUntil is in the future and plan is not starter)
+        if (status === 'canceled' && accessUntil && plan && plan !== 'starter') {
+            const accessDate = new Date(accessUntil);
+            const now = new Date();
+            if (accessDate > now) {
+                return (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                        <Calendar size={10} />
+                        Acesso até {new Date(accessUntil).toLocaleDateString('pt-BR')}
+                    </span>
+                );
+            }
+        }
+
         switch (status) {
             case 'active':
                 return (
@@ -1170,6 +1234,48 @@ export const AdminSubscriptions: React.FC = () => {
 
                 {/* Filter Dropdowns */}
                 <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0 ml-auto">
+                    {/* Date Filter */}
+                    <Dropdown>
+                        <DropdownTrigger className="h-full">
+                            <button className={`flex items-center gap-2 px-4 py-2.5 rounded-xl border transition-colors whitespace-nowrap ${startDateFilter || endDateFilter ? 'bg-[#d97757]/10 border-[#d97757]/30 text-[#d97757]' : 'bg-[#30302E] border-[#373734] text-gray-400 hover:text-white'}`}>
+                                <Calendar size={16} />
+                                <span>{startDateFilter || endDateFilter ? 'Período Definido' : 'Data'}</span>
+                                <ChevronDown size={14} />
+                            </button>
+                        </DropdownTrigger>
+                        <DropdownContent className="w-auto p-3">
+                            <DropdownLabel>Filtrar por Início</DropdownLabel>
+                            <div className="flex flex-col gap-3 mt-2 min-w-[200px]">
+                                <div>
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">De</label>
+                                    <CustomDatePicker
+                                        value={startDateFilter}
+                                        onChange={setStartDateFilter}
+                                        placeholder="Data Inicial"
+                                        dropdownMode="fixed"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-[10px] text-gray-500 uppercase font-bold mb-1 block">Até</label>
+                                    <CustomDatePicker
+                                        value={endDateFilter}
+                                        onChange={setEndDateFilter}
+                                        placeholder="Data Final"
+                                        dropdownMode="fixed"
+                                    />
+                                </div>
+                                {(startDateFilter || endDateFilter) && (
+                                    <button
+                                        onClick={() => { setStartDateFilter(''); setEndDateFilter(''); }}
+                                        className="mt-1 text-xs text-red-400 hover:text-red-300 underline self-start"
+                                    >
+                                        Limpar datas
+                                    </button>
+                                )}
+                            </div>
+                        </DropdownContent>
+                    </Dropdown>
+
                     {/* Status Filter */}
                     <Dropdown>
                         <DropdownTrigger className="h-full">
@@ -1263,7 +1369,7 @@ export const AdminSubscriptions: React.FC = () => {
                         </DropdownContent>
                     </Dropdown>
 
-                    {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all' || showAdmins) && (
+                    {(searchTerm || statusFilter !== 'all' || planFilter !== 'all' || couponFilter !== 'all' || showAdmins || startDateFilter || endDateFilter) && (
                         <button
                             onClick={() => {
                                 setSearchTerm('');
@@ -1273,6 +1379,8 @@ export const AdminSubscriptions: React.FC = () => {
                                 setAsaasFilter('all');
                                 setShowAdmins(true);
                                 setSortOption('name');
+                                setStartDateFilter('');
+                                setEndDateFilter('');
                             }}
                             className="p-2.5 text-gray-500 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
                             title="Limpar Filtros"
@@ -1465,7 +1573,7 @@ export const AdminSubscriptions: React.FC = () => {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex items-center gap-2">
-                                                            {getStatusBadge(user.subscription?.status)}
+                                                            {getStatusBadge(user.subscription?.status, user.subscription?.accessUntil, user.subscription?.plan)}
                                                             {user.subscription?.asaasSubscriptionId && (
                                                                 <Tooltip content="Verificado no Asaas">
                                                                     <div className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400">
@@ -1520,7 +1628,7 @@ export const AdminSubscriptions: React.FC = () => {
                                                 <>
                                                     <td className="px-4 py-3 border-r border-[#373734]">
                                                         <div className="flex items-center gap-2">
-                                                            {getStatusBadge(user.subscription?.status)}
+                                                            {getStatusBadge(user.subscription?.status, user.subscription?.accessUntil, user.subscription?.plan)}
                                                             {user.subscription?.asaasSubscriptionId && (
                                                                 <Tooltip content="Verificado no Asaas">
                                                                     <div className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400">
@@ -1719,6 +1827,24 @@ export const AdminSubscriptions: React.FC = () => {
                                                                         ? ` ${payment.discount.value}%`
                                                                         : ` R$ ${payment.discount.value.toFixed(2)}`}
                                                                 </span>
+                                                            </div>
+                                                        )}
+
+                                                        {/* Credit Card Info */}
+                                                        {payment.creditCard && (
+                                                            <div className="flex items-center gap-1.5 mb-2">
+                                                                <CreditCard size={12} className="text-gray-500" />
+                                                                <span className="text-xs text-gray-400">
+                                                                    {payment.creditCard.creditCardBrand} **** {payment.creditCard.creditCardNumber}
+                                                                </span>
+                                                                {(payment.creditCardHolderInfo?.name || payment.creditCard.holderName) && (
+                                                                    <>
+                                                                        <span className="text-gray-600 mx-1">•</span>
+                                                                        <span className="text-xs text-gray-400 capitalize">
+                                                                            {payment.creditCardHolderInfo?.name || payment.creditCard.holderName}
+                                                                        </span>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         )}
 
@@ -1963,7 +2089,7 @@ export const AdminSubscriptions: React.FC = () => {
                                 </div>
                                 <div className="p-3 bg-[#30302E] rounded-xl">
                                     <p className="text-xs text-gray-500 uppercase font-bold tracking-wide mb-1">Status</p>
-                                    {getStatusBadge(idSearchResult.subscription?.status)}
+                                    {getStatusBadge(idSearchResult.subscription?.status, idSearchResult.subscription?.accessUntil, idSearchResult.subscription?.plan)}
                                 </div>
                             </div>
 
