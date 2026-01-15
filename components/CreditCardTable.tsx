@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronsUpDown } from 'lucide-react';
+import { ChevronsUpDown, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
@@ -17,16 +17,19 @@ import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import { getInvoiceMonthKey } from '../services/invoiceCalculator';
 import {
-  buildInvoices,
-  formatMonthKey as formatMonthKeyBuilder,
-  formatCurrency as formatCurrencyBuilder,
-  isCreditCardPayment as isCreditCardPaymentBuilder,
-  generateInvoiceForecast,
   calculateFutureLimitImpact,
-  type InvoiceBuildResult
+  getTransactionInvoiceMonthKey,
+  isCreditCardPayment,
+  buildInvoices,
+  generateInvoiceForecast,
+  type InvoiceBuildResult,
+  calculateInvoicePeriodDates,
+  validateClosingDay,
+  toMonthKey
 } from '../services/invoiceBuilder';
 import { exportToCSV } from '../utils/export';
 import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
+import { getExchangeRateSync, fetchExchangeRates } from '../services/currencyService';
 
 // ============================================================ 
 // Helper: Calculate Invoice Logic (Extracted for Preview)
@@ -42,6 +45,123 @@ function formatMonthKey(monthKey: string): string {
   return `${MONTH_NAMES[monthIndex]}/${year}`;
 }
 
+// ============================================================ 
+// ============================================================ 
+// COMPONENTE: InvoiceTag (Tag Editável de Fatura)
+// ============================================================ 
+const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transaction: Transaction, summary: any, onUpdate: (t: Transaction) => void, closingDay: number }) => {
+  // Safe validation
+  if (!summary || !closingDay) return null;
+
+  const effectiveMonthKey = transaction.manualInvoiceMonth || getTransactionInvoiceMonthKey(transaction.date, closingDay);
+
+  const monthKeyToLabel = (k?: string) => {
+    if (!k) return '?';
+    const [y, m] = k.split('-');
+    const months = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const monthIndex = parseInt(m) - 1;
+    if (monthIndex < 0 || monthIndex > 11) return k;
+    return `${months[monthIndex]}`; // Ex: JAN
+  };
+
+  // Helper para calcular o próximo monthKey a partir de um monthKey existente
+  const getNextMonthKey = (monthKey: string): string => {
+    if (!monthKey) return '';
+    const [year, month] = monthKey.split('-').map(Number);
+    const nextMonth = month === 12 ? 1 : month + 1;
+    const nextYear = month === 12 ? year + 1 : year;
+    return `${nextYear}-${String(nextMonth).padStart(2, '0')}`;
+  };
+
+  const currentLabel = monthKeyToLabel(effectiveMonthKey);
+  const isManual = !!transaction.manualInvoiceMonth;
+
+  // Garantir que nextMonthKey tenha um valor válido
+  // Se não existir, calcula a partir do currentMonthKey
+  const validNextMonthKey = summary.nextMonthKey || getNextMonthKey(summary.currentMonthKey);
+
+  // Opções de destino com identificador único para cada tipo
+  // Usamos 'type' como parte do key do React para evitar duplicação
+  const allOptions = [
+    { type: 'last', key: summary.lastMonthKey, label: `Anterior (${monthKeyToLabel(summary.lastMonthKey)})` },
+    { type: 'current', key: summary.currentMonthKey, label: `Atual (${monthKeyToLabel(summary.currentMonthKey)})` },
+    { type: 'next', key: validNextMonthKey, label: `Próxima (${monthKeyToLabel(validNextMonthKey)})` }
+  ];
+
+  // Filtra opções com keys inválidos ou vazios E remove duplicatas de monthKey
+  // Mantemos a ordem de prioridade: last -> current -> next
+  const seenMonthKeys = new Set<string>();
+  const options = allOptions.filter(opt => {
+    if (!opt.key || opt.key.length === 0) return false;
+    if (seenMonthKeys.has(opt.key)) return false; // Remove duplicatas
+    seenMonthKeys.add(opt.key);
+    return true;
+  });
+
+  // Handler para update com validação
+  const handleMoveToInvoice = (transaction: Transaction, targetKey: string) => {
+    if (!targetKey) {
+      console.error('[InvoiceTag] Tentativa de mover para key vazio');
+      return;
+    }
+    console.log('[InvoiceTag] Movendo transação para fatura:', {
+      transactionId: transaction.id,
+      description: transaction.description,
+      fromMonth: effectiveMonthKey,
+      toMonth: targetKey
+    });
+    onUpdate({ ...transaction, manualInvoiceMonth: targetKey });
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <Dropdown>
+        <DropdownTrigger className={`
+          flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] uppercase font-bold tracking-wide border transition-all cursor-pointer
+          ${isManual
+            ? 'bg-purple-500/10 text-purple-400 border-purple-500/20 hover:bg-purple-500/20'
+            : 'bg-[#373734]/50 text-gray-400 border-[#373734] hover:text-white hover:border-gray-500'
+          }
+        `}>
+          {isManual && <Edit2 size={8} />}
+          {currentLabel}
+          <ChevronDown size={10} className="opacity-50" />
+        </DropdownTrigger>
+        <DropdownContent align="left" className="w-48">
+          <div className="px-3 py-2 text-[10px] text-gray-500 font-semibold uppercase tracking-wider border-b border-[#373734] mb-1">
+            Mover para fatura...
+          </div>
+          {options.map(opt => (
+            <DropdownItem
+              key={`${opt.type}-${opt.key}`}
+              onClick={() => handleMoveToInvoice(transaction, opt.key)}
+              className={effectiveMonthKey === opt.key ? 'bg-white/5 text-white' : ''}
+            >
+              <div className="flex items-center justify-between w-full">
+                <span>{opt.label}</span>
+                {effectiveMonthKey === opt.key && <Check size={12} />}
+              </div>
+            </DropdownItem>
+          ))}
+          {isManual && (
+            <>
+              <div className="h-px bg-[#373734] my-1" />
+              <DropdownItem
+                onClick={() => onUpdate({ ...transaction, manualInvoiceMonth: undefined })}
+                className="text-red-400 hover:text-red-300"
+                icon={X}
+              >
+                Remover ajuste manual
+              </DropdownItem>
+            </>
+          )}
+        </DropdownContent>
+      </Dropdown>
+    </div>
+  );
+};
+
+
 const calculateInvoiceSummary = (
   card: ConnectedAccount | undefined,
   transactions: Transaction[],
@@ -55,6 +175,7 @@ const calculateInvoiceSummary = (
   // ========================================
   const invoicePeriods = card?.invoicePeriods;
   const closingDay = invoicePeriods?.closingDay || card?.closingDay || 10;
+
 
   // Helper para converter string YYYY-MM-DD para Date
   const parseDate = (dateStr: string): Date => {
@@ -219,6 +340,27 @@ const calculateInvoiceSummary = (
   const isTxCreditCardPayment = (tx: Transaction) => {
     const d = (tx.description || '').toLowerCase();
     const c = (tx.category || '').toLowerCase();
+
+    // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
+    const isRefund =
+      d.includes('estorno') ||
+      d.includes('reembolso') ||
+      d.includes('devolução') ||
+      d.includes('cancelamento') ||
+      d.includes('refund') ||
+      d.includes('chargeback') ||
+      d.includes('crédito') ||
+      d.includes('credito') ||
+      c.includes('refund') ||
+      c.includes('estorno') ||
+      c.includes('reembolso');
+
+    // Se for reembolso, NÃO é pagamento de fatura
+    if (isRefund) {
+      return false;
+    }
+
+    // Keywords que indicam PAGAMENTO DE FATURA
     return (
       c.includes('credit card payment') ||
       c === 'pagamento de fatura' ||
@@ -228,8 +370,7 @@ const calculateInvoiceSummary = (
       d.includes('credit card payment') ||
       d.includes('pag fatura') ||
       d.includes('pgto fatura') ||
-      d === 'pgto' ||
-      (tx.type === 'income' && tx.accountType === 'CREDIT_CARD')
+      d === 'pgto'
     );
   };
 
@@ -607,6 +748,11 @@ const useInvoiceBuilder = (
         totalInstallments: item.totalInstallments,
         isProjected: item.isProjected,
         isPayment: item.isPayment,
+        manualInvoiceMonth: item.manualInvoiceMonth,
+        // Dados de moeda para transações internacionais
+        currencyCode: item.currencyCode,
+        amountOriginal: item.amountOriginal,
+        amountInAccountCurrency: item.amountInAccountCurrency,
         pluggyRaw: item.pluggyRaw
       }));
     };
@@ -654,7 +800,7 @@ const useInvoiceBuilder = (
           : new Date(),
         lastMonthKey: result.closedInvoice.referenceMonth,
         currentMonthKey: result.currentInvoice.referenceMonth,
-        nextMonthKey: result.futureInvoices[0]?.referenceMonth || ''
+        nextMonthKey: result.periods.nextMonthKey || ''
       }
     };
   }, [card, transactions, cardId, monthOffset]);
@@ -701,6 +847,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+
+  // Cotações de câmbio em tempo real
+  const [exchangeRatesLoaded, setExchangeRatesLoaded] = React.useState(false);
+
+  // Carregar cotações ao montar o componente
+  React.useEffect(() => {
+    fetchExchangeRates().then(() => {
+      setExchangeRatesLoaded(true);
+      console.log('[CreditCardTable] Cotações de câmbio carregadas');
+    });
+  }, []);
 
   // Enforce selecting the first visible card on load or if selected card becomes hidden
   React.useEffect(() => {
@@ -832,6 +989,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // Filter Modal State (Mobile)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
 
+
+
   // Invoice Cards Visibility with Persistence
   const [showInvoiceCards, setShowInvoiceCards] = useState(() => {
     // Default to true (expanded) if no preference saved
@@ -879,6 +1038,27 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     return `${d}/${m}/${y}`;
   };
 
+  /**
+   * Calcula o valor de uma transação em BRL, convertendo moeda estrangeira em tempo real
+   */
+  const getTransactionAmountInBRL = (t: Transaction): number => {
+    const txCurrencyCode = (t as any).currencyCode
+      || (t as any).pluggyRaw?.currencyCode
+      || 'BRL';
+
+    if (txCurrencyCode === 'BRL') {
+      return Math.abs(t.amount);
+    }
+
+    // Transação em moeda estrangeira - converter em tempo real
+    const txAmountOriginal = (t as any).amountOriginal
+      || Math.abs((t as any).pluggyRaw?.amount || 0)
+      || Math.abs(t.amount);
+
+    const exchangeRate = getExchangeRateSync(txCurrencyCode);
+    return Math.abs(txAmountOriginal) * exchangeRate;
+  };
+
   const handleSort = (field: keyof Transaction) => {
     if (sortField === field) {
       setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
@@ -914,6 +1094,25 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     const d = (tx.description || '').toLowerCase();
     const c = (tx.category || '').toLowerCase();
 
+    // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
+    const isRefund =
+      d.includes('estorno') ||
+      d.includes('reembolso') ||
+      d.includes('devolução') ||
+      d.includes('cancelamento') ||
+      d.includes('refund') ||
+      d.includes('chargeback') ||
+      d.includes('crédito') ||
+      d.includes('credito') ||
+      c.includes('refund') ||
+      c.includes('estorno') ||
+      c.includes('reembolso');
+
+    // Se for reembolso, NÃO é pagamento de fatura
+    if (isRefund) {
+      return false;
+    }
+
     // categoria do Pluggy + descrições comuns de pagamento de fatura
     return (
       c.includes('credit card payment') ||
@@ -924,9 +1123,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       d.includes('credit card payment') ||
       d.includes('pag fatura') ||
       d.includes('pgto fatura') ||
-      d === 'pgto' ||
-      // Transações do tipo income em cartão de crédito geralmente são pagamentos
-      (tx.type === 'income' && tx.accountType === 'CREDIT_CARD')
+      d === 'pgto'
     );
   };
 
@@ -1041,6 +1238,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           totalInstallments: item.totalInstallments,
           isProjected: item.isProjected,
           isPayment: item.isPayment,
+          // Dados de moeda para transações internacionais
+          currencyCode: item.currencyCode,
+          amountOriginal: item.amountOriginal,
+          amountInAccountCurrency: item.amountInAccountCurrency,
           pluggyRaw: item.pluggyRaw
         }));
       };
@@ -1085,7 +1286,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         // Month keys
         lastMonthKey: closedInvoice.referenceMonth,
         currentMonthKey: currentInvoice.referenceMonth,
-        nextMonthKey: nextInvoice?.referenceMonth || '',
+        nextMonthKey: nextInvoice?.referenceMonth || periods.nextMonthKey,
         allFutureTotal,
         // Dados extras do novo sistema
         forecast: invoiceBuilderData.forecast,
@@ -1232,12 +1433,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // ============================================================
   // CÁLCULO DE TOTAIS VISUAIS (Para consistência com a tabela)
   // Garante que o valor no card seja igual à soma das transações exibidas
+  // Usa conversão de moeda em tempo real para transações internacionais
   // ============================================================
   const visualTotals = useMemo(() => {
     const calcTotal = (txs: Transaction[]) => txs.reduce((acc, tx) => {
-      // Usa isCreditCardPaymentBuilder para garantir consistência
-      if (isCreditCardPaymentBuilder(tx)) return acc;
-      const amt = Math.abs(Number(tx.amount) || 0);
+      // Usa isCreditCardPayment para garantir consistência
+      if (isCreditCardPayment(tx)) return acc;
+      // Usa getTransactionAmountInBRL para converter moeda estrangeira
+      const amt = getTransactionAmountInBRL(tx);
       return tx.type === 'income' ? acc - amt : acc + amt;
     }, 0);
 
@@ -1250,7 +1453,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       current: calcTotal(invoiceSummary.currentInvoice.transactions),
       next: calcTotal(invoiceSummary.nextInvoice.transactions)
     };
-  }, [invoiceSummary, selectedCard]);
+  }, [invoiceSummary, selectedCard, exchangeRatesLoaded]);
 
   // Filter invoice transactions with search, date filters and sorting
   const filteredTransactions = useMemo(() => {
@@ -1293,14 +1496,16 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   }, [chargeTransactions, filteredTransactions]);
 
   // Calculate total amount from filtered transactions (incluindo encargos)
+  // Usa conversão de moeda em tempo real para transações internacionais
   const totalAmount = useMemo(() => {
     return transactionsWithCharges.reduce((acc, tx) => {
       if (isCreditCardPayment(tx)) return acc;
-      const amt = Math.abs(Number((tx as any).amount) || 0);
+      // Usa getTransactionAmountInBRL para converter moeda estrangeira
+      const amt = getTransactionAmountInBRL(tx);
       if (tx.type === 'income') return acc - amt;
       return acc + amt;
     }, 0);
-  }, [transactionsWithCharges]);
+  }, [transactionsWithCharges, exchangeRatesLoaded]);
 
   // Auto-remove duplicates when transactions load
   React.useEffect(() => {
@@ -1427,6 +1632,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             <span className="hidden sm:inline">Exportar</span>
           </button>
 
+
+
           {((isManualMode || selectedCard?.connectionMode === 'MANUAL') && onAdd) && (
             <button
               onClick={() => {
@@ -1459,20 +1666,20 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         <div className="mb-6">
           {/* Cards Selector - Smooth Tabs with Motion */}
           <div className="mb-8">
-            <div className="flex items-center gap-2 overflow-x-auto custom-scrollbar p-1">
+            <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar p-1">
               {visibleCreditCardAccounts.map((card, index) => {
                 const isSelected = selectedCardId === card.id;
                 return (
                   <button
                     key={card.id}
                     onClick={() => setSelectedCardId(card.id)}
-                    className={`relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-medium transition-all duration-300 outline-none ${isSelected ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all duration-300 outline-none ${isSelected ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
                   >
                     {isSelected && (
                       <motion.div
                         layoutId="activeTab"
-                        className="absolute inset-0 bg-[#232322] border border-[#373734] rounded-xl shadow-lg"
-                        transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                        className="absolute inset-0 bg-[#232322] border border-[#373734] rounded-full shadow-sm"
+                        transition={{ type: "spring", stiffness: 250, damping: 25 }}
                       />
                     )}
                     {/* Logo do banco ou ícone genérico */}
@@ -1480,14 +1687,14 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       <img
                         src={card.connector.imageUrl}
                         alt=""
-                        className="relative z-10 w-5 h-5 rounded object-contain"
+                        className="relative z-10 w-4 h-4 rounded-full object-contain bg-white p-0.5"
                       />
                     ) : (
-                      <div className={`relative z-10 flex items-center justify-center p-1 rounded-md transition-all ${isSelected ? 'bg-[#d97757]/40 text-white shadow-md shadow-[#d97757]/10 mr-1' : 'bg-[#373734]/50 text-gray-500'}`}>
+                      <div className={`relative z-10 flex items-center justify-center p-0.5 rounded-full transition-all ${isSelected ? 'text-[#d97757]' : 'text-gray-600'}`}>
                         <CreditCard size={12} className="" />
                       </div>
                     )}
-                    <span className="relative z-10 truncate max-w-[120px]">
+                    <span className="relative z-10 truncate max-w-[100px] tracking-wide">
                       {card.name || card.institution || 'Cartão'}
                     </span>
                   </button>
@@ -1558,16 +1765,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         <img
                           src={selectedCard.connector.imageUrl}
                           alt=""
-                          className="w-10 h-10 rounded-xl object-contain"
+                          className="w-10 h-10 rounded-full object-contain bg-white p-1"
                         />
                       ) : (
-                        <div className="p-2.5 bg-[#d97757]/40 rounded-xl shadow-lg shadow-[#d97757]/10">
+                        <div className="p-2.5 bg-[#d97757]/40 rounded-full shadow-lg shadow-[#d97757]/10">
                           <CreditCard size={20} className="text-white" />
                         </div>
                       )}
                       <div>
                         <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-bold text-white">{selectedCard.name || selectedCard.institution || 'Cartão'}</h3>
+                          <h3 className="text-lg font-bold text-white max-w-[150px] truncate sm:max-w-none">
+                            {selectedCard.name || selectedCard.institution || 'Cartão'}
+                          </h3>
                           <button
                             onClick={() => setShowInvoiceCards(!showInvoiceCards)}
                             className="p-1 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
@@ -1579,27 +1788,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         <p className="text-xs text-gray-500">
                           Fecha dia {invoiceSummary.closingDay} • Vence dia {invoiceSummary.dueDay}
                         </p>
-                      </div>
-                    </div>
-
-                    {/* Beta Disclaimer - Center */}
-                    <div className="hidden md:flex flex-1 justify-start mx-4">
-                      <div className="bg-blue-500/5 border border-blue-500/10 rounded-lg px-3 py-1.5 flex items-center gap-2 max-w-xl">
-                        <AlertCircle size={14} className="text-blue-400 shrink-0" />
-                        <div className="text-[10px] text-gray-400 leading-tight flex items-center gap-2">
-                          <span>
-                            <span className="text-blue-400 font-bold">Funcionalidade em Beta:</span> O cálculo de faturas está em fase de testes e pode apresentar divergências.
-                          </span>
-                          {onOpenFeedback && (
-                            <button
-                              onClick={onOpenFeedback}
-                              className="text-gray-300 hover:text-white underline decoration-gray-600 hover:decoration-white underline-offset-2 transition-all flex items-center gap-1 shrink-0 whitespace-nowrap"
-                            >
-                              Reportar problema
-                              <ChevronRight size={10} />
-                            </button>
-                          )}
-                        </div>
                       </div>
                     </div>
 
@@ -1694,7 +1882,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               {invoicePaymentInfo.last.isPaid ? (
                                 <div className="flex flex-col">
                                   <span className={`text-xl font-bold font-mono tracking-tight line-through opacity-50 ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                    {formatCurrency(visualTotals.last)}
+                                    {formatCurrency(invoicePaymentInfo.last.total)}
                                   </span>
                                   <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
                                     <Check size={12} /> Pago: {formatCurrency(invoicePaymentInfo.last.paidAmount)}
@@ -1702,7 +1890,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 </div>
                               ) : (
                                 <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                  {formatCurrency(visualTotals.last)}
+                                  {formatCurrency(invoicePaymentInfo.last.total)}
                                 </span>
                               )}
                               <span className="text-[10px] text-gray-500">
@@ -2067,6 +2255,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               </DropdownContent>
                             </Dropdown>
                           </th>
+                          <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">
+                            <span className="flex items-center justify-center gap-2 text-gray-400">
+                              Fatura
+                            </span>
+                          </th>
+
                           <th className="px-6 py-4 border-b border-r border-[#373734]">
                             <Dropdown>
                               <DropdownTrigger className="flex items-center gap-2 hover:text-white transition-colors cursor-pointer w-full text-left">
@@ -2138,19 +2332,53 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           </th>
 
                           <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-                          {isManualModeActive && (
-                            <th className="px-6 py-4 border-b border-[#373734] w-28 text-center last:rounded-tr-xl">Ações</th>
-                          )}
+
                         </tr>
                       </thead>
 
-                      <tbody className="divide-y divide-[#373734]">
+                      <motion.tbody
+                        key={selectedCardId}
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        transition={{ duration: 0.3, ease: "easeOut" }}
+                        className="divide-y divide-[#373734]"
+                      >
                         {transactionsWithCharges.map((t, index) => {
                           const isCharge = (t as any).isCharge === true;
                           const isPayment = (t as any).isPayment === true;
                           const isLate = (t as any).isLate === true;
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
+
+                          // Detectar transação de IOF (imposto sobre compra internacional)
+                          const descLower = (t.description || '').toLowerCase();
+                          const isIOF = (t as any).isIOF === true ||
+                            descLower.includes('iof') ||
+                            descLower.includes('imposto') ||
+                            (descLower.includes('tax') && descLower.includes('internacional'));
+
+                          // Extrair dados de moeda (direto ou do pluggyRaw para transações antigas)
+                          const txCurrencyCode = (t as any).currencyCode
+                            || (t as any).pluggyRaw?.currencyCode
+                            || 'BRL';
+                          // Valor original em moeda estrangeira (ex: 20 USD)
+                          // Pega do campo direto, ou do pluggyRaw (com Math.abs pois pode ser negativo)
+                          const txAmountOriginal = (t as any).amountOriginal
+                            || Math.abs((t as any).pluggyRaw?.amount || 0)
+                            || Math.abs(t.amount);
+                          const isInternational = txCurrencyCode && txCurrencyCode !== 'BRL';
+
+                          // Para transações internacionais, SEMPRE converter em tempo real
+                          // Isso garante valor correto mesmo para transações antigas
+                          let displayAmount: number;
+                          if (isInternational) {
+                            // Converter em tempo real usando API de câmbio
+                            const exchangeRate = getExchangeRateSync(txCurrencyCode);
+                            displayAmount = Math.abs(txAmountOriginal) * exchangeRate;
+                          } else {
+                            displayAmount = Math.abs(t.amount);
+                          }
+
                           return (
                             <tr
                               key={t.id}
@@ -2188,6 +2416,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs border-r border-[#373734]">
                                 {formatDate(t.date)}
                               </td>
+                              <td className="px-6 py-4 border-r border-[#373734]">
+                                <div className="flex items-center justify-center">
+                                  <InvoiceTag
+                                    transaction={t}
+                                    summary={invoiceSummary}
+                                    onUpdate={onUpdate}
+                                    closingDay={invoiceSummary.closingDay}
+                                  />
+                                </div>
+                              </td>
+
                               <td className="px-6 py-4 text-gray-200 font-medium border-r border-[#373734]">
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2 flex-wrap">
@@ -2250,6 +2489,18 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         Estimado
                                       </span>
                                     )}
+                                    {isIOF && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-orange-500/10 text-orange-400 border border-orange-500/20"
+                                        title="IOF - Imposto sobre Operações Financeiras para compras internacionais"
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                          <path d="M12 22a10 10 0 1 1 0-20 10 10 0 0 1 0 20z" />
+                                          <path d="M12 6v6l4 2" />
+                                        </svg>
+                                        IOF
+                                      </span>
+                                    )}
                                   </div>
                                   {(t as any).totalInstallments > 1 && (
                                     <span className="text-[10px] text-gray-500 font-mono">
@@ -2284,13 +2535,33 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 </div>
                               </td>
                               <td className="px-6 py-4 text-right border-r border-[#373734]">
-                                <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
-                                  : isCharge ? 'text-red-400'
-                                    : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
-                                      : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
-                                  }`}>
-                                  {t.type === 'income' ? '+' : '-'} {formatCurrency(Math.abs(t.amount))}
-                                </span>
+                                <div className="flex flex-col items-end gap-0.5">
+                                  <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
+                                    : isCharge ? 'text-red-400'
+                                      : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
+                                        : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                    }`}>
+                                    {t.type === 'income' ? '+' : '-'} {formatCurrency(displayAmount)}
+                                  </span>
+                                  {/* Sinalizador de moeda estrangeira (USD, EUR, etc.) */}
+                                  {isInternational && (
+                                    <div className="flex items-center gap-1">
+                                      <span
+                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                        title={`Cobrança internacional em ${txCurrencyCode}. Valor original: ${new Intl.NumberFormat('en-US', { style: 'currency', currency: txCurrencyCode || 'USD' }).format(Math.abs(txAmountOriginal))}`}
+                                      >
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" className="shrink-0">
+                                          <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                          <path d="M19 5a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-14a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3zm-7 4a3 3 0 0 0 -2.996 2.85l-.004 .15a3 3 0 1 0 3 -3m6.01 2h-.01a1 1 0 0 0 0 2h.01a1 1 0 0 0 0 -2m-12 0h-.01a1 1 0 1 0 .01 2a1 1 0 0 0 0 -2" />
+                                        </svg>
+                                        {txCurrencyCode}
+                                        <span className="text-blue-300 font-mono">
+                                          {new Intl.NumberFormat('en-US', { style: 'currency', currency: txCurrencyCode || 'USD' }).format(Math.abs(txAmountOriginal))}
+                                        </span>
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
                               </td>
 
                               <td className="px-6 py-4 text-center border-r border-[#373734]">
@@ -2354,7 +2625,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                             </td>
                           </tr>
                         )}
-                      </tbody>
+                      </motion.tbody>
                     </table>
                   </div>
 
@@ -2576,6 +2847,19 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             title={`Configuração do ${selectedCard?.name || selectedCard?.institution || "Cartão"}`}
             icon={<Settings size={18} />}
             themeColor="#d97757"
+            banner={
+              <div className="bg-blue-500/10 border-b border-blue-500/10 px-6 py-2.5 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-2 text-xs text-blue-300/80">
+                  <AlertCircle size={14} className="text-blue-400 shrink-0" />
+                  <span>
+                    <strong className="text-blue-400 font-semibold">Funcionalidade em Beta:</strong> Pode haver inconsistências ao alterar as datas manualmente.
+                  </span>
+                </div>
+                <a href="#" className="text-[10px] font-medium text-blue-400 hover:text-blue-300 whitespace-nowrap flex items-center gap-1 transition-colors">
+                  Reportar problema <ChevronRight size={10} />
+                </a>
+              </div>
+            }
             footer={
               <div className="flex gap-3">
                 <Button
@@ -2608,22 +2892,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             }
           >
             <div className="space-y-5">
-              <div className="p-4 bg-amber-500/10 border border-amber-500/20 rounded-xl">
-                <div className="flex gap-3">
-                  <AlertTriangle className="text-amber-500 shrink-0 mt-0.5" size={18} />
-                  <div className="space-y-1">
-                    <h4 className="text-sm font-bold text-amber-500">Atenção na Configuração</h4>
-                    <p className="text-xs text-gray-400 leading-relaxed">
-                      Alterar o dia de fechamento pode reorganizar suas faturas passadas. Para maior precisão, recomendamos usar a sincronização automática se disponível.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-
-              </div>
-
               <div className="space-y-4">
 
 
@@ -2660,8 +2928,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               </div>
 
               {/* Preview */}
-              <div className="p-4 bg-[#1a1a19] rounded-xl border border-[#373734]">
-                <p className="text-xs text-gray-500 mb-3 font-semibold uppercase tracking-wide">Prévia de Ciclos</p>
+              {/* Preview */}
+              <div className="pt-2">
+                <p className="text-[10px] text-gray-500 mb-3 font-bold uppercase tracking-wider pl-1">Prévia de Novos Ciclos</p>
 
                 {cardSettings.manualLastClosingDate && cardSettings.manualCurrentClosingDate ? (() => {
                   // Calculate real preview with simplified method (calling the main calculator with override)
@@ -2678,38 +2947,58 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                   return (
                     <div className="grid grid-cols-2 gap-3">
                       {/* Fatura Atual */}
-                      <div style={{ backgroundColor: '#30302E' }} className="border border-blue-500/20 rounded-lg p-3 relative overflow-hidden">
-                        <p className="text-[10px] text-blue-400 font-bold uppercase mb-1">Fatura Atual</p>
-                        <p className="text-lg font-bold text-white font-mono leading-none mb-2">
-                          {formatCurrency(previewSummary.currentInvoice.total)}
-                        </p>
-                        <p className="text-[10px] text-gray-400 font-mono">
-                          {currentStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} até {currentClosing.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                        </p>
-                        <p className="text-[9px] text-gray-500 mt-1">
-                          Fecha em {formatDate(cardSettings.manualCurrentClosingDate)}
-                        </p>
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between group hover:border-white/20 transition-all">
+                        <div>
+                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide mb-2">Fatura Atual</p>
+                          <p className="text-xl font-bold text-white font-mono tracking-tight">
+                            {formatCurrency(previewSummary.currentInvoice.total)}
+                          </p>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-white/5 space-y-1">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-gray-500">Período</span>
+                            <span className="text-gray-300 font-medium">
+                              {currentStart.getDate()}/{currentStart.getMonth() + 1} até {currentClosing.getDate()}/{currentClosing.getMonth() + 1}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-gray-500">Fecha em</span>
+                            <span className="text-gray-300 font-medium">{formatDate(cardSettings.manualCurrentClosingDate)}</span>
+                          </div>
+                        </div>
                       </div>
 
                       {/* Próxima Fatura */}
-                      <div style={{ backgroundColor: '#30302E' }} className="border border-[#d97757]/30 rounded-lg p-3 relative overflow-hidden">
-                        <p className="text-[10px] text-[#d97757] font-bold uppercase mb-1">Próxima Fatura</p>
-                        <p className="text-lg font-bold text-white font-mono leading-none mb-2">
-                          {formatCurrency(previewSummary.nextInvoice.total)}
-                        </p>
-                        <p className="text-[10px] text-gray-400 font-mono">
-                          {nextStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })} até {nextClosing.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })}
-                        </p>
-                        {/* Exibindo Total Futuro para conferência */}
-                        <p className="text-[10px] text-gray-300 font-mono mt-2 pt-2 border-t border-white/10">
-                          <span className="text-[#d97757]">Total Futuro:</span> {formatCurrency(previewSummary.allFutureTotal)}
-                        </p>
+                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between group hover:border-white/20 transition-all">
+                        <div>
+                          <p className="text-[10px] text-[#d97757] font-bold uppercase tracking-wide mb-2">Próxima Fatura</p>
+                          <p className="text-xl font-bold text-white font-mono tracking-tight">
+                            {formatCurrency(previewSummary.nextInvoice.total)}
+                          </p>
+                        </div>
+                        <div className="mt-4 pt-4 border-t border-white/5 space-y-1">
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-gray-500">Período</span>
+                            <span className="text-gray-300 font-medium">
+                              {nextStart.getDate()}/{nextStart.getMonth() + 1} até {nextClosing.getDate()}/{nextClosing.getMonth() + 1}
+                            </span>
+                          </div>
+                          <div className="flex justify-between items-center text-[10px]">
+                            <span className="text-gray-500">Total Futuro</span>
+                            <span className="text-[#d97757] font-medium">{formatCurrency(previewSummary.allFutureTotal)}</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   );
                 })() : (
-                  <div className="text-xs text-gray-500 italic text-center py-2">
-                    Selecione as datas acima para visualizar os ciclos das faturas.
+                  <div className="flex flex-col items-center justify-center py-8 bg-white/5 border border-white/5 border-dashed rounded-2xl text-center">
+                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center mb-2">
+                      <Calendar size={14} className="text-gray-500" />
+                    </div>
+                    <p className="text-xs text-gray-400 font-medium">
+                      Configure as datas acima para visualizar
+                    </p>
                   </div>
                 )}
               </div>
@@ -2906,6 +3195,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               </div>
             </div>
           </UniversalModal>
+
+
+
 
         </div >
       )}

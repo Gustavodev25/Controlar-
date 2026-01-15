@@ -764,6 +764,8 @@ export interface CreditCardTransaction {
   pluggyRaw?: any;
   isProjected?: boolean;
   isEstimated?: boolean; // True when value is estimated, awaiting real data from API
+  // Manual invoice month override - allows user to move transaction to a different invoice
+  manualInvoiceMonth?: string; // YYYY-MM format
 }
 
 // Helper to remove undefined values (Firebase doesn't accept undefined)

@@ -105,11 +105,34 @@ const extractInstallmentFromDesc = (desc: string): { current: number; total: num
 
 /**
  * Verifica se uma transação é pagamento de fatura
+ * IMPORTANTE: Reembolsos/estornos NÃO são pagamentos de fatura!
+ * Eles devem aparecer normalmente na fatura como créditos.
  */
 export const isCreditCardPayment = (tx: Transaction): boolean => {
   const d = (tx.description || '').toLowerCase();
   const c = (tx.category || '').toLowerCase();
-  return (
+
+  // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
+  const isRefund =
+    d.includes('estorno') ||
+    d.includes('reembolso') ||
+    d.includes('devolução') ||
+    d.includes('cancelamento') ||
+    d.includes('refund') ||
+    d.includes('chargeback') ||
+    d.includes('crédito') ||
+    d.includes('credito') ||
+    c.includes('refund') ||
+    c.includes('estorno') ||
+    c.includes('reembolso');
+
+  // Se for reembolso, NÃO é pagamento de fatura
+  if (isRefund) {
+    return false;
+  }
+
+  // Keywords que indicam PAGAMENTO DE FATURA
+  const isPayment =
     c.includes('credit card payment') ||
     c === 'pagamento de fatura' ||
     d.includes('pagamento de fatura') ||
@@ -118,9 +141,18 @@ export const isCreditCardPayment = (tx: Transaction): boolean => {
     d.includes('credit card payment') ||
     d.includes('pag fatura') ||
     d.includes('pgto fatura') ||
-    d === 'pgto' ||
-    (tx.type === 'income' && tx.accountType === 'CREDIT_CARD')
-  );
+    d === 'pgto';
+
+  if (isPayment) {
+    return true;
+  }
+
+  // Fallback: Transações income em cartão que NÃO são reembolsos
+  // podem ser pagamentos, MAS apenas se o valor for significativo
+  // (pagamentos de fatura geralmente são valores maiores, próximos ao total da fatura)
+  // Para segurança, NÃO classificamos automaticamente como pagamento
+  // a menos que tenha keywords explícitas acima
+  return false;
 };
 
 // ============================================================
@@ -228,6 +260,7 @@ export const calculateInvoicePeriodDates = (
     lastDueDate,
     currentDueDate,
     nextDueDate,
+    // MonthKeys são baseados no mês do FECHAMENTO
     lastMonthKey: toMonthKey(lastClosingDate),
     currentMonthKey: toMonthKey(currentClosingDate),
     nextMonthKey: toMonthKey(nextClosingDate)
@@ -358,7 +391,12 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     totalInstallments: tx.totalInstallments,
     isProjected,
     isPayment: isCreditCardPayment(tx),
-    pluggyRaw: tx.pluggyRaw
+    // Dados de moeda para transações internacionais
+    currencyCode: tx.currencyCode,
+    amountOriginal: tx.amountOriginal,
+    amountInAccountCurrency: tx.amountInAccountCurrency,
+    pluggyRaw: tx.pluggyRaw,
+    manualInvoiceMonth: tx.manualInvoiceMonth
   };
 };
 
@@ -529,6 +567,19 @@ export const buildInvoices = (
       return txCardId === cardId || txAccountId === cardId;
     });
 
+  // DEBUG: Mostrar datas das transações do cartão
+  const sortedDates = cardTransactions.map(t => t.date).sort();
+  const lastPeriodDates = sortedDates.filter(d => d >= '2025-11-24' && d <= '2025-12-23');
+  console.log('[InvoiceBuilder] DATAS DAS TRANSAÇÕES DO CARTÃO:', {
+    total: cardTransactions.length,
+    minDate: sortedDates[0],
+    maxDate: sortedDates[sortedDates.length - 1],
+    recentDates: sortedDates.slice(-20).join(', '), // últimas 20 datas como string
+    periodNeeded: `${toDateStr(periods.lastInvoiceStart)} a ${toDateStr(periods.lastClosingDate)}`,
+    datesInLastPeriod: lastPeriodDates.length,
+    lastPeriodDatesFound: lastPeriodDates.join(', ')
+  });
+
   // Separa pagamentos das demais transações
   const paymentTxs = cardTransactions.filter(isCreditCardPayment);
   const nonPaymentTxs = cardTransactions.filter(t => !isCreditCardPayment(t));
@@ -585,9 +636,67 @@ export const buildInvoices = (
   const currentStartNum = dateToNumber(periods.currentInvoiceStart);
   const currentEndNum = dateToNumber(periods.currentClosingDate);
 
+  // DEBUG: Log dos períodos calculados
+  console.log('[InvoiceBuilder] PERÍODOS CALCULADOS:', {
+    lastMonthKey: periods.lastMonthKey,
+    currentMonthKey: periods.currentMonthKey,
+    lastInvoiceStart: toDateStr(periods.lastInvoiceStart),
+    lastClosingDate: toDateStr(periods.lastClosingDate),
+    currentInvoiceStart: toDateStr(periods.currentInvoiceStart),
+    currentClosingDate: toDateStr(periods.currentClosingDate),
+    closingDay: periods.closingDay,
+    simpleTxsCount: simpleTxs.length,
+    purchasesWithInstallmentsCount: purchasesWithInstallments.length,
+    totalCardTransactions: cardTransactions.length,
+    nonPaymentTxsCount: nonPaymentTxs.length
+  });
+
   // ============================================================
   // 1. Processa transações simples (não parceladas) por DATA
   // ============================================================
+
+  // DEBUG: Mostrar amostra de transações simples e seus períodos
+  const txDatesSample = simpleTxs.slice(0, 10).map(tx => {
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+    return {
+      date: tx.date,
+      dateNum: txDateNum,
+      desc: tx.description?.slice(0, 30),
+      inLastPeriod: txDateNum >= lastStartNum && txDateNum <= lastEndNum,
+      inCurrentPeriod: txDateNum >= currentStartNum && txDateNum <= currentEndNum,
+      inFuture: txDateNum > currentEndNum,
+      inPast: txDateNum < lastStartNum
+    };
+  });
+  console.log('[InvoiceBuilder] TRANSAÇÕES SIMPLES - Amostra:', {
+    totalSimpleTxs: simpleTxs.length,
+    lastStartNum,
+    lastEndNum,
+    currentStartNum,
+    currentEndNum,
+    sampleDates: simpleTxs.slice(0, 15).map(tx => tx.date),
+    sample: txDatesSample
+  });
+
+  // DEBUG: Contar quantas transações caem em cada período
+  let inLastCount = 0, inCurrentCount = 0, inFutureCount = 0, inPastCount = 0;
+  simpleTxs.forEach(tx => {
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+    if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) inLastCount++;
+    else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) inCurrentCount++;
+    else if (txDateNum > currentEndNum) inFutureCount++;
+    else inPastCount++;
+  });
+  console.log('[InvoiceBuilder] DISTRIBUIÇÃO DE TRANSAÇÕES:', {
+    inLast: inLastCount,
+    inCurrent: inCurrentCount,
+    inFuture: inFutureCount,
+    inPast: inPastCount,
+    total: simpleTxs.length
+  });
+
   simpleTxs.forEach(tx => {
     if (!tx.date) return;
 
@@ -596,6 +705,48 @@ export const buildInvoices = (
     const item = transactionToInvoiceItem(tx);
     // TOTAL BRUTO: apenas despesas, income não subtrai
     const amt = tx.type === 'expense' ? item.amount : 0;
+
+    // ========================================
+    // LÓGICA DE OVERRIDE MANUAL
+    // ========================================
+    if (tx.manualInvoiceMonth) {
+      const manualKey = tx.manualInvoiceMonth;
+      console.log('[DEBUG InvoiceBuilder] Manual Override:', {
+        desc: tx.description,
+        manualKey,
+        last: periods.lastMonthKey,
+        current: periods.currentMonthKey,
+        matchLast: manualKey === periods.lastMonthKey,
+        matchCurrent: manualKey === periods.currentMonthKey,
+        goesToFuture: manualKey > periods.currentMonthKey,
+        goesToPast: manualKey < periods.lastMonthKey
+      });
+
+      // Lógica de alocação baseada no manualKey:
+      // - Futuro: manualKey > currentMonthKey
+      // - Atual: manualKey === currentMonthKey
+      // - Fechada: manualKey <= lastMonthKey (inclui meses mais antigos)
+      // - Entre "fechada" e "atual": vai para fechada (caso raro de inconsistência)
+
+      if (manualKey > periods.currentMonthKey) {
+        // Vai para fatura futura
+        if (!futureItemsByMonth[manualKey]) {
+          futureItemsByMonth[manualKey] = [];
+        }
+        futureItemsByMonth[manualKey].push(item);
+        allFutureTotalGross += amt;
+      } else if (manualKey === periods.currentMonthKey) {
+        // Vai para fatura atual
+        currentItems.push(item);
+        currentTotalGross += amt;
+      } else {
+        // Vai para fatura fechada (qualquer mês <= lastMonthKey)
+        closedItems.push(item);
+        closedTotalGross += amt;
+      }
+
+      return; // PULA a lógica de data automática
+    }
 
     if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
       closedItems.push(item);
@@ -617,6 +768,22 @@ export const buildInvoices = (
   // 2. Processa parcelas por REFERENCE MONTH (não por data!)
   // Cada parcela já sabe em qual fatura deve cair
   // ============================================================
+
+  // DEBUG: Mostrar todas as parcelas e seus referenceMonths
+  purchasesWithInstallments.forEach(({ purchase, installments }) => {
+    console.log('[InvoiceBuilder] Compra parcelada:', {
+      desc: purchase.description.slice(0, 40),
+      totalInstallments: purchase.totalInstallments,
+      firstBillingMonth: purchase.firstBillingMonth,
+      installments: installments.map(inst => ({
+        num: inst.installmentNumber,
+        referenceMonth: inst.referenceMonth,
+        matchesLast: inst.referenceMonth === periods.lastMonthKey,
+        matchesCurrent: inst.referenceMonth === periods.currentMonthKey
+      }))
+    });
+  });
+
   purchasesWithInstallments.forEach(({ purchase, installments }) => {
     installments.forEach(inst => {
       const item = installmentToInvoiceItem(inst);
@@ -639,6 +806,16 @@ export const buildInvoices = (
       }
       // Parcelas de meses anteriores são ignoradas (já foram pagas)
     });
+  });
+
+  // DEBUG: Mostrar totais após alocação de parcelas
+  console.log('[InvoiceBuilder] ALOCAÇÃO DE ITENS:', {
+    closedItemsCount: closedItems.length,
+    closedTotalGross,
+    currentItemsCount: currentItems.length,
+    currentTotalGross,
+    futureMonths: Object.keys(futureItemsByMonth),
+    allFutureTotalGross
   });
 
   // ============================================================

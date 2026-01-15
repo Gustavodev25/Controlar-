@@ -993,6 +993,13 @@ const App: React.FC = () => {
             name: firebaseUser.displayName || profile?.name || 'Usuário',
             email: firebaseUser.email || '',
             baseSalary: profile?.baseSalary || 0,
+            salaryPaymentDay: profile?.salaryPaymentDay,
+            salaryAdvanceValue: profile?.salaryAdvanceValue,
+            salaryAdvancePercent: profile?.salaryAdvancePercent,
+            salaryAdvanceDay: profile?.salaryAdvanceDay,
+            salaryExemptFromDiscounts: profile?.salaryExemptFromDiscounts,
+            valeExemptFromDiscounts: profile?.valeExemptFromDiscounts,
+            valeDeductions: profile?.valeDeductions,
             avatarUrl: profile?.avatarUrl,
             twoFactorEnabled: profile?.twoFactorEnabled,
             twoFactorSecret: profile?.twoFactorSecret,
@@ -1604,6 +1611,8 @@ const App: React.FC = () => {
         pluggyRaw: (ccTx as any).pluggyRaw,
         accountId: ccTx.cardId,
         accountType: 'CREDIT_CARD',
+        // Manual invoice month override
+        manualInvoiceMonth: (ccTx as any).manualInvoiceMonth,
       }));
 
     // 2. Combine with Member Filtered Transactions
@@ -1868,6 +1877,8 @@ const App: React.FC = () => {
       pluggyRaw: (ccTx as any).pluggyRaw,
       accountId: ccTx.cardId, // Map cardId to accountId
       accountType: 'CREDIT_CARD',
+      // Manual invoice month override
+      manualInvoiceMonth: (ccTx as any).manualInvoiceMonth,
     }));
 
     // 3. Merge and deduplicate by id
@@ -2363,31 +2374,103 @@ const App: React.FC = () => {
         });
       }
 
-      // Salary Projection
+      // ============================================================
+      // CÁLCULO DE SALÁRIO E VALE COM DESCONTOS (LÍQUIDO)
+      // Mesma lógica do SettingsModal - Previsão de Fechamento
+      // ============================================================
+
+      // Helper: Calculate INSS based on 2024/2025 progressive table
+      const calculateINSS = (base: number, isExempt: boolean): number => {
+        if (isExempt) return 0;
+        if (base <= 1518.00) return base * 0.075;
+        if (base <= 2793.88) return (base * 0.09) - 22.77;
+        if (base <= 4190.83) return (base * 0.12) - 106.59;
+        if (base <= 8157.41) return (base * 0.14) - 190.40;
+        return 951.63; // Teto INSS
+      };
+
+      // Helper: Calculate IRRF based on progressive table
+      const calculateIRRF = (base: number, inss: number, isExempt: boolean): number => {
+        if (isExempt) return 0;
+
+        const dependents = 0; // Can be expanded later
+        const deductibleDependents = dependents * 189.59;
+        const baseA = base - inss - deductibleDependents;
+        const simplifiedDiscount = 607.20;
+        const baseB = base - simplifiedDiscount;
+
+        const calcTax = (b: number): number => {
+          if (b <= 2428.80) return 0;
+          if (b <= 2826.65) return (b * 0.075) - 182.16;
+          if (b <= 3751.05) return (b * 0.15) - 394.16;
+          if (b <= 4664.68) return (b * 0.225) - 675.49;
+          return (b * 0.275) - 908.73;
+        };
+
+        const taxA = Math.max(0, calcTax(baseA));
+        const taxB = Math.max(0, calcTax(baseB));
+        return Math.min(taxA, taxB);
+      };
+
+      // Helper: Calculate custom deductions (valeDeductions)
+      const calculateCustomDeductions = (base: number, deductions?: { id: string; name: string; value: string; type: '%' | 'R$' }[]): number => {
+        if (!deductions || deductions.length === 0) return 0;
+        return deductions.reduce((acc, curr) => {
+          const val = parseFloat(curr.value.replace(',', '.'));
+          if (isNaN(val)) return acc;
+          if (curr.type === '%') return acc + (base * (val / 100));
+          return acc + val;
+        }, 0);
+      };
+
+      // Salary Projection (with deductions - NET salary after taxes and vale)
       if (projectionSettings.salary && currentUser?.baseSalary) {
         const salaryTx = filteredDashboardTransactions.find(t => t.type === 'income' && t.description === "Salário Mensal");
         if (!salaryTx || (salaryTx.amount === 0 && currentUser.baseSalary > 0)) {
-          let advance = currentUser.salaryAdvanceValue || 0;
-          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+          const base = currentUser.baseSalary!;
+
+          // Determine if we should use the Vale exemption flag (Simulator logic match) or Main flag
+          const hasValeConfig = (currentUser.salaryAdvanceValue || 0) > 0 || (currentUser.salaryAdvancePercent || 0) > 0;
+
+          const getBoolean = (val: any) => val === true || val === 'true';
+
+          const isSalaryExempt = hasValeConfig
+            ? getBoolean(currentUser.valeExemptFromDiscounts)
+            : getBoolean(currentUser.salaryExemptFromDiscounts);
+
+          // Calculate vale amount
+          let valeAmount = currentUser.salaryAdvanceValue || 0;
+          if (!valeAmount && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+            valeAmount = base * (currentUser.salaryAdvancePercent / 100);
           }
-          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-          const salaryAmount = Math.max(0, currentUser.baseSalary! - advance);
-          projectedIncome += salaryAmount;
+          valeAmount = Math.round((valeAmount + Number.EPSILON) * 100) / 100;
+
+          // Calculate deductions (on full base salary)
+          const inss = calculateINSS(base, isSalaryExempt);
+          const irrf = calculateIRRF(base, inss, isSalaryExempt);
+          const customDeductions = calculateCustomDeductions(base, currentUser.valeDeductions);
+
+          // NET Salary = Base - Vale - INSS - IRRF - Custom Deductions
+          const netSalary = Math.max(0, base - valeAmount - inss - irrf - customDeductions);
+          projectedIncome += netSalary;
         }
       }
 
-      // Vale Projection
+      // Vale Projection - Assume vale is paid in full as advance (deducted from final salary)
       if (projectionSettings.vale && currentUser?.baseSalary) {
         const valeTx = filteredDashboardTransactions.find(t => t.type === 'income' && t.description === "Vale / Adiantamento");
         if (!valeTx || (valeTx.amount === 0 && currentUser.baseSalary > 0)) {
-          let advance = currentUser.salaryAdvanceValue || 0;
-          if (!advance && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
-            advance = currentUser.baseSalary! * (currentUser.salaryAdvancePercent / 100);
+          const base = currentUser.baseSalary!;
+
+          // Calculate vale amount (gross/full)
+          let valeGross = currentUser.salaryAdvanceValue || 0;
+          if (!valeGross && currentUser.salaryAdvancePercent && currentUser.salaryAdvancePercent > 0) {
+            valeGross = base * (currentUser.salaryAdvancePercent / 100);
           }
-          advance = Math.round((advance + Number.EPSILON) * 100) / 100;
-          if (advance > 0) {
-            projectedIncome += advance;
+          valeGross = Math.round((valeGross + Number.EPSILON) * 100) / 100;
+
+          if (valeGross > 0) {
+            projectedIncome += valeGross;
           }
         }
       }
@@ -3414,6 +3497,7 @@ const App: React.FC = () => {
             showFamilyOption={effectivePlan === 'family'}
             userId={userId}
             hasConnectedAccounts={connectedAccounts.length > 0}
+            onOpenFeedback={() => setIsFeedbackModalOpen(true)}
           />
         )}
 

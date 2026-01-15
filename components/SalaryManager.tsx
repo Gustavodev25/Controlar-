@@ -676,17 +676,38 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                       {/* Preview Calculation */}
                       {(() => {
                         const sal = parseInput(tempSalary);
-                        const perc = parseInput(tempAdvancePercent);
-                        const vale = sal * (perc / 100);
-                        const resto = sal - vale;
+                        const perc = parseInput(tempAdvancePercent); // This might be unused if we use value directly or percent logic
+
+                        // Calculate Vale Amount 
+                        // Logic mirrors App.tsx: preference to Value if set, else Percent
+                        // Here `tempAdvancePercent` is the driver for the slider.
+                        // But wait, if user inputs values manually?
+                        // The UI above has a slider for percent. 
+
+                        let vale = 0;
+                        if (hasAdvance) {
+                          vale = sal * (parseInput(tempAdvancePercent) / 100);
+                        }
+
+                        // Calculate Taxes for Resto
+                        let totalTax = 0;
+                        if (!tempSalaryTaxExempt) {
+                          // Use 0 dependents for simple preview or try to use cltDependents default?
+                          // Since the user might not have configured CLT tab, 0 is safer/standard for quick preview.
+                          const { inss, irrf } = calculateCLT(sal, 0);
+                          totalTax = inss + irrf;
+                        }
+
+                        const resto = Math.max(0, sal - vale - totalTax);
+
                         return (
                           <div className="flex gap-2 text-[10px]">
                             <div className="flex-1 bg-[#30302E]/50 p-2 rounded border border-gray-700/50">
-                              <p className="text-gray-500 mb-0.5">Vale ({perc}%)</p>
+                              <p className="text-gray-500 mb-0.5">Vale ({tempAdvancePercent}%)</p>
                               <p className="text-[#eab3a3] font-mono font-bold">{formatCurrency(vale)}</p>
                             </div>
                             <div className="flex-1 bg-[#30302E]/50 p-2 rounded border border-gray-700/50">
-                              <p className="text-gray-500 mb-0.5">Restante</p>
+                              <p className="text-gray-500 mb-0.5">Líquido Restante</p>
                               <p className="text-white font-mono font-bold">{formatCurrency(resto)}</p>
                             </div>
                           </div>

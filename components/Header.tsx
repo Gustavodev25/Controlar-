@@ -10,7 +10,9 @@ import {
   RotateCcw,
   TrendingUp,
   Lightbulb,
-  X
+  X,
+  AlertCircle,
+  ChevronRight
 } from './Icons';
 import { toast } from 'sonner';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownLabel } from './Dropdown';
@@ -92,6 +94,9 @@ interface HeaderProps {
   userId?: string | null;
   hasConnectedAccounts?: boolean;
   onSyncComplete?: () => void;
+
+  // Feedback Handler (for Beta Banner)
+  onOpenFeedback?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -134,7 +139,8 @@ export const Header: React.FC<HeaderProps> = ({
   showFamilyOption,
   userId,
   hasConnectedAccounts,
-  onSyncComplete
+  onSyncComplete,
+  onOpenFeedback
 }) => {
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW'
@@ -193,6 +199,29 @@ export const Header: React.FC<HeaderProps> = ({
     setIsTipDismissed(true);
     localStorage.setItem('reminders_tip_dismissed', 'true');
     localStorage.setItem('reminders_tip_dismissed_at', Date.now().toString());
+  };
+
+  // Beta Banner State for Credit Cards
+  const [isBetaDismissed, setIsBetaDismissed] = useState(() => {
+    const dismissed = localStorage.getItem('credit_cards_beta_dismissed');
+    const dismissedAt = localStorage.getItem('credit_cards_beta_dismissed_at');
+    if (dismissed === 'true' && dismissedAt) {
+      const daysSinceDismissed = (Date.now() - parseInt(dismissedAt)) / (1000 * 60 * 60 * 24);
+      if (daysSinceDismissed < 7) {
+        return true;
+      } else {
+        localStorage.removeItem('credit_cards_beta_dismissed');
+        localStorage.removeItem('credit_cards_beta_dismissed_at');
+        return false;
+      }
+    }
+    return false;
+  });
+
+  const handleDismissBeta = () => {
+    setIsBetaDismissed(true);
+    localStorage.setItem('credit_cards_beta_dismissed', 'true');
+    localStorage.setItem('credit_cards_beta_dismissed_at', Date.now().toString());
   };
 
   return (
@@ -436,6 +465,52 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <X size={16} />
               </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Beta Banner for Credit Cards */}
+      <AnimatePresence>
+        {activeTab === 'credit_cards' && !isBetaDismissed && (
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3 }}
+            className="w-full bg-gradient-to-r from-blue-500/10 via-blue-500/5 to-transparent border-b border-blue-500/20"
+          >
+            <div className="max-w-7xl mx-auto px-4 py-2.5 flex items-center justify-between gap-4">
+              {/* Left - Message */}
+              <div className="flex items-center gap-3 flex-1 min-w-0">
+                <div className="p-1.5 bg-blue-500/10 rounded-lg text-blue-400 flex-shrink-0">
+                  <AlertCircle size={16} />
+                </div>
+                <p className="text-sm text-gray-300">
+                  <span className="font-bold text-blue-400">Funcionalidade em Beta:</span>
+                  <span className="text-gray-400"> O cálculo de faturas está em fase de testes e pode apresentar divergências.</span>
+                </p>
+              </div>
+
+              {/* Right - Report + Close */}
+              <div className="flex items-center gap-2 flex-shrink-0">
+                {onOpenFeedback && (
+                  <button
+                    onClick={onOpenFeedback}
+                    className="text-xs text-gray-300 hover:text-white flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-white/5 transition-all"
+                  >
+                    Reportar problema
+                    <ChevronRight size={12} />
+                  </button>
+                )}
+                <button
+                  onClick={handleDismissBeta}
+                  className="p-1.5 text-gray-500 hover:text-gray-300 hover:bg-gray-800/50 rounded-lg transition-all"
+                  title="Dispensar"
+                >
+                  <X size={16} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

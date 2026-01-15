@@ -13,6 +13,7 @@ interface UniversalModalProps {
     themeColor?: string; // Default: #d97757 (The orange/brand color)
     width?: string; // Default: max-w-lg
     zIndex?: string; // Default: z-[100]
+    banner?: React.ReactNode;
 }
 
 export const UniversalModal: React.FC<UniversalModalProps> = ({
@@ -25,7 +26,8 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
     footer,
     themeColor = '#d97757',
     width = 'max-w-lg',
-    zIndex = 'z-[100]'
+    zIndex = 'z-[100]',
+    banner
 }) => {
     const [isVisible, setIsVisible] = useState(false);
     const [isAnimating, setIsAnimating] = useState(false);
@@ -96,6 +98,9 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
                         <X size={18} />
                     </button>
                 </div>
+
+                {/* Banner (Optional) */}
+                {banner}
 
                 {/* Content */}
                 <div className="flex-1 relative z-10 p-5 overflow-y-auto custom-scrollbar">

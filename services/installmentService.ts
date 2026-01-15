@@ -379,14 +379,24 @@ export const createPurchaseFromTransaction = (
   const installmentAmount = Math.abs(tx.amount);
   const totalAmount = installmentAmount * totalInstallments;
 
-  // NOVA LÓGICA: Calcular firstBillingMonth baseado na parcela atual
-  // Não depende de calcular a data original da compra
-  const firstBillingMonth = calculateInstallmentReferenceMonth(
-    tx.date,
-    installmentNumber,
-    1, // Parcela 1
-    billingDay
-  );
+  let firstBillingMonth: string;
+
+  if (tx.manualInvoiceMonth) {
+    // Se o usuário forçou um mês específico para esta parcela,
+    // calculamos o mês de início (parcela 1) com engenharia reversa.
+    const [mY, mM] = tx.manualInvoiceMonth.split('-').map(Number);
+    // Parcela 1 = Mês Manual - (N - 1) meses
+    const startD = new Date(mY, mM - 1 - (installmentNumber - 1), 1);
+    firstBillingMonth = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}`;
+  } else {
+    // Lógica padrão: calcula baseado na data e dia de fechamento
+    firstBillingMonth = calculateInstallmentReferenceMonth(
+      tx.date,
+      installmentNumber,
+      1, // Parcela 1
+      billingDay
+    );
+  }
 
   // Data da compra é estimada (não crítica, apenas para referência)
   const txDate = parseDate(tx.date);

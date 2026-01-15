@@ -175,6 +175,14 @@ export interface Transaction {
   pluggyBillId?: string | null; // Bill/Fatura id do Pluggy (quando existir)
   invoiceSource?: 'pluggy_billId' | 'pluggy_month_match' | 'rule_fallback' | string; // origem do cálculo
   pluggyRaw?: any; // JSON bruto/sanitizado da transação (para inspeção no modal)
+
+  // ✅ MOEDA - Transações internacionais (USD, EUR, etc.)
+  currencyCode?: string; // Código da moeda (BRL, USD, EUR, etc.)
+  amountOriginal?: number; // Valor original na moeda estrangeira (antes da conversão)
+  amountInAccountCurrency?: number; // Valor convertido para moeda da conta (BRL)
+
+  // Invoice Manual Override
+  manualInvoiceMonth?: string; // YYYY-MM overrides the automatic date-based calculation
 }
 
 
@@ -389,8 +397,16 @@ export interface InvoiceItem {
   isCharge?: boolean;            // True se for encargo (IOF, juros, multa)
   chargeType?: 'IOF' | 'INTEREST' | 'LATE_FEE' | 'OTHER';
 
+  // Moeda - Transações internacionais
+  currencyCode?: string;         // BRL, USD, EUR, etc.
+  amountOriginal?: number;       // Valor original na moeda estrangeira
+  amountInAccountCurrency?: number; // Valor convertido para BRL
+
   // Dados brutos do provider (para debug)
   pluggyRaw?: any;
+
+  // Manual Override (propagated from Transaction)
+  manualInvoiceMonth?: string;
 }
 
 /**

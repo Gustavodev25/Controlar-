@@ -646,6 +646,12 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             }
                         }
 
+                        // Detectar se é transação de IOF (imposto sobre compra internacional)
+                        const descLower = (tx.description || '').toLowerCase();
+                        const isIOF = descLower.includes('iof') ||
+                            descLower.includes('imposto') ||
+                            descLower.includes('tax');
+
                         mappedTx = {
                             cardId: account.id,
                             date: tx.date.split('T')[0],
@@ -657,6 +663,17 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             totalInstallments,
                             installmentNumber,
                             invoiceMonthKey,
+                            // Flag para IOF/taxas internacionais
+                            isIOF: isIOF || false,
+                            // Dados de moeda para transações internacionais (USD, EUR, etc.)
+                            currencyCode: tx.currencyCode || 'BRL',
+                            // Se a moeda não é BRL, o amount original é o valor em moeda estrangeira
+                            // e amountInAccountCurrency é o valor convertido (que usamos como amount)
+                            ...(tx.currencyCode && tx.currencyCode !== 'BRL' && tx.amountInAccountCurrency ? {
+                                amountOriginal: Math.abs(tx.amount), // Valor original em moeda estrangeira
+                                amountInAccountCurrency: Math.abs(tx.amountInAccountCurrency), // Valor convertido para BRL
+                                amount: Math.abs(tx.amountInAccountCurrency) // Usa o valor convertido como amount principal
+                            } : {}),
                             pluggyRaw: tx
                         };
                     } else {
