@@ -26,7 +26,7 @@ const NavItem: React.FC<NavItemProps> = ({ children, href, isActive, onClick }) 
     <a
       href={href}
       onClick={onClick}
-      className="relative px-4 py-2 text-sm font-medium text-gray-400 hover:text-white transition-colors duration-300 group"
+      className="relative px-3 py-2 text-xs md:text-sm font-medium text-gray-400 hover:text-white transition-colors duration-300 group whitespace-nowrap"
     >
       <div
         className="
@@ -125,7 +125,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
   const { scrollY } = useScroll();
 
   // Transforma o scroll em valores fluidos
-  const width = useTransform(scrollY, [0, 100], ["min(95%, 1100px)", "min(90%, 750px)"]);
+  const width = useTransform(scrollY, [0, 100], ["min(95%, 1100px)", "min(92%, 900px)"]);
   const padding = useTransform(scrollY, [0, 100], ["0.7rem 1rem", "0.5rem 0.5rem"]);
   const background = useTransform(scrollY, [0, 100], ["rgba(10, 10, 10, 0.3)", "rgba(5, 5, 5, 0.6)"]);
   const backdropBlur = useTransform(scrollY, [0, 100], ["blur(10px)", "blur(24px)"]);
