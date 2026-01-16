@@ -113,6 +113,17 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
         }
         setSelectedPlan({ id: planId, name, price });
         setView('checkout');
+
+        // Meta Pixel: InitiateCheckout
+        trackEvent('InitiateCheckout', {
+            value: billingCycle === 'annual' ? (plans.find(p => p.id === planId)?.annualPrice || price) : price,
+            currency: 'BRL',
+            content_name: `Plano ${name} - ${billingCycle === 'annual' ? 'Anual' : 'Mensal'}`,
+            content_type: 'subscription',
+            content_ids: [`plan_${planId}_${billingCycle}`],
+            content_category: 'Assinatura',
+            num_items: 1,
+        });
     };
 
     const handleCheckoutSubmit = async (cardData: any, holderInfo: any, installments?: number, couponId?: string, finalPrice?: number) => {
@@ -172,8 +183,12 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                 trackEvent('Purchase', {
                     value: 0,
                     currency: 'BRL',
-                    content_name: 'Assinatura Controlar+ (Cupom 100%)',
+                    content_name: `Plano ${planToBuy?.toUpperCase()} - ${cycleToBuy === 'annual' ? 'Anual' : 'Mensal'} (Cupom 100%)`,
                     content_type: 'subscription',
+                    content_ids: [`plan_${planToBuy}_${cycleToBuy}`],
+                    content_category: 'Assinatura',
+                    num_items: 1,
+                    predicted_ltv: cycleToBuy === 'annual' ? 399 : 359,
                 });
 
                 if (planToBuy === 'pro') {
@@ -298,9 +313,13 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                 trackEvent('Purchase', {
                     value: finalValue,
                     currency: 'BRL',
-                    content_name: 'Assinatura Controlar+',
+                    content_name: `Plano ${planToBuy?.toUpperCase()} - ${cycleToBuy === 'annual' ? 'Anual' : 'Mensal'}`,
                     content_type: 'subscription',
-                    order_id: subscriptionData.subscription?.id || subscriptionData.payment?.id
+                    content_ids: [`plan_${planToBuy}_${cycleToBuy}`],
+                    content_category: 'Assinatura',
+                    num_items: 1,
+                    order_id: subscriptionData.subscription?.id || subscriptionData.payment?.id,
+                    predicted_ltv: cycleToBuy === 'annual' ? 399 : 359,
                 });
 
                 if (planToBuy === 'pro') {

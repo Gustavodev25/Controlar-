@@ -9,6 +9,7 @@ import * as dbService from '../services/database';
 import { Button } from './Button';
 import { Coupon } from '../types';
 import { UniversalModal } from './UniversalModal';
+import { usePixelEvent } from '../hooks/usePixelEvent';
 
 interface CreditCardData {
   holderName: string;
@@ -170,6 +171,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   }, [initialCouponCode]);
 
   const toast = useToasts();
+  const { trackEvent } = usePixelEvent();
 
   // ===== FUNÇÕES DE FORMATAÇÃO =====
   const formatCPF = (value: string) => {
@@ -562,6 +564,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     if (appliedCoupon) {
       dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
+
+    // Meta Pixel: AddPaymentInfo
+    trackEvent('AddPaymentInfo', {
+      value: finalPrice,
+      currency: 'BRL',
+      content_name: `Plano ${planName} - ${billingCycle === 'annual' ? 'Anual' : 'Mensal'}`,
+      content_type: 'subscription',
+      content_category: 'Assinatura',
+    });
 
     // Passar registrationData se requiresRegistration
     await onSubmit(
