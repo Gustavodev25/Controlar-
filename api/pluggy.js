@@ -90,15 +90,22 @@ const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
         return new Date(year, month, safeDay, 23, 59, 59);
     };
 
-    // Helper para formatar data como ISO string (apenas data)
-    const toDateStr = (d) => d.toISOString().split('T')[0];
+    // Helper para formatar data como string (apenas data, sem timezone)
+    // IMPORTANTE: Usa método local para evitar conversão UTC que pode mudar a data
+    const toDateStr = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${y}-${m}-${day}`;
+    };
 
     // Helper para criar monthKey (YYYY-MM)
     const toMonthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
     // Calcular fechamento da fatura ATUAL (próximo fechamento a partir de hoje)
+    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
     let currentClosingDate;
-    if (today.getDate() <= closingDay) {
+    if (today.getDate() < closingDay) {
         // Ainda não fechou este mês
         currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
     } else {
@@ -758,8 +765,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     };
 
                     // Calcular fechamento da fatura atual (próximo fechamento)
+                    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
                     let nextClosingDate;
-                    if (today.getDate() <= closingDay) {
+                    if (today.getDate() < closingDay) {
                         nextClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
                     } else {
                         const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
@@ -1282,8 +1290,9 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     };
 
                     // Calcular fechamento da fatura atual (próximo fechamento)
+                    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
                     let nextClosingDate;
-                    if (today.getDate() <= closingDay) {
+                    if (today.getDate() < closingDay) {
                         nextClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
                     } else {
                         const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;

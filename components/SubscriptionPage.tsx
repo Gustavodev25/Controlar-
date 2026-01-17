@@ -277,30 +277,15 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
 
             // 4. Check payment status - ONLY activate on confirmed payment
             if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'RECEIVED') {
-                // Payment was successful - Activate plan
-                const nextBillingDate = new Date();
-                if (cycleToBuy === 'annual') {
-                    nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-                } else {
-                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-                }
-
-                const newSubscription = {
-                    plan: planToBuy,
-                    status: 'active' as const,
-                    billingCycle: cycleToBuy,
-                    installments: installments || 1,
-                    nextBillingDate: toLocalISODate(nextBillingDate),
-                    paymentMethod: 'CREDIT_CARD',
-                    asaasCustomerId: customerData.customer.id,
-                    asaasSubscriptionId: subscriptionData.subscription?.id || subscriptionData.payment?.id,
-                    couponUsed: couponId,
-                    startDate: toLocalISODate(new Date()),
-                };
+                // Payment was successful!
+                // NOTE: The backend (activatePlanOnServer) already updated subscription.* and profile.subscription.*
+                // We should NOT update subscription here to avoid race conditions that could overwrite backend data
+                // We only update paymentMethodDetails which the backend doesn't handle
 
                 const updatedUser = {
                     ...user,
-                    subscription: newSubscription as any,
+                    // DO NOT include subscription here - backend already updated it
+                    // Including it would cause a race condition where stale React state overwrites server update
                     paymentMethodDetails: {
                         last4: cardData.number.replace(/\s/g, '').slice(-4),
                         holder: cardData.holderName || user.name,

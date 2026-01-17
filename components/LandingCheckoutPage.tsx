@@ -222,25 +222,13 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             // 6. Verificar se pagamento foi confirmado
             if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'RECEIVED') {
-                const nextBillingDate = new Date();
-                if (billingCycle === 'annual') {
-                    nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-                } else {
-                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-                }
+                // Payment was successful!
+                // NOTE: The backend (activatePlanOnServer) already updated subscription.* and profile.subscription.*
+                // We should NOT update subscription here to avoid race conditions
+                // We only update paymentMethodDetails which the backend doesn't handle
 
                 await updateUserProfile(firebaseUser.uid, {
-                    subscription: {
-                        plan: planId,
-                        status: 'active',
-                        billingCycle: billingCycle,
-                        installments: installments || 1,
-                        nextBillingDate: toLocalISODate(nextBillingDate),
-                        asaasCustomerId: customerData.customer.id,
-                        asaasSubscriptionId: subscriptionData.subscription?.id || subscriptionData.payment?.id,
-                        couponUsed: couponId,
-                        startDate: toLocalISODate(new Date()),
-                    },
+                    // DO NOT include subscription here - backend already updated it via activatePlanOnServer
                     paymentMethodDetails: {
                         last4: cardData.number.replace(/\s/g, '').slice(-4),
                         holder: cardData.holderName || registrationData.name,

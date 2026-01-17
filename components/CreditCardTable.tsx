@@ -170,10 +170,11 @@ const calculateInvoiceSummary = (
   const today = new Date();
 
   // ========================================
-  // USAR DADOS DO BACKEND (invoicePeriods) SE DISPONÍVEIS
-  // Fonte única de verdade - evita recálculo no frontend
+  // IMPORTANTE: NÃO usar invoicePeriods do backend para DATAS - sempre calcular localmente
+  // Isso garante que a lógica correta seja usada (o backend pode ter dados antigos)
+  // Apenas pegamos o closingDay e dueDay do backend
   // ========================================
-  const invoicePeriods = card?.invoicePeriods;
+  const invoicePeriods = card?.invoicePeriods; // Mantido apenas para acessar dueDay e monthKeys
   const closingDay = invoicePeriods?.closingDay || card?.closingDay || 10;
 
 
@@ -196,24 +197,9 @@ const calculateInvoiceSummary = (
   let beforeLastClosingDate: Date;
 
   // ========================================
-  // PRIORIDADE 1: Usar invoicePeriods do backend
+  // PRIORIDADE 1: Modo manual (datas específicas definidas pelo usuário)
   // ========================================
-  if (invoicePeriods) {
-    console.log('[FRONTEND] Usando invoicePeriods do backend:', {
-      cardName: card?.name || card?.institution,
-      closingDay: invoicePeriods.closingDay,
-      calculatedAt: invoicePeriods.calculatedAt
-    });
-
-    beforeLastClosingDate = parseDate(invoicePeriods.beforeLastClosingDate);
-    lastClosingDate = parseDate(invoicePeriods.lastClosingDate);
-    currentClosingDate = parseDate(invoicePeriods.currentClosingDate);
-    nextClosingDate = parseDate(invoicePeriods.nextClosingDate);
-
-    // ========================================
-    // PRIORIDADE 2: Modo manual (datas específicas definidas pelo usuário)
-    // ========================================
-  } else if (card?.manualLastClosingDate && card?.manualCurrentClosingDate) {
+  if (card?.manualLastClosingDate && card?.manualCurrentClosingDate) {
     console.log('[FRONTEND] Usando modo MANUAL (datas específicas)');
 
     const [ly, lm, ld] = card.manualLastClosingDate.split('-').map(Number);
@@ -239,12 +225,13 @@ const calculateInvoiceSummary = (
     }
 
     // ========================================
-    // PRIORIDADE 3: Cálculo automático (fallback - compatibilidade)
+    // PRIORIDADE 2: Cálculo automático (SEMPRE recalcula)
     // ========================================
   } else {
-    console.log('[FRONTEND] Usando cálculo AUTOMÁTICO (fallback):', { closingDay });
+    console.log('[FRONTEND] Calculando automaticamente:', { closingDay, today: today.toISOString() });
 
-    if (today.getDate() <= closingDay) {
+    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
+    if (today.getDate() < closingDay) {
       currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
     } else {
       const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
@@ -423,28 +410,29 @@ const calculateInvoiceSummary = (
 
   nonInstallmentTxs.forEach(tx => {
     const amt = Math.abs(Number(tx.amount) || 0);
-    // TOTAL BRUTO: apenas despesas, income não subtrai
-    const grossAmt = tx.type === 'expense' ? amt : 0;
+    // TOTAL LÍQUIDO: despesas + valor, income - valor (créditos/reembolsos subtraem do total)
+    // Em cartão de crédito, transações income são créditos/estornos que REDUZEM o valor da fatura
+    const netAmt = tx.type === 'expense' ? amt : -amt;
 
     const [ty, tm, td] = (tx.date || '').split('-').map(Number);
     const txDate = new Date(ty, tm - 1, td, 12, 0, 0);
 
-    totalUsed += grossAmt;
+    totalUsed += netAmt;
 
     if (txDate >= lastInvoiceStart && txDate <= lastClosingDate) {
-      lastInvoiceTotal += grossAmt;
+      lastInvoiceTotal += netAmt;
       lastInvoiceTransactions.push(tx);
     } else if (txDate >= currentInvoiceStart && txDate <= currentClosingDate) {
-      currentInvoiceTotal += grossAmt;
+      currentInvoiceTotal += netAmt;
       currentInvoiceTransactions.push(tx);
     } else if (txDate >= nextInvoiceStart && txDate <= nextClosingDate) {
-      nextInvoiceTotal += grossAmt;
+      nextInvoiceTotal += netAmt;
       nextInvoiceTransactions.push(tx);
     }
 
     // Calcular Total Futuro (Tudo após a fatura atual)
     if (txDate > currentClosingDate) {
-      allFutureTotal += grossAmt;
+      allFutureTotal += netAmt;
     }
   });
 
@@ -474,8 +462,9 @@ const calculateInvoiceSummary = (
     // Compatibilidade: dados antigos usam 'installments', novos usam 'totalInstallments'
     const totalInst = transactions[0]?.totalInstallments || (transactions[0] as any)?.installments || 1;
     const amt = Math.abs(Number(transactions[0]?.amount) || 0);
-    // TOTAL BRUTO: parcelas são sempre despesas (valor absoluto)
-    const grossAmt = amt;
+    // Parcelas são tipicamente despesas, mas respeitamos o tipo se definido
+    const baseTx = transactions[0];
+    const netAmt = baseTx?.type === 'income' ? -amt : amt;
 
     for (let instNum = 1; instNum <= totalInst; instNum++) {
       const instDate = new Date(firstInstDate);
@@ -489,7 +478,6 @@ const calculateInvoiceSummary = (
         txToAdd = existingTx;
         processedInstallmentIds.add(existingTx.id);
       } else {
-        const baseTx = transactions[0];
         txToAdd = {
           ...baseTx,
           id: `proj_${baseTx.id}_${instNum}`,
@@ -499,22 +487,22 @@ const calculateInvoiceSummary = (
         };
       }
 
-      totalUsed += grossAmt;
+      totalUsed += netAmt;
 
       if (instDateNum >= lastInvoiceStartNum && instDateNum <= lastClosingDateNum) {
-        lastInvoiceTotal += grossAmt;
+        lastInvoiceTotal += netAmt;
         lastInvoiceTransactions.push(txToAdd);
       } else if (instDateNum >= currentInvoiceStartNum && instDateNum <= currentClosingDateNum) {
-        currentInvoiceTotal += grossAmt;
+        currentInvoiceTotal += netAmt;
         currentInvoiceTransactions.push(txToAdd);
       } else if (instDateNum >= nextInvoiceStartNum && instDateNum <= nextClosingDateNum) {
-        nextInvoiceTotal += grossAmt;
+        nextInvoiceTotal += netAmt;
         nextInvoiceTransactions.push(txToAdd);
       }
 
       // Calcular Total Futuro (Tudo após a fatura atual)
       if (instDate > currentClosingDate) {
-        allFutureTotal += grossAmt;
+        allFutureTotal += netAmt;
       }
     }
   });

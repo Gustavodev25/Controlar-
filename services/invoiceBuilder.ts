@@ -47,19 +47,29 @@ export const validateClosingDay = (day: number | null | undefined): number => {
 };
 
 /**
- * Converte string YYYY-MM-DD para Date
+ * Converte string YYYY-MM-DD ou ISO para Date
+ * IMPORTANTE: Cria data ao meio-dia local para evitar problemas de timezone
  */
 export const parseDate = (dateStr: string): Date => {
   if (!dateStr) return new Date();
+  // Trata datas em formato ISO (com 'T')
+  if (dateStr.includes('T')) {
+    const isoDate = new Date(dateStr);
+    return new Date(isoDate.getFullYear(), isoDate.getMonth(), isoDate.getDate(), 12, 0, 0);
+  }
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(y, m - 1, d || 1, 12, 0, 0);
 };
 
 /**
  * Converte Date para string YYYY-MM-DD
+ * IMPORTANTE: Usa método local para evitar conversão UTC que pode mudar a data
  */
 export const toDateStr = (date: Date): string => {
-  return date.toISOString().split('T')[0];
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 };
 
 /**
@@ -204,10 +214,14 @@ export const calculateInvoicePeriodDates = (
   }
 
   // Calcular fechamento da fatura ATUAL (próximo fechamento a partir da data de referência)
+  // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
+  // Portanto, a "fatura atual" é a do próximo mês
   let currentClosingDate: Date;
-  if (referenceDate.getDate() <= closingDay) {
+  if (referenceDate.getDate() < closingDay) {
+    // Ainda não fechou este mês - fatura atual é deste mês
     currentClosingDate = getClosingDate(referenceDate.getFullYear(), referenceDate.getMonth(), closingDay);
   } else {
+    // Já fechou este mês - fatura atual é do próximo mês
     const nextMonth = referenceDate.getMonth() === 11 ? 0 : referenceDate.getMonth() + 1;
     const nextYear = referenceDate.getMonth() === 11 ? referenceDate.getFullYear() + 1 : referenceDate.getFullYear();
     currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
@@ -482,10 +496,11 @@ export const buildInvoices = (
 ): InvoiceBuildResult => {
   const today = new Date();
 
-  // Usa invoicePeriods do backend se disponível, senão calcula
-  const invoicePeriods = card?.invoicePeriods;
-  const closingDay = invoicePeriods?.closingDay || card?.closingDay || 10;
-  const dueDay = invoicePeriods?.dueDay || card?.dueDay || closingDay + 10;
+  // IMPORTANTE: NÃO usar invoicePeriods do backend - sempre calcular localmente
+  // Isso garante que a lógica correta seja usada (o backend pode ter dados antigos)
+  // O closingDay ainda é pego do backend, mas os períodos são calculados aqui
+  const closingDay = card?.invoicePeriods?.closingDay || card?.closingDay || 10;
+  const dueDay = card?.invoicePeriods?.dueDay || card?.dueDay || closingDay + 10;
 
   // ========================================
   // PRIORIDADE 1: Datas manuais definidas pelo usuário
@@ -494,19 +509,51 @@ export const buildInvoices = (
 
   if (card?.manualLastClosingDate && card?.manualCurrentClosingDate) {
     // Parse das datas manuais
-    const lastClosingDate = parseDate(card.manualLastClosingDate);
-    const currentClosingDate = parseDate(card.manualCurrentClosingDate);
+    let lastClosingDate = parseDate(card.manualLastClosingDate);
+    let currentClosingDate = parseDate(card.manualCurrentClosingDate);
 
     // IMPORTANTE: Extrair o dia de fechamento da data manual
-    // Isso garante que parcelas sejam alocadas corretamente
     const manualClosingDay = currentClosingDate.getDate();
 
-    console.log('[InvoiceBuilder] Usando datas MANUAIS:', {
-      manualLast: card.manualLastClosingDate,
-      manualCurrent: card.manualCurrentClosingDate,
-      manualClosingDay,
-      originalClosingDay: closingDay
-    });
+    // ========================================
+    // CORREÇÃO: Avançar datas automáticamente se estiverem desatualizadas
+    // Se a data de fechamento atual (currentClosingDate) já passou,
+    // precisamos avançar os períodos para refletir a realidade
+    // ========================================
+    const todayNum = today.getFullYear() * 10000 + (today.getMonth() + 1) * 100 + today.getDate();
+    let currentClosingNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
+
+    let advancedMonths = 0;
+    while (todayNum >= currentClosingNum && advancedMonths < 12) {
+      // Avançar um mês
+      lastClosingDate = new Date(currentClosingDate);
+      currentClosingDate = new Date(currentClosingDate);
+      currentClosingDate.setMonth(currentClosingDate.getMonth() + 1);
+      // Ajustar dia para meses curtos
+      const lastDayOfMonth = new Date(currentClosingDate.getFullYear(), currentClosingDate.getMonth() + 1, 0).getDate();
+      if (manualClosingDay > lastDayOfMonth) {
+        currentClosingDate.setDate(lastDayOfMonth);
+      } else {
+        currentClosingDate.setDate(manualClosingDay);
+      }
+      currentClosingNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
+      advancedMonths++;
+    }
+
+    if (advancedMonths > 0) {
+      console.log('[InvoiceBuilder] Datas MANUAIS avançadas automaticamente:', {
+        original: { last: card.manualLastClosingDate, current: card.manualCurrentClosingDate },
+        adjusted: { last: toDateStr(lastClosingDate), current: toDateStr(currentClosingDate) },
+        advancedMonths
+      });
+    } else {
+      console.log('[InvoiceBuilder] Usando datas MANUAIS:', {
+        manualLast: card.manualLastClosingDate,
+        manualCurrent: card.manualCurrentClosingDate,
+        manualClosingDay,
+        originalClosingDay: closingDay
+      });
+    }
 
     // Inferir próximo fechamento (current + 1 mês, mantendo o dia)
     const nextClosingDate = new Date(currentClosingDate);
@@ -553,8 +600,13 @@ export const buildInvoices = (
     };
   } else {
     // ========================================
-    // PRIORIDADE 2/3: Backend ou cálculo automático
+    // PRIORIDADE 2: Cálculo automático (SEMPRE recalcula)
     // ========================================
+    console.log('[InvoiceBuilder] Calculando períodos automaticamente:', {
+      closingDay,
+      dueDay,
+      today: today.toISOString()
+    });
     periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset);
   }
 
@@ -623,7 +675,7 @@ export const buildInvoices = (
   const currentItems: InvoiceItem[] = [];
   const futureItemsByMonth: Record<string, InvoiceItem[]> = {};
 
-  // TOTAIS BRUTOS (apenas despesas, sem subtrair pagamentos)
+  // TOTAIS LÍQUIDOS (despesas - créditos/reembolsos, sem subtrair pagamentos)
   let closedTotalGross = 0;
   let currentTotalGross = 0;
   let allFutureTotalGross = 0;
@@ -703,8 +755,9 @@ export const buildInvoices = (
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
     const item = transactionToInvoiceItem(tx);
-    // TOTAL BRUTO: apenas despesas, income não subtrai
-    const amt = tx.type === 'expense' ? item.amount : 0;
+    // TOTAL LÍQUIDO: despesas + valor, income - valor (créditos/reembolsos subtraem do total)
+    // Em cartão de crédito, transações income são créditos/estornos que REDUZEM o valor da fatura
+    const amt = tx.type === 'expense' ? item.amount : -item.amount;
 
     // ========================================
     // LÓGICA DE OVERRIDE MANUAL
@@ -787,7 +840,8 @@ export const buildInvoices = (
   purchasesWithInstallments.forEach(({ purchase, installments }) => {
     installments.forEach(inst => {
       const item = installmentToInvoiceItem(inst);
-      const amt = item.amount; // Parcelas são sempre despesas (valor absoluto)
+      // Parcelas são tipicamente despesas, mas respeitamos o tipo se definido
+      const amt = item.type === 'income' ? -item.amount : item.amount;
 
       // Aloca baseado no referenceMonth da parcela (calculado corretamente pelo installmentService)
       if (inst.referenceMonth === periods.lastMonthKey) {
@@ -880,7 +934,7 @@ export const buildInvoices = (
   // currentTotalGross (apenas despesas, sem pagamentos)
   // allFutureTotalGross (apenas despesas, sem pagamentos)
 
-  console.log('[InvoiceBuilder] TOTAIS BRUTOS (SEM SUBTRAIR PAGAMENTOS):', {
+  console.log('[InvoiceBuilder] TOTAIS LÍQUIDOS (DESPESAS - CRÉDITOS):', {
     closedTotal: closedTotalGross,
     currentTotal: currentTotalGross,
     allFutureTotal: allFutureTotalGross
@@ -896,7 +950,7 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.lastDueDate),
     periodStart: toDateStr(periods.lastInvoiceStart),
     periodEnd: toDateStr(periods.lastClosingDate),
-    total: closedTotalGross, // TOTAL BRUTO - sem subtrair pagamentos
+    total: Math.max(0, closedTotalGross), // TOTAL LÍQUIDO - despesas menos créditos/reembolsos (nunca negativo)
     totalExpenses: closedItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: closedItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     minimumPayment: card?.currentBill?.minimumPaymentAmount,
@@ -915,7 +969,7 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.currentDueDate),
     periodStart: toDateStr(periods.currentInvoiceStart),
     periodEnd: toDateStr(periods.currentClosingDate),
-    total: currentTotalGross, // TOTAL BRUTO - sem subtrair pagamentos
+    total: Math.max(0, currentTotalGross), // TOTAL LÍQUIDO - despesas menos créditos/reembolsos (nunca negativo)
     totalExpenses: currentItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: currentItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     projectedInstallments: currentItems.filter(i => i.isProjected).length,
