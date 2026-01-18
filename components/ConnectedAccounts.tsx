@@ -902,6 +902,15 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
         </div>
       </div>
 
+      {/* Sync Warning Banner - Compact Version */}
+      <div className="mt-4 mb-2 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-3 shadow-sm">
+        <AlertCircle className="text-amber-500 shrink-0" size={18} />
+        <div className="text-xs text-amber-200/80">
+          <span className="text-amber-500 font-bold mr-1">Sincronização Manual:</span>
+          As contas <strong className="text-amber-200">não atualizam sozinhas</strong>. Clique em <span className="inline-flex items-center justify-center px-1.5 py-0.5 bg-amber-500/20 rounded text-amber-500 mx-0.5 align-middle font-bold"><RotateCcw size={10} className="mr-1" /> Sincronizar</span> no card do banco para buscar novos dados.
+        </div>
+      </div>
+
       <div className="flex items-center justify-between mt-2">
         <div>
           <p className="text-[11px] uppercase tracking-[0.2em] text-gray-500 font-bold">Suas conexões</p>

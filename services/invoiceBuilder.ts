@@ -118,12 +118,11 @@ const extractInstallmentFromDesc = (desc: string): { current: number; total: num
  * IMPORTANTE: Reembolsos/estornos NÃO são pagamentos de fatura!
  * Eles devem aparecer normalmente na fatura como créditos.
  */
-export const isCreditCardPayment = (tx: Transaction): boolean => {
+export const isTransactionRefund = (tx: Transaction): boolean => {
   const d = (tx.description || '').toLowerCase();
   const c = (tx.category || '').toLowerCase();
 
-  // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
-  const isRefund =
+  return (
     d.includes('estorno') ||
     d.includes('reembolso') ||
     d.includes('devolução') ||
@@ -134,10 +133,21 @@ export const isCreditCardPayment = (tx: Transaction): boolean => {
     d.includes('credito') ||
     c.includes('refund') ||
     c.includes('estorno') ||
-    c.includes('reembolso');
+    c.includes('reembolso')
+  );
+};
+
+/**
+ * Verifica se uma transação é pagamento de fatura
+ * IMPORTANTE: Reembolsos/estornos NÃO são pagamentos de fatura!
+ * Eles devem aparecer normalmente na fatura como créditos.
+ */
+export const isCreditCardPayment = (tx: Transaction): boolean => {
+  const d = (tx.description || '').toLowerCase();
+  const c = (tx.category || '').toLowerCase();
 
   // Se for reembolso, NÃO é pagamento de fatura
-  if (isRefund) {
+  if (isTransactionRefund(tx)) {
     return false;
   }
 
@@ -201,31 +211,102 @@ export interface InvoicePeriodDates {
  */
 export const calculateInvoicePeriodDates = (
   closingDayRaw: number | null | undefined,
-  dueDay: number | null | undefined,
+  dueDayRaw: number | null | undefined,
   today: Date = new Date(),
-  monthOffset: number = 0
+  monthOffset: number = 0,
+  card: ConnectedAccount | null = null
 ): InvoicePeriodDates => {
-  const closingDay = validateClosingDay(closingDayRaw);
+  let closingDay = validateClosingDay(closingDayRaw);
+  let dueDay = dueDayRaw || closingDay + 10;
 
   // Aplicar o offset de meses à data de referência
   const referenceDate = new Date(today);
   if (monthOffset !== 0) {
     referenceDate.setMonth(referenceDate.getMonth() + monthOffset);
   }
+  const todayWithOffset = referenceDate;
 
-  // Calcular fechamento da fatura ATUAL (próximo fechamento a partir da data de referência)
-  // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
-  // Portanto, a "fatura atual" é a do próximo mês
-  let currentClosingDate: Date;
-  if (referenceDate.getDate() < closingDay) {
-    // Ainda não fechou este mês - fatura atual é deste mês
-    currentClosingDate = getClosingDate(referenceDate.getFullYear(), referenceDate.getMonth(), closingDay);
-  } else {
-    // Já fechou este mês - fatura atual é do próximo mês
-    const nextMonth = referenceDate.getMonth() === 11 ? 0 : referenceDate.getMonth() + 1;
-    const nextYear = referenceDate.getMonth() === 11 ? referenceDate.getFullYear() + 1 : referenceDate.getFullYear();
-    currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+  let currentClosingDate: Date | null = null;
+
+  // ============================================================
+  // LÓGICA SMART (Portada do App Mobile)
+  // ============================================================
+
+  // PRIORIDADE 0: Usar periodStart e periodEnd do currentBill se disponíveis (Dados REAIS do Banco)
+  if (card?.currentBill?.periodStart && card?.currentBill?.periodEnd) {
+    const periodEnd = parseDate(card.currentBill.periodEnd);
+    // periodStart não é estritamente necessário para calcular datas futuras, apenas closingDay importa
+
+    closingDay = periodEnd.getDate(); // Atualiza closingDay real
+
+    if (card.currentBill.dueDate) {
+      dueDay = parseDate(card.currentBill.dueDate).getDate();
+    } else {
+      dueDay = Math.min(closingDay + 10, 28);
+    }
+
+    currentClosingDate = new Date(periodEnd);
   }
+  // PRIORIDADE 1: Usar currentBill.dueDate (Dados REAIS da Fatura)
+  else if (card?.currentBill?.dueDate) {
+    const billDueDate = parseDate(card.currentBill.dueDate);
+    dueDay = billDueDate.getDate();
+
+    // Tentar deduzir closingDay
+    if (card.currentBill.closeDate) {
+      closingDay = parseDate(card.currentBill.closeDate).getDate();
+    } else if (card.balanceCloseDate) {
+      closingDay = parseDate(card.balanceCloseDate).getDate();
+    } else {
+      // Estima 10 dias antes
+      closingDay = Math.max(1, dueDay - 10);
+    }
+
+    if (card.currentBill.closeDate) {
+      currentClosingDate = parseDate(card.currentBill.closeDate);
+    } else if (card.balanceCloseDate) {
+      currentClosingDate = parseDate(card.balanceCloseDate);
+    } else {
+      currentClosingDate = new Date(billDueDate);
+      currentClosingDate.setDate(currentClosingDate.getDate() - 10);
+    }
+  }
+  // PRIORIDADE 2: Usar balanceCloseDate (Dado real do Pluggy)
+  else if (card?.balanceCloseDate) {
+    const pluggyCloseDate = parseDate(card.balanceCloseDate);
+    closingDay = pluggyCloseDate.getDate();
+
+    if (card.balanceDueDate) {
+      dueDay = parseDate(card.balanceDueDate).getDate();
+    } else {
+      dueDay = Math.min(closingDay + 10, 28);
+    }
+
+    currentClosingDate = new Date(pluggyCloseDate);
+  }
+
+  // 3. Rotação Automática ou Fallback
+  if (currentClosingDate) {
+    // Se temos uma data base, rotacionamos se ela já passou para achar a "atual" relativa a hoje (com offset)
+    while (todayWithOffset > currentClosingDate) {
+      currentClosingDate.setMonth(currentClosingDate.getMonth() + 1);
+      currentClosingDate = getClosingDate(currentClosingDate.getFullYear(), currentClosingDate.getMonth(), closingDay);
+    }
+  } else {
+    // Fallback: Cálculo puramente matemático baseado no dia
+    // Se hoje >= closingDay, a fatura desse mês JÁ FECHOU -> fatura atual é do próximo mês
+    if (todayWithOffset.getDate() < closingDay) {
+      currentClosingDate = getClosingDate(todayWithOffset.getFullYear(), todayWithOffset.getMonth(), closingDay);
+    } else {
+      const nextMonth = todayWithOffset.getMonth() === 11 ? 0 : todayWithOffset.getMonth() + 1;
+      const nextYear = todayWithOffset.getMonth() === 11 ? todayWithOffset.getFullYear() + 1 : todayWithOffset.getFullYear();
+      currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+    }
+  }
+
+  // ============================================================
+  // CÁLCULO DE DATAS DERIVADAS
+  // ============================================================
 
   // ÚLTIMA fatura (um mês antes da atual)
   const lastClosingMonth = currentClosingDate.getMonth() === 0 ? 11 : currentClosingDate.getMonth() - 1;
@@ -248,13 +329,21 @@ export const calculateInvoicePeriodDates = (
   const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24 * 60 * 60 * 1000);
 
   // Datas de VENCIMENTO
-  const safeDueDay = dueDay || closingDay + 10;
+  const safeDueDay = dueDay; // Já validado/ajustado acima
 
   const calculateDueDate = (closingDate: Date): Date => {
-    const dueMonth = closingDate.getMonth() === 11 ? 0 : closingDate.getMonth() + 1;
-    const dueYear = closingDate.getMonth() === 11 ? closingDate.getFullYear() + 1 : closingDate.getFullYear();
-    const lastDayOfDueMonth = new Date(dueYear, dueMonth + 1, 0).getDate();
-    return new Date(dueYear, dueMonth, Math.min(safeDueDay, lastDayOfDueMonth));
+    let targetMonth = closingDate.getMonth();
+    let targetYear = closingDate.getFullYear();
+
+    // Se dueDay <= closingDay, o vencimento é no mês seguinte
+    // Se dueDay > closingDay, o vencimento é no mesmo mês
+    if (safeDueDay <= closingDay) {
+      targetMonth = targetMonth === 11 ? 0 : targetMonth + 1;
+      targetYear = targetMonth === 0 ? targetYear + 1 : targetYear;
+    }
+
+    const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+    return new Date(targetYear, targetMonth, Math.min(safeDueDay, lastDayOfTargetMonth));
   };
 
   const lastDueDate = calculateDueDate(lastClosingDate);
@@ -361,7 +450,7 @@ export const processInstallments = (
     const baseTx = data.transactions[0];
     const totalInstallments = baseTx.totalInstallments || 1;
     const paidInstallments = data.transactions.length;
-    const installmentAmount = Math.abs(baseTx.amount);
+    const installmentAmount = -Math.abs(baseTx.amount);
 
     // Calcula data da última parcela
     const lastInstDate = new Date(data.firstInstDate);
@@ -393,14 +482,18 @@ export const processInstallments = (
  * Converte uma Transaction para InvoiceItem
  */
 export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
+  // Determina tipo e sinal baseado na natureza da transação (corrige dados invertidos do banco)
+  const isIncome = isCreditCardPayment(tx) || isTransactionRefund(tx);
+  const fixedType = isIncome ? 'income' : 'expense';
+
   return {
     id: tx.id,
     transactionId: tx.id,
     description: tx.description,
-    amount: Math.abs(tx.amount),
+    amount: isIncome ? Math.abs(tx.amount) : -Math.abs(tx.amount),
     date: tx.date,
     category: tx.category,
-    type: tx.type,
+    type: fixedType,
     installmentNumber: tx.installmentNumber,
     totalInstallments: tx.totalInstallments,
     isProjected,
@@ -426,7 +519,7 @@ export const createProjectedInstallment = (
     id: `proj_${baseTx.id}_${installmentNumber}`,
     transactionId: baseTx.id,
     description: baseTx.description,
-    amount: Math.abs(baseTx.amount),
+    amount: -Math.abs(baseTx.amount),
     date: toDateStr(installmentDate),
     category: baseTx.category,
     type: baseTx.type,
@@ -607,7 +700,7 @@ export const buildInvoices = (
       dueDay,
       today: today.toISOString()
     });
-    periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset);
+    periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset, card || null);
   }
 
   // Filtra transações do cartão
@@ -755,9 +848,8 @@ export const buildInvoices = (
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
     const item = transactionToInvoiceItem(tx);
-    // TOTAL LÍQUIDO: despesas + valor, income - valor (créditos/reembolsos subtraem do total)
-    // Em cartão de crédito, transações income são créditos/estornos que REDUZEM o valor da fatura
-    const amt = tx.type === 'expense' ? item.amount : -item.amount;
+    // TOTAL LÍQUIDO: Agora item.amount já possui o sinal correto (negativo para despesa, positivo para receita)
+    const amt = item.amount;
 
     // ========================================
     // LÓGICA DE OVERRIDE MANUAL
@@ -840,8 +932,8 @@ export const buildInvoices = (
   purchasesWithInstallments.forEach(({ purchase, installments }) => {
     installments.forEach(inst => {
       const item = installmentToInvoiceItem(inst);
-      // Parcelas são tipicamente despesas, mas respeitamos o tipo se definido
-      const amt = item.type === 'income' ? -item.amount : item.amount;
+      // Parcelas são tipicamente despesas (negativas), mas se for income, mantém positivo
+      const amt = item.amount;
 
       // Aloca baseado no referenceMonth da parcela (calculado corretamente pelo installmentService)
       if (inst.referenceMonth === periods.lastMonthKey) {
@@ -950,7 +1042,7 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.lastDueDate),
     periodStart: toDateStr(periods.lastInvoiceStart),
     periodEnd: toDateStr(periods.lastClosingDate),
-    total: Math.max(0, closedTotalGross), // TOTAL LÍQUIDO - despesas menos créditos/reembolsos (nunca negativo)
+    total: Math.max(0, -closedTotalGross), // TOTAL LÍQUIDO - inverte sinal pois despesas agora são negativas
     totalExpenses: closedItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: closedItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     minimumPayment: card?.currentBill?.minimumPaymentAmount,
@@ -969,7 +1061,7 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.currentDueDate),
     periodStart: toDateStr(periods.currentInvoiceStart),
     periodEnd: toDateStr(periods.currentClosingDate),
-    total: Math.max(0, currentTotalGross), // TOTAL LÍQUIDO - despesas menos créditos/reembolsos (nunca negativo)
+    total: Math.max(0, -currentTotalGross), // TOTAL LÍQUIDO - inverte sinal pois despesas agora são negativas
     totalExpenses: currentItems.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
     totalIncomes: currentItems.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
     projectedInstallments: currentItems.filter(i => i.isProjected).length,
@@ -987,7 +1079,8 @@ export const buildInvoices = (
       dueDate.setMonth(dueDate.getMonth() + 1);
       dueDate.setDate(Math.min(dueDay, 28));
 
-      const total = items.reduce((s, i) => s + (i.type === 'income' ? -i.amount : i.amount), 0);
+      const total = items.reduce((s, i) => s + i.amount, 0);
+      const totalToPay = Math.max(0, -total);
 
       return {
         id: `${cardId}_${monthKey}`,
@@ -998,7 +1091,7 @@ export const buildInvoices = (
         dueDate: toDateStr(dueDate),
         periodStart: toDateStr(new Date(billingDate.getTime() - 30 * 24 * 60 * 60 * 1000)),
         periodEnd: toDateStr(billingDate),
-        total,
+        total: totalToPay,
         totalExpenses: items.filter(i => i.type === 'expense').reduce((s, i) => s + i.amount, 0),
         totalIncomes: items.filter(i => i.type === 'income').reduce((s, i) => s + i.amount, 0),
         projectedInstallments: items.filter(i => i.isProjected).length,

@@ -638,7 +638,7 @@ export const installmentToInvoiceItem = (inst: Installment): any => {
     id: inst.id,
     transactionId: inst.transactionId,
     description: inst.description,
-    amount: inst.amount,
+    amount: -Math.abs(inst.amount),
     date: inst.billingDate, // Usa data de fechamento como referência
     category: inst.category,
     type: 'expense' as const,

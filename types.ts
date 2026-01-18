@@ -641,6 +641,8 @@ export interface ConnectedAccount {
   manualLastClosingDate?: string; // YYYY-MM-DD
   manualCurrentClosingDate?: string; // YYYY-MM-DD
   hidden?: boolean;
+  // Preservação de apelido: nome original da API para comparação
+  originalName?: string; // Nome original retornado pela API (Pluggy), usado para detectar apelidos customizados
 }
 
 export interface AppNotification {

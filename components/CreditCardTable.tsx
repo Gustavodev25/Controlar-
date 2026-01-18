@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -1230,7 +1230,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           currencyCode: item.currencyCode,
           amountOriginal: item.amountOriginal,
           amountInAccountCurrency: item.amountInAccountCurrency,
-          pluggyRaw: item.pluggyRaw
+          pluggyRaw: item.pluggyRaw,
+          // IMPORTANTE: Preservar o override manual do mês da fatura
+          manualInvoiceMonth: item.manualInvoiceMonth
         }));
       };
 
@@ -1648,6 +1650,19 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
         </div>
       </div>
+
+      {/* Sync Warning Banner - Compact Version (Only if using connected accounts) */}
+      {!isManualMode && creditCardAccounts && creditCardAccounts.length > 0 && creditCardAccounts.some(acc => acc.connectionMode !== 'MANUAL') && (
+        <div className="mb-6 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-3 shadow-sm">
+          <AlertCircle className="text-amber-500 shrink-0" size={18} />
+          <div className="text-xs text-amber-200/80">
+            <span className="text-amber-500 font-bold mr-1">Sincronização Manual:</span>
+            As faturas <strong className="text-amber-200">não atualizam sozinhas</strong>. Vá em
+            <span className="inline-flex items-center justify-center px-1.5 py-0.5 bg-zinc-800 rounded text-gray-300 mx-1 align-middle border border-zinc-700 font-medium whitespace-nowrap">Gestão de Contas</span>
+            e clique em <span className="inline-flex items-center justify-center px-1.5 py-0.5 bg-amber-500/20 rounded text-amber-500 mx-0.5 align-middle font-bold whitespace-nowrap"><RotateCcw size={10} className="mr-1" /> Sincronizar</span> no card do banco.
+          </div>
+        </div>
+      )}
 
       {/* Invoice Summary Cards */}
       {creditCardAccounts.length > 0 && (

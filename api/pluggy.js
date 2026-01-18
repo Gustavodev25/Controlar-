@@ -509,7 +509,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 const d = doc.data();
                 existingMap[doc.id] = {
                     connectedAt: d.connectedAt,
-                    lastSyncedAt: d.lastSyncedAt // Track last sync for incremental fetching
+                    lastSyncedAt: d.lastSyncedAt, // Track last sync for incremental fetching
+                    customName: d.name, // Preservar o apelido customizado do usuário
+                    originalName: d.originalName // Nome original da API para comparação
                 };
             });
 
@@ -537,8 +539,27 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
                 } : {};
 
+                // PRESERVAR APELIDO CUSTOMIZADO:
+                // Se o usuário já renomeou a conta (customName existe e é diferente do que vem da API),
+                // mantemos o customName. Caso contrário, usamos o nome da API.
+                const apiName = acc.name || acc.marketingName || 'Conta';
+                let nameToSave = apiName;
+
+                if (existing?.customName) {
+                    // CASO 1: Se temos originalName, comparar com ele
+                    // CASO 2: Se não temos originalName (conta antiga), comparar diretamente com apiName
+                    //         Se são diferentes, significa que o usuário renomeou
+                    const previousOriginalName = existing.originalName || apiName;
+                    if (existing.customName !== previousOriginalName) {
+                        nameToSave = existing.customName; // Manter o apelido do usuário
+                        console.log(`[SYNC] Preservando apelido: "${existing.customName}" (original: "${apiName}")`);
+                    }
+                }
+
                 accBatch.set(accountsRef.doc(acc.id), removeUndefined({
                     ...acc,
+                    name: nameToSave, // Usar nome preservado ou da API
+                    originalName: apiName, // Sempre salvar o nome original da API para referência
                     ...creditFields,
                     ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                     accountNumber: acc.number || null,
@@ -664,7 +685,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             date: tx.date.split('T')[0],
                             description: tx.description,
                             amount: Math.abs(tx.amount),
-                            type: tx.amount > 0 ? 'expense' : 'income',
+                            type: tx.amount < 0 ? 'expense' : 'income',
                             category: tx.category || 'Uncategorized',
                             status: 'completed',
                             totalInstallments,
@@ -740,8 +761,17 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 .filter(({ bills }) => bills.length > 0)
                 .map(({ account, bills }) => {
                     const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
-                    const current = sorted[0];
-                    const previous = sorted[1] || null;
+
+                    // Smart Selection: Prioritize OPEN, then first Future, then Most Recent
+                    let current = sorted.find(b => b.status === 'OPEN');
+                    if (!current) {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const sortedAsc = [...sorted].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
+                        current = sortedAsc.find(b => b.dueDate >= todayStr);
+                    }
+                    if (!current) current = sorted[0];
+
+                    const previous = sorted.find(b => b.id !== current.id) || null;
 
                     // Extract finance charges
                     const financeCharges = current.financeCharges || [];
@@ -786,9 +816,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             id: current.id,
                             dueDate: current.dueDate,
                             closeDate: current.closeDate || null,
-                            // Datas de período calculadas
-                            periodStart: new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(), // dia após último fechamento
-                            periodEnd: nextClosingDate.toISOString(), // próximo fechamento
+                            // Datas de período: Usar dados do banco se houver, senão null (deixar frontend calcular)
+                            periodStart: current.periodStart || null,
+                            periodEnd: current.periodEnd || null,
                             status: current.status || 'OPEN',
                             // Valores
                             totalAmount: current.totalAmount || null,
@@ -1892,7 +1922,9 @@ async function processWebhookSync(db, userId, itemId, eventType) {
             const d = doc.data();
             existingMap[doc.id] = {
                 connectedAt: d.connectedAt,
-                lastSyncedAt: d.lastSyncedAt
+                lastSyncedAt: d.lastSyncedAt,
+                customName: d.name, // Preservar o apelido customizado do usuário
+                originalName: d.originalName // Nome original da API para comparação
             };
         });
 
@@ -1918,8 +1950,24 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                 invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
             } : {};
 
+            // PRESERVAR APELIDO CUSTOMIZADO:
+            const apiName = acc.name || acc.marketingName || 'Conta';
+            let nameToSave = apiName;
+
+            if (existing?.customName) {
+                // CASO 1: Se temos originalName, comparar com ele
+                // CASO 2: Se não temos originalName (conta antiga), comparar diretamente com apiName
+                const previousOriginalName = existing.originalName || apiName;
+                if (existing.customName !== previousOriginalName) {
+                    nameToSave = existing.customName; // Manter o apelido do usuário
+                    console.log(`[Webhook] Preservando apelido: "${existing.customName}" (original: "${apiName}")`);
+                }
+            }
+
             accBatch.set(accountsRef.doc(acc.id), removeUndefined({
                 ...acc,
+                name: nameToSave, // Usar nome preservado ou da API
+                originalName: apiName, // Sempre salvar o nome original da API para referência
                 ...creditFields,
                 ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                 accountNumber: acc.number || null,
