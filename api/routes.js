@@ -1563,7 +1563,7 @@ router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
   try {
     const payload = {
       value: value || undefined, // Optional: for partial refunds
-      description: description || 'Solicitado pelo cliente (7 dias)'
+      description: description || 'Solicitado pelo cliente (15 dias)'
     };
 
     const result = await asaasRequest('POST', `/payments/${paymentId}/refund`, payload);

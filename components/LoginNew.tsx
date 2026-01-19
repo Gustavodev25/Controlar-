@@ -812,7 +812,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
                                     onClick={(e) => {
                                         e.preventDefault();
                                         if (isLogin && onSubscribe) {
-                                            onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'FELIZ2026' });
+                                            onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
                                         } else {
                                             setIsLogin(!isLogin);
                                             setStep(1);

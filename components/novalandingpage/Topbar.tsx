@@ -8,7 +8,7 @@ import {
   useSpring,
   AnimatePresence,
 } from 'framer-motion';
-import { Menu, X, ArrowRight } from 'lucide-react';
+import { Menu, X, ArrowRight, LogIn, Sparkles } from 'lucide-react';
 import logo from '../../assets/logo.png'; // ⚠️ Verifique o caminho
 import { getAvatarColors, getInitials } from '../../utils/avatarUtils';
 
@@ -237,38 +237,63 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
               })()
             ) : (
               <div className="flex items-center gap-3">
-                <button
-                  onClick={onLogin}
-                  className="hidden md:block text-sm font-medium text-gray-400 hover:text-white transition-colors px-2"
-                >
-                  Entrar
-                </button>
-                <motion.button
+                <motion.div
+                  className="hidden md:flex group items-center p-1 bg-black/40 backdrop-blur-xl border border-white/10 rounded-full shadow-[0_0_20px_-5px_rgba(217,119,87,0.15)] hover:border-[#D97757]/30 transition-all duration-300"
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
-                  onClick={() => {
-                    // Ir direto para checkout se onSubscribe disponível
-                    if (onSubscribe) {
-                      onSubscribe({
-                        planId: 'pro',
-                        billingCycle: 'monthly',
-                        couponCode: 'FELIZ2026'
-                      });
-                    } else {
-                      // Fallback: salvar pending_checkout e ir para login
-                      const pendingCheckout = {
-                        planId: 'pro',
-                        billingCycle: 'monthly',
-                        couponCode: 'FELIZ2026'
-                      };
-                      localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                      onLogin();
-                    }
-                  }}
-                  className="hidden md:flex items-center gap-2 px-5 py-2 rounded-xl bg-[#D97757] hover:bg-[#ff8660] text-white text-sm font-semibold transition-all shadow-[0_0_20px_-5px_rgba(217,119,87,0.4)] border border-white/10"
                 >
-                  <span>Assinar Pro</span>
-                </motion.button>
+                  {/* Login Button - Left Part */}
+                  <motion.button
+                    onClick={onLogin}
+                    className="relative flex items-center justify-center h-9 rounded-l-full px-4 hover:bg-white/5 transition-colors overflow-hidden"
+                    initial="initial"
+                    whileHover="hover"
+                  >
+                    <div className="flex items-center gap-2">
+                      <LogIn size={16} className="text-gray-300 group-hover:text-white transition-colors" />
+                      <motion.span
+                        variants={{
+                          initial: { width: 0, opacity: 0, paddingLeft: 0 },
+                          hover: { width: "auto", opacity: 1, paddingLeft: 6 }
+                        }}
+                        className="whitespace-nowrap font-medium text-white overflow-hidden text-xs"
+                      >
+                        Entrar
+                      </motion.span>
+                    </div>
+                  </motion.button>
+
+                  {/* Divider - Stuck */}
+                  <div className="w-[1px] h-4 bg-white/10 mx-0.5" />
+
+                  {/* Subscribe Button - Right Part */}
+                  <motion.button
+                    onClick={() => {
+                      if (onSubscribe) {
+                        onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
+                      } else {
+                        localStorage.setItem('pending_checkout', JSON.stringify({ planId: 'pro', billingCycle: 'monthly' }));
+                        onLogin();
+                      }
+                    }}
+                    className="relative flex items-center justify-center h-9 rounded-r-full px-4 bg-[#D97757] hover:bg-[#c66a4e] transition-colors overflow-hidden shadow-lg shadow-[#D97757]/20"
+                    initial="initial"
+                    whileHover="hover"
+                  >
+                    <div className="flex items-center gap-2">
+                      <Sparkles size={16} className="text-white fill-white/20" />
+                      <motion.span
+                        variants={{
+                          initial: { width: 0, opacity: 0, paddingLeft: 0 },
+                          hover: { width: "auto", opacity: 1, paddingLeft: 6 }
+                        }}
+                        className="whitespace-nowrap font-medium text-white overflow-hidden text-xs"
+                      >
+                        Assinar Pro
+                      </motion.span>
+                    </div>
+                  </motion.button>
+                </motion.div>
               </div>
             )}
 
@@ -350,15 +375,13 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                       if (onSubscribe) {
                         onSubscribe({
                           planId: 'pro',
-                          billingCycle: 'monthly',
-                          couponCode: 'FELIZ2026'
+                          billingCycle: 'monthly'
                         });
                       } else {
                         // Fallback: salvar pending_checkout e ir para login
                         const pendingCheckout = {
                           planId: 'pro',
-                          billingCycle: 'monthly',
-                          couponCode: 'FELIZ2026'
+                          billingCycle: 'monthly'
                         };
                         localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
                         onLogin();

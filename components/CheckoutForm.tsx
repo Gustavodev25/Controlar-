@@ -617,25 +617,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       className="p-6"
     >
       {/* Scarcity Banner */}
-      <div className="bg-transparent border border-[#D97757]/20 rounded-2xl p-4 mb-8 flex items-center justify-between backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <div className="bg-[#D97757]/10 p-2.5 rounded-xl shadow-lg shadow-[#D97757]/10 animate-pulse">
-            <Zap className="text-[#D97757]" size={20} fill="currentColor" />
-          </div>
-          <div>
-            <h3 className="font-bold text-white text-sm lg:text-base flex items-center gap-2">
-              Alta Demanda Detectada <TrendingUp size={14} className="text-[#D97757]" />
-            </h3>
-            <p className="text-gray-400 text-xs lg:text-sm mt-0.5">
-              Restam apenas <span className="text-[#D97757] font-bold">{spotsLeft} vagas</span> com as condições atuais.
-            </p>
-          </div>
-        </div>
-        <div className="hidden lg:flex flex-col items-end">
-          <div className="text-[10px] font-bold text-[#D97757] uppercase tracking-wider mb-1.5">Oferta expira em</div>
-          <CheckoutTimer />
-        </div>
-      </div>
+
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna Esquerda - Formulário de Cadastro */}
@@ -820,7 +802,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             <div className="-mt-8 -mx-8 bg-[#00A96E]/10 border-b border-[#00A96E]/10 p-3 flex items-center justify-center gap-2 mb-8">
               <ShieldCheck size={14} className="text-[#00A96E]/80" fill="currentColor" fillOpacity={0.2} />
               <span className="text-[#00A96E]/90 text-xs font-bold uppercase tracking-wide">
-                Garantia de 7 dias ou seu dinheiro de volta
+                Garantia de 15 DIAS ou seu dinheiro de volta
               </span>
             </div>
 
@@ -1290,7 +1272,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               <div className="-mt-8 -mx-8 bg-[#00A96E]/10 border-b border-[#00A96E]/10 p-3 flex items-center justify-center gap-2 mb-8">
                 <ShieldCheck size={14} className="text-[#00A96E]/80" fill="currentColor" fillOpacity={0.2} />
                 <span className="text-[#00A96E]/90 text-xs font-bold uppercase tracking-wide">
-                  Garantia de 7 dias ou seu dinheiro de volta
+                  Garantia de 15 DIAS ou seu dinheiro de volta
                 </span>
               </div>
 

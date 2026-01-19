@@ -53,15 +53,13 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onLogin, onSubscribe }) => {
                             if (onSubscribe) {
                                 onSubscribe({
                                     planId: 'pro',
-                                    billingCycle: 'monthly',
-                                    couponCode: 'FELIZ2026'
+                                    billingCycle: 'monthly'
                                 });
                             } else {
                                 // Fallback: salvar pending_checkout e ir para login
                                 const pendingCheckout = {
                                     planId: 'pro',
-                                    billingCycle: 'monthly',
-                                    couponCode: 'FELIZ2026'
+                                    billingCycle: 'monthly'
                                 };
                                 localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
                                 onLogin();

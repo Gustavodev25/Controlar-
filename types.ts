@@ -119,6 +119,12 @@ export interface Subscription {
   category: string;
   provider?: string;
   paidMonths?: string[]; // Meses em que foi marcada como paga (YYYY-MM), não soma no custo mensal
+  // Auto-detection fields
+  source?: 'auto_detected' | 'manual'; // Como foi criada
+  confirmed?: boolean; // Se usuário confirmou que é assinatura
+  detectedAt?: string; // Data de detecção automática
+  nickname?: string; // Apelido personalizado para a assinatura
+  chargeDay?: number; // Dia da cobrança (1-31)
 }
 
 export interface WaitlistEntry {
@@ -517,6 +523,7 @@ export interface Installment {
   isProjected: boolean;          // True se gerada pelo sistema (não veio da API)
   isFromAPI: boolean;            // True se veio da Pluggy
   transactionId?: string;        // ID da transação (se veio da API)
+  date?: string;                 // Data real da transação (se disponível/calculada)
 }
 
 /**

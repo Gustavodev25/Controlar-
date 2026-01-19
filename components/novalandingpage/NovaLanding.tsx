@@ -28,8 +28,8 @@ export const NovaLanding: React.FC<NovaLandingProps> = ({ onLogin, onSubscribe }
             <Hero onLogin={onLogin} onSubscribe={onSubscribe} />
             <FeaturesSectionWithHoverEffects />
 
-            <TestimonialsSection />
             <PricingSection onLogin={onLogin} onSubscribe={onSubscribe} />
+            <TestimonialsSection />
             <FAQSection onLogin={onLogin} />
             <FinalCTA onLogin={onLogin} onSubscribe={onSubscribe} />
             <Footer />

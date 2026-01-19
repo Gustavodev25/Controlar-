@@ -44,9 +44,16 @@ export const BlurTextEffect: React.FC<BlurTextEffectProps> = ({ children, classN
 
     return (
         <span className={`inline-block ${className}`} ref={containerRef}>
-            {children.split('').map((char, i) => (
-                <span key={`${char}-${i}`} className="char inline-block" style={{ whiteSpace: 'pre' }}>
-                    {char === ' ' ? '\u00A0' : char}
+            {children.split(' ').map((word, wordIndex, array) => (
+                <span key={`word-${wordIndex}`} className="inline-block whitespace-nowrap">
+                    {word.split('').map((char, charIndex) => (
+                        <span key={`char-${wordIndex}-${charIndex}`} className="char inline-block">
+                            {char}
+                        </span>
+                    ))}
+                    {wordIndex < array.length - 1 && (
+                        <span className="char inline-block">&nbsp;</span>
+                    )}
                 </span>
             ))}
         </span>

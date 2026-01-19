@@ -724,13 +724,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    const status = formData.subscription?.status || 'active';
    const nextDate = formData.subscription?.nextBillingDate;
 
-   // Refund Eligibility - Check if within 7 days of subscription start
+   // Refund Eligibility - Check if within 15 days of subscription start
    const isRefundEligible = useMemo(() => {
       if (!formData.subscription?.startDate || plan === 'starter') return false;
       const startDate = new Date(formData.subscription.startDate);
       const now = new Date();
       const daysSinceStart = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      return daysSinceStart <= 7 && status === 'active';
+      return daysSinceStart <= 15 && status === 'active';
    }, [formData.subscription?.startDate, plan, status]);
 
    const daysUntilRefundExpires = useMemo(() => {
@@ -738,7 +738,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       const startDate = new Date(formData.subscription.startDate);
       const now = new Date();
       const daysSinceStart = Math.floor((now.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
-      return Math.max(0, 7 - daysSinceStart);
+      return Math.max(0, 15 - daysSinceStart);
    }, [formData.subscription?.startDate]);
 
    const tabs = [

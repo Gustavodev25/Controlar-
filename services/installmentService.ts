@@ -276,13 +276,21 @@ export const generateInstallments = (
       billingDate,
       dueDate: dueDateStr,
       status,
-      description: purchase.description,
+      description: existingTx?.description || purchase.description,
       category: purchase.category,
       creditCardId: purchase.creditCardId,
       purchaseDate: purchase.purchaseDate,
       isProjected: !isFromAPI,
       isFromAPI,
-      transactionId: existingTx?.id
+      transactionId: existingTx?.id,
+      // Se tiver transação real, usa a data dela. Se não, estima (purchaseDate + N meses)
+      date: existingTx?.date
+        ? existingTx.date
+        : (() => {
+          const pDate = parseDate(purchase.purchaseDate);
+          pDate.setMonth(pDate.getMonth() + (i - 1));
+          return toDateStr(pDate);
+        })()
     };
 
     installments.push(installment);
@@ -639,7 +647,9 @@ export const installmentToInvoiceItem = (inst: Installment): any => {
     transactionId: inst.transactionId,
     description: inst.description,
     amount: -Math.abs(inst.amount),
-    date: inst.billingDate, // Usa data de fechamento como referência
+    // CORREÇÃO: Usar a data real da transação (se existir) ou a data calculada da parcela
+    // BillingDate joga tudo para o dia do fechamento, o que confunde o usuário
+    date: inst.date || inst.billingDate,
     category: inst.category,
     type: 'expense' as const,
     installmentNumber: inst.installmentNumber,

@@ -47,12 +47,13 @@ const SubscriptionCard: React.FC<{
   onDelete: (id: string) => void,
   onEdit: (sub: Subscription) => void,
   onTogglePaid: (sub: Subscription) => void,
+  onConfirm?: (sub: Subscription) => void,
   isPaidThisMonth: boolean,
   filterMonth: string,
   selectionMode?: boolean,
   selected?: boolean,
   onToggleSelect?: (id: string) => void
-}> = ({ sub, onDelete, onEdit, onTogglePaid, isPaidThisMonth, filterMonth, selectionMode = false, selected = false, onToggleSelect }) => {
+}> = ({ sub, onDelete, onEdit, onTogglePaid, onConfirm, isPaidThisMonth, filterMonth, selectionMode = false, selected = false, onToggleSelect }) => {
 
   // Cores based on Status/Cycle
   let statusConfig = {
@@ -117,11 +118,22 @@ const SubscriptionCard: React.FC<{
         {/* Info Principal */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
-            <h4 className={`font-semibold text-sm sm:text-[15px] truncate ${isPaidThisMonth ? 'text-gray-500' : 'text-white'}`}>{sub.name}</h4>
+            <h4 className={`font-semibold text-sm sm:text-[15px] truncate ${isPaidThisMonth ? 'text-gray-500' : 'text-white'}`}>
+              {sub.nickname || sub.name}
+              {sub.nickname && <span className="text-xs text-gray-500 ml-1 font-normal">({sub.name})</span>}
+            </h4>
+
             <span className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
               <RefreshCw size={9} />
               <span className="uppercase tracking-wider">Auto</span>
             </span>
+
+            {/* Tag de detecção automática (não confirmada) - lado direito */}
+            {sub.source === 'auto_detected' && !sub.confirmed && (
+              <span className="flex items-center text-[9px] sm:text-[10px] font-bold text-amber-300 bg-gradient-to-r from-amber-500/20 to-orange-500/20 px-1.5 sm:px-2 py-0.5 rounded-full border border-amber-500/30 animate-pulse">
+                Detectada
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-[12px] text-gray-500">
@@ -131,6 +143,12 @@ const SubscriptionCard: React.FC<{
             </span>
             <span className="text-gray-600 hidden sm:inline">•</span>
             <span className="font-mono text-[10px] sm:text-[12px]">{sub.billingCycle === 'monthly' ? 'Mensal' : 'Anual'}</span>
+            {sub.chargeDay && (
+              <>
+                <span className="text-gray-600 hidden sm:inline">•</span>
+                <span className="text-[10px] sm:text-[12px]">Dia {sub.chargeDay}</span>
+              </>
+            )}
           </div>
         </div>
 
@@ -145,31 +163,57 @@ const SubscriptionCard: React.FC<{
         </div>
 
         {/* Ações - aparecem no hover (desktop) ou sempre visíveis parcialmente (mobile) */}
-        <div className={`flex items-center gap-0.5 sm:gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:-mr-2 sm:group-hover:mr-0 sm:w-0 sm:group-hover:w-auto overflow-hidden'}`}>
-          <button
-            onClick={(e) => { e.stopPropagation(); onTogglePaid(sub); }}
-            className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
-              ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
-              : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
-              }`}
-            title={isPaidThisMonth ? "Desmarcar como pago" : "Marcar como pago"}
-          >
-            <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onEdit(sub); }}
-            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
-            title="Editar"
-          >
-            <Edit2 size={14} />
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
-            className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
-            title="Excluir"
-          >
-            <Trash2 size={14} />
-          </button>
+        <div className={`flex items-center gap-0.5 sm:gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : ''}`}>
+
+          {/* Botões especiais para assinaturas detectadas automaticamente (não confirmadas) */}
+          {sub.source === 'auto_detected' && !sub.confirmed ? (
+            <>
+              {/* Botão Confirmar */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onConfirm && onConfirm(sub); }}
+                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-all"
+                title="Confirmar assinatura"
+              >
+                <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+              </button>
+              {/* Botão Remover */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
+                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-red-400 bg-red-500/10 hover:bg-red-500/20 transition-all"
+                title="Não é uma assinatura"
+              >
+                <X size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+              </button>
+            </>
+          ) : (
+            /* Botões normais para assinaturas confirmadas/manuais */
+            <div className="flex items-center gap-0.5 sm:gap-1 sm:opacity-0 sm:group-hover:opacity-100 sm:-mr-2 sm:group-hover:mr-0 sm:w-0 sm:group-hover:w-auto overflow-hidden transition-all duration-300">
+              <button
+                onClick={(e) => { e.stopPropagation(); onTogglePaid(sub); }}
+                className={`w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg transition-all ${isPaidThisMonth
+                  ? 'text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20'
+                  : 'text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10'
+                  }`}
+                title={isPaidThisMonth ? "Desmarcar como pago" : "Marcar como pago"}
+              >
+                <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onEdit(sub); }}
+                className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+                title="Editar"
+              >
+                <Edit2 size={14} />
+              </button>
+              <button
+                onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
+                className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                title="Excluir"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -230,6 +274,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
   const [formData, setFormData] = useState({
     name: '',
+    nickname: '',
+    chargeDay: '',
     amount: '',
     billingCycle: 'monthly' as 'monthly' | 'yearly',
     category: '',
@@ -439,6 +485,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     const data = {
       userId: '', // Filled by service/parent logic usually
       name: formData.name,
+      nickname: formData.nickname,
+      chargeDay: formData.chargeDay ? parseInt(formData.chargeDay) : undefined,
       amount: parseFloat(formData.amount),
       billingCycle: formData.billingCycle,
       category: formData.category,
@@ -460,6 +508,8 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     setEditingId(sub.id);
     setFormData({
       name: sub.name,
+      nickname: sub.nickname || '',
+      chargeDay: sub.chargeDay ? sub.chargeDay.toString() : '',
       amount: sub.amount.toString(),
       billingCycle: sub.billingCycle,
       category: sub.category,
@@ -473,13 +523,21 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
     setIsModalOpen(false);
     setTimeout(() => {
       setEditingId(null);
-      setFormData({ name: '', amount: '', billingCycle: 'monthly', category: '', status: 'active' });
+      setFormData({ name: '', nickname: '', chargeDay: '', amount: '', billingCycle: 'monthly', category: '', status: 'active' });
       setModalMode('manual');
       setAiInput('');
       setChatMessages([]);
       setGenerationStatus('idle');
       setGenerationMessage('');
     }, 300);
+  };
+
+  // Função para confirmar uma assinatura detectada automaticamente
+  const handleConfirmSubscription = (sub: Subscription) => {
+    onUpdateSubscription({
+      ...sub,
+      confirmed: true
+    });
   };
 
   // Função para alternar o estado de pago no mês SELECIONADO (filterMonth)
@@ -645,6 +703,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
               onDelete={setDeleteId}
               onEdit={handleEdit}
               onTogglePaid={handleTogglePaid}
+              onConfirm={handleConfirmSubscription}
               isPaidThisMonth={isSubscriptionPaidThisMonth(sub)}
               filterMonth={filterMonth}
               selectionMode={selectionMode}
@@ -934,6 +993,23 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
                 </div>
               </div>
 
+              {/* Apelido (Opcional) */}
+              <div className="space-y-1.5">
+                <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Apelido (Opcional)</label>
+                <div className="relative">
+                  <Tag className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                  <input
+                    type="text"
+                    value={formData.nickname}
+                    onChange={e => setFormData({ ...formData, nickname: e.target.value })}
+                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600"
+                    placeholder="Ex: Netflix da Sala"
+                  />
+                </div>
+              </div>
+
+
+
               <div className="grid grid-cols-2 gap-3">
                 {/* Valor */}
                 <div className="space-y-1.5">
@@ -1023,10 +1099,10 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
             </>
           )}
         </div>
-      </UniversalModal>
+      </UniversalModal >
 
       {/* Delete Confirmation */}
-      <ConfirmationBar
+      < ConfirmationBar
         isOpen={!!deleteId}
         onCancel={() => setDeleteId(null)}
         onConfirm={() => {
@@ -1040,6 +1116,6 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         cancelText="Cancelar"
         isDestructive={true}
       />
-    </div>
+    </div >
   );
 };

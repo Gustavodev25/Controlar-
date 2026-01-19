@@ -251,7 +251,7 @@ export const AdminSubscriptions: React.FC = () => {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    description: 'Solicitado pelo cliente (Prazo de 7 dias)'
+                    description: 'Solicitado pelo cliente (Prazo de 15 dias)'
                 })
             });
             const data = await response.json();
@@ -322,7 +322,7 @@ export const AdminSubscriptions: React.FC = () => {
         const diffTime = Math.abs(now.getTime() - date.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-        return diffDays <= 7;
+        return diffDays <= 15;
     };
 
     // Search user by ID

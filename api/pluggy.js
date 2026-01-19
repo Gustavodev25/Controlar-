@@ -3,10 +3,476 @@ import axios from 'axios';
 import { firebaseAdmin } from './firebaseAdmin.js';
 import { loadEnv } from './env.js';
 import { v4 as uuidv4 } from 'uuid';
+import Anthropic from "@anthropic-ai/sdk";
 
 loadEnv();
 
 const router = express.Router();
+
+// Anthropic API Key for AI detection
+const getAnthropicApiKey = () => (process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY || "").trim();
+
+// ============================================================
+// SUBSCRIPTION DETECTION SYSTEM
+// Lista de serviços de assinatura conhecidos para detecção automática
+// ============================================================
+const SUBSCRIPTION_KEYWORDS = [
+    // Streaming de Vídeo
+    { key: 'netflix', name: 'Netflix', category: 'Lazer' },
+    { key: 'amazon prime', name: 'Amazon Prime', category: 'Lazer' },
+    { key: 'prime video', name: 'Amazon Prime', category: 'Lazer' },
+    { key: 'hbo', name: 'HBO Max', category: 'Lazer' },
+    { key: 'max', name: 'HBO Max', category: 'Lazer' },
+    { key: 'disney', name: 'Disney+', category: 'Lazer' },
+    { key: 'star+', name: 'Star+', category: 'Lazer' },
+    { key: 'globoplay', name: 'Globoplay', category: 'Lazer' },
+    { key: 'globo', name: 'Globoplay', category: 'Lazer' },
+    { key: 'paramount', name: 'Paramount+', category: 'Lazer' },
+    { key: 'mubi', name: 'Mubi', category: 'Lazer' },
+    { key: 'telecine', name: 'Telecine', category: 'Lazer' },
+    { key: 'discovery', name: 'Discovery+', category: 'Lazer' },
+    { key: 'crunchyroll', name: 'Crunchyroll', category: 'Lazer' },
+    { key: 'apple tv', name: 'Apple TV+', category: 'Lazer' },
+    { key: 'starz', name: 'Starzplay', category: 'Lazer' },
+
+    // Streaming de Música
+    { key: 'spotify', name: 'Spotify', category: 'Lazer' },
+    { key: 'deezer', name: 'Deezer', category: 'Lazer' },
+    { key: 'tidal', name: 'Tidal', category: 'Lazer' },
+    { key: 'apple music', name: 'Apple Music', category: 'Lazer' },
+    { key: 'youtube music', name: 'YouTube Music', category: 'Lazer' },
+    { key: 'amazon music', name: 'Amazon Music', category: 'Lazer' },
+
+    // YouTube Premium
+    { key: 'youtube', name: 'YouTube Premium', category: 'Lazer' },
+
+    // Cloud & Storage
+    { key: 'icloud', name: 'iCloud', category: 'Tecnologia' },
+    { key: 'google one', name: 'Google One', category: 'Tecnologia' },
+    { key: 'google storage', name: 'Google One', category: 'Tecnologia' },
+    { key: 'dropbox', name: 'Dropbox', category: 'Tecnologia' },
+    { key: 'onedrive', name: 'OneDrive', category: 'Tecnologia' },
+
+    // AI & Tools
+    { key: 'chatgpt', name: 'ChatGPT', category: 'Tecnologia' },
+    { key: 'openai', name: 'ChatGPT Plus', category: 'Tecnologia' },
+    { key: 'claude', name: 'Claude AI', category: 'Tecnologia' },
+    { key: 'anthropic', name: 'Claude AI', category: 'Tecnologia' },
+    { key: 'midjourney', name: 'Midjourney', category: 'Tecnologia' },
+    { key: 'copilot', name: 'GitHub Copilot', category: 'Tecnologia' },
+    { key: 'notion', name: 'Notion', category: 'Tecnologia' },
+    { key: 'figma', name: 'Figma', category: 'Trabalho' },
+
+    // Work & Productivity
+    { key: 'adobe', name: 'Adobe Creative Cloud', category: 'Trabalho' },
+    { key: 'canva', name: 'Canva Pro', category: 'Trabalho' },
+    { key: 'microsoft 365', name: 'Microsoft 365', category: 'Trabalho' },
+    { key: 'microsoft', name: 'Microsoft 365', category: 'Trabalho' },
+    { key: 'office 365', name: 'Microsoft 365', category: 'Trabalho' },
+    { key: 'zoom', name: 'Zoom', category: 'Trabalho' },
+    { key: 'slack', name: 'Slack', category: 'Trabalho' },
+    { key: 'trello', name: 'Trello', category: 'Trabalho' },
+    { key: 'asana', name: 'Asana', category: 'Trabalho' },
+    { key: 'monday', name: 'Monday.com', category: 'Trabalho' },
+
+    // Gaming (Subscriptions only - not game stores)
+    { key: 'psn', name: 'PlayStation Plus', category: 'Lazer' },
+    { key: 'playstation', name: 'PlayStation Plus', category: 'Lazer' },
+    { key: 'xbox', name: 'Xbox Game Pass', category: 'Lazer' },
+    { key: 'game pass', name: 'Xbox Game Pass', category: 'Lazer' },
+    { key: 'nintendo', name: 'Nintendo Switch Online', category: 'Lazer' },
+    { key: 'ea play', name: 'EA Play', category: 'Lazer' },
+    { key: 'ubisoft+', name: 'Ubisoft+', category: 'Lazer' },
+    // Note: Steam and Epic Games are game STORES, not subscriptions
+
+    // Education
+    { key: 'duolingo', name: 'Duolingo', category: 'Educação' },
+    { key: 'alura', name: 'Alura', category: 'Educação' },
+    { key: 'udemy', name: 'Udemy', category: 'Educação' },
+    { key: 'coursera', name: 'Coursera', category: 'Educação' },
+    { key: 'skillshare', name: 'Skillshare', category: 'Educação' },
+    { key: 'linkedin learning', name: 'LinkedIn Learning', category: 'Educação' },
+    { key: 'masterclass', name: 'MasterClass', category: 'Educação' },
+    { key: 'domestika', name: 'Domestika', category: 'Educação' },
+    { key: 'platzi', name: 'Platzi', category: 'Educação' },
+    { key: 'rocketseat', name: 'Rocketseat', category: 'Educação' },
+
+    // Health & Fitness
+    { key: 'gympass', name: 'Gympass', category: 'Saúde' },
+    { key: 'wellhub', name: 'Wellhub (Gympass)', category: 'Saúde' },
+    { key: 'totalpass', name: 'TotalPass', category: 'Saúde' },
+    { key: 'smartfit', name: 'Smart Fit', category: 'Saúde' },
+    { key: 'bluefit', name: 'Bluefit', category: 'Saúde' },
+    { key: 'bodytech', name: 'Bodytech', category: 'Saúde' },
+    { key: 'strava', name: 'Strava', category: 'Saúde' },
+    { key: 'calm', name: 'Calm', category: 'Saúde' },
+    { key: 'headspace', name: 'Headspace', category: 'Saúde' },
+    { key: 'meditopia', name: 'Meditopia', category: 'Saúde' },
+
+    // News & Reading
+    { key: 'kindle', name: 'Kindle Unlimited', category: 'Lazer' },
+    { key: 'audible', name: 'Audible', category: 'Lazer' },
+    { key: 'scribd', name: 'Scribd', category: 'Lazer' },
+    { key: 'uol', name: 'UOL', category: 'Lazer' },
+    { key: 'estadao', name: 'Estadão', category: 'Lazer' },
+    { key: 'folha', name: 'Folha de S.Paulo', category: 'Lazer' },
+    { key: 'o globo', name: 'O Globo', category: 'Lazer' },
+
+    // VPN & Security
+    { key: 'nordvpn', name: 'NordVPN', category: 'Tecnologia' },
+    { key: 'expressvpn', name: 'ExpressVPN', category: 'Tecnologia' },
+    { key: 'surfshark', name: 'Surfshark', category: 'Tecnologia' },
+    { key: '1password', name: '1Password', category: 'Tecnologia' },
+    { key: 'lastpass', name: 'LastPass', category: 'Tecnologia' },
+    { key: 'bitwarden', name: 'Bitwarden', category: 'Tecnologia' },
+    { key: 'dashlane', name: 'Dashlane', category: 'Tecnologia' },
+
+    // Food & Delivery
+    { key: 'ifood', name: 'iFood Club', category: 'Alimentação' },
+    { key: 'rappi', name: 'Rappi Prime', category: 'Alimentação' },
+
+    // Dating & Social
+    { key: 'tinder', name: 'Tinder', category: 'Lazer' },
+    { key: 'bumble', name: 'Bumble', category: 'Lazer' },
+    { key: 'twitter', name: 'Twitter/X Premium', category: 'Lazer' },
+    { key: 'reddit', name: 'Reddit Premium', category: 'Lazer' },
+
+    // Other Services
+    { key: 'apple', name: 'Apple Services', category: 'Tecnologia' },
+    { key: 'google play', name: 'Google Play', category: 'Tecnologia' },
+    { key: 'patreon', name: 'Patreon', category: 'Lazer' },
+    { key: 'twitch', name: 'Twitch', category: 'Lazer' },
+    { key: 'discord', name: 'Discord Nitro', category: 'Lazer' },
+];
+
+/**
+ * Detecta se uma transação é uma assinatura conhecida
+ * @param {string} description - Descrição da transação
+ * @param {string} [originalCategory] - Categoria original (opcional)
+ * @returns {{ isSubscription: boolean, name?: string, category?: string }}
+ */
+const detectSubscriptionService = (description, originalCategory) => {
+    if (!description) return { isSubscription: false };
+
+    const lowerDesc = description.toLowerCase();
+
+    for (const service of SUBSCRIPTION_KEYWORDS) {
+        if (lowerDesc.includes(service.key)) {
+            return {
+                isSubscription: true,
+                name: service.name,
+                category: service.category
+            };
+        }
+    }
+
+    return { isSubscription: false };
+};
+
+// ============================================================
+// INTELLIGENT SUBSCRIPTION DETECTION
+// Detecção heurística para assinaturas não listadas
+// ============================================================
+
+// Palavras-chave genéricas que indicam assinatura
+const GENERIC_SUBSCRIPTION_KEYWORDS = [
+    'assinatura', 'subscription', 'mensal', 'monthly', 'recorrente',
+    'recorrencia', 'plano', 'premium', 'plus', 'pro', 'annual', 'anual',
+    'renovacao', 'renewal', 'membership', 'mensalidade'
+];
+
+/**
+ * Detecta se uma transação parece ser uma assinatura por heurísticas
+ * @param {string} description - Descrição da transação
+ * @returns {{ isLikelySubscription: boolean, detectedName?: string }}
+ */
+const detectLikelySubscription = (description) => {
+    if (!description) return { isLikelySubscription: false };
+
+    const lowerDesc = description.toLowerCase();
+
+    // 1. Verificar palavras-chave genéricas
+    for (const keyword of GENERIC_SUBSCRIPTION_KEYWORDS) {
+        if (lowerDesc.includes(keyword)) {
+            // Tentar extrair o nome do serviço (antes ou depois da palavra-chave)
+            const cleanedName = extractServiceName(description);
+            return {
+                isLikelySubscription: true,
+                detectedName: cleanedName || description.slice(0, 50)
+            };
+        }
+    }
+
+    return { isLikelySubscription: false };
+};
+
+/**
+ * Extrai o nome do serviço de uma descrição de transação
+ * @param {string} description - Descrição completa
+ * @returns {string} Nome extraído e limpo
+ */
+const extractServiceName = (description) => {
+    if (!description) return '';
+
+    // Remover prefixos comuns de cartão
+    let cleaned = description
+        .replace(/^(pag\*|pagseguro\*|mp\*|mercadopago\*|paypal\*|stripe\*|pix\s)/i, '')
+        .replace(/\s*(assinatura|subscription|mensal|monthly|plano)\s*/gi, ' ')
+        .trim();
+
+    // Pegar as primeiras palavras significativas (máx 3)
+    const words = cleaned.split(/[\s\-\_\*\/]+/).filter(w => w.length > 2);
+    const nameWords = words.slice(0, 3).join(' ');
+
+    return nameWords || cleaned.slice(0, 30);
+};
+
+/**
+ * Analisa transações para encontrar padrões de recorrência
+ * @param {Array} transactions - Lista de transações
+ * @returns {Map} Mapa de assinaturas detectadas por padrão
+ */
+const detectRecurringPatterns = (transactions) => {
+    const patternMap = new Map(); // normalizedDesc -> { count, amounts, dates }
+    const detectedRecurring = new Map();
+
+    // Agrupar transações por descrição normalizada
+    for (const tx of transactions) {
+        if (tx.amount >= 0) continue; // Pular receitas
+
+        // Normalizar descrição para agrupar variações
+        const normalized = normalizeDescription(tx.description);
+        const amount = Math.abs(tx.amount);
+
+        if (!patternMap.has(normalized)) {
+            patternMap.set(normalized, {
+                count: 0,
+                amounts: [],
+                dates: [],
+                originalDesc: tx.description
+            });
+        }
+
+        const entry = patternMap.get(normalized);
+        entry.count++;
+        entry.amounts.push(amount);
+        entry.dates.push(tx.date);
+    }
+
+    // Identificar padrões recorrentes (aparece 2+ vezes com valor similar)
+    for (const [normalized, data] of patternMap) {
+        if (data.count >= 2) {
+            // Verificar se os valores são similares (variação até 10%)
+            const avgAmount = data.amounts.reduce((a, b) => a + b, 0) / data.amounts.length;
+            const allSimilar = data.amounts.every(amt =>
+                Math.abs(amt - avgAmount) / avgAmount < 0.10
+            );
+
+            if (allSimilar) {
+                // Verificar se as datas têm padrão mensal
+                const sortedDates = data.dates.sort();
+                const hasMonthlyPattern = checkMonthlyPattern(sortedDates);
+
+                if (hasMonthlyPattern || data.count >= 3) {
+                    const cleanName = extractServiceName(data.originalDesc);
+                    detectedRecurring.set(cleanName, {
+                        name: cleanName,
+                        amount: avgAmount,
+                        category: 'Outros', // Categoria genérica para desconhecidos
+                        occurrences: data.count,
+                        occurrences: data.count,
+                        source: 'pattern_detection',
+                        chargeDay: new Date(sortedDates[sortedDates.length - 1]).getDate() // Use day of most recent transaction
+                    });
+                }
+            }
+        }
+    }
+
+    return detectedRecurring;
+};
+
+/**
+ * Normaliza descrição para comparação
+ */
+const normalizeDescription = (desc) => {
+    if (!desc) return '';
+    return desc
+        .toLowerCase()
+        .replace(/\d{2}\/\d{2}/g, '') // Remove datas tipo 01/12
+        .replace(/\d+x/gi, '')        // Remove parcelas tipo 3x
+        .replace(/[^\w\s]/g, '')      // Remove caracteres especiais
+        .replace(/\s+/g, ' ')         // Normaliza espaços
+        .trim();
+};
+
+/**
+ * Verifica se as datas formam um padrão mensal
+ */
+const checkMonthlyPattern = (sortedDates) => {
+    if (sortedDates.length < 2) return false;
+
+    // Verificar se há intervalo de aproximadamente 1 mês entre transações
+    for (let i = 1; i < sortedDates.length; i++) {
+        const d1 = new Date(sortedDates[i - 1]);
+        const d2 = new Date(sortedDates[i]);
+        const daysDiff = Math.abs((d2 - d1) / (1000 * 60 * 60 * 24));
+
+        // Considerar mensal se o intervalo é entre 25 e 35 dias
+        if (daysDiff >= 25 && daysDiff <= 35) {
+            return true;
+        }
+    }
+
+    return false;
+};
+
+// ============================================================
+// AI-POWERED SUBSCRIPTION DETECTION (Claude)
+// Usa IA para identificar assinaturas que não estão na lista conhecida
+// ============================================================
+
+/**
+ * Detecta assinaturas usando Claude AI
+ * @param {Array} transactions - Lista de transações para analisar
+ * @returns {Promise<Array>} - Lista de assinaturas detectadas pela IA
+ */
+const detectSubscriptionsWithAI = async (transactions) => {
+    const apiKey = getAnthropicApiKey();
+    if (!apiKey) {
+        console.log('[AI-Detection] ⚠️ No Anthropic API key, skipping AI detection');
+        return [];
+    }
+
+    // Filtrar apenas transações de despesa e pegar uma amostra representativa
+    const expenseTransactions = transactions
+        .filter(tx => tx.amount < 0)
+        .slice(0, 100) // Limitar para não exceder tokens
+        .map(tx => ({
+            description: tx.description,
+            amount: Math.abs(tx.amount),
+            date: tx.date
+        }));
+
+    if (expenseTransactions.length === 0) {
+        return [];
+    }
+
+    const client = new Anthropic({ apiKey });
+
+    const prompt = `Analise as seguintes transações bancárias e identifique APENAS as que são assinaturas recorrentes (serviços que cobram mensalmente/anualmente).
+
+TRANSAÇÕES:
+${JSON.stringify(expenseTransactions, null, 2)}
+
+REGRAS:
+1. Identificar APENAS serviços de assinatura recorrente (streaming, software, academia, apps, etc)
+2. NÃO incluir compras avulsas (mercado, restaurante, loja, combustível)
+3. NÃO incluir compras em lojas de jogos (Steam, Epic Games, etc) - only subscriptions
+4. Para cada assinatura detectada, fornecer:
+   - name: Nome padronizado do serviço
+   - amount: Valor mais recente
+   - category: Uma de [Lazer, Tecnologia, Trabalho, Educação, Saúde, Alimentação, Outros]
+
+RESPONDA APENAS em JSON válido no formato:
+{"subscriptions": [{"name": "Serviço", "amount": 29.90, "category": "Lazer"}]}
+
+Se não encontrar nenhuma assinatura, responda: {"subscriptions": []}`;
+
+    try {
+        console.log(`[AI-Detection] 🤖 Analyzing ${expenseTransactions.length} transactions with Claude AI...`);
+
+        const response = await client.messages.create({
+            model: 'claude-3-haiku-20240307', // Verified working model
+            max_tokens: 1024,
+            temperature: 0.1,
+            system: 'Você é um especialista em identificar assinaturas e serviços recorrentes em extratos bancários. Seja preciso e retorne APENAS JSON válido.',
+            messages: [{ role: 'user', content: prompt }]
+        });
+
+        const text = response.content
+            .filter(block => block.type === 'text')
+            .map(block => block.text)
+            .join('');
+
+        console.log('[AI-Detection] 🔍 Raw AI Response:', text);
+
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            const result = JSON.parse(jsonMatch[0]);
+            const detected = result.subscriptions || [];
+            console.log(`[AI-Detection] 🎯 AI found ${detected.length} potential subscriptions:`, JSON.stringify(detected));
+            return detected.map(sub => ({
+                ...sub,
+                source: 'ai_detected'
+            }));
+        }
+        return [];
+    } catch (error) {
+        console.error('[AI-Detection] ❌ Error calling Anthropic API:', error.message);
+        if (error.status === 401) console.error('[AI-Detection] 🔑 Check your ANTHROPIC_API_KEY');
+        return [];
+    }
+};
+
+/**
+ * Cria uma assinatura no Firestore se não existir
+ * OU atualiza assinaturas existentes sem o campo 'source' para marcá-las como auto_detected
+ * @param {FirebaseFirestore.Firestore} db - Instância do Firestore
+ * @param {string} userId - ID do usuário
+ * @param {object} subscriptionData - Dados da assinatura
+ */
+const createSubscriptionIfNotExists = async (db, userId, subscriptionData) => {
+    try {
+        const subsRef = db.collection('users').doc(userId).collection('subscriptions');
+
+        // Verificar se já existe uma assinatura com o mesmo nome (case-insensitive)
+        const snapshot = await subsRef.get();
+        const targetName = subscriptionData.name.toLowerCase();
+
+        let existingDoc = null;
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+            if ((data.name || '').toLowerCase() === targetName) {
+                existingDoc = { id: doc.id, ...data };
+                break;
+            }
+        }
+
+        if (!existingDoc) {
+            // Criar nova assinatura
+            await subsRef.add({
+                userId,
+                name: subscriptionData.name,
+                amount: subscriptionData.amount,
+                category: subscriptionData.category,
+                billingCycle: 'monthly', // Default
+                status: 'active',
+                createdAt: new Date().toISOString(),
+                detectedAt: new Date().toISOString(),
+                source: 'auto_detected', // Marca como detectada automaticamente
+                confirmed: false, // Não confirmada ainda
+                chargeDay: subscriptionData.chargeDay || null // Dia da cobrança detectado
+            });
+            console.log(`[SUBSCRIPTION] ✅ Auto-created: "${subscriptionData.name}" for user ${userId}`);
+            return true;
+        } else if (!existingDoc.source) {
+            // Atualizar assinatura existente que não tem o campo source
+            await subsRef.doc(existingDoc.id).update({
+                source: 'auto_detected',
+                confirmed: false,
+                detectedAt: new Date().toISOString()
+            });
+            console.log(`[SUBSCRIPTION] 🔄 Updated existing: "${subscriptionData.name}" with auto_detected source`);
+            return 'updated';
+        }
+
+        return false;
+    } catch (error) {
+        console.error(`[SUBSCRIPTION] ❌ Error creating subscription:`, error.message);
+        return false;
+    }
+};
 
 const CLIENT_ID = process.env.PLUGGY_CLIENT_ID?.trim();
 const CLIENT_SECRET = process.env.PLUGGY_CLIENT_SECRET?.trim();
@@ -744,6 +1210,274 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 throw batchError; // Re-throw to be caught by outer catch
             }
 
+            await updateProgress(65, 'Verificando pagamentos...');
+
+            // ============================================================
+            // STEP 4.2: CONFIRM SUBSCRIPTIONS BASED ON TRANSACTIONS
+            // ============================================================
+            try {
+                const subsRef = db.collection('users').doc(userId).collection('subscriptions');
+                const subsSnap = await subsRef.where('status', '==', 'active').get();
+                const activeSubscriptions = subsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+
+                if (activeSubscriptions.length > 0) {
+                    const subBatch = db.batch();
+                    let updatesCount = 0;
+
+                    for (const { account, transactions } of allTxResults) {
+                        for (const tx of transactions) {
+                            // Only expenses
+                            if ((tx.amount >= 0 && tx.type !== 'expense') && tx.amount >= 0) continue;
+
+                            const txDesc = normalizeDescription(tx.description);
+                            const txAmount = Math.abs(tx.amount);
+
+                            // Determine "Paid Month" key
+                            let paidMonthKey;
+                            if (account.type === 'CREDIT' || account.subtype === 'CREDIT_CARD') {
+                                // For credit cards, use the invoice month logic
+                                if (account.creditData?.balanceCloseDate) {
+                                    const closingDay = new Date(account.creditData.balanceCloseDate).getDate();
+                                    const d = new Date(tx.date);
+                                    // Correct JS Date stuff: getDate returns 1-31
+                                    if (d.getDate() > closingDay) {
+                                        d.setMonth(d.getMonth() + 1);
+                                    }
+                                    paidMonthKey = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                                } else {
+                                    paidMonthKey = tx.date.slice(0, 7); // Default YYYY-MM
+                                }
+                            } else {
+                                paidMonthKey = tx.date.slice(0, 7); // YYYY-MM
+                            }
+
+                            // Find matching subscription
+                            for (const sub of activeSubscriptions) {
+                                // Skip if user manually marked specific matching rules (future feature) but here we do simple name match
+                                const subName = normalizeDescription(sub.name);
+
+                                // Robust matching:
+                                // 1. Direct includes (normalized)
+                                // 2. Keyword matching if provided in subscription (future)
+                                const matchName = txDesc.includes(subName) || (sub.name.length > 3 && tx.description.toLowerCase().includes(sub.name.toLowerCase()));
+
+                                if (matchName) {
+                                    const currentPaid = sub.paidMonths || [];
+                                    if (!currentPaid.includes(paidMonthKey)) {
+                                        const subRefDoc = subsRef.doc(sub.id);
+                                        const newPaidMonths = [...currentPaid, paidMonthKey];
+
+                                        subBatch.update(subRefDoc, {
+                                            paidMonths: newPaidMonths,
+                                            lastPaymentDate: tx.date.split('T')[0],
+                                            lastPaymentAmount: txAmount
+                                        });
+                                        updatesCount++;
+
+                                        // Update local object to avoid re-adding same month in loop
+                                        sub.paidMonths = newPaidMonths;
+                                        console.log(`[SYNC] 💳 Confirmed payment for "${sub.name}" in ${paidMonthKey}`);
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if (updatesCount > 0) {
+                        await subBatch.commit();
+                        console.log(`[SYNC] ✅ Confirmed ${updatesCount} subscription payments`);
+                    }
+                }
+            } catch (err) {
+                console.error('[SYNC] ⚠️ Error confirming subscriptions:', err.message);
+            }
+
+            await updateProgress(68, 'Detectando novas assinaturas...');
+
+            // ============================================================
+            // STEP 4.5: AUTO-DETECT SUBSCRIPTIONS FROM TRANSACTIONS
+            // ============================================================
+
+            // 1. Coletar transações que acabaram de chegar da API
+            const detectedSubscriptions = new Map();
+            const recentTransactionsForAnalysis = [];
+
+            // Adicionar novas transações da API
+            for (const { account, transactions } of allTxResults) {
+                for (const tx of transactions) {
+                    recentTransactionsForAnalysis.push({ ...tx, _source: 'api' });
+                }
+            }
+
+            // 2. Buscar TAMBÉM as últimas 100 transações salvas no banco para garantir que não perdemos nada
+            // Isso permite detectar assinaturas em transações que já foram sincronizadas antes
+            try {
+                // Buscar últimas transações normais
+                const txSnap = await db.collection('users').doc(userId).collection('transactions')
+                    .orderBy('date', 'desc').limit(50).get();
+
+                // Buscar últimas transações de cartão
+                const ccTxSnap = await db.collection('users').doc(userId).collection('creditCardTransactions')
+                    .orderBy('date', 'desc').limit(50).get();
+
+                const historyTxs = [
+                    ...txSnap.docs.map(d => d.data()),
+                    ...ccTxSnap.docs.map(d => d.data())
+                ];
+
+                // Adicionar ao array de análise (evitando duplicatas pelo description + date + amount)
+                for (const hTx of historyTxs) {
+                    const isDuplicate = recentTransactionsForAnalysis.some(rTx =>
+                        rTx.description === hTx.description &&
+                        rTx.date === hTx.date &&
+                        Math.abs(rTx.amount) === Math.abs(hTx.amount)
+                    );
+
+                    if (!isDuplicate) {
+                        recentTransactionsForAnalysis.push({ ...hTx, _source: 'history' });
+                    }
+                }
+                console.log(`[SYNC] 🧠 Analysis context: ${recentTransactionsForAnalysis.length} transactions (API + History)`);
+            } catch (histErr) {
+                console.warn('[SYNC] ⚠️ Could not fetch history for analysis:', histErr.message);
+            }
+
+            // Executar detecção sobre o conjunto combinado (API + Histórico Recente)
+            for (const tx of recentTransactionsForAnalysis) {
+                // Normalizar dados (garantir amount positivo para a lógica, mas checkar se é despesa)
+                // Se o tx vem do history, o type já está setado. Se vem da API, checamos amount < 0
+                const isExpense = tx.type === 'expense' || (tx.amount < 0 && !tx.type);
+                if (!isExpense && tx.amount >= 0) continue; // Ignorar receitas
+
+                // MÉTODO 1: Lista de serviços conhecidos
+                let detection = detectSubscriptionService(tx.description);
+                if (detection.isSubscription) {
+                    const amount = Math.abs(tx.amount);
+                    const existingEntry = detectedSubscriptions.get(detection.name);
+
+                    if (!existingEntry || amount > existingEntry.amount) {
+                        // Só adiciona se for recente (últimos 45 dias) para não pegar coisas muito velhas do histórico
+                        const txDate = new Date(tx.date);
+                        const daysAgo = (new Date() - txDate) / (1000 * 60 * 60 * 24);
+
+                        if (daysAgo <= 45) {
+                            detectedSubscriptions.set(detection.name, {
+                                name: detection.name,
+                                amount,
+                                category: detection.category || 'Lazer',
+                                lastTransactionDate: tx.date,
+                                source: 'auto_detected',
+                                confirmed: false
+                            });
+                        }
+                    }
+                }
+
+                // MÉTODO 2: Detecção Heurística (Palavras-chave genéricas)
+                if (!detection.isSubscription) {
+                    const likely = detectLikelySubscription(tx.description);
+                    if (likely.isLikelySubscription) {
+                        detection = {
+                            isSubscription: true,
+                            name: likely.detectedName,
+                            category: 'Outros'
+                        };
+                    }
+                }
+
+                if (detection.isSubscription) {
+                    const amount = Math.abs(tx.amount);
+                    const existingEntry = detectedSubscriptions.get(detection.name);
+
+                    if (!existingEntry || amount > existingEntry.amount) {
+                        // Só adiciona se for recente (últimos 45 dias) para não pegar coisas muito velhas do histórico
+                        const txDate = new Date(tx.date);
+                        const daysAgo = (new Date() - txDate) / (1000 * 60 * 60 * 24);
+
+                        if (daysAgo <= 45) {
+                            detectedSubscriptions.set(detection.name, {
+                                name: detection.name,
+                                amount,
+                                category: detection.category || 'Outros',
+                                lastTransactionDate: tx.date,
+                                source: 'auto_detected',
+                                confirmed: false
+                            });
+                        }
+                    }
+                }
+            }
+
+            // MÉTODO 3: Detecção de padrões de recorrência (sobre todo o conjunto)
+            const recurringPatterns = detectRecurringPatterns(recentTransactionsForAnalysis);
+            for (const [name, data] of recurringPatterns) {
+                if (!detectedSubscriptions.has(name)) {
+                    detectedSubscriptions.set(name, {
+                        name: data.name,
+                        amount: data.amount,
+                        category: data.category,
+                        source: 'auto_detected',
+                        confirmed: false
+                    });
+                }
+            }
+
+            // MÉTODO 4: Detecção com IA (Claude) - Usando o conjunto expandido
+            try {
+                // Analisar com IA
+                const aiDetected = await detectSubscriptionsWithAI(recentTransactionsForAnalysis);
+
+                for (const sub of aiDetected) {
+                    let exists = false;
+                    for (const existingName of detectedSubscriptions.keys()) {
+                        if (existingName.toLowerCase() === sub.name.toLowerCase()) {
+                            exists = true;
+                            break;
+                        }
+                    }
+
+                    if (!exists) {
+                        detectedSubscriptions.set(sub.name, {
+                            name: sub.name,
+                            amount: sub.amount,
+                            category: sub.category,
+                            source: 'auto_detected',
+                            confirmed: false
+                        });
+                    }
+                }
+            } catch (aiErr) {
+                console.error('[SYNC] ⚠️ AI Detection failed:', aiErr);
+            }
+
+            // Criar assinaturas detectadas
+            if (detectedSubscriptions.size > 0) {
+                console.log(`[SYNC] 🔍 Detected ${detectedSubscriptions.size} potential subscriptions for user ${userId}`);
+
+                // Log detalhado das detecções
+                for (const [name, data] of detectedSubscriptions) {
+                    console.log(`[SUBSCRIPTION] 📌 ${data.source}: "${name}" - R$ ${data.amount.toFixed(2)}`);
+                }
+
+                const subscriptionPromises = [];
+                for (const [name, data] of detectedSubscriptions) {
+                    subscriptionPromises.push(
+                        createSubscriptionIfNotExists(db, userId, data)
+                    );
+                }
+
+                try {
+                    const results = await Promise.all(subscriptionPromises);
+                    const createdCount = results.filter(r => r === true).length;
+                    if (createdCount > 0) {
+                        console.log(`[SYNC] ✅ Created ${createdCount} new subscriptions for user ${userId}`);
+                    }
+                } catch (subError) {
+                    console.error(`[SYNC] ⚠️ Error creating subscriptions (non-blocking):`, subError.message);
+                    // Don't throw - subscription creation should not block sync
+                }
+            }
+
             await updateProgress(70, 'Buscando faturas...');
 
             // STEP 5: Fetch ALL credit card bills IN PARALLEL
@@ -1274,6 +2008,131 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         // Commit all batches in parallel
         await Promise.all(batchPromises);
         console.log(`[Sync] Saved ${txCount} transactions`);
+
+        // ============================================================
+        // STEP 4.5: AUTO-DETECT SUBSCRIPTIONS FROM TRANSACTIONS
+        // Detectar assinaturas conhecidas e criar automaticamente
+        // Usa 3 métodos: Lista conhecida, Palavras-chave, Padrão de recorrência
+        // ============================================================
+        const detectedSubscriptions = new Map(); // name -> { amount, category }
+        const allTransactionsFlat = []; // Para análise de padrões
+
+        for (const { account, transactions } of allTxResults) {
+            for (const tx of transactions) {
+                // Só detectar em transações de despesa (mas vamos coletar tudo para análise e usar Math.abs)
+                // if (tx.amount >= 0) continue; // REMOVIDO: Pular receitas pode ser perigoso se o sinal vier trocado
+
+
+                allTransactionsFlat.push(tx); // Coletar para análise de padrões
+
+                // MÉTODO 1: Lista de serviços conhecidos
+                const detection = detectSubscriptionService(tx.description);
+                if (detection.isSubscription) {
+                    const amount = Math.abs(tx.amount);
+                    const existingEntry = detectedSubscriptions.get(detection.name);
+
+                    if (!existingEntry || amount > existingEntry.amount) {
+                        detectedSubscriptions.set(detection.name, {
+                            name: detection.name,
+                            amount,
+                            category: detection.category || 'Lazer',
+                            lastTransactionDate: tx.date,
+                            source: 'known_service',
+                            chargeDay: new Date(tx.date).getDate()
+                        });
+                    }
+                    continue;
+                }
+
+                // MÉTODO 2: Palavras-chave genéricas
+                const likelyDetection = detectLikelySubscription(tx.description);
+                if (likelyDetection.isLikelySubscription) {
+                    const amount = Math.abs(tx.amount);
+                    const name = likelyDetection.detectedName;
+                    const existingEntry = detectedSubscriptions.get(name);
+
+                    if (!existingEntry) {
+                        detectedSubscriptions.set(name, {
+                            name,
+                            amount,
+                            category: 'Outros',
+                            lastTransactionDate: tx.date,
+                            lastTransactionDate: tx.date,
+                            source: 'keyword_detection',
+                            chargeDay: new Date(tx.date).getDate()
+                        });
+                    }
+                }
+            }
+        }
+
+        // MÉTODO 3: Detecção de padrões de recorrência
+        const recurringPatterns = detectRecurringPatterns(allTransactionsFlat);
+        for (const [name, data] of recurringPatterns) {
+            if (!detectedSubscriptions.has(name)) {
+                detectedSubscriptions.set(name, {
+                    name: data.name,
+                    amount: data.amount,
+                    category: data.category,
+                    source: 'pattern_detection',
+                    occurrences: data.occurrences,
+                    chargeDay: data.chargeDay
+                });
+            }
+        }
+
+        // MÉTODO 4: Detecção com IA (Claude)
+        try {
+            const aiDetected = await detectSubscriptionsWithAI(allTransactionsFlat);
+            for (const sub of aiDetected) {
+                // Verificar se já foi detectado por outros métodos (priorizamos os métodos determinísticos locais)
+                let exists = false;
+                for (const existingName of detectedSubscriptions.keys()) {
+                    if (existingName.toLowerCase() === sub.name.toLowerCase()) {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists) {
+                    detectedSubscriptions.set(sub.name, {
+                        name: sub.name,
+                        amount: sub.amount,
+                        category: sub.category,
+                        source: 'auto_detected',
+                        confirmed: false
+                    });
+                }
+            }
+        } catch (aiErr) {
+            console.error('[SYNC] ⚠️ AI Detection failed:', aiErr);
+        }
+
+        // Criar assinaturas detectadas
+        if (detectedSubscriptions.size > 0) {
+            console.log(`[Sync] 🔍 Detected ${detectedSubscriptions.size} potential subscriptions for user ${userId}`);
+
+            for (const [name, data] of detectedSubscriptions) {
+                console.log(`[SUBSCRIPTION] 📌 ${data.source}: "${name}" - R$ ${data.amount.toFixed(2)}`);
+            }
+
+            const subscriptionPromises = [];
+            for (const [name, data] of detectedSubscriptions) {
+                subscriptionPromises.push(
+                    createSubscriptionIfNotExists(db, userId, data)
+                );
+            }
+
+            try {
+                const results = await Promise.all(subscriptionPromises);
+                const createdCount = results.filter(r => r === true).length;
+                if (createdCount > 0) {
+                    console.log(`[Sync] ✅ Created ${createdCount} new subscriptions for user ${userId}`);
+                }
+            } catch (subError) {
+                console.error(`[Sync] ⚠️ Error creating subscriptions (non-blocking):`, subError.message);
+            }
+        }
 
         // STEP 5: Fetch credit card bills
         const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
@@ -2141,6 +3000,242 @@ async function processWebhookSync(db, userId, itemId, eventType) {
         });
     }
 }
+
+// ============================================================
+// ENDPOINT: Detect subscriptions from existing transactions
+// Analisa transações já salvas no banco para detectar assinaturas
+// ============================================================
+router.post('/detect-subscriptions', async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+    }
+
+    if (!firebaseAdmin) {
+        return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    console.log(`[Detect-Subscriptions] Starting for user ${userId}`);
+
+    const db = firebaseAdmin.firestore();
+
+    try {
+        // Fetch all transactions from both collections
+        const [ccTxSnap, txSnap] = await Promise.all([
+            db.collection('users').doc(userId).collection('creditCardTransactions').get(),
+            db.collection('users').doc(userId).collection('transactions').get()
+        ]);
+
+        const allTransactions = [];
+
+        ccTxSnap.forEach(doc => {
+            const data = doc.data();
+            allTransactions.push({
+                id: doc.id,
+                description: data.description,
+                amount: data.type === 'expense' ? -Math.abs(data.amount) : Math.abs(data.amount),
+                date: data.date
+            });
+        });
+
+        txSnap.forEach(doc => {
+            const data = doc.data();
+            allTransactions.push({
+                id: doc.id,
+                description: data.description,
+                amount: data.type === 'expense' ? -Math.abs(data.amount) : Math.abs(data.amount),
+                date: data.date
+            });
+        });
+
+        console.log(`[Detect-Subscriptions] Analyzing ${allTransactions.length} transactions`);
+
+        // Debug: Log some sample descriptions with amounts
+        const sampleTx = allTransactions.slice(0, 15).map(t => ({ desc: t.description, amt: t.amount }));
+        console.log(`[Detect-Subscriptions] Sample transactions:`, JSON.stringify(sampleTx));
+
+        // Check if there's a Spotify transaction
+        const spotifyTx = allTransactions.find(t => t.description && t.description.toLowerCase().includes('spotify'));
+        if (spotifyTx) {
+            console.log(`[Detect-Subscriptions] 🔍 Found Spotify transaction:`, JSON.stringify(spotifyTx));
+        }
+
+        const detectedSubscriptions = new Map();
+        const allTransactionsFlat = [];
+
+        for (const tx of allTransactions) {
+            // Skip if no description
+            if (!tx.description) continue;
+
+            // For detection, we look at all transactions (amount sign doesn't matter for subscription detection)
+            // We'll use the absolute value for the amount
+            allTransactionsFlat.push(tx);
+
+            // MÉTODO 1: Lista de serviços conhecidos
+            const detection = detectSubscriptionService(tx.description);
+            if (detection.isSubscription) {
+                const amount = Math.abs(tx.amount);
+                const existingEntry = detectedSubscriptions.get(detection.name);
+
+                if (!existingEntry || amount > existingEntry.amount) {
+                    detectedSubscriptions.set(detection.name, {
+                        name: detection.name,
+                        amount,
+                        category: detection.category || 'Lazer',
+                        lastTransactionDate: tx.date,
+                        source: 'known_service'
+                    });
+                }
+                continue;
+            }
+
+            // MÉTODO 2: Palavras-chave genéricas
+            const likelyDetection = detectLikelySubscription(tx.description);
+            if (likelyDetection.isLikelySubscription) {
+                const amount = Math.abs(tx.amount);
+                const name = likelyDetection.detectedName;
+                const existingEntry = detectedSubscriptions.get(name);
+
+                if (!existingEntry) {
+                    detectedSubscriptions.set(name, {
+                        name,
+                        amount,
+                        category: 'Outros',
+                        lastTransactionDate: tx.date,
+                        source: 'keyword_detection'
+                    });
+                }
+            }
+        }
+
+        // MÉTODO 3: Detecção de padrões de recorrência
+        const recurringPatterns = detectRecurringPatterns(allTransactionsFlat);
+        for (const [name, data] of recurringPatterns) {
+            if (!detectedSubscriptions.has(name)) {
+                detectedSubscriptions.set(name, {
+                    name: data.name,
+                    amount: data.amount,
+                    category: data.category,
+                    source: 'pattern_detection',
+                    occurrences: data.occurrences
+                });
+            }
+        }
+
+        // MÉTODO 4: Detecção com IA (Claude)
+        try {
+            const aiDetected = await detectSubscriptionsWithAI(allTransactionsFlat);
+            for (const sub of aiDetected) {
+                // Verificar se já foi detectado por outros métodos (priorizamos os métodos determinísticos locais)
+                let exists = false;
+                for (const existingName of detectedSubscriptions.keys()) {
+                    if (existingName.toLowerCase() === sub.name.toLowerCase()) {
+                        exists = true;
+                        break;
+                    }
+                }
+
+                if (!exists) {
+                    detectedSubscriptions.set(sub.name, {
+                        name: sub.name,
+                        amount: sub.amount,
+                        category: sub.category,
+                        source: 'auto_detected', // Usamos auto_detected genérico ou 'ai_detected' se quisermos diferenciar
+                        confirmed: false
+                    });
+                }
+            }
+        } catch (aiErr) {
+            console.error('[Detect-Subscriptions] ⚠️ AI Detection failed:', aiErr);
+        }
+
+        // Criar assinaturas detectadas
+        let createdCount = 0;
+        const detected = [];
+
+        if (detectedSubscriptions.size > 0) {
+            console.log(`[Detect-Subscriptions] 🔍 Found ${detectedSubscriptions.size} potential subscriptions`);
+
+            for (const [name, data] of detectedSubscriptions) {
+                console.log(`[SUBSCRIPTION] 📌 ${data.source}: "${name}" - R$ ${data.amount.toFixed(2)}`);
+                detected.push({ name, amount: data.amount, category: data.category, source: data.source });
+
+                const created = await createSubscriptionIfNotExists(db, userId, data);
+                if (created) createdCount++;
+            }
+        }
+
+        console.log(`[Detect-Subscriptions] ✅ Created ${createdCount} new subscriptions`);
+
+        res.json({
+            success: true,
+            message: `Detectadas ${detectedSubscriptions.size} assinaturas, ${createdCount} novas criadas.`,
+            detected,
+            createdCount
+        });
+
+    } catch (error) {
+        console.error(`[Detect-Subscriptions] ❌ Error:`, error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// ============================================================
+// ENDPOINT: Update existing subscriptions to add auto_detected fields
+// Atualiza assinaturas existentes que não têm os novos campos
+// ============================================================
+router.post('/update-subscriptions-fields', async (req, res) => {
+    const { userId } = req.body;
+
+    if (!userId) {
+        return res.status(400).json({ error: 'userId is required' });
+    }
+
+    if (!firebaseAdmin) {
+        return res.status(500).json({ error: 'Firebase Admin not initialized' });
+    }
+
+    console.log(`[Update-Subscriptions] Starting for user ${userId}`);
+
+    const db = firebaseAdmin.firestore();
+
+    try {
+        const subsRef = db.collection('users').doc(userId).collection('subscriptions');
+        const snapshot = await subsRef.get();
+
+        let updatedCount = 0;
+
+        for (const doc of snapshot.docs) {
+            const data = doc.data();
+
+            console.log(`[Update-Subscriptions] 🔍 "${data.name}" - source: ${data.source}, confirmed: ${data.confirmed}`);
+
+            // Se não tem o campo 'source' OU source é diferente de manual, adiciona os novos campos
+            if (!data.source || (data.source === 'auto_detected' && data.confirmed === true)) {
+                await subsRef.doc(doc.id).update({
+                    source: 'auto_detected',
+                    confirmed: false,
+                    detectedAt: data.detectedAt || new Date().toISOString()
+                });
+                updatedCount++;
+                console.log(`[Update-Subscriptions] ✅ Updated: "${data.name}"`);
+            }
+        }
+
+        console.log(`[Update-Subscriptions] ✅ Updated ${updatedCount} subscriptions`);
+
+        res.json({
+            success: true,
+            message: `${updatedCount} assinaturas atualizadas.`,
+            updatedCount
+        });
+
+    } catch (error) {
+        console.error(`[Update-Subscriptions] ❌ Error:`, error.message);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 export default router;
 
