@@ -384,6 +384,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               city: formData.city,
               state: formData.state
             },
+            subscription: {
+              plan: 'pro',
+              status: 'trial',
+              billingCycle: 'monthly',
+              trialStartedAt: new Date().toISOString(),
+              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            },
             createdAt: new Date().toISOString()
           });
 
@@ -430,6 +437,13 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           baseSalary: 0,
           avatarUrl: user.photoURL || undefined,
           isAdmin: false,
+          subscription: {
+            plan: 'pro',
+            status: 'trial',
+            billingCycle: 'monthly',
+            trialStartedAt: new Date().toISOString(),
+            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+          },
           createdAt: new Date().toISOString()
         });
         localStorage.setItem('is_new_signup', 'true');

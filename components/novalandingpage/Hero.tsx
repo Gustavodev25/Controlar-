@@ -434,7 +434,7 @@ const VideoPlayer: React.FC<{ videoSrc: string }> = ({ videoSrc }) => {
 };
 
 interface HeroProps {
-    onLogin: () => void;
+    onLogin: (view?: 'login' | 'signup') => void;
     onSubscribe?: (data: SubscribeData) => void;
 }
 
@@ -530,23 +530,9 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         <motion.div variants={itemVariants} className="flex flex-col items-center gap-6 pt-4">
 
                             <button onClick={() => {
-                                // Ir direto para checkout se onSubscribe disponível
-                                if (onSubscribe) {
-                                    onSubscribe({
-                                        planId: 'pro',
-                                        billingCycle: 'monthly'
-                                    });
-                                } else {
-                                    // Fallback: salvar pending_checkout e ir para login
-                                    const pendingCheckout = {
-                                        planId: 'pro',
-                                        billingCycle: 'monthly'
-                                    };
-                                    localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                                    onLogin();
-                                }
+                                onLogin('signup');
                             }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
-                                Assinar Pro
+                                Testar 14 dias grátis
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
@@ -591,15 +577,15 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                                     </span>
                                 </div>
                             </div>
-                        </motion.div>
-                    </motion.div>
+                        </motion.div >
+                    </motion.div >
 
 
-                </motion.div>
-            </section>
+                </motion.div >
+            </section >
 
             {/* Video Demo Section */}
-            <section className="relative w-full py-20 bg-[#1a0f0a]">
+            < section className="relative w-full py-20 bg-[#1a0f0a]" >
                 <div className="container mx-auto px-8">
                     <AnimatedSection direction="up" delay={0} className="text-center mb-12">
                         <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#D97757]/10 border border-[#D97757]/20 text-[#D97757] text-sm font-medium mb-6">
@@ -631,10 +617,10 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         <div className="absolute -bottom-6 -left-6 w-16 h-16 bg-[#D97757]/20 rounded-full blur-xl" />
                     </AnimatedSection>
                 </div>
-            </section>
+            </section >
 
             {/* Infinite Slider - Bancos Parceiros */}
-            <section className="relative w-full py-8 bg-[#1a0f0a] border-y border-white/5">
+            < section className="relative w-full py-8 bg-[#1a0f0a] border-y border-white/5" >
                 <div className="flex flex-col md:flex-row items-center">
                     {/* Quadrado com texto */}
                     <div className="flex-shrink-0 px-8 py-4 border-b md:border-b-0 md:border-r border-white/10 w-full md:w-auto text-center md:text-left">
@@ -660,10 +646,10 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         </InfiniteSlider>
                     </div>
                 </div>
-            </section>
+            </section >
 
             {/* Estatísticas do Sistema */}
-            <section className="relative w-full py-12 bg-[#1a0f0a]">
+            < section className="relative w-full py-12 bg-[#1a0f0a]" >
                 <div className="container mx-auto px-8">
                     <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
                         {/* Texto Principal */}
@@ -703,12 +689,12 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         </div>
                     </div>
                 </div>
-            </section>
+            </section >
 
 
             {/* WhatsApp Floating Button */}
-            <motion.a
-                href="https://wa.me/5511995726382?text=Ol%C3%A1%2C%20tenho%20uma%20d%C3%BAvida%20sobre%20o%20site%20Controlar%2B"
+            < motion.a
+                href="https://wa.me/5511947595786?text=Ol%C3%A1%2C%20tenho%20uma%20d%C3%BAvida%20sobre%20o%20site%20Controlar%2B"
                 target="_blank"
                 rel="noopener noreferrer"
                 initial={{ scale: 0, opacity: 0 }}

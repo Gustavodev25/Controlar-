@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ChevronLeft, User, Check, FileText, Phone } from 'lucide-react';
+import { Mail, Lock, ArrowRight, Loader2, AlertCircle, ChevronLeft, User, Check, FileText, Phone, Sparkles } from 'lucide-react';
 import { useToasts } from './Toast';
 import { ShiningText } from './ShiningText';
 import { auth } from '../services/firebase';
@@ -126,11 +126,12 @@ interface SubscribeData {
 
 interface LoginNewProps {
     onSubscribe?: (data: SubscribeData) => void;
+    initialView?: 'login' | 'signup';
 }
 
-export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
+export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = 'login' }) => {
     const toast = useToasts();
-    const [isLogin, setIsLogin] = useState(true);
+    const [isLogin, setIsLogin] = useState(initialView === 'login');
     const [step, setStep] = useState(1);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
     const [showTerms, setShowTerms] = useState(false);
@@ -434,6 +435,13 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
                             city: formData.city,
                             state: formData.state
                         },
+                        subscription: {
+                            plan: 'pro',
+                            status: 'trial',
+                            billingCycle: 'monthly',
+                            trialStartedAt: new Date().toISOString(),
+                            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                        },
                         createdAt: new Date().toISOString()
                     });
                     // Success - Redirect handled by auth listener or we can force it
@@ -468,6 +476,13 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
                     baseSalary: 0,
                     avatarUrl: user.photoURL || undefined,
                     isAdmin: false,
+                    subscription: {
+                        plan: 'pro',
+                        status: 'trial',
+                        billingCycle: 'monthly',
+                        trialStartedAt: new Date().toISOString(),
+                        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                    },
                     createdAt: new Date().toISOString()
                 });
                 localStorage.setItem('is_new_signup', 'true');
@@ -542,6 +557,21 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
                         layout="position"
                         className="text-left mb-8"
                     >
+                        {/* Trial Banner - Only visible on Signup */}
+                        {!isLogin && (
+                            <motion.div
+                                initial={{ opacity: 0, y: -10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="-mt-8 -mx-8 mb-8 bg-[#d97757]/15 border-b border-[#d97757]/10 p-3 flex items-center justify-center text-center relative overflow-hidden backdrop-blur-sm"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-r from-[#d97757]/10 via-transparent to-[#d97757]/10 opacity-30" />
+                                <div className="relative z-10">
+                                    <p className="text-[#d97757] text-xs font-bold leading-tight tracking-wide uppercase">
+                                        Oferta Especial: 14 Dias de Teste Grátis
+                                    </p>
+                                </div>
+                            </motion.div>
+                        )}
                         {/* Back Button inline with title */}
                         {((!isLogin && step === 2) || (isResettingPassword && recoveryStep > 0)) && (
                             <button
@@ -811,12 +841,8 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe }) => {
                                     href="#"
                                     onClick={(e) => {
                                         e.preventDefault();
-                                        if (isLogin && onSubscribe) {
-                                            onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
-                                        } else {
-                                            setIsLogin(!isLogin);
-                                            setStep(1);
-                                        }
+                                        setIsLogin(!isLogin);
+                                        setStep(1);
                                     }}
                                     className="font-bold text-white hover:text-[#d97757] transition-colors ml-1"
                                 >

@@ -269,12 +269,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                   {/* Subscribe Button - Right Part */}
                   <motion.button
                     onClick={() => {
-                      if (onSubscribe) {
-                        onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
-                      } else {
-                        localStorage.setItem('pending_checkout', JSON.stringify({ planId: 'pro', billingCycle: 'monthly' }));
-                        onLogin();
-                      }
+                      onLogin();
                     }}
                     className="relative flex items-center justify-center h-9 rounded-r-full px-4 bg-[#D97757] hover:bg-[#c66a4e] transition-colors overflow-hidden shadow-lg shadow-[#D97757]/20"
                     initial="initial"
@@ -289,7 +284,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                         }}
                         className="whitespace-nowrap font-medium text-white overflow-hidden text-xs"
                       >
-                        Assinar Pro
+                        Testar 14 dias grátis
                       </motion.span>
                     </div>
                   </motion.button>
@@ -371,24 +366,10 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
 
                   <button
                     onClick={() => {
-                      // Ir direto para checkout se onSubscribe disponível
-                      if (onSubscribe) {
-                        onSubscribe({
-                          planId: 'pro',
-                          billingCycle: 'monthly'
-                        });
-                      } else {
-                        // Fallback: salvar pending_checkout e ir para login
-                        const pendingCheckout = {
-                          planId: 'pro',
-                          billingCycle: 'monthly'
-                        };
-                        localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                        onLogin();
-                      }
+                      onLogin();
                     }}
                     className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
-                    Assinar Pro
+                    Testar 14 dias grátis
                   </button>
                 </div>
               </motion.div>

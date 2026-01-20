@@ -9,6 +9,7 @@ import { PricingSection } from './PricingSection';
 import { FinalCTA } from './FinalCTA';
 
 import { Footer } from './Footer';
+import { TrialBanner } from './TrialBanner';
 
 interface SubscribeData {
     planId: 'pro';
@@ -17,7 +18,7 @@ interface SubscribeData {
 }
 
 interface NovaLandingProps {
-    onLogin: () => void;
+    onLogin: (view?: 'login' | 'signup') => void;
     onSubscribe?: (data: SubscribeData) => void;
 }
 

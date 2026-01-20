@@ -11,7 +11,7 @@ interface SubscribeData {
 }
 
 interface FinalCTAProps {
-    onLogin: () => void;
+    onLogin: (view?: 'login' | 'signup') => void;
     onSubscribe?: (data: SubscribeData) => void;
 }
 
@@ -49,23 +49,9 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onLogin, onSubscribe }) => {
 
                     <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                         <button onClick={() => {
-                            // Ir direto para checkout se onSubscribe disponível
-                            if (onSubscribe) {
-                                onSubscribe({
-                                    planId: 'pro',
-                                    billingCycle: 'monthly'
-                                });
-                            } else {
-                                // Fallback: salvar pending_checkout e ir para login
-                                const pendingCheckout = {
-                                    planId: 'pro',
-                                    billingCycle: 'monthly'
-                                };
-                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                                onLogin();
-                            }
+                            onLogin('signup');
                         }} className="group px-8 py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)]">
-                            Assinar Pro
+                            Testar 14 dias grátis
                             <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                         </button>
 

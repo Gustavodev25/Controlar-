@@ -26,7 +26,8 @@ import {
     Minus,
     Mail,
     Trash2,
-    Tag
+    Tag,
+    Clock
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { exportToCSV } from '../utils/export';
@@ -80,7 +81,7 @@ interface AsaasPayment {
     };
 }
 
-type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due' | 'pending';
+type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due' | 'pending' | 'trial';
 
 export const AdminSubscriptions: React.FC = () => {
     const [users, setUsers] = useState<SystemUser[]>([]);
@@ -571,7 +572,8 @@ export const AdminSubscriptions: React.FC = () => {
                 (statusFilter === 'active' && userStatus === 'active') ||
                 (statusFilter === 'canceled' && userStatus === 'canceled') ||
                 (statusFilter === 'past_due' && userStatus === 'past_due') ||
-                (statusFilter === 'pending' && userStatus === 'pending_payment');
+                (statusFilter === 'pending' && userStatus === 'pending_payment') ||
+                (statusFilter === 'trial' && userStatus === 'trial');
 
             // Plan filter
             const userPlan = user.subscription?.plan || 'starter';
@@ -805,6 +807,23 @@ export const AdminSubscriptions: React.FC = () => {
                         Pendente
                     </span>
                 );
+            case 'trial': {
+                // Calculate trial days remaining using trialEndsAt (passed as accessUntil)
+                const trialEnd = accessUntil ? new Date(accessUntil) : null;
+                const now = new Date();
+                const daysLeft = trialEnd ? Math.ceil((trialEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24)) : 0;
+                const isExpired = daysLeft <= 0;
+
+                return (
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${isExpired
+                        ? 'bg-red-500/10 text-red-400 border border-red-500/20'
+                        : 'bg-purple-500/10 text-purple-400 border border-purple-500/20'
+                        }`}>
+                        <Clock size={10} />
+                        {isExpired ? 'Trial Expirado' : `Trial (${daysLeft}d)`}
+                    </span>
+                );
+            }
             default:
                 return (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-gray-500/10 text-gray-400 border border-gray-500/20">
@@ -1290,6 +1309,7 @@ export const AdminSubscriptions: React.FC = () => {
                             <DropdownItem onClick={() => setStatusFilter('all')}>Todos</DropdownItem>
                             <DropdownItem onClick={() => setStatusFilter('active')}>Ativos</DropdownItem>
                             <DropdownItem onClick={() => setStatusFilter('pending')}>Pendentes</DropdownItem>
+                            <DropdownItem onClick={() => setStatusFilter('trial')}>Trial</DropdownItem>
                             <DropdownItem onClick={() => setStatusFilter('past_due')}>Atrasados</DropdownItem>
                             <DropdownItem onClick={() => setStatusFilter('canceled')}>Cancelados</DropdownItem>
                         </DropdownContent>
@@ -1573,7 +1593,13 @@ export const AdminSubscriptions: React.FC = () => {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div className="flex items-center gap-2">
-                                                            {getStatusBadge(user.subscription?.status, user.subscription?.accessUntil, user.subscription?.plan)}
+                                                            {getStatusBadge(
+                                                                user.subscription?.status,
+                                                                user.subscription?.status === 'trial'
+                                                                    ? user.subscription?.trialEndsAt
+                                                                    : user.subscription?.accessUntil,
+                                                                user.subscription?.plan
+                                                            )}
                                                             {user.subscription?.asaasSubscriptionId && (
                                                                 <Tooltip content="Verificado no Asaas">
                                                                     <div className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400">

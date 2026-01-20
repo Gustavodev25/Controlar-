@@ -19,7 +19,7 @@ interface SubscribeData {
 }
 
 interface PricingSectionProps {
-    onLogin: () => void;
+    onLogin: (view?: 'login' | 'signup') => void;
     onSubscribe?: (data: SubscribeData) => void;
 }
 
@@ -41,15 +41,23 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                 'Contas Bancárias Ilimitadas'
             ],
             image: fogueteImg,
-            buttonText: 'Assinar Pro',
+            buttonText: 'Começar Teste Grátis',
             popular: true
         }
     ];
 
     return (
+        // ... (I will include only the function head and then use another replace for the button usage to be safer or maybe I can be smart)
+        // I will split this into two calls or use one targeted call for interface and one for button if possible, but replace_file_content does block.
+        // Let's just update the interface first.
         <section id="pricing" className="w-full bg-[#1a0f0a] py-24 relative overflow-hidden">
             <AnimatedGridPattern
+                // ...
+                // Actually, I can just replace the interface definition and the button usage in separate calls or one call if confident.
+                // I'll do two calls to be safe.
                 width={60}
+                // ...
+
                 height={60}
                 numSquares={20}
                 maxOpacity={0.08}
@@ -201,25 +209,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                                 {/* Botão */}
                                 <button
                                     onClick={() => {
-                                        if (isPro) {
-                                            // Ir direto para checkout se onSubscribe disponível
-                                            if (onSubscribe) {
-                                                onSubscribe({
-                                                    planId: 'pro',
-                                                    billingCycle: billingCycle
-                                                });
-                                            } else {
-                                                // Fallback: salvar pending_checkout e ir para login
-                                                const pendingCheckout = {
-                                                    planId: 'pro',
-                                                    billingCycle: billingCycle
-                                                };
-                                                localStorage.setItem('pending_checkout', JSON.stringify(pendingCheckout));
-                                                onLogin();
-                                            }
-                                        } else {
-                                            onLogin();
-                                        }
+                                        onLogin('signup');
                                     }}
                                     className={`
                                         w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]

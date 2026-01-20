@@ -349,7 +349,7 @@ const detectSubscriptionsWithAI = async (transactions) => {
         .filter(tx => tx.amount < 0)
         .slice(0, 100) // Limitar para não exceder tokens
         .map(tx => ({
-            description: tx.description,
+            description: enrichTransactionDescription(tx),
             amount: Math.abs(tx.amount),
             date: tx.date
         }));
@@ -541,6 +541,155 @@ const removeUndefined = (obj) => {
     }
     return newObj;
 };
+
+// ============================================================
+// HELPER: Enriquecer descrição de transações PIX/Transferências
+// Usa paymentData.payer/receiver para mostrar nomes detalhados
+// Também extrai nomes de descrições no formato C6: "PIX RECEBIDO   NOME"
+// Ex: "PIX RECEBIDO" → "Pix Recebido De Giga Advisors Ltda"
+// ============================================================
+const enrichTransactionDescription = (tx) => {
+    if (!tx) return tx?.description || '';
+
+    const originalDesc = tx.description || '';
+    const descLower = originalDesc.toLowerCase().trim();
+    const paymentData = tx.paymentData;
+
+    // Função auxiliar para formatar nome (Title Case)
+    const formatName = (name) => {
+        if (!name) return null;
+        return name
+            .trim()
+            .toLowerCase()
+            .split(' ')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+    };
+
+    // ============================================================
+    // ETAPA 1: Verificar se a descrição JÁ contém o nome (formato C6 Bank)
+    // Padrões: "PIX RECEBIDO   NOME" ou "PIX ENVIADO   NOME"
+    // ============================================================
+
+    // Regex para extrair nome após PIX RECEBIDO/ENVIADO com múltiplos espaços
+    const pixReceivedWithNameRegex = /^pix\s+recebido\s{2,}(.+)$/i;
+    const pixSentWithNameRegex = /^pix\s+enviado\s{2,}(.+)$/i;
+    const transfSentPixWithNameRegex = /^transf\s+enviada\s+pix\s{2,}(.+)$/i;
+    const transfReceivedPixWithNameRegex = /^transf\s+recebida\s+pix\s{2,}(.+)$/i;
+
+    // Também padrão alternativo: "PIX RECEBIDO C6 NOME" ou "PIX RECEBIDO NOME"
+    const pixReceivedC6Regex = /^pix\s+recebido\s+c6\s+(.+)$/i;
+    const pixSentC6Regex = /^pix\s+enviado\s+c6\s+(.+)$/i;
+
+    // Verificar PIX RECEBIDO com nome
+    let match = originalDesc.match(pixReceivedWithNameRegex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Recebido De ${formatName(match[1])}`;
+    }
+
+    match = originalDesc.match(pixReceivedC6Regex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Recebido De ${formatName(match[1])}`;
+    }
+
+    // Verificar PIX ENVIADO com nome
+    match = originalDesc.match(pixSentWithNameRegex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Enviado Para ${formatName(match[1])}`;
+    }
+
+    match = originalDesc.match(pixSentC6Regex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Enviado Para ${formatName(match[1])}`;
+    }
+
+    // Verificar TRANSF com nome
+    match = originalDesc.match(transfSentPixWithNameRegex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Enviado Para ${formatName(match[1])}`;
+    }
+
+    match = originalDesc.match(transfReceivedPixWithNameRegex);
+    if (match && match[1] && match[1].trim().length > 2) {
+        return `Pix Recebido De ${formatName(match[1])}`;
+    }
+
+    // ============================================================
+    // ETAPA 2: Tentar usar descriptionRaw se for diferente e mais detalhada
+    // ============================================================
+    const descriptionRaw = tx.descriptionRaw || '';
+    if (descriptionRaw && descriptionRaw !== originalDesc && descriptionRaw.length > originalDesc.length) {
+        // Verificar se descriptionRaw já contém um nome
+        const rawLower = descriptionRaw.toLowerCase();
+
+        match = descriptionRaw.match(pixReceivedWithNameRegex);
+        if (match && match[1]) return `Pix Recebido De ${formatName(match[1])}`;
+
+        match = descriptionRaw.match(pixSentWithNameRegex);
+        if (match && match[1]) return `Pix Enviado Para ${formatName(match[1])}`;
+    }
+
+    // ============================================================
+    // ETAPA 3: Usar paymentData.payer/receiver.name se disponível
+    // ============================================================
+    if (paymentData) {
+        const payerName = paymentData.payer?.name;
+        const receiverName = paymentData.receiver?.name;
+        const reason = paymentData.reason;
+
+        // Detectar tipo de transação
+        const isPix = descLower.includes('pix') || paymentData.paymentMethod === 'PIX';
+        const isTed = descLower.includes('ted') || paymentData.paymentMethod === 'TED';
+        const isTransfer = descLower.includes('transf') || descLower.includes('transfer');
+        const isReceived = descLower.includes('recebido') || descLower.includes('recebid') ||
+            descLower.includes('credit') || descLower.includes('entrada') ||
+            tx.type === 'CREDIT' || tx.amount > 0;
+        const isSent = descLower.includes('enviado') || descLower.includes('enviad') ||
+            descLower.includes('debit') || descLower.includes('saida') ||
+            descLower.includes('saída') || tx.type === 'DEBIT' || tx.amount < 0;
+
+        // Para PIX/Transferências recebidas, usar nome do pagador
+        if ((isPix || isTed || isTransfer) && isReceived && payerName) {
+            const formattedName = formatName(payerName);
+            if (isPix) {
+                return `Pix Recebido De ${formattedName}`;
+            } else if (isTed) {
+                return `TED Recebido De ${formattedName}`;
+            } else {
+                return `Transferência Recebida De ${formattedName}`;
+            }
+        }
+
+        // Para PIX/Transferências enviadas, usar nome do recebedor
+        if ((isPix || isTed || isTransfer) && isSent && receiverName) {
+            const formattedName = formatName(receiverName);
+            if (isPix) {
+                return `Pix Enviado Para ${formattedName}`;
+            } else if (isTed) {
+                return `TED Enviado Para ${formattedName}`;
+            } else {
+                return `Transferência Enviada Para ${formattedName}`;
+            }
+        }
+
+        // Se tem reason (motivo da transferência), usar como descrição adicional
+        if (reason && reason.trim().length > 0) {
+            // Se a descrição original é muito genérica, usar reason como base
+            const genericPatterns = ['pix recebido', 'pix enviado', 'transf enviada pix', 'transferencia pix'];
+            if (genericPatterns.some(p => descLower === p)) {
+                return reason;
+            }
+            // Caso contrário, anexar reason se for diferente
+            if (!originalDesc.toLowerCase().includes(reason.toLowerCase())) {
+                return `${originalDesc} - ${reason}`;
+            }
+        }
+    }
+
+    // Fallback: retorna descrição original
+    return originalDesc;
+};
+
 
 // ============================================================
 // HELPER: Calcular períodos de fatura centralizados
@@ -1149,7 +1298,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                         mappedTx = {
                             cardId: account.id,
                             date: tx.date.split('T')[0],
-                            description: tx.description,
+                            description: enrichTransactionDescription(tx),
                             amount: Math.abs(tx.amount),
                             type: tx.amount < 0 ? 'expense' : 'income',
                             category: tx.category || 'Uncategorized',
@@ -1173,7 +1322,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     } else {
                         mappedTx = {
                             providerId: tx.id,
-                            description: tx.description,
+                            description: enrichTransactionDescription(tx),
                             amount: Math.abs(tx.amount),
                             type: tx.amount < 0 ? 'expense' : 'income',
                             date: tx.date.split('T')[0],
@@ -1964,7 +2113,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     mappedTx = {
                         cardId: account.id,
                         date: tx.date.split('T')[0],
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
@@ -1978,7 +2127,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     // Regular/Savings Transaction
                     mappedTx = {
                         providerId: tx.id,
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount < 0 ? 'expense' : 'income',
                         date: tx.date.split('T')[0],
@@ -2565,7 +2714,7 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                     mappedTx = {
                         cardId: account.id,
                         date: tx.date.split('T')[0],
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
@@ -2578,7 +2727,7 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                 } else {
                     mappedTx = {
                         providerId: tx.id,
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount < 0 ? 'expense' : 'income',
                         date: tx.date.split('T')[0],
@@ -2892,7 +3041,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                     mappedTx = {
                         cardId: account.id,
                         date: tx.date.split('T')[0],
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
@@ -2905,7 +3054,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                 } else {
                     mappedTx = {
                         providerId: tx.id,
-                        description: tx.description,
+                        description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
                         type: tx.amount < 0 ? 'expense' : 'income',
                         date: tx.date.split('T')[0],

@@ -18,11 +18,13 @@ export interface User {
   twoFactorSecret?: string | null;
   subscription?: {
     plan: 'starter' | 'pro' | 'family';
-    status: 'active' | 'canceled' | 'past_due' | 'pending_payment' | 'refunded';
+    status: 'active' | 'canceled' | 'past_due' | 'pending_payment' | 'refunded' | 'trial';
     billingCycle: 'monthly' | 'annual';
     nextBillingDate?: string;
     accessUntil?: string; // Data até qual o usuário mantém acesso PRO após cancelamento
     canceledAt?: string; // Data em que foi cancelado
+    trialStartedAt?: string; // Data de início do trial (ISO string)
+    trialEndsAt?: string; // Data de fim do trial (ISO string)
     installments?: number;
     asaasCustomerId?: string;
     asaasSubscriptionId?: string;

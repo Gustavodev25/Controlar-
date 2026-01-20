@@ -158,11 +158,14 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
                   {/* Botão */}
                   <button
                     onClick={() => handleSelectClick(plan.id as any, plan.name, plan.price)}
+                    disabled={plan.id === 'starter'}
                     className={`
                       w-full py-3.5 rounded-xl font-semibold text-sm transition-all duration-300
-                      ${plan.popular
-                        ? 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/20'
-                        : 'bg-transparent border border-gray-700 text-white hover:border-gray-500 hover:bg-gray-800/50'}
+                      ${plan.id === 'starter'
+                        ? 'bg-transparent border border-gray-800 text-gray-600 cursor-not-allowed opacity-50'
+                        : plan.popular
+                          ? 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/20'
+                          : 'bg-transparent border border-gray-700 text-white hover:border-gray-500 hover:bg-gray-800/50'}
                     `}
                   >
                     {plan.buttonText}

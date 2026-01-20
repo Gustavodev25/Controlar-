@@ -1201,7 +1201,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
    // Dynamic Billing History with Coupon Support
    const billingHistory = useMemo(() => {
-      if (!user.subscription || user.subscription.plan === 'starter') return [];
+      if (!user.subscription || user.subscription.plan === 'starter' || user.subscription.status === 'trial') return [];
 
       const history: {
          id: string;
@@ -2574,7 +2574,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                           <div>
                                              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
                                              <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-                                                {planStyle.label}
+                                                {status === 'trial' ? 'Teste Grátis' : planStyle.label}
+                                                {status === 'trial' && <span className="text-xs bg-[#d97757] text-white px-2 py-0.5 rounded-full">PRO</span>}
                                              </h2>
                                           </div>
                                        </div>
@@ -2582,7 +2583,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                        <div className="flex gap-6 text-sm">
                                           <div className="flex items-center gap-2 text-gray-300">
                                              <Calendar size={16} className="text-gray-500" />
-                                             <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                             {status === 'trial' ? (
+                                                <span>Expira em: <b className="text-white">{formData.subscription?.trialEndsAt ? new Date(formData.subscription.trialEndsAt).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                             ) : (
+                                                <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                             )}
                                           </div>
                                           {plan !== 'starter' && (
                                              <div className="flex items-center gap-2 text-gray-300">

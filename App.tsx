@@ -43,6 +43,7 @@ import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { PostSignupModal } from './components/PostSignupModal';
+import { TrialExpiredPaywall } from './components/TrialExpiredPaywall';
 import { LandingCheckoutPage } from './components/LandingCheckoutPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
@@ -76,6 +77,13 @@ import foguete from './assets/foguete.png';
 import { captureUtmFromUrl } from './services/utmService';
 
 // Removed FilterMode type definition as it is imported from components/Header
+
+declare global {
+  interface Window {
+    expireTrial: () => Promise<void>;
+    resetTrial: () => Promise<void>;
+  }
+}
 
 // Helper to capture connection details (runs in background, non-blocking)
 const captureDeviceDetails = async (uid: string) => {
@@ -246,6 +254,7 @@ const App: React.FC = () => {
     return false;
   });
   const [viewFilter, setViewFilter] = useState<'all' | 'credit_card' | 'savings' | 'checking'>('all');
+  const [authInitialView, setAuthInitialView] = useState<'login' | 'signup'>('login');
   const toast = useToasts();
 
   // Handle Family Invite Link & Context Loading
@@ -296,6 +305,67 @@ const App: React.FC = () => {
     };
     loadInvite();
   }, [userId]);
+
+  // DEBUG: Helper to simulate trial expiration (Dev only or manually triggered)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && userId && currentUser) {
+      window.expireTrial = async () => {
+        console.log('🕒 Expirando trial...');
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+
+        const currentSub = currentUser.subscription || {
+          plan: 'pro',
+          status: 'trial',
+          billingCycle: 'monthly',
+          nextBillingDate: new Date().toISOString()
+        };
+
+        try {
+          await dbService.updateUserProfile(userId, {
+            ...currentUser,
+            subscription: {
+              ...currentSub,
+              status: 'trial',
+              trialEndsAt: yesterday.toISOString()
+            }
+          });
+          console.log('✅ Trial expirado! Recarregando...');
+          window.location.reload();
+        } catch (e) {
+          console.error('Erro ao expirar trial:', e);
+        }
+      };
+
+      window.resetTrial = async () => {
+        console.log('🔄 Resetando trial...');
+        const fourteenDays = new Date();
+        fourteenDays.setDate(fourteenDays.getDate() + 14);
+
+        const currentSub = currentUser.subscription || {
+          plan: 'pro',
+          status: 'trial',
+          billingCycle: 'monthly',
+          nextBillingDate: new Date().toISOString()
+        };
+
+        try {
+          await dbService.updateUserProfile(userId, {
+            ...currentUser,
+            subscription: {
+              ...currentSub,
+              status: 'trial',
+              trialEndsAt: fourteenDays.toISOString()
+            }
+          });
+          console.log('✅ Trial resetado! Recarregando...');
+          window.location.reload();
+        } catch (e) {
+          console.error('Erro ao resetar trial:', e);
+        }
+      };
+    }
+  }, [userId, currentUser]);
 
   // Automatic Category Fix (One-time migration)
   useEffect(() => {
@@ -483,9 +553,34 @@ const App: React.FC = () => {
 
   const effectivePlan = useMemo(() => {
     const sub = currentUser?.subscription;
-    // Only grant plan features if status is strictly 'active'
+
+    // Trial: verificar se ainda é válido
+    if (sub?.status === 'trial' && sub.trialEndsAt) {
+      const trialEnd = new Date(sub.trialEndsAt);
+      if (new Date() > trialEnd) {
+        return 'starter'; // Trial expirado
+      }
+      return sub.plan; // Trial válido, retorna o plano (pro)
+    }
+
+    // Only grant plan features if status is strictly 'active' or valid trial
     if (sub?.status === 'active') return sub.plan;
     return 'starter';
+  }, [currentUser]);
+
+  // Helper: verificar se trial expirou
+  const isTrialExpired = useMemo(() => {
+    const sub = currentUser?.subscription;
+    if (sub?.status !== 'trial' || !sub.trialEndsAt) return false;
+    return new Date() > new Date(sub.trialEndsAt);
+  }, [currentUser]);
+
+  // Helper: dias restantes do trial
+  const trialDaysRemaining = useMemo(() => {
+    const sub = currentUser?.subscription;
+    if (sub?.status !== 'trial' || !sub.trialEndsAt) return 0;
+    const daysLeft = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    return Math.max(0, daysLeft);
   }, [currentUser]);
 
   // Data State
@@ -3390,7 +3485,10 @@ const App: React.FC = () => {
           <ToastContainer />
           <LandingPage
             variant={landingVariant}
-            onLogin={() => setShowLanding(false)}
+            onLogin={(view?: 'login' | 'signup') => {
+              setAuthInitialView(view || 'login');
+              setShowLanding(false);
+            }}
             onSubscribe={(data) => setLandingCheckoutData(data)}
           />
         </>
@@ -3400,7 +3498,10 @@ const App: React.FC = () => {
       <>
         <PixelPageViewTracker activeTab="auth" />
         <ToastContainer />
-        <LoginNew onSubscribe={(data) => setLandingCheckoutData(data)} />
+        <LoginNew
+          initialView={authInitialView}
+          onSubscribe={(data) => setLandingCheckoutData(data)}
+        />
       </>
     );
   }
@@ -3423,7 +3524,16 @@ const App: React.FC = () => {
         isProcessing={isProcessingInvite}
       />
 
-
+      {/* Trial Expired Paywall - Blocks app when trial ends */}
+      {isTrialExpired && currentUser && activeTab !== 'subscription' && (
+        <TrialExpiredPaywall
+          userName={currentUser.name.split(' ')[0]}
+          onSubscribe={() => {
+            setSubscriptionInitialState({ planId: 'pro' });
+            setActiveTab('subscription');
+          }}
+        />
+      )}
 
       {/* Sidebar */}
 

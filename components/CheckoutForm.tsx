@@ -157,6 +157,34 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   const [installments, setInstallments] = useState(1);
 
+  // Estado para cartão de teste admin
+  const [isTestCard, setIsTestCard] = useState(false);
+
+  // Dados do cartão de teste que passam na validação Luhn (número de teste válido)
+  const TEST_CARD_DATA: CreditCardData = {
+    holderName: 'ADMIN TESTE',
+    number: '4532015112830366', // Número válido que passa no Luhn
+    expiryMonth: '12',
+    expiryYear: (new Date().getFullYear() + 2).toString(),
+    ccv: '123'
+  };
+
+  const TEST_HOLDER_INFO: HolderInfo = {
+    name: 'Admin Teste',
+    email: 'admin@controlar.app',
+    cpfCnpj: '52998224725', // CPF válido para teste
+    postalCode: '01310100',
+    addressNumber: '1000',
+    phone: '11999999999'
+  };
+
+  // Função para usar cartão de teste
+  const handleUseTestCard = () => {
+    setCardData(TEST_CARD_DATA);
+    setHolderInfo(TEST_HOLDER_INFO);
+    setIsTestCard(true);
+  };
+
   // Coupon State
   const [couponCode, setCouponCode] = useState(initialCouponCode || '');
   const [spotsLeft, setSpotsLeft] = useState(3);
@@ -565,22 +593,28 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
 
-    // Meta Pixel: AddPaymentInfo
-    trackEvent('AddPaymentInfo', {
-      value: finalPrice,
-      currency: 'BRL',
-      content_name: `Plano ${planName} - ${billingCycle === 'annual' ? 'Anual' : 'Mensal'}`,
-      content_type: 'subscription',
-      content_category: 'Assinatura',
-    });
+    // Determinar o preço final - se for cartão de teste admin, usar 0 para ativar sem cobrança
+    const priceToSubmit = isTestCard ? 0 : finalPrice;
+    const couponToSubmit = isTestCard ? 'ADMIN_TEST_CARD' : appliedCoupon?.id;
+
+    // Meta Pixel: AddPaymentInfo (não rastrear se for cartão de teste)
+    if (!isTestCard) {
+      trackEvent('AddPaymentInfo', {
+        value: finalPrice,
+        currency: 'BRL',
+        content_name: `Plano ${planName} - ${billingCycle === 'annual' ? 'Anual' : 'Mensal'}`,
+        content_type: 'subscription',
+        content_category: 'Assinatura',
+      });
+    }
 
     // Passar registrationData se requiresRegistration
     await onSubmit(
       cardData,
       { ...holderInfo, name: cardData.holderName },
       installments,
-      appliedCoupon?.id,
-      finalPrice,
+      couponToSubmit,
+      priceToSubmit,
       requiresRegistration ? registrationData : undefined
     );
   };
@@ -1049,26 +1083,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       transition={{ duration: 0.3 }}
       className="p-6"
     >
-      {/* Scarcity Banner */}
-      <div className="bg-transparent border border-[#D97757]/20 rounded-2xl p-4 mb-8 flex items-center justify-between backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <div className="bg-[#D97757]/10 p-2.5 rounded-xl shadow-lg shadow-[#D97757]/10 animate-pulse">
-            <Zap className="text-[#D97757]" size={20} fill="currentColor" />
-          </div>
-          <div>
-            <h3 className="font-bold text-white text-sm lg:text-base flex items-center gap-2">
-              Alta Demanda Detectada <TrendingUp size={14} className="text-[#D97757]" />
-            </h3>
-            <p className="text-gray-400 text-xs lg:text-sm mt-0.5">
-              Restam apenas <span className="text-[#d97757] font-bold">{spotsLeft} vagas</span> com as condições atuais.
-            </p>
-          </div>
-        </div>
-        <div className="hidden lg:flex flex-col items-end">
-          <div className="text-[10px] font-bold text-[#D97757] uppercase tracking-wider mb-1.5">Oferta expira em</div>
-          <CheckoutTimer />
-        </div>
-      </div>
+
 
       <form onSubmit={handleSubmit}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -1077,7 +1092,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           <div className="lg:col-span-2 space-y-6">
 
             {/* Payment Detail */}
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
               <div className="flex items-center gap-3 mb-1">
@@ -1086,7 +1101,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 )}
                 <h2 className="text-lg font-bold text-white">Informações de Pagamento</h2>
               </div>
-              <p className="text-sm text-gray-400 mb-6 ml-11">Preencha os dados do seu cartão de crédito</p>
+              <div className="flex items-center justify-between mb-6">
+                <p className="text-sm text-gray-400 ml-11">Preencha os dados do seu cartão de crédito</p>
+                {/* Botão secreto para admin usar cartão de teste */}
+
+              </div>
 
               <div className="space-y-4">
                 <div>
@@ -1230,7 +1249,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             </div>
 
             {/* Security Notice */}
-            <div className="rounded-[24px] border border-white/10 p-6 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex gap-4 mb-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-6 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex gap-4 mb-6" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
               <div className="text-green-500 shrink-0 mt-0.5 relative z-10">
@@ -1264,7 +1283,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
           {/* Coluna Direita - Summary */}
           <div className="lg:col-span-1">
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
 
