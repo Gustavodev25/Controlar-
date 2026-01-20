@@ -127,39 +127,40 @@ export const AdminSubscriptions: React.FC = () => {
     const [bulkCouponId, setBulkCouponId] = useState('');
     const [bulkCouponMonth, setBulkCouponMonth] = useState(''); // YYYY-MM
 
+    const loadData = async () => {
+        setIsLoading(true);
+        try {
+            // Load users
+            const data = await dbService.getAllUsers();
+            // Filter only "Real" subscribers (Pro, Family, or with Asaas ID)
+            const subUsers = data.filter(u => {
+                const sub = u.subscription;
+                if (!sub) return false;
+
+                const plan = (sub.plan || 'starter').toLowerCase();
+                const isPaidPlan = plan === 'pro' || plan === 'family';
+                const hasHistory = !!sub.asaasCustomerId;
+
+                // Include if they are on a paid plan OR have payment history (even if currently Starter/Canceled)
+                return isPaidPlan || hasHistory;
+            });
+
+            subUsers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            setUsers(subUsers as SystemUser[]);
+
+            // Load coupons
+            const couponsData = await dbService.getCoupons();
+            setCoupons(couponsData);
+        } catch (error) {
+            console.error('Error loading data:', error);
+            toast.error('Erro ao carregar dados.');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     // Load users and coupons
     useEffect(() => {
-        const loadData = async () => {
-            setIsLoading(true);
-            try {
-                // Load users
-                const data = await dbService.getAllUsers();
-                // Filter only "Real" subscribers (Pro, Family, or with Asaas ID)
-                const subUsers = data.filter(u => {
-                    const sub = u.subscription;
-                    if (!sub) return false;
-
-                    const plan = (sub.plan || 'starter').toLowerCase();
-                    const isPaidPlan = plan === 'pro' || plan === 'family';
-                    const hasHistory = !!sub.asaasCustomerId;
-
-                    // Include if they are on a paid plan OR have payment history (even if currently Starter/Canceled)
-                    return isPaidPlan || hasHistory;
-                });
-
-                subUsers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-                setUsers(subUsers as SystemUser[]);
-
-                // Load coupons
-                const couponsData = await dbService.getCoupons();
-                setCoupons(couponsData);
-            } catch (error) {
-                console.error('Error loading data:', error);
-                toast.error('Erro ao carregar dados.');
-            } finally {
-                setIsLoading(false);
-            }
-        };
         loadData();
     }, []);
 

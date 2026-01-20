@@ -508,7 +508,7 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                             <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#00A96E]/10 border border-[#00A96E]/20 backdrop-blur-sm shadow-[0_0_15px_-3px_rgba(0,169,110,0.2)]">
                                 <ShieldCheck size={14} className="text-[#00A96E]" />
                                 <span className="text-[#00A96E] text-[10px] md:text-xs font-bold uppercase tracking-wide">
-                                    Garantia de 15 dias ou seu reembolso
+                                    Garantia de 7 dias ou seu reembolso
                                 </span>
                             </div>
                         </motion.div>
