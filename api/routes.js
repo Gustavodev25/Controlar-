@@ -2469,8 +2469,48 @@ router.post('/asaas/webhook', async (req, res) => {
         // Send to Utmify
         await sendRefundToUtmify(payment.id);
 
-        // TODO: Aqui você também pode atualizar o status no Firestore se desejar
-        // Por enquanto, focando apenas no requisito do Utmify
+        // Update Firestore
+        try {
+          const db = firebaseAdmin.firestore();
+          const usersRef = db.collection('users');
+          const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', payment.customer).get();
+
+          if (!snapshot.empty) {
+            const batch = db.batch();
+            const now = new Date().toISOString();
+
+            snapshot.forEach(doc => {
+              const userData = doc.data();
+              const sub = userData.subscription || {};
+
+              // Only update if not already refunded/canceled to avoid overwriting existing reason if different
+              // But for refund, we probably want to force it.
+
+              const updatePayload = {
+                'subscription.status': 'canceled', // Use canceled as the base status for system compatibility
+                'subscription.revokedReason': 'Refund/Estorno (Webhook)', // Mark as refund for UI
+                'subscription.revokedAt': now,
+                'subscription.canceledAt': now,
+                'subscription.autoRenew': false,
+
+                'profile.subscription.status': 'canceled',
+                'profile.subscription.revokedReason': 'Refund/Estorno (Webhook)',
+                'profile.subscription.revokedAt': now,
+                'profile.subscription.canceledAt': now,
+                'profile.subscription.autoRenew': false
+              };
+
+              batch.update(doc.ref, updatePayload);
+            });
+
+            await batch.commit();
+            console.log(`>>> [WEBHOOK] Updated ${snapshot.size} user(s) to REFUNDED state for customer ${payment.customer}`);
+          } else {
+            console.warn(`>>> [WEBHOOK] No user found for customer ${payment.customer} to apply refund.`);
+          }
+        } catch (dbError) {
+          console.error('>>> [WEBHOOK] Error updating Firestore for refund:', dbError);
+        }
       }
     }
 

@@ -998,18 +998,52 @@ export const AdminSubscriptions: React.FC = () => {
                 }
             }
 
-            // Check for cancellation status to stop projection?
-            // If status is 'canceled', we should check cancellation date. 
-            // For now, if simply 'canceled', maybe we stop projecting from next month?
-            // Assuming simple logic: if canceled, only show up to today? 
-            // Or maybe better: If canceled, we assume they churned, but maybe they paid for this month?
-            // Let's keep showing "history" and future "predictions" only if active?
-            // Requested: "quando passa nao sumir".
+            // Start checking for cancellation/refund status
+            // Cast to any to access optional fields that might not be in the strict type yet
+            const subAny = sub as any;
 
-            // Refined Logic:
-            // If status is 'canceled', we need to know WHEN it was canceled. 
-            // Without cancellationDate, difficult. We will project until 'today' if canceled?
-            // Ideally we show what WAS paid.
+            // Check if it's explicitly a refund
+            const isRefund = sub.status === 'refunded' ||
+                subAny.revokedReason?.toLowerCase().includes('refund') ||
+                subAny.revokedReason?.toLowerCase().includes('estorno');
+
+            // Determine the "Stop Revenue" date
+            // For Refunds: Stop immediately (revokedAt or canceledAt)
+            // For Monthly Cancel: Stop after the cancellation month (revenue stops next month)
+            // For Annual Cancel: Stop after access expires (revenue is amortized over the year)
+            const canceledDateStr = subAny.revokedAt || sub.canceledAt;
+            const accessUntilStr = sub.accessUntil;
+
+            if (isRefund && canceledDateStr) {
+                const canceledDate = parseDate(canceledDateStr);
+                const canceledMonthIndex = canceledDate.getFullYear() * 12 + canceledDate.getMonth();
+
+                if (targetMonthIndex >= canceledMonthIndex) {
+                    finalPrice = 0;
+                    discountInfo = 'Estornado';
+                }
+            } else if ((sub.status === 'canceled' || subAny.status === 'revoked') && canceledDateStr) {
+                // Normal Cancellation (Churn)
+                if (sub.billingCycle === 'annual' && accessUntilStr) {
+                    // Annual: Show revenue until access expires (amortized)
+                    const accessDate = parseDate(accessUntilStr);
+                    const accessMonthIndex = accessDate.getFullYear() * 12 + accessDate.getMonth();
+
+                    if (targetMonthIndex > accessMonthIndex) {
+                        finalPrice = 0;
+                        discountInfo = 'Cancelado';
+                    }
+                } else {
+                    // Monthly: Show revenue only for the month of cancellation (paid), then stop.
+                    const canceledDate = parseDate(canceledDateStr);
+                    const canceledMonthIndex = canceledDate.getFullYear() * 12 + canceledDate.getMonth();
+
+                    if (targetMonthIndex > canceledMonthIndex) {
+                        finalPrice = 0;
+                        discountInfo = 'Cancelado';
+                    }
+                }
+            }
 
             projections.push({
                 date: targetDate,
