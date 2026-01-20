@@ -440,7 +440,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                             status: 'trial',
                             billingCycle: 'monthly',
                             trialStartedAt: new Date().toISOString(),
-                            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                            trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                         },
                         createdAt: new Date().toISOString()
                     });
@@ -481,7 +481,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                         status: 'trial',
                         billingCycle: 'monthly',
                         trialStartedAt: new Date().toISOString(),
-                        trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+                        trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
                     },
                     createdAt: new Date().toISOString()
                 });
@@ -566,9 +566,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                             >
                                 <div className="absolute inset-0 bg-gradient-to-r from-[#d97757]/10 via-transparent to-[#d97757]/10 opacity-30" />
                                 <div className="relative z-10">
-                                    <p className="text-[#d97757] text-xs font-bold leading-tight tracking-wide uppercase">
-                                        Oferta Especial: 14 Dias de Teste Grátis
-                                    </p>
+                                    Oferta Especial: 7 Dias de Teste Grátis
                                 </div>
                             </motion.div>
                         )}

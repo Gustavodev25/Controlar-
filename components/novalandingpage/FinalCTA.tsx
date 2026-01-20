@@ -51,7 +51,7 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onLogin, onSubscribe }) => {
                         <button onClick={() => {
                             onLogin('signup');
                         }} className="group px-8 py-4 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)]">
-                            Testar 14 dias grátis
+                            Testar 7 dias grátis
                             <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
                         </button>
 

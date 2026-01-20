@@ -19,7 +19,7 @@ export const TrialBanner: React.FC<TrialBannerProps> = ({ onLogin }) => {
                 <Sparkles size={14} className="fill-white/20 animate-pulse" />
                 <span className="text-center truncate">
                     <span className="opacity-90">Oferta Especial:</span>
-                    <span className="font-bold ml-1">Experimente o Plano Pro gratuitamente por 14 dias!</span>
+                    <span className="font-bold ml-1">Experimente o Plano Pro gratuitamente por 7 dias!</span>
                 </span>
                 <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
             </div>

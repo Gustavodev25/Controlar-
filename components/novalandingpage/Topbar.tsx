@@ -201,7 +201,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
           </div>
 
           {/* Desktop Links OR Center Content */}
-          <div className="hidden md:flex items-center absolute left-1/2 -translate-x-1/2 z-10">
+          <div className="hidden xl:flex items-center absolute left-1/2 -translate-x-1/2 z-10">
             {!hideNavigation ? (
               <div className="flex items-center gap-1 p-1">
                 {navLinks.map((link) => (
@@ -284,7 +284,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                         }}
                         className="whitespace-nowrap font-medium text-white overflow-hidden text-xs"
                       >
-                        Testar 14 dias grátis
+                        Testar Controlar
                       </motion.span>
                     </div>
                   </motion.button>
@@ -294,7 +294,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
 
             {!hideNavigation && (
               <button
-                className="md:hidden p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors backdrop-blur-md border border-white/5"
+                className="xl:hidden p-2 text-gray-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors backdrop-blur-md border border-white/5"
                 onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               >
                 {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
@@ -369,7 +369,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                       onLogin();
                     }}
                     className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
-                    Testar 14 dias grátis
+                    Testar 7 dias grátis
                   </button>
                 </div>
               </motion.div>

@@ -35,7 +35,7 @@ export const TrialExpiredPaywall: React.FC<TrialExpiredPaywallProps> = ({
 
                 {/* Message */}
                 <p className="text-gray-400 text-sm mb-8 leading-relaxed">
-                    Seu período de teste de 14 dias chegou ao fim.
+                    Seu período de teste de 7 dias chegou ao fim.
                     <br />
                     Para continuar acessando seus dados e usando os recursos Pro, ative sua assinatura.
                 </p>

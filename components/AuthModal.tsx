@@ -389,7 +389,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
               status: 'trial',
               billingCycle: 'monthly',
               trialStartedAt: new Date().toISOString(),
-              trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+              trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
             },
             createdAt: new Date().toISOString()
           });
@@ -442,7 +442,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
             status: 'trial',
             billingCycle: 'monthly',
             trialStartedAt: new Date().toISOString(),
-            trialEndsAt: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString(),
+            trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
           },
           createdAt: new Date().toISOString()
         });

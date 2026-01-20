@@ -3,7 +3,7 @@ import { Check, ChevronLeft, Sparkles, CheckCircle } from 'lucide-react';
 import { User } from '../types';
 import { CheckoutForm } from './CheckoutForm';
 import { useToasts } from './Toast';
-import quebraCabecaImg from '../assets/quebra-cabeca.png';
+
 import fogueteImg from '../assets/foguete.png';
 import { toLocalISODate } from '../utils/dateUtils';
 import { API_ENDPOINTS } from '../config/api';
@@ -41,20 +41,6 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
     const currentPlan = user.subscription?.plan || 'starter';
 
     const plans = [
-        {
-            id: 'starter',
-            name: 'Starter',
-            price: 0,
-            image: quebraCabecaImg,
-            description: 'Para quem está começando a se organizar.',
-            features: [
-                'Lançamentos Manuais',
-                'Dashboards Básicos',
-                '1 Usuário',
-                'Sem contas conectadas'
-            ],
-            popular: false
-        },
         {
             id: 'pro',
             name: 'Pro',
@@ -400,8 +386,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                                 const isPro = plan.popular;
 
                                 const containerClasses = isPro
-                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 lg:transform lg:-translate-y-8 z-10 flex-1 basis-0"
-                                    : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors flex-1 basis-0";
+                                    ? "bg-[#30302E] border border-[#d97757] rounded-3xl p-8 flex flex-col relative shadow-2xl shadow-[#d97757]/10 z-10 w-full max-w-md"
+                                    : "bg-[#30302E] border border-gray-800 rounded-3xl p-8 flex flex-col relative hover:border-gray-600 transition-colors w-full max-w-md";
 
                                 return (
                                     <motion.div

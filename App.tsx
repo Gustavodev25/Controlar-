@@ -3665,41 +3665,7 @@ const App: React.FC = () => {
               {activeTab === 'dashboard' && (
                 <>
 
-                  {/* Promo Banner - New Year */}
-                  {effectivePlan === 'starter' && (
-                    <div
-                      onClick={() => {
-                        setSubscriptionInitialState({ planId: 'pro', couponCode: 'FELIZ2026' });
-                        setActiveTab('subscription');
-                      }}
-                      className="relative overflow-hidden rounded-xl bg-[#30302E] border border-[#373734] p-4 mb-6 cursor-pointer group hover:border-gray-600 transition-colors"
-                    >
-                      <div className="absolute top-0 right-0 -mt-2 -mr-2 opacity-20">
-                        <Ticket size={100} className="rotate-12 text-white" />
-                      </div>
 
-                      <div className="relative flex flex-col sm:flex-row items-center justify-between h-full">
-                        <div className="flex items-center gap-4 w-full">
-                          <div className="bg-[#d97757]/10 p-3 rounded-xl text-[#d97757] group-hover:scale-110 transition-transform duration-300 shrink-0">
-                            <img src={foguete} alt="Foguete" className="w-6 h-6 object-contain" />
-                          </div>
-                          <div className="flex-1">
-                            <h3 className="font-bold text-white flex flex-wrap items-center gap-2 text-sm sm:text-base">
-                              Promoção de Ano Novo <span className="bg-[#d97757] text-white text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wide">FELIZ2026</span>
-                            </h3>
-                            <p className="text-gray-400 text-xs sm:text-sm mt-1 leading-snug">
-                              Comece 2026 com o pé direito! Assine o plano Pro por apenas <span className="text-emerald-400 font-bold">R$ 9,90</span> no primeiro mês.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="hidden sm:flex items-center gap-1 pl-4 border-l border-gray-800 ml-4 shrink-0">
-                          <span className="text-sm font-bold text-[#d97757] group-hover:text-orange-400 transition-colors whitespace-nowrap">Resgatar Oferta</span>
-                          <ChevronRight size={16} className="text-[#d97757] group-hover:translate-x-1 transition-transform" />
-                        </div>
-                      </div>
-                    </div>
-                  )}
 
                   {/* Only show Salary Manager in Monthly mode where it makes sense */}
                   {filterMode === 'month' && !dashboardCategory && (
