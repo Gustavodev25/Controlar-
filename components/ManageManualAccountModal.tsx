@@ -248,21 +248,38 @@ export const ManageManualAccountModal: React.FC<ManageManualAccountModalProps> =
                             >
                                 <div className="space-y-1.5">
                                     <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Saldo Atual (R$)</label>
-                                    <div className="relative">
-                                        <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={balance ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(balance)) : ''}
-                                            onChange={e => {
-                                                const value = e.target.value.replace(/\D/g, '');
-                                                const numberValue = Number(value) / 100;
-                                                setBalance(numberValue.toString());
+                                    <div className="relative flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const currentValue = parseFloat(balance) || 0;
+                                                setBalance((currentValue * -1).toString());
                                             }}
-                                            placeholder="R$ 0,00"
-                                            className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-10 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
-                                        />
-                                        <ChevronsUpDown className="absolute right-3.5 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={14} />
+                                            className={`flex items-center justify-center w-12 rounded-xl border transition-all font-bold text-lg ${parseFloat(balance) < 0
+                                                    ? 'bg-red-500/20 border-red-500/40 text-red-400'
+                                                    : 'bg-emerald-500/20 border-emerald-500/40 text-emerald-400'
+                                                }`}
+                                            title={parseFloat(balance) < 0 ? "Saldo Negativo (clique para mudar)" : "Saldo Positivo (clique para mudar)"}
+                                        >
+                                            {parseFloat(balance) < 0 ? '−' : '+'}
+                                        </button>
+                                        <div className="relative flex-1">
+                                            <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                                            <input
+                                                type="text"
+                                                inputMode="numeric"
+                                                value={balance ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Math.abs(Number(balance))) : ''}
+                                                onChange={e => {
+                                                    const value = e.target.value.replace(/\D/g, '');
+                                                    const numberValue = Number(value) / 100;
+                                                    const isNegative = parseFloat(balance) < 0;
+                                                    setBalance((isNegative ? -numberValue : numberValue).toString());
+                                                }}
+                                                placeholder="R$ 0,00"
+                                                className={`w-full bg-gray-900/40 border border-gray-800/60 rounded-xl pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono ${parseFloat(balance) < 0 ? 'text-red-400' : 'text-white'
+                                                    }`}
+                                            />
+                                        </div>
                                     </div>
                                 </div>
                             </motion.div>

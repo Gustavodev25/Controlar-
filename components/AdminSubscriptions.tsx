@@ -27,7 +27,8 @@ import {
     Mail,
     Trash2,
     Tag,
-    Clock
+    Clock,
+    FileText
 } from 'lucide-react';
 import * as dbService from '../services/database';
 import { exportToCSV } from '../utils/export';
@@ -81,6 +82,15 @@ interface AsaasPayment {
     };
 }
 
+interface AsaasInvoice {
+    id: string;
+    payment: string;
+    status: 'SCHEDULED' | 'AUTHORIZED' | 'CANCELED' | 'ERROR' | 'PROCESSING_CANCELLATION';
+    number?: string;
+    pdfUrl?: string;
+    xmlUrl?: string;
+}
+
 type StatusFilter = 'all' | 'active' | 'canceled' | 'past_due' | 'pending' | 'trial';
 
 export const AdminSubscriptions: React.FC = () => {
@@ -126,6 +136,10 @@ export const AdminSubscriptions: React.FC = () => {
     // Bulk Coupon State
     const [bulkCouponId, setBulkCouponId] = useState('');
     const [bulkCouponMonth, setBulkCouponMonth] = useState(''); // YYYY-MM
+
+    // Invoice (NFSe) State
+    const [paymentInvoices, setPaymentInvoices] = useState<Record<string, AsaasInvoice | null>>({});
+    const [issuingInvoiceId, setIssuingInvoiceId] = useState<string | null>(null);
 
     const loadData = async () => {
         setIsLoading(true);
@@ -180,8 +194,13 @@ export const AdminSubscriptions: React.FC = () => {
 
                 if (data.success && data.data) {
                     setUserPayments(data.data);
+                    // Load invoices for these payments
+                    if (selectedUser.subscription?.asaasCustomerId) {
+                        loadPaymentInvoices(data.data, selectedUser.subscription.asaasCustomerId);
+                    }
                 } else {
                     setUserPayments([]);
+                    setPaymentInvoices({});
                 }
             } catch (error) {
                 console.error('Error loading payments:', error);
@@ -325,6 +344,56 @@ export const AdminSubscriptions: React.FC = () => {
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
         return diffDays <= 15;
+    };
+
+    // Load invoices for payments
+    const loadPaymentInvoices = async (payments: AsaasPayment[], customerId: string) => {
+        try {
+            const response = await fetch(`/api/asaas/invoices?customer=${customerId}&limit=50`);
+            const data = await response.json();
+
+            if (data.success && data.data) {
+                const invoiceMap: Record<string, AsaasInvoice | null> = {};
+                data.data.forEach((invoice: AsaasInvoice) => {
+                    if (invoice.payment) {
+                        invoiceMap[invoice.payment] = invoice;
+                    }
+                });
+                setPaymentInvoices(invoiceMap);
+            }
+        } catch (error) {
+            console.error('Error loading invoices:', error);
+        }
+    };
+
+    // Issue invoice (NFSe) manually
+    const handleIssueInvoice = async (paymentId: string) => {
+        if (!selectedUser?.id) return;
+
+        setIssuingInvoiceId(paymentId);
+        try {
+            const response = await fetch('/api/asaas/invoice/create', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paymentId, userId: selectedUser.id })
+            });
+            const data = await response.json();
+
+            if (data.success && data.invoice) {
+                toast.success('Nota Fiscal emitida com sucesso!');
+                setPaymentInvoices(prev => ({
+                    ...prev,
+                    [paymentId]: data.invoice
+                }));
+            } else {
+                toast.error(data.error || 'Erro ao emitir nota fiscal.');
+            }
+        } catch (error) {
+            console.error('Issue invoice error:', error);
+            toast.error('Erro ao processar emissão da nota fiscal.');
+        } finally {
+            setIssuingInvoiceId(null);
+        }
     };
 
     // Search user by ID
@@ -1924,6 +1993,36 @@ export const AdminSubscriptions: React.FC = () => {
                                                             </div>
 
                                                             <div className="flex items-center gap-3">
+                                                                {/* NFSe (Nota Fiscal) Button */}
+                                                                {(payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') && (
+                                                                    paymentInvoices[payment.id] ? (
+                                                                        <a
+                                                                            href={paymentInvoices[payment.id]?.pdfUrl || paymentInvoices[payment.id]?.xmlUrl || '#'}
+                                                                            target="_blank"
+                                                                            rel="noreferrer"
+                                                                            className="flex items-center gap-1 text-emerald-400 hover:text-emerald-300 transition-colors"
+                                                                            title="Visualizar Nota Fiscal"
+                                                                        >
+                                                                            <FileText size={12} />
+                                                                            NF
+                                                                        </a>
+                                                                    ) : (
+                                                                        <button
+                                                                            onClick={() => handleIssueInvoice(payment.id)}
+                                                                            disabled={issuingInvoiceId === payment.id}
+                                                                            className="flex items-center gap-1 text-gray-400 hover:text-[#d97757] transition-colors disabled:opacity-50"
+                                                                            title="Emitir Nota Fiscal"
+                                                                        >
+                                                                            {issuingInvoiceId === payment.id ? (
+                                                                                <Loader2 size={12} className="animate-spin" />
+                                                                            ) : (
+                                                                                <FileText size={12} />
+                                                                            )}
+                                                                            Emitir NF
+                                                                        </button>
+                                                                    )
+                                                                )}
+
                                                                 {isEligibleForRefund(payment) && (
                                                                     <button
                                                                         onClick={() => setRefundPaymentId(payment.id)}

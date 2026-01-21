@@ -662,6 +662,58 @@ const asaasRequest = async (method, endpoint, data = null) => {
   }
 };
 
+// ========================================
+// NOTA FISCAL (NFSe) INTEGRATION
+// ========================================
+
+/**
+ * Cria uma Nota Fiscal de Serviço Eletrônica (NFSe) para um pagamento.
+ * @param {string} paymentId - ID do pagamento no Asaas
+ * @returns {Promise<object|null>} - Dados da nota fiscal ou null se falhar
+ */
+const createInvoice = async (paymentId) => {
+  try {
+    const invoiceData = {
+      payment: paymentId,
+      serviceDescription: 'Assinatura Controlar+ - Serviço de gestão financeira pessoal',
+      observations: 'Obrigado por assinar o Controlar+!'
+    };
+
+    const invoice = await asaasRequest('POST', '/invoices', invoiceData);
+    console.log(`>>> NFSe created: ${invoice.id} for payment ${paymentId}`);
+    return invoice;
+  } catch (error) {
+    // Não falhar o fluxo principal se NFSe falhar (pode não estar configurado)
+    console.error('>>> NFSe creation error:', error.response?.data || error.message);
+    return null;
+  }
+};
+
+/**
+ * Salva a referência da NFSe no Firestore do usuário
+ * @param {string} userId - ID do usuário no Firebase
+ * @param {string} paymentId - ID do pagamento no Asaas
+ * @param {object} invoice - Dados da nota fiscal
+ */
+const saveInvoiceReference = async (userId, paymentId, invoice) => {
+  if (!userId || !invoice || !firebaseAdmin) return;
+  try {
+    const db = firebaseAdmin.firestore();
+    await db.collection('users').doc(userId).collection('invoices').doc(invoice.id).set({
+      paymentId,
+      asaasInvoiceId: invoice.id,
+      invoiceNumber: invoice.number || null,
+      invoiceUrl: invoice.pdfUrl || invoice.xmlUrl || null,
+      status: invoice.status,
+      value: invoice.value,
+      createdAt: new Date().toISOString()
+    });
+    console.log(`>>> Invoice reference saved for user ${userId}`);
+  } catch (error) {
+    console.error('>>> Error saving invoice reference:', error.message);
+  }
+};
+
 // Validate credit card before purchase
 router.post('/asaas/validate-card', async (req, res) => {
   const { creditCard, creditCardHolderInfo, customerId, customerData } = req.body;
@@ -1396,6 +1448,34 @@ router.post('/asaas/webhook', async (req, res) => {
       case 'PAYMENT_CONFIRMED':
       case 'PAYMENT_RECEIVED':
         console.log(`>>> Payment confirmed: ${event.payment?.id}`);
+        // Tentar emitir Nota Fiscal automaticamente
+        if (event.payment?.id && event.payment?.customer) {
+          try {
+            // Buscar userId pelo customerId
+            let userId = null;
+            if (firebaseAdmin) {
+              const db = firebaseAdmin.firestore();
+              const snapshot = await db.collection('users')
+                .where('subscription.asaasCustomerId', '==', event.payment.customer)
+                .limit(1)
+                .get();
+
+              if (!snapshot.empty) {
+                userId = snapshot.docs[0].id;
+              }
+            }
+
+            // Emitir NFSe (não bloqueia se falhar)
+            const invoice = await createInvoice(event.payment.id);
+            if (invoice && userId) {
+              await saveInvoiceReference(userId, event.payment.id, invoice);
+              console.log(`>>> NFSe emitida automaticamente para pagamento ${event.payment.id}`);
+            }
+          } catch (invoiceError) {
+            // Não falha o webhook se NFSe falhar
+            console.error('>>> NFSe auto-creation error (non-blocking):', invoiceError.message);
+          }
+        }
         break;
 
       case 'PAYMENT_OVERDUE':
@@ -1576,6 +1656,83 @@ router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
     res.status(500).json({
       error: 'Erro ao estornar pagamento.',
       details: error.response?.data?.errors?.[0]?.description || error.message
+    });
+  }
+});
+
+// ========================================
+// NOTA FISCAL (NFSe) ENDPOINTS
+// ========================================
+
+// List invoices for a customer or payment
+router.get('/asaas/invoices', async (req, res) => {
+  try {
+    const { customer, payment, status, limit, offset } = req.query;
+
+    const params = new URLSearchParams();
+    if (customer) params.append('customer', customer);
+    if (payment) params.append('payment', payment);
+    if (status) params.append('status', status);
+    if (limit) params.append('limit', limit);
+    if (offset) params.append('offset', offset);
+
+    const queryString = params.toString() ? `?${params.toString()}` : '';
+
+    const result = await asaasRequest('GET', `/invoices${queryString}`);
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('>>> /asaas/invoices Error:', error.message);
+    res.status(500).json({
+      error: 'Erro ao buscar notas fiscais.',
+      details: error.response?.data
+    });
+  }
+});
+
+// Get invoice details by ID
+router.get('/asaas/invoice/:invoiceId', async (req, res) => {
+  const { invoiceId } = req.params;
+
+  try {
+    const invoice = await asaasRequest('GET', `/invoices/${invoiceId}`);
+    res.json({ success: true, invoice });
+  } catch (error) {
+    console.error('>>> /asaas/invoice/:id Error:', error.message);
+    res.status(500).json({
+      error: 'Erro ao buscar nota fiscal.',
+      details: error.response?.data
+    });
+  }
+});
+
+// Create invoice (NFSe) for a payment - Manual trigger
+router.post('/asaas/invoice/create', async (req, res) => {
+  const { paymentId, userId } = req.body;
+
+  if (!paymentId) {
+    return res.status(400).json({ error: 'paymentId é obrigatório.' });
+  }
+
+  try {
+    const invoice = await createInvoice(paymentId);
+
+    if (!invoice) {
+      return res.status(500).json({
+        error: 'Erro ao criar nota fiscal. Verifique se a configuração fiscal está correta no Asaas.'
+      });
+    }
+
+    // Save reference if userId provided
+    if (userId) {
+      await saveInvoiceReference(userId, paymentId, invoice);
+    }
+
+    res.json({ success: true, invoice });
+  } catch (error) {
+    console.error('>>> /asaas/invoice/create Error:', error.message);
+    res.status(500).json({
+      error: 'Erro ao criar nota fiscal.',
+      details: error.response?.data
     });
   }
 });
