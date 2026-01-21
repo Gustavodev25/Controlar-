@@ -42,6 +42,37 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
   // Account Filter
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
 
+  // Derive unique accounts from transactions to ensure all accounts with transactions are shown
+  const derivedAccounts = useMemo(() => {
+    // 1. Start with all passed accounts (e.g. checkingAccounts from App.tsx)
+    const result: ConnectedAccount[] = [...accounts];
+
+    // 2. Create a set of existing account IDs to avoid duplicates
+    const existingIds = new Set(result.map(a => a.id));
+
+    // 3. Scan transactions for any accountId that isn't in the passed accounts list
+    // (e.g. deleted accounts, or manual transactions linked to accounts not in the list)
+    transactions.forEach(t => {
+      if (t.accountId && !existingIds.has(t.accountId)) {
+        // Create a minimal account entry for this "orphan" account
+        result.push({
+          id: t.accountId,
+          name: t.cardName || 'Conta',
+          institution: t.cardName || undefined,
+          type: t.accountType || 'BANK',
+          balance: 0,
+          itemId: '',
+          userId: userId || '',
+          source: 'manual'
+        } as ConnectedAccount);
+        existingIds.add(t.accountId);
+      }
+    });
+
+    // 4. Sort by name for consistent ordering
+    return result.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+  }, [transactions, accounts, userId]);
+
   // Category Filter
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -249,12 +280,6 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
     }
   };
 
-  // Get selected account name for display
-  const getSelectedAccountLabel = () => {
-    if (selectedAccountId === 'all') return 'Todas as Contas';
-    const acc = accounts.find(a => a.id === selectedAccountId);
-    return acc ? (acc.name || acc.institution || 'Conta') : 'Conta Selecionada';
-  };
 
   return (
     <div className="flex flex-col animate-fade-in w-full">
@@ -301,7 +326,6 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
       </div>
 
       {/* Filters Row */}
-      {/* Filters Row */}
       <div className="flex flex-wrap gap-3 items-center mb-4">
         {/* Search - Always Visible */}
         <div className="relative w-full sm:w-72 group order-1">
@@ -327,38 +351,6 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
         {/* Desktop Filters - Hidden on Mobile */}
         <div className="hidden sm:flex items-center gap-3 order-3">
-          {/* Account Filter Dropdown */}
-          <div className="relative z-50 w-auto">
-            <Dropdown>
-              <DropdownTrigger className="h-11 px-4 bg-[rgba(58,59,57,0.5)] border border-[#4a4b49] hover:border-gray-500 rounded-xl flex items-center gap-3 text-sm text-gray-300 hover:text-white transition-all font-medium justify-between min-w-[180px]">
-                <div className="flex items-center gap-3 truncate">
-                  <Filter size={16} className="text-[#d97757] flex-shrink-0" />
-                  <span className="truncate">{getSelectedAccountLabel()}</span>
-                </div>
-                <ArrowDownCircle size={14} className="text-gray-500 flex-shrink-0" />
-              </DropdownTrigger>
-              <DropdownContent className="w-56" align="left">
-                <DropdownItem
-                  onClick={() => setSelectedAccountId('all')}
-                  icon={Filter}
-                  className={selectedAccountId === 'all' ? 'bg-white/5 text-white' : ''}
-                >
-                  Todas as Contas
-                </DropdownItem>
-                {accounts.map(acc => (
-                  <DropdownItem
-                    key={acc.id}
-                    onClick={() => setSelectedAccountId(acc.id)}
-                    icon={Landmark}
-                    className={selectedAccountId === acc.id ? 'bg-white/5 text-white' : ''}
-                  >
-                    {acc.name || acc.institution || 'Conta Sem Nome'}
-                  </DropdownItem>
-                ))}
-              </DropdownContent>
-            </Dropdown>
-          </div>
-
           {/* Category Filter Dropdown */}
           <div className="relative z-50 w-auto">
             <Dropdown>
@@ -434,6 +426,66 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
           )}
         </div>
       </div>
+
+      {/* Account Tabs - Animated like Credit Card selector */}
+      {derivedAccounts.length > 0 && (
+        <div className="mb-6">
+          <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar p-1">
+            {/* "Todas" Tab */}
+            <button
+              onClick={() => setSelectedAccountId('all')}
+              className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all duration-300 outline-none ${selectedAccountId === 'all' ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+            >
+              {selectedAccountId === 'all' && (
+                <motion.div
+                  layoutId="activeAccountTab"
+                  className="absolute inset-0 bg-[#232322] border border-[#373734] rounded-full shadow-sm"
+                  transition={{ type: "spring", stiffness: 250, damping: 25 }}
+                />
+              )}
+              <div className={`relative z-10 flex items-center justify-center p-0.5 rounded-full transition-all ${selectedAccountId === 'all' ? 'text-[#d97757]' : 'text-gray-600'}`}>
+                <Landmark size={12} />
+              </div>
+              <span className="relative z-10 truncate max-w-[100px] tracking-wide">Todas</span>
+            </button>
+
+            {/* Account Tabs */}
+            {derivedAccounts.map((acc) => {
+              const isSelected = selectedAccountId === acc.id;
+              return (
+                <button
+                  key={acc.id}
+                  onClick={() => setSelectedAccountId(acc.id)}
+                  className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[11px] font-medium transition-all duration-300 outline-none ${isSelected ? 'text-white' : 'text-gray-500 hover:text-gray-300'}`}
+                >
+                  {isSelected && (
+                    <motion.div
+                      layoutId="activeAccountTab"
+                      className="absolute inset-0 bg-[#232322] border border-[#373734] rounded-full shadow-sm"
+                      transition={{ type: "spring", stiffness: 250, damping: 25 }}
+                    />
+                  )}
+                  {/* Logo do banco ou ícone genérico */}
+                  {acc.connector?.imageUrl ? (
+                    <img
+                      src={acc.connector.imageUrl}
+                      alt=""
+                      className="relative z-10 w-4 h-4 rounded-full object-contain bg-white p-0.5"
+                    />
+                  ) : (
+                    <div className={`relative z-10 flex items-center justify-center p-0.5 rounded-full transition-all ${isSelected ? 'text-[#d97757]' : 'text-gray-600'}`}>
+                      <Landmark size={12} />
+                    </div>
+                  )}
+                  <span className="relative z-10 truncate max-w-[100px] tracking-wide">
+                    {acc.name || acc.institution || 'Conta'}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Table Card */}
       <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col relative">

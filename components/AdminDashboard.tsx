@@ -149,8 +149,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [filterMode, setFilterMode] = useState<'all' | 'pro' | 'starter'>('all');
   const [filterFinance, setFilterFinance] = useState<'all' | 'monthly' | 'annual' | 'past_due' | 'refunded'>('all');
-  const [startDate, setStartDate] = useState('');
-  const [endDate, setEndDate] = useState('');
+  const [startDate, setStartDate] = useState(() => {
+    const today = new Date();
+    // Default: First day of current month
+    const firstDay = new Date(today.getFullYear(), today.getMonth(), 1);
+    return firstDay.toISOString().split('T')[0];
+  });
+  const [endDate, setEndDate] = useState(() => {
+    const today = new Date();
+    // Default: Last day of current month
+    const lastDay = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+    return lastDay.toISOString().split('T')[0];
+  });
   const [excludeAdmins, setExcludeAdmins] = useState(() => {
     const saved = localStorage.getItem('admin_dashboard_exclude_admins');
     return saved ? JSON.parse(saved) : false;
@@ -295,6 +305,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
     const calculateSubscriptionPrice = (sub: User['subscription'], monthIndex: number = 1) => {
       if (!sub) return 0;
+
+      // Handle Manual First Month Override
+      if (monthIndex === 1 && sub.firstMonthOverridePrice !== undefined && sub.firstMonthOverridePrice !== null) {
+        return sub.firstMonthOverridePrice;
+      }
+
       let price = 0;
       const isAnnual = sub.billingCycle === 'annual';
       // Normalize plan name
@@ -310,10 +326,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
       // Apply Coupon logic (simplified)
       if (sub.couponUsed) {
-        const coupon = coupons.find(c => c.id === sub.couponUsed);
+        // Robust lookup: Check by ID OR Code
+        const coupon = coupons.find(c => c.id === sub.couponUsed || c.code === sub.couponUsed);
+
         if (coupon && price > 0) {
+          // Determine effective month index for coupon
+          let effectiveMonthIndex = monthIndex;
+
+          if (sub.couponStartMonth) {
+            // If coupon was applied later, calculate index relative to coupon start
+            // couponStartMonth format: "YYYY-MM"
+            const [cYear, cMonth] = sub.couponStartMonth.split('-').map(Number);
+            const refDate = startDate ? new Date(startDate + 'T12:00:00') : new Date();
+            const yearDiff = refDate.getFullYear() - cYear;
+            const mDiff = refDate.getMonth() - (cMonth - 1); // Month is 1-based in string
+            effectiveMonthIndex = Math.max(1, yearDiff * 12 + mDiff + 1);
+          }
+
           if (coupon.type === 'progressive') {
-            const rule = coupon.progressiveDiscounts?.find(d => d.month === monthIndex);
+            const rule = coupon.progressiveDiscounts?.find(d => d.month === effectiveMonthIndex);
             if (rule) {
               if (rule.discountType === 'fixed') {
                 price = Math.max(0, price - rule.discount);
@@ -369,6 +400,62 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
       // 4. Admin Filter
       if (excludeAdmins && u.isAdmin) return false;
+
+      return true;
+    });
+
+    // Separated List for MRR/Revenue (Must include ALL users active in period, not just created in period)
+    const financialUsers = users.filter(u => {
+      // 1. Plan Filter (Same)
+      const plan = (u.subscription?.plan || 'starter').toLowerCase();
+      if (filterMode !== 'all') {
+        if (filterMode === 'pro') {
+          if (plan !== 'pro' && plan !== 'family') return false;
+        } else if (filterMode === 'starter') {
+          if (plan !== 'starter') return false;
+        }
+      }
+
+      // 2. Financial Filter (Same)
+      if (filterFinance !== 'all') {
+        const cycle = u.subscription?.billingCycle;
+        const status = u.subscription?.status;
+        if (filterFinance === 'monthly' && cycle !== 'monthly') return false;
+        if (filterFinance === 'annual' && cycle !== 'annual') return false;
+        if (filterFinance === 'past_due' && status !== 'past_due') return false;
+        if (filterFinance === 'refunded' && status !== 'refunded') return false;
+      }
+
+      // 3. Admin Filter (Same)
+      if (excludeAdmins && u.isAdmin) return false;
+
+      // 4. ACTIVE FILTER INSTEAD OF CREATED FILTER
+      // If we have a date range, we want users who were ACTIVE/Paying during this period.
+      // Basic check: User must have subscribed BEFORE the End Date (or Today if no end date)
+      // AND (User is currently active OR User canceled AFTER Start Date)
+
+      const checkEnd = endDate ? new Date(endDate + 'T23:59:59') : new Date();
+      const checkStart = startDate ? new Date(startDate + 'T00:00:00') : new Date(0); // Epoch if no start
+
+      // Determine 'Start' of subscription for filtering purposes
+      let subStart = new Date();
+      if (u.subscription?.startDate) {
+        subStart = new Date(u.subscription.startDate);
+      } else if (u.createdAt) {
+        subStart = new Date(u.createdAt);
+      }
+
+      if (subStart > checkEnd) return false; // Joined after period
+
+      // If canceled/revoked, check if it happened BEFORE period start
+      if (u.subscription?.status === 'canceled' || u.subscription?.status === 'refunded') {
+        const cancelDate = u.subscription.canceledAt ? new Date(u.subscription.canceledAt) : null;
+        // If they canceled BEFORE the start of the view period, they don't contribute to THIS period's MRR
+        if (cancelDate && cancelDate < checkStart) return false;
+      }
+
+      // If user has no subscription object but we are here, we might skip them unless they are 'pro'
+      if (!u.subscription) return false;
 
       return true;
     });
@@ -451,24 +538,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         }
       }
 
-      // 2. MRR (Active Only)
-      // Check current month price
-      // Estimate "subscription age in months" to apply progressive coupons correctly for MRR
-      let startDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : new Date();
-      const monthDiff = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth()) + 1;
-      const currentMonthIndex = Math.max(1, monthDiff);
-
-      if (status === 'active') {
-        const currentPrice = calculateSubscriptionPrice(u.subscription, currentMonthIndex);
-        const installments = u.subscription?.installments || 1;
-        totalMRR += currentPrice;
-        totalMRRNet += calculateNetValue(currentPrice, installments);
-      }
-
       // 3. Lifetime Revenue Estimation
       if (u.subscription?.startDate) {
+        const subDate = new Date(u.subscription.startDate);
         const endCalcDate = status === 'canceled' ? new Date() : new Date();
-        const monthsActive = Math.max(1, (endCalcDate.getFullYear() - startDate.getFullYear()) * 12 + (endCalcDate.getMonth() - startDate.getMonth()));
+        const monthsActive = Math.max(1, (endCalcDate.getFullYear() - subDate.getFullYear()) * 12 + (endCalcDate.getMonth() - subDate.getMonth()));
         const installments = u.subscription?.installments || 1;
 
         for (let m = 1; m <= monthsActive; m++) {
@@ -480,15 +554,48 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
 
       // 4. Projections (Next 12 Months)
       if (status === 'active' && plan !== 'starter') {
+        const subDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : new Date();
         for (let i = 0; i < 12; i++) {
           const futureDate = new Date(today.getFullYear(), today.getMonth() + i, 1);
-          const futureDiff = (futureDate.getFullYear() - startDate.getFullYear()) * 12 + (futureDate.getMonth() - startDate.getMonth()) + 1;
+          const futureDiff = (futureDate.getFullYear() - subDate.getFullYear()) * 12 + (futureDate.getMonth() - subDate.getMonth()) + 1;
           const price = calculateSubscriptionPrice(u.subscription, Math.max(1, futureDiff));
 
           const key = futureDate.toLocaleDateString('pt-BR', { month: 'short', year: '2-digit' });
           if (projectionMap[key] !== undefined) {
             projectionMap[key] += price;
           }
+        }
+      }
+    });
+
+    // Process Financial Users for MRR
+    // CRITICAL: Only count users with status 'active' - matching AdminSubscriptions.calculateUserMRR logic
+    financialUsers.forEach(u => {
+      const status = u.subscription?.status;
+      const subDate = u.subscription?.startDate ? new Date(u.subscription.startDate) : new Date();
+
+      // MRR ONLY counts ACTIVE users - trials, past_due, pending, canceled do NOT contribute
+      // This matches the logic in AdminSubscriptions.calculateUserMRR (line 746)
+      // if (user.subscription?.status !== 'active') return 0;
+      let shouldCount = status === 'active';
+
+      if (shouldCount) {
+        const referenceDate = startDate ? new Date(startDate + 'T12:00:00') : new Date();
+
+        // Calculate which month of the subscription falls in the selected period
+        // For accurate MRR, we want the CURRENT month index relative to subscription Start
+        // This ensures progressive discounts (month 1, month 2...) are applied correctly for the *viewed* month
+        const monthDiff = (referenceDate.getFullYear() - subDate.getFullYear()) * 12 + (referenceDate.getMonth() - subDate.getMonth()) + 1;
+        const periodMonthIndex = Math.max(1, monthDiff);
+
+        // Calculate price for this specific month index
+        const currentPrice = calculateSubscriptionPrice(u.subscription, periodMonthIndex);
+        const installments = u.subscription?.installments || 1;
+
+        // Only add to MRR if price > 0 (Paid user) - strictly paid
+        if (currentPrice > 0) {
+          totalMRR += currentPrice;
+          totalMRRNet += calculateNetValue(currentPrice, installments);
         }
       }
     });
@@ -1027,20 +1134,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           title="MRR Bruto"
-          value={asaasStats?.revenue.mrrGross ?? stats.mrr}
+          value={stats.mrr}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#d97757"
-          trendPercent={12.5}
+          trendPercent={12.6}
           footer={asaasStats ? `Asaas (${asaasStats.subscriptions.active} subs)` : "Receita mensal recorrente"}
         />
         <KPICard
           title="MRR Líquido"
-          value={asaasStats?.revenue.mrrNet ?? stats.mrrNet}
+          value={stats.mrrNet}
           prefix="R$"
           trendData={stats.trends.mrr}
           color="#10B981"
-          footer={`Taxas: R$ ${((asaasStats?.revenue.mrrGross ?? stats.mrr) - (asaasStats?.revenue.mrrNet ?? stats.mrrNet)).toFixed(2)}`}
+          footer={`Taxas: R$ ${(stats.mrr - stats.mrrNet).toFixed(2)}`}
         />
         <KPICard
           title="Receita Total (Bruta)"

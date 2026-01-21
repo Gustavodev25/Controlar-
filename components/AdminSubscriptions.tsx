@@ -943,6 +943,9 @@ export const AdminSubscriptions: React.FC = () => {
         const sub = user.subscription;
         if (!sub) return [];
 
+        // Se o usuário está em trial, não mostrar projeção de valores (trial é grátis)
+        if (sub.status === 'trial') return [];
+
         const planPrice = sub.plan === 'family'
             ? (sub.billingCycle === 'annual' ? 749.00 / 12 : 69.90)
             : (sub.plan === 'pro' ? (sub.billingCycle === 'annual' ? 399.00 / 12 : 35.90) : 0);
@@ -1758,7 +1761,13 @@ export const AdminSubscriptions: React.FC = () => {
                                                 <>
                                                     <td className="px-4 py-3 border-r border-[#373734]">
                                                         <div className="flex items-center gap-2">
-                                                            {getStatusBadge(user.subscription?.status, user.subscription?.accessUntil, user.subscription?.plan)}
+                                                            {getStatusBadge(
+                                                                user.subscription?.status,
+                                                                user.subscription?.status === 'trial'
+                                                                    ? user.subscription?.trialEndsAt
+                                                                    : user.subscription?.accessUntil,
+                                                                user.subscription?.plan
+                                                            )}
                                                             {user.subscription?.asaasSubscriptionId && (
                                                                 <Tooltip content="Verificado no Asaas">
                                                                     <div className="w-5 h-5 rounded-full bg-blue-500/10 flex items-center justify-center border border-blue-500/20 text-blue-400">
