@@ -200,14 +200,14 @@ const SubscriptionCard: React.FC<{
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onEdit(sub); }}
-                className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
+                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
                 title="Editar"
               >
                 <Edit2 size={14} />
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onDelete(sub.id); }}
-                className="w-7 h-7 sm:w-8 sm:h-8 hidden sm:flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
+                className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-all"
                 title="Excluir"
               >
                 <Trash2 size={14} />

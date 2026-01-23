@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { User, Coupon } from '../types';
+import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 import * as dbService from '../services/database';
 import NumberFlow from '@number-flow/react';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -257,7 +258,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     let onlineUsers = 0;
 
     // Asaas Fee Constants
-    const ASAAS_CARD_FEE_PERCENT = 2.99; // Credit card processing fee (à vista)
+    const ASAAS_CARD_FEE_PERCENT = 2.99; // Credit card processing fee (Ã  vista)
     const ASAAS_ANTICIPATION_FEE_PERCENT = 1.15; // Anticipation fee per month
     const ASAAS_ANTICIPATION_MIN_VALUE = 5.00; // Minimum value for anticipation
 
@@ -266,7 +267,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       if (grossValue <= 0) return 0;
 
       // 1. Card processing fee based on installments
-      let cardFeePercent = ASAAS_CARD_FEE_PERCENT; // Default: à vista 2.99%
+      let cardFeePercent = ASAAS_CARD_FEE_PERCENT; // Default: Ã  vista 2.99%
       if (installments >= 2 && installments <= 6) {
         cardFeePercent = 3.49;
       } else if (installments >= 7 && installments <= 12) {
@@ -610,7 +611,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     // Let's stick to using `filteredUsers` for everything to reflect the "view".
     const conversionRate = filteredUsers.length > 0 ? (activeUsers / filteredUsers.length) * 100 : 0;
 
-    // ARPU (Ticket Médio)
+    // ARPU (Ticket MÃ©dio)
     const arpu = activeUsers > 0 ? totalMRR / activeUsers : 0;
 
     // Average Active Days
@@ -691,9 +692,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
     };
 
     filteredUsers.forEach(u => {
-      // Use subscription.startDate as the source of truth since all users must subscribe to enter.
-      // This ensures "New Users per Day" matches "New Subscribers per Day".
-      const dateStr = u.subscription?.startDate;
+      // Use createdAt for User Growth (Registrations)
+      // Fallback to subscription date if createdAt is missing
+      const dateStr = u.createdAt || u.subscription?.startDate;
 
       if (!dateStr) return;
 
@@ -880,6 +881,46 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
       }
     });
 
+    // --- NEW: Trial Statistics ---
+    const validTrialUsers: { user: SystemUser; daysRemaining: number; progress: number }[] = [];
+    let totalTrialDaysRemaining = 0;
+
+    filteredUsers.forEach(u => {
+      // Check for explicit trial status or active with future trial date
+      const isTrial = u.subscription?.status === 'trial';
+
+      if (isTrial && u.subscription?.trialEndsAt) {
+        const end = new Date(u.subscription.trialEndsAt);
+        const start = u.subscription.trialStartedAt ? new Date(u.subscription.trialStartedAt) : new Date(u.createdAt || 0);
+        const now = new Date();
+
+        // Days Remaining
+        const diffTime = end.getTime() - now.getTime();
+        const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+        // Progress (0% just started, 100% finished)
+        const totalDuration = end.getTime() - start.getTime();
+        const elapsed = now.getTime() - start.getTime();
+        const progress = Math.min(100, Math.max(0, (elapsed / totalDuration) * 100));
+
+        if (daysRemaining > -30) { // Keep showing recently expired trials for a bit
+          validTrialUsers.push({
+            user: u,
+            daysRemaining,
+            progress
+          });
+          if (daysRemaining > 0) totalTrialDaysRemaining += daysRemaining;
+        }
+      }
+    });
+
+    // Sort by urgency (least days remaining first)
+    validTrialUsers.sort((a, b) => a.daysRemaining - b.daysRemaining);
+
+    const activeTrialCount = validTrialUsers.filter(t => t.daysRemaining > 0).length;
+    const avgTrialDays = activeTrialCount > 0 ? Math.round(totalTrialDaysRemaining / activeTrialCount) : 0;
+
+
     const locationsChartData = Object.entries(locationData)
       .map(([name, value]) => ({ name, value }))
       .sort((a, b) => b.value - a.value);
@@ -937,7 +978,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         users: userGrowthData,
         mrr: mrrTrendData,
         usersValues: usersTrendValues,
+        usersValues: usersTrendValues,
         generic: randomTrend()
+      },
+      trials: {
+        active: validTrialUsers,
+        avgDaysRemaining: avgTrialDays
       }
     };
   }, [users, coupons, filterMode, filterFinance, startDate, endDate, excludeAdmins]);
@@ -1191,11 +1237,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
           prefix="R$"
           trendData={stats.trends.generic}
           color="#F59E0B"
-          footer="Média por assinante pago"
+          footer="MÃ©dia por assinante pago"
         />
 
         <KPICard
-          title="Taxa de Conversão"
+          title="Taxa de ConversÃ£o"
           value={stats.conversionRate}
           suffix="%"
           trendData={stats.trends.generic}
@@ -1606,7 +1652,99 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         </div>
       </div>
 
+      {/* Trial Users Table */}
+      <div className="bg-[#30302E] border border-[#373734] rounded-2xl p-6 overflow-hidden">
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-6 gap-4">
+          <div>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <Clock size={18} className="text-amber-400" />
+              Usuários em Período de Teste (Trial)
+            </h3>
+            <p className="text-gray-500 text-sm">Acompanhamento de usuários que estão testando a plataforma.</p>
+          </div>
 
+          <div className="bg-[#1c1c1a] border border-[#373734] rounded-lg px-4 py-2 flex items-center gap-3">
+            <div className="text-right">
+              <span className="text-xs text-gray-500 uppercase font-bold block">Tempo Médio Restante</span>
+              <span className="text-xl font-bold text-white">{stats.trials.avgDaysRemaining} dias</span>
+            </div>
+            <div className="h-8 w-[1px] bg-[#373734]"></div>
+            <div className="text-right">
+              <span className="text-xs text-gray-500 uppercase font-bold block">Total em Trial</span>
+              <span className="text-xl font-bold text-amber-400">{stats.trials.active.length}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="border-b border-[#373734] text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="py-3 px-4">Usuário</th>
+                <th className="py-3 px-4">Plano</th>
+                <th className="py-3 px-4">Início</th>
+                <th className="py-3 px-4">Fim do Trial</th>
+                <th className="py-3 px-4 text-center">Status do Trial</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm divide-y divide-[#373734]">
+              {stats.trials.active.length > 0 ? (
+                stats.trials.active.map(({ user, daysRemaining, progress }) => {
+                  const avatarColors = getAvatarColors(user.name);
+                  return (
+                    <tr key={user.id} className="hover:bg-[#3d3d3b] transition-colors group">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`w-8 h-8 rounded-full ${user.avatarUrl ? '' : avatarColors.bg} flex items-center justify-center text-xs font-bold ${user.avatarUrl ? 'text-white' : avatarColors.text} uppercase overflow-hidden`}>
+                            {user.avatarUrl ? <img src={user.avatarUrl} alt="" className="w-full h-full object-cover" /> : getInitials(user.name)}
+                          </div>
+                          <div>
+                            <p className="text-white font-medium">{user.name}</p>
+                            <p className="text-gray-500 text-xs">{user.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <span className="capitalize px-2 py-0.5 rounded text-xs font-bold bg-gray-800 text-gray-300 border border-gray-700">
+                          Trial
+                        </span>
+                      </td>
+                      <td className="py-3 px-4 text-gray-400">
+                        {user.subscription?.trialStartedAt ? new Date(user.subscription.trialStartedAt).toLocaleDateString('pt-BR') : '-'}
+                      </td>
+                      <td className="py-3 px-4 text-gray-400">
+                        {user.subscription?.trialEndsAt ? new Date(user.subscription.trialEndsAt).toLocaleDateString('pt-BR') : '-'}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="flex flex-col items-center gap-2">
+                          <span className={`px-2 py-1 rounded text-xs font-bold ${daysRemaining <= 3 ? 'bg-red-500/10 text-red-500' :
+                            daysRemaining <= 7 ? 'bg-amber-500/10 text-amber-500' :
+                              'bg-emerald-500/10 text-emerald-500'
+                            }`}>
+                            {daysRemaining > 0 ? `${daysRemaining} dias restantes` : 'Expirado'}
+                          </span>
+                          <div className="w-24 bg-gray-800 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full ${daysRemaining <= 3 ? 'bg-red-500' : 'bg-amber-400'}`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={5} className="py-8 text-center text-gray-500 italic">
+                    Nenhum usuário em período de trial no momento.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div >
   );
 };
