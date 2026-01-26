@@ -280,7 +280,6 @@ const detectRecurringPatterns = (transactions) => {
                         amount: avgAmount,
                         category: 'Outros', // Categoria genérica para desconhecidos
                         occurrences: data.count,
-                        occurrences: data.count,
                         source: 'pattern_detection',
                         chargeDay: new Date(sortedDates[sortedDates.length - 1]).getDate() // Use day of most recent transaction
                     });
@@ -985,11 +984,12 @@ router.post('/create-item', withPluggyAuth, async (req, res) => {
 
 // 3. Trigger Sync (Update Item) - OPTIMIZED FOR VERCEL PRO
 // Ultra-fast parallel processing
+// fullSync: boolean - If true, fetches ALL transactions (12 months) regardless of lastSyncedAt
 router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
-    const { itemId, userId } = req.body;
+    const { itemId, userId, fullSync = false } = req.body;
     const startTime = Date.now();
 
-    console.log(`[SYNC] Start: item=${itemId} user=${userId}`);
+    console.log(`[SYNC] Start: item=${itemId} user=${userId} fullSync=${fullSync}`);
 
     if (!firebaseAdmin) {
         return res.status(500).json({ error: 'Firebase Admin not initialized' });
@@ -999,6 +999,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
     const jobDoc = await db.collection('users').doc(userId).collection('sync_jobs').add({
         itemId,
         status: 'processing',
+        fullSync: fullSync, // Salva para referência
+
         progress: 0,
         type: 'MANUAL',
         createdAt: new Date().toISOString()
@@ -1213,7 +1215,13 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 let syncMode = 'first';
                 const connectorName = account.connector?.name || itemStatus.item?.connector?.name || 'unknown';
 
-                if (forceExtendedFetch) {
+                // FULL SYNC: Ignora lastSyncedAt e busca 12 meses completos
+                // Útil para recuperar transações deletadas ou reprocessar todas
+                if (fullSync) {
+                    fromStr = defaultFromStr; // 12 meses atrás
+                    syncMode = 'full-sync';
+                    console.log(`[SYNC] Full sync mode: fetching 12 months for account ${account.id}`);
+                } else if (forceExtendedFetch) {
                     fromStr = thirtyDaysAgoStr;
                     syncMode = 'force-extended';
                 } else if (existing?.lastSyncedAt) {
@@ -1229,6 +1237,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                         syncMode = 'incremental';
                     }
                 }
+
 
                 // Use pagination to fetch ALL transactions
                 const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
@@ -1295,13 +1304,48 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             descLower.includes('imposto') ||
                             descLower.includes('tax');
 
+                        // ============================================================
+                        // DETECÇÃO DE REEMBOLSOS/ESTORNOS (APENAS KEYWORDS ESPECÍFICAS)
+                        // NÃO incluir palavras genéricas como 'crédito' ou 'desconto'
+                        // que aparecem em transações normais de cartão
+                        // ============================================================
+
+                        // Keywords ESPECÍFICAS de reembolso (evitar genéricas!)
+                        const refundKeywords = [
+                            'estorno', 'reembolso', 'devolucao', 'devolução',
+                            'cancelamento', 'cancelado', 'refund', 'chargeback',
+                            'cashback'  // Cashback é crédito real
+                        ];
+
+                        const isRefundByKeyword = refundKeywords.some(kw => descLower.includes(kw));
+
+                        // ATENÇÃO: NÃO usar tx.amount > 0 como critério único!
+                        // Alguns bancos enviam despesas como positivo.
+                        // Só considerar positivo se também for tipo CREDIT da API.
+                        const isCreditType = tx.type === 'CREDIT';
+
+                        // DECISÃO FINAL: É reembolso APENAS se:
+                        // 1. Tem keyword específica de reembolso, OU
+                        // 2. API Pluggy diz explicitamente que é CREDIT
+                        const isRefund = isRefundByKeyword || isCreditType;
+
+                        // Log para debug quando detectar reembolso
+                        if (isRefund) {
+                            console.log(`[SYNC] 💳 Reembolso detectado: "${tx.description}" - Valor: ${tx.amount}, Motivo: ${isRefundByKeyword ? 'keyword' : 'CREDIT type'}`);
+                        }
+
+                        // Determinar tipo final
+                        const isIncome = isRefund;
+
                         mappedTx = {
                             cardId: account.id,
                             date: tx.date.split('T')[0],
+                            // Timestamp completo para ordenação precisa (ISO 8601)
+                            timestamp: tx.date, // Mantém horário e fuso original
                             description: enrichTransactionDescription(tx),
                             amount: Math.abs(tx.amount),
-                            type: tx.amount < 0 ? 'expense' : 'income',
-                            category: tx.category || 'Uncategorized',
+                            type: isIncome ? 'income' : 'expense',
+                            category: isRefund ? 'Reembolso' : (tx.category || 'Uncategorized'),
                             status: 'completed',
                             totalInstallments,
                             installmentNumber,
@@ -1320,14 +1364,22 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             pluggyRaw: tx
                         };
                     } else {
+                        const descLower = (tx.description || '').toLowerCase();
+                        // Detecção de reembolso para contas bancárias (não cartão)
+                        const refundKeywords = ['estorno', 'reembolso', 'devolucao', 'devolução', 'cancelamento', 'refund'];
+                        const isRefund = refundKeywords.some(kw => descLower.includes(kw));
+                        const isIncome = isRefund || tx.amount > 0 || (tx.type === 'CREDIT');
+
                         mappedTx = {
                             providerId: tx.id,
                             description: enrichTransactionDescription(tx),
                             amount: Math.abs(tx.amount),
-                            type: tx.amount < 0 ? 'expense' : 'income',
+                            type: isIncome ? 'income' : 'expense',
                             date: tx.date.split('T')[0],
+                            // Timestamp completo para ordenação precisa (ISO 8601)
+                            timestamp: tx.date, // Mantém horário e fuso original
                             accountId: tx.accountId,
-                            category: tx.category || 'Uncategorized',
+                            category: isRefund ? 'Reembolso' : (tx.category || 'Uncategorized'),
                             status: 'completed',
                             updatedAt: syncTimestamp,
                             isInvestment: isSavings,
@@ -2115,7 +2167,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         date: tx.date.split('T')[0],
                         description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
-                        type: tx.amount > 0 ? 'expense' : 'income',
+                        type: (tx.type === 'CREDIT' || tx.amount < 0) ? 'income' : 'expense',
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
                         totalInstallments,
@@ -2205,7 +2257,6 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                             name,
                             amount,
                             category: 'Outros',
-                            lastTransactionDate: tx.date,
                             lastTransactionDate: tx.date,
                             source: 'keyword_detection',
                             chargeDay: new Date(tx.date).getDate()

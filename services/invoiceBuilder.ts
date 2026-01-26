@@ -114,66 +114,77 @@ const extractInstallmentFromDesc = (desc: string): { current: number; total: num
 };
 
 /**
- * Verifica se uma transação é pagamento de fatura
- * IMPORTANTE: Reembolsos/estornos NÃO são pagamentos de fatura!
- * Eles devem aparecer normalmente na fatura como créditos.
+ * Verifica se uma transação é um reembolso/estorno/crédito
+ * IMPORTANTE: Essas transações aparecem como créditos que REDUZEM o valor da fatura
+ * 
+ * ATENÇÃO: NÃO incluir palavras genéricas como 'crédito' ou 'desconto'
+ * que aparecem em transações normais de cartão!
  */
-export const isTransactionRefund = (tx: Transaction): boolean => {
-  const d = (tx.description || '').toLowerCase();
-  const c = (tx.category || '').toLowerCase();
-
-  return (
-    d.includes('estorno') ||
-    d.includes('reembolso') ||
-    d.includes('devolução') ||
-    d.includes('cancelamento') ||
-    d.includes('refund') ||
-    d.includes('chargeback') ||
-    d.includes('crédito') ||
-    d.includes('credito') ||
-    c.includes('refund') ||
-    c.includes('estorno') ||
-    c.includes('reembolso')
-  );
-};
+const getPaymentKeywords = () => [
+  'pagamento de fatura',
+  'pagamento fatura',
+  'pagamento recebido',
+  'credit card payment',
+  'pag fatura',
+  'pgto fatura',
+  'pgto'
+];
 
 /**
  * Verifica se uma transação é pagamento de fatura
- * IMPORTANTE: Reembolsos/estornos NÃO são pagamentos de fatura!
- * Eles devem aparecer normalmente na fatura como créditos.
+ * IMPORTANTE: Prioridade sobre Reembolso se a descrição for explícita.
  */
 export const isCreditCardPayment = (tx: Transaction): boolean => {
   const d = (tx.description || '').toLowerCase();
   const c = (tx.category || '').toLowerCase();
 
-  // Se for reembolso, NÃO é pagamento de fatura
-  if (isTransactionRefund(tx)) {
-    return false;
-  }
+  // 1. Verifica keywords de PAGAMENTO primeiro
+  const paymentKeywords = getPaymentKeywords();
+  const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw) || d === 'pgto');
 
-  // Keywords que indicam PAGAMENTO DE FATURA
-  const isPayment =
-    c.includes('credit card payment') ||
-    c === 'pagamento de fatura' ||
-    d.includes('pagamento de fatura') ||
-    d.includes('pagamento fatura') ||
-    d.includes('pagamento recebido') ||
-    d.includes('credit card payment') ||
-    d.includes('pag fatura') ||
-    d.includes('pgto fatura') ||
-    d === 'pgto';
-
-  if (isPayment) {
+  if (isExplicitPayment) {
+    // Se a descrição diz explicitamente que é pagamento, É PAGAMENTO.
+    // Mesmo que tenha 'estorno' no meio (raro) ou categoria 'Reembolso'.
+    // Exceção: "Estorno de pagamento" - mas geralmente vem como "Estorno..." apenas.
+    if (d.includes('estorno') || d.includes('cancelamento')) {
+      return false; // É um estorno de pagamento
+    }
     return true;
   }
 
-  // Fallback: Transações income em cartão que NÃO são reembolsos
-  // podem ser pagamentos, MAS apenas se o valor for significativo
-  // (pagamentos de fatura geralmente são valores maiores, próximos ao total da fatura)
-  // Para segurança, NÃO classificamos automaticamente como pagamento
-  // a menos que tenha keywords explícitas acima
+  // 2. Se não é explicitamente pagamento, verifica se é estorno/reembolso
+  // Se for reembolso, não é pagamento
+  const refundKeywords = ['estorno', 'reembolso', 'devolução', 'cancelamento', 'refund', 'chargeback', 'cashback'];
+  if (refundKeywords.some(kw => d.includes(kw) || c.includes(kw))) {
+    return false;
+  }
+
   return false;
 };
+
+/**
+ * Verifica se uma transação é um reembolso/estorno/crédito
+ * IMPORTANTE: Não deve classificar "Pagamento de Fatura" como reembolso.
+ */
+export const isTransactionRefund = (tx: Transaction): boolean => {
+  // Se for pagamento de fatura, NÃO é reembolso
+  if (isCreditCardPayment(tx)) {
+    return false;
+  }
+
+  const d = (tx.description || '').toLowerCase();
+  const c = (tx.category || '').toLowerCase();
+
+  const refundKeywords = [
+    'estorno', 'reembolso', 'devolução', 'devolucao',
+    'cancelamento', 'cancelado',
+    'refund', 'chargeback',
+    'cashback'
+  ];
+
+  return refundKeywords.some(kw => d.includes(kw) || c.includes(kw));
+};
+
 
 // ============================================================
 // CÁLCULO DE PERÍODOS
@@ -480,24 +491,46 @@ export const processInstallments = (
 
 /**
  * Converte uma Transaction para InvoiceItem
+ * 
+ * REGRA IMPORTANTE:
+ * - Pagamentos de fatura: NÃO afetam o total (são apenas informativos)
+ * - Reembolsos/estornos: REDUZEM o total (são créditos reais)
+ * - Despesas normais: AUMENTAM o total
  */
 export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
-  // Determina tipo e sinal baseado na natureza da transação (corrige dados invertidos do banco)
-  const isIncome = isCreditCardPayment(tx) || isTransactionRefund(tx);
-  const fixedType = isIncome ? 'income' : 'expense';
+  const isPayment = isCreditCardPayment(tx);
+  const isRefund = isTransactionRefund(tx);
+
+  // Determina tipo e sinal baseado na natureza da transação
+  // Pagamentos: marcados como income, mas com flag especial
+  // Reembolsos: income real que reduz o total
+  // Despesas: expense normal
+  let fixedType: 'income' | 'expense' = 'expense';
+  let amount = -Math.abs(tx.amount); // Despesa por padrão (negativo)
+
+  if (isPayment) {
+    // Pagamento de fatura: positivo mas NÃO conta no total
+    fixedType = 'income';
+    amount = Math.abs(tx.amount);
+  } else if (isRefund) {
+    // Reembolso/estorno real: positivo e CONTA no total (reduz a fatura)
+    fixedType = 'income';
+    amount = Math.abs(tx.amount);
+  }
 
   return {
     id: tx.id,
     transactionId: tx.id,
     description: tx.description,
-    amount: isIncome ? Math.abs(tx.amount) : -Math.abs(tx.amount),
+    amount,
     date: tx.date,
     category: tx.category,
     type: fixedType,
     installmentNumber: tx.installmentNumber,
     totalInstallments: tx.totalInstallments,
     isProjected,
-    isPayment: isCreditCardPayment(tx),
+    isPayment, // Flag para identificar pagamentos (não devem afetar total)
+    isRefund,  // Flag para identificar reembolsos (devem afetar total)
     // Dados de moeda para transações internacionais
     currencyCode: tx.currencyCode,
     amountOriginal: tx.amountOriginal,
@@ -848,8 +881,15 @@ export const buildInvoices = (
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
     const item = transactionToInvoiceItem(tx);
-    // TOTAL LÍQUIDO: Agora item.amount já possui o sinal correto (negativo para despesa, positivo para receita)
-    const amt = item.amount;
+
+    // ========================================
+    // CÁLCULO DO TOTAL - REGRA IMPORTANTE:
+    // - Pagamentos de fatura (isPayment): NÃO afetam o total!
+    //   Eles são apenas informativos - mostram que a fatura anterior foi paga
+    // - Reembolsos/estornos: REDUZEM o total (são créditos reais)
+    // - Despesas normais: AUMENTAM o total
+    // ========================================
+    const amt = item.isPayment ? 0 : item.amount;
 
     // ========================================
     // LÓGICA DE OVERRIDE MANUAL

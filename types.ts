@@ -144,6 +144,7 @@ export interface Transaction {
   memberId?: string;
 
   date: string; // YYYY-MM-DD
+  timestamp?: string; // ISO 8601 completo (com horário e fuso) para ordenação precisa
   description: string;
   amount: number;
   category: string;
@@ -401,7 +402,8 @@ export interface InvoiceItem {
 
   // Flags
   isProjected?: boolean;         // True se for parcela projetada (futura)
-  isPayment?: boolean;           // True se for pagamento de fatura
+  isPayment?: boolean;           // True se for pagamento de fatura (NÃO afeta o total)
+  isRefund?: boolean;            // True se for reembolso/estorno (REDUZ o total)
   isCharge?: boolean;            // True se for encargo (IOF, juros, multa)
   chargeType?: 'IOF' | 'INTEREST' | 'LATE_FEE' | 'OTHER';
 

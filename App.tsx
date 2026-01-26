@@ -2941,7 +2941,7 @@ const App: React.FC = () => {
                 description: tx?.description || 'Lançamento Cartão',
                 amount,
                 category: translatePluggyCategory(tx?.category),
-                type: rawAmount >= 0 ? 'expense' : 'income',
+                type: (tx?.type === 'CREDIT' || rawAmount < 0) ? 'income' : 'expense',
                 status: 'completed',
                 cardId: account.id,
                 cardName: account.name || 'Cartão',

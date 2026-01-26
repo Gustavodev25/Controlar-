@@ -978,7 +978,6 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({ user }) => {
         users: userGrowthData,
         mrr: mrrTrendData,
         usersValues: usersTrendValues,
-        usersValues: usersTrendValues,
         generic: randomTrend()
       },
       trials: {

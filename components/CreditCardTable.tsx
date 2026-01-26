@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronsUpDown, Sparkles } from 'lucide-react';
+import { ChevronsUpDown, Sparkles, MoreVertical, RefreshCcw, ArrowRightLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
@@ -1078,41 +1078,46 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     return Array.from(categories).sort();
   }, [transactions]);
 
-  const isCreditCardPayment = (tx: Transaction) => {
+  /*
+   * Verifica se uma transação é pagamento de fatura
+   * IMPORTANTE: Prioridade sobre Reembolso se a descrição for explícita.
+   */
+  const isCreditCardPayment = (tx: Transaction): boolean => {
     const d = (tx.description || '').toLowerCase();
     const c = (tx.category || '').toLowerCase();
 
-    // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
-    const isRefund =
-      d.includes('estorno') ||
-      d.includes('reembolso') ||
-      d.includes('devolução') ||
-      d.includes('cancelamento') ||
-      d.includes('refund') ||
-      d.includes('chargeback') ||
-      d.includes('crédito') ||
-      d.includes('credito') ||
-      c.includes('refund') ||
-      c.includes('estorno') ||
-      c.includes('reembolso');
+    // 1. Verifica keywords de PAGAMENTO primeiro
+    const paymentKeywords = [
+      'pagamento de fatura',
+      'pagamento fatura',
+      'pagamento recebido',
+      'credit card payment',
+      'pag fatura',
+      'pgto fatura',
+      'pgto'
+    ];
 
-    // Se for reembolso, NÃO é pagamento de fatura
-    if (isRefund) {
+    // Verifica se é explicitamente um pagamento
+    const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw) || d === 'pgto');
+
+    if (isExplicitPayment) {
+      // Se a descrição diz explicitamente que é pagamento, É PAGAMENTO.
+      // Mesmo que tenha 'estorno' no meio (raro) ou categoria 'Reembolso'.
+      // Exceção: "Estorno de pagamento"
+      if (d.includes('estorno') || d.includes('cancelamento')) {
+        return false; // É um estorno de pagamento
+      }
+      return true;
+    }
+
+    // 2. Se não é explicitamente pagamento, verifica se é estorno/reembolso
+    // Se for reembolso, não é pagamento
+    const refundKeywords = ['estorno', 'reembolso', 'devolução', 'cancelamento', 'refund', 'chargeback', 'cashback'];
+    if (refundKeywords.some(kw => d.includes(kw) || c.includes(kw))) {
       return false;
     }
 
-    // categoria do Pluggy + descrições comuns de pagamento de fatura
-    return (
-      c.includes('credit card payment') ||
-      c === 'pagamento de fatura' ||
-      d.includes('pagamento de fatura') ||
-      d.includes('pagamento fatura') ||
-      d.includes('pagamento recebido') ||
-      d.includes('credit card payment') ||
-      d.includes('pag fatura') ||
-      d.includes('pgto fatura') ||
-      d === 'pgto'
-    );
+    return false;
   };
 
   // Basic filtered transactions (used when no card is selected/configured)
@@ -1144,6 +1149,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesCard;
       })
       .sort((a, b) => {
+        // Para ordenação por data, usar timestamp completo (inclui horário)
+        if (sortField === 'date') {
+          const aTimestamp = a.timestamp || a.date || '';
+          const bTimestamp = b.timestamp || b.date || '';
+          if (aTimestamp < bTimestamp) return sortDirection === 'asc' ? -1 : 1;
+          if (aTimestamp > bTimestamp) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        }
+        // Para outros campos, ordenação normal
         const aValue: any = (a as any)[sortField];
         const bValue: any = (b as any)[sortField];
         if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -1471,6 +1485,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         return matchesSearch && matchesStartDate && matchesEndDate && matchesCategory;
       })
       .sort((a, b) => {
+        // Para ordenação por data, usar timestamp completo (inclui horário)
+        if (sortField === 'date') {
+          const aTimestamp = a.timestamp || a.date || '';
+          const bTimestamp = b.timestamp || b.date || '';
+          if (aTimestamp < bTimestamp) return sortDirection === 'asc' ? -1 : 1;
+          if (aTimestamp > bTimestamp) return sortDirection === 'asc' ? 1 : -1;
+          return 0;
+        }
+        // Para outros campos, ordenação normal
         const aValue: any = (a as any)[sortField];
         const bValue: any = (b as any)[sortField];
         if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
@@ -1497,37 +1520,180 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     }, 0);
   }, [transactionsWithCharges, exchangeRatesLoaded]);
 
-  // Auto-remove duplicates when transactions load
+  // ============================================================
+  // AUTO-DETECT DUPLICATES (Não remove automaticamente - apenas detecta)
+  // Duplicata REAL = mesmo ID original do banco (providerId ou pluggyRaw.id)
+  // Transações com mesmo valor/data/descrição NÃO são duplicatas automaticamente
+  // (pode ser 2 compras legítimas no mesmo estabelecimento)
+  // ============================================================
+  const [detectedDuplicates, setDetectedDuplicates] = React.useState<Array<{ original: Transaction, duplicate: Transaction }>>([]);
+
   React.useEffect(() => {
     if (hasCheckedDuplicates || transactions.length === 0) return;
 
-    const groups: Record<string, Transaction[]> = {};
+    // Agrupar por ID ORIGINAL do banco (não pela nossa chave composta)
+    // Duplicata real acontece quando a mesma transação do banco foi importada 2x
+    const byOriginalId: Record<string, Transaction[]> = {};
+
     transactions.forEach(t => {
-      const key = `${t.date}-${Math.abs(t.amount)}-${(t.description || '').trim().toLowerCase()}-${t.type}`;
-      if (!groups[key]) groups[key] = [];
-      groups[key].push(t);
+      // Usa providerId ou o ID da transação raw do Pluggy
+      const originalId = t.providerId || t.pluggyRaw?.id || null;
+
+      // Só agrupa se tiver um ID original (transações manuais não tem)
+      if (originalId) {
+        if (!byOriginalId[originalId]) byOriginalId[originalId] = [];
+        byOriginalId[originalId].push(t);
+      }
     });
 
-    const duplicates = Object.values(groups).filter(g => g.length > 1);
+    // Encontra duplicatas REAIS (mesmo ID original do banco)
+    const realDuplicates: Array<{ original: Transaction, duplicate: Transaction }> = [];
 
-    if (duplicates.length > 0) {
-      const idsToDelete: string[] = [];
-      duplicates.forEach(group => {
-        for (let i = 1; i < group.length; i++) {
-          idsToDelete.push(group[i].id);
+    Object.entries(byOriginalId).forEach(([originalId, group]) => {
+      if (group.length > 1) {
+        // Ordena por data de criação (mais antiga primeiro) se disponível
+        const sorted = [...group].sort((a, b) => {
+          const aCreated = (a as any).createdAt || a.date;
+          const bCreated = (b as any).createdAt || b.date;
+          return aCreated < bCreated ? -1 : 1;
+        });
+
+        // Primeiro é o original, os outros são duplicatas
+        for (let i = 1; i < sorted.length; i++) {
+          realDuplicates.push({
+            original: sorted[0],
+            duplicate: sorted[i]
+          });
         }
-      });
+      }
+    });
 
-      // Delete duplicates silently
-      Promise.all(idsToDelete.map(id => onDelete(id)))
-        .then(() => {
-          toast.success(`${idsToDelete.length} duplicatas removidas automaticamente!`);
-        })
-        .catch(() => { });
+    if (realDuplicates.length > 0) {
+      console.log(`[CreditCardTable] ⚠️ Detectadas ${realDuplicates.length} possíveis duplicatas (mesmo ID do banco):`,
+        realDuplicates.map(d => ({
+          originalId: d.original.providerId || d.original.pluggyRaw?.id,
+          desc: d.original.description?.slice(0, 30),
+          duplicateId: d.duplicate.id
+        }))
+      );
+
+      // ⚠️ DESATIVADO: Não remover automaticamente para evitar deleção acidental
+      // Se precisar limpar duplicatas, faça manualmente ou via re-sync
+      // const idsToDelete = realDuplicates.map(d => d.duplicate.id);
+      // Promise.all(idsToDelete.map(id => onDelete(id)))...
+
+      setDetectedDuplicates(realDuplicates);
     }
 
     setHasCheckedDuplicates(true);
   }, [transactions, hasCheckedDuplicates, onDelete, toast]);
+
+
+
+  // ============================================================
+  // AUTO-FIX: DESATIVADO
+  // A correção de estornos agora é feita APENAS no backend durante sincronização
+  // Manter este código desativado para evitar alterações incorretas
+  // ============================================================
+  // React.useEffect(() => {
+  //   if (transactions.length === 0) return;
+  //
+  //   const fixes: string[] = [];
+  //   const refundKeywords = [
+  //     'estorno', 'reembolso', 'devolucao', 'devolução',
+  //     'cancelamento', 'cancelado', 'refund', 'chargeback',
+  //     'cashback'
+  //   ];
+  //
+  //   transactions.forEach(t => {
+  //     if (t.type === 'expense') {
+  //       const desc = (t.description || '').toLowerCase();
+  //       const category = (t.category || '').toLowerCase();
+  //       const isRefund = refundKeywords.some(kw => desc.includes(kw) || category.includes(kw));
+  //       if (isRefund) {
+  //         fixes.push(t.id);
+  //         onUpdate({ ...t, type: 'income', category: 'Reembolso' });
+  //       }
+  //     }
+  //   });
+  //
+  //   if (fixes.length > 0) {
+  //     toast.success(`${fixes.length} estorno(s) corrigido(s) automaticamente!`);
+  //   }
+  // }, [transactions, onUpdate]);
+
+  // ============================================================
+  // AUTO-DETECT: Transações pareadas (compra + reembolso idêntico)
+  // Detecta e notifica quando há uma compra e seu reembolso
+  // que podem estar causando confusão no total
+  // ============================================================
+  const pairedTransactions = React.useMemo(() => {
+    const pairs: Array<{ purchase: Transaction, refund: Transaction }> = [];
+
+    // Agrupa transações por valor absoluto e descrição similar
+    const byAmountAndDesc: Record<string, Transaction[]> = {};
+
+    transactions.forEach(t => {
+      // Normaliza descrição removendo números de parcela e espaços extras
+      const normalizedDesc = (t.description || '')
+        .toLowerCase()
+        .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')
+        .replace(/estorno\s*/g, '')
+        .replace(/reembolso\s*/g, '')
+        .trim();
+
+      const key = `${Math.abs(t.amount)}-${normalizedDesc}`;
+      if (!byAmountAndDesc[key]) byAmountAndDesc[key] = [];
+      byAmountAndDesc[key].push(t);
+    });
+
+    // Procura pares onde existe uma expense e um income (reembolso)
+    Object.values(byAmountAndDesc).forEach(group => {
+      if (group.length >= 2) {
+        const expenses = group.filter(t => t.type === 'expense');
+        const incomes = group.filter(t => t.type === 'income');
+
+        // Se tem tanto expense quanto income, pode ser par compra+reembolso
+        if (expenses.length > 0 && incomes.length > 0) {
+          // Verifica se o income parece ser reembolso da expense
+          incomes.forEach(income => {
+            const incomeDesc = (income.description || '').toLowerCase();
+            const isRefundType = incomeDesc.includes('estorno') ||
+              incomeDesc.includes('reembolso') ||
+              incomeDesc.includes('devolução') ||
+              incomeDesc.includes('cancelamento');
+
+            if (isRefundType) {
+              // Encontra a expense mais próxima em data
+              const matchingExpense = expenses.sort((a, b) => {
+                const diffA = Math.abs(new Date(a.date).getTime() - new Date(income.date).getTime());
+                const diffB = Math.abs(new Date(b.date).getTime() - new Date(income.date).getTime());
+                return diffA - diffB;
+              })[0];
+
+              if (matchingExpense) {
+                pairs.push({ purchase: matchingExpense, refund: income });
+              }
+            }
+          });
+        }
+      }
+    });
+
+    return pairs;
+  }, [transactions]);
+
+  // Log pares detectados para debug
+  React.useEffect(() => {
+    if (pairedTransactions.length > 0) {
+      console.log(`[CreditCardTable] 🔍 Detectados ${pairedTransactions.length} pares compra+reembolso:`,
+        pairedTransactions.map(p => ({
+          purchase: { desc: p.purchase.description, amount: -p.purchase.amount, date: p.purchase.date },
+          refund: { desc: p.refund.description, amount: p.refund.amount, date: p.refund.date }
+        }))
+      );
+    }
+  }, [pairedTransactions]);
 
   const handleEditClick = (transaction: Transaction) => {
     // Garantir que accountType está definido como CREDIT_CARD

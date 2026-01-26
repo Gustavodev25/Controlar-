@@ -611,33 +611,37 @@ export const transactionExists = async (userId: string, data: Omit<Transaction, 
     }
 
     // 2. Fallback: Fuzzy Match (Only for Manual/OFX transactions)
-    // We only check Date, Amount, Type.
-    const filters = [
-      where("date", "==", data.date),
-      where("amount", "==", data.amount),
-      where("type", "==", data.type)
-    ];
+    // If data.providerId exists but wasn't found in step 1, it implies it's a NEW transaction from the bank.
+    // We should NOT try to fuzzy match in that case, to avoid FALSE POSITIVES (e.g. return flight with same price/date/name).
+    if (!data.providerId) {
+      // We only check Date, Amount, Type.
+      const filters = [
+        where("date", "==", data.date),
+        where("amount", "==", data.amount),
+        where("type", "==", data.type)
+      ];
 
-    const q = query(txRef, ...filters, limit(50));
-    const snap = await getDocs(q);
-    if (snap.empty) return false;
+      const q = query(txRef, ...filters, limit(50));
+      const snap = await getDocs(q);
+      if (snap.empty) return false;
 
-    // Normalize helper: remove all non-alphanumeric, lowercase
-    const normalize = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      // Normalize helper: remove all non-alphanumeric, lowercase
+      const normalize = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-    const targetDesc = normalize(data.description);
+      const targetDesc = normalize(data.description);
 
-    return snap.docs.some(doc => {
-      const d = doc.data() as any;
-      // If the existing transaction has a providerId, we should NOT match it loosely
-      // against a manual transaction (unlikely case, but good safety).
-      // Actually, if we are here, 'data' (incoming) has NO providerId.
-      // So we are comparing a Manual Candidate vs Existing DB entries.
+      return snap.docs.some(doc => {
+        const d = doc.data() as any;
+        // If the existing transaction has a providerId, we should NOT match it loosely
+        // against a manual transaction (unlikely case, but good safety).
+        // Actually, if we are here, 'data' (incoming) has NO providerId.
+        // So we are comparing a Manual Candidate vs Existing DB entries.
 
-      const desc = normalize(d.description);
-      // If normalized descriptions match, it's a duplicate.
-      return desc === targetDesc;
-    });
+        const desc = normalize(d.description);
+        // If normalized descriptions match, it's a duplicate.
+        return desc === targetDesc;
+      });
+    }
   } catch (err) {
     console.error("Erro ao verificar duplicidade de transacao:", err);
     return false;
@@ -827,9 +831,11 @@ export const findCreditCardTransactionId = async (userId: string, providerId: st
       }
     }
 
-    // 2. Fuzzy match by description + approximate amount (with date window for installments)
-    // This catches duplicates where providerId differs but it's the same transaction
-    if (txData?.date && txData?.description && txData?.amount !== undefined) {
+    // 2. Fuzzy Match by description + approximate amount (with date window for installments)
+    // IMPORTANT: If we have a providerId and it wasn't found above (Step 1), it means it's a NEW transaction.
+    // We must NOT fuzzy match it against existing ones, otherwise we lose valid duplicates (e.g. return flights).
+    // Fuzzy match is ONLY for manual/legacy transactions without providerId.
+    if (!providerId && txData?.date && txData?.description && txData?.amount !== undefined) {
       // Normalize description for comparison
       const normalize = (str: string) => (str || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 

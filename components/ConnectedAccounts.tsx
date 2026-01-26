@@ -643,7 +643,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     return { icon: <Wallet size={18} />, bgClass: 'bg-[#d97757]/10 text-[#d97757]' };
   };
 
-  const handleManualSync = async (itemId: string, force = false) => {
+  const handleManualSync = async (itemId: string, force = false, fullSync = false) => {
     // Early return if no user or already syncing this item
     if (!userId) {
       console.log('[handleManualSync] No userId, aborting');
@@ -682,12 +682,14 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       const response = await fetch(`${API_BASE}/pluggy/trigger-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ itemId, userId, force })
+        body: JSON.stringify({ itemId, userId, force, fullSync })
       });
       const data = await response.json();
 
       if (data.success) {
-        toast.info("Sincronização iniciada com sucesso!");
+        toast.info(fullSync
+          ? "Sincronização COMPLETA iniciada! Buscando 12 meses de transações..."
+          : "Sincronização iniciada com sucesso!");
         fetchItemStatuses();
       } else if (data.needsReconnect || data.code === 'ITEM_NOT_FOUND') {
         // Item não existe mais na Pluggy - precisa reconectar
@@ -705,6 +707,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       setIsSyncingItem(prev => ({ ...prev, [itemId]: false }));
     }
   };
+
 
   const handleCleanupDuplicates = async () => {
     if (!userId) return;
@@ -1136,6 +1139,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                           </button>
                         </TooltipIcon>
                       )}
+
+
 
 
                       <TooltipIcon content="Desconectar Instituição">
