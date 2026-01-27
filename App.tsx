@@ -3489,7 +3489,7 @@ const App: React.FC = () => {
               setAuthInitialView(view || 'login');
               setShowLanding(false);
             }}
-            onSubscribe={(data) => setLandingCheckoutData(data)}
+            onSubscribe={(data) => setLandingCheckoutData({ ...data, couponCode: data.couponCode || 'PROMO50' })}
           />
         </>
       );
@@ -3500,7 +3500,7 @@ const App: React.FC = () => {
         <ToastContainer />
         <LoginNew
           initialView={authInitialView}
-          onSubscribe={(data) => setLandingCheckoutData(data)}
+          onSubscribe={(data) => setLandingCheckoutData({ ...data, couponCode: data.couponCode || 'PROMO50' })}
         />
       </>
     );
@@ -3635,7 +3635,7 @@ const App: React.FC = () => {
                   if (userId) await dbService.updateUserProfile(userId, u);
                 }}
                 initialPlanId={subscriptionInitialState?.planId}
-                initialCouponCode={subscriptionInitialState?.couponCode}
+                initialCouponCode={subscriptionInitialState?.couponCode || 'PROMO50'}
                 hideBackButton={subscriptionInitialState?.hideBackButton}
               />
             </div>

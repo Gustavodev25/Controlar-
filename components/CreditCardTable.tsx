@@ -1438,24 +1438,95 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // CÁLCULO DE TOTAIS VISUAIS (Para consistência com a tabela)
   // Garante que o valor no card seja igual à soma das transações exibidas
   // Usa conversão de moeda em tempo real para transações internacionais
+  // INCLUI detecção de pares compra+estorno que se anulam
   // ============================================================
   const visualTotals = useMemo(() => {
-    const calcTotal = (txs: Transaction[]) => txs.reduce((acc, tx) => {
-      // Usa isCreditCardPayment para garantir consistência
-      if (isCreditCardPayment(tx)) return acc;
-      // Usa getTransactionAmountInBRL para converter moeda estrangeira
-      const amt = getTransactionAmountInBRL(tx);
-      return tx.type === 'income' ? acc - amt : acc + amt;
-    }, 0);
+    // Função auxiliar para detectar pares de compra+estorno e calcular total
+    const calcTotalWithRefundDetection = (txs: Transaction[]) => {
+      // Normaliza descrição para comparação
+      const normalizeDesc = (desc: string) => {
+        return (desc || '')
+          .toLowerCase()
+          .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')
+          .replace(/estorno\s*/gi, '')
+          .replace(/reembolso\s*/gi, '')
+          .replace(/devolução\s*/gi, '')
+          .replace(/cancelamento\s*/gi, '')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
 
-    const lastTotal = calcTotal(invoiceSummary.lastInvoice.transactions);
-    // Adicionar encargos ao total visual da última fatura se houver
+      // Agrupa transações por valor absoluto e descrição normalizada
+      const byAmountAndDesc: Record<string, Transaction[]> = {};
+      txs.forEach(t => {
+        if (isCreditCardPayment(t)) return; // Ignora pagamentos de fatura
+        const normalizedDesc = normalizeDesc(t.description || '');
+        const key = `${Math.abs(t.amount).toFixed(2)}-${normalizedDesc}`;
+        if (!byAmountAndDesc[key]) byAmountAndDesc[key] = [];
+        byAmountAndDesc[key].push(t);
+      });
+
+      // Identifica IDs de transações pareadas (compra+estorno)
+      const pairedIds = new Set<string>();
+      Object.values(byAmountAndDesc).forEach(group => {
+        if (group.length >= 2) {
+          const sorted = [...group].sort((a, b) =>
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+          );
+          const expenses = sorted.filter(t => t.type === 'expense');
+          const incomes = sorted.filter(t => t.type === 'income');
+
+          // Caso 1: Expense + Income
+          if (expenses.length > 0 && incomes.length > 0) {
+            const usedExpenses = new Set<string>();
+            incomes.forEach(income => {
+              const match = expenses.find(exp =>
+                !usedExpenses.has(exp.id) && Math.abs(exp.amount) === Math.abs(income.amount)
+              );
+              if (match) {
+                pairedIds.add(match.id);
+                pairedIds.add(income.id);
+                usedExpenses.add(match.id);
+              }
+            });
+          }
+
+          // Caso 2: Duas expenses idênticas (compra + estorno ambos como expense)
+          if (expenses.length >= 2 && incomes.length === 0) {
+            const usedIds = new Set<string>();
+            for (let i = 0; i < expenses.length; i++) {
+              if (usedIds.has(expenses[i].id)) continue;
+              for (let j = i + 1; j < expenses.length; j++) {
+                if (usedIds.has(expenses[j].id)) continue;
+                if (Math.abs(expenses[i].amount) === Math.abs(expenses[j].amount)) {
+                  pairedIds.add(expenses[i].id);
+                  pairedIds.add(expenses[j].id);
+                  usedIds.add(expenses[i].id);
+                  usedIds.add(expenses[j].id);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      });
+
+      // Calcula total excluindo transações pareadas
+      return txs.reduce((acc, tx) => {
+        if (isCreditCardPayment(tx)) return acc;
+        if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas
+        const amt = getTransactionAmountInBRL(tx);
+        return tx.type === 'income' ? acc - amt : acc + amt;
+      }, 0);
+    };
+
+    const lastTotal = calcTotalWithRefundDetection(invoiceSummary.lastInvoice.transactions);
     const charges = selectedCard?.currentBill?.financeCharges?.total || 0;
 
     return {
       last: lastTotal + charges,
-      current: calcTotal(invoiceSummary.currentInvoice.transactions),
-      next: calcTotal(invoiceSummary.nextInvoice.transactions)
+      current: calcTotalWithRefundDetection(invoiceSummary.currentInvoice.transactions),
+      next: calcTotalWithRefundDetection(invoiceSummary.nextInvoice.transactions)
     };
   }, [invoiceSummary, selectedCard, exchangeRatesLoaded]);
 
@@ -1510,10 +1581,80 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Calculate total amount from filtered transactions (incluindo encargos)
   // Usa conversão de moeda em tempo real para transações internacionais
+  // INCLUI detecção de pares compra+estorno que se anulam
   const totalAmount = useMemo(() => {
+    // Normaliza descrição para comparação
+    const normalizeDesc = (desc: string) => {
+      return (desc || '')
+        .toLowerCase()
+        .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')
+        .replace(/estorno\s*/gi, '')
+        .replace(/reembolso\s*/gi, '')
+        .replace(/devolução\s*/gi, '')
+        .replace(/cancelamento\s*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    // Agrupa transações por valor absoluto e descrição normalizada
+    const byAmountAndDesc: Record<string, Transaction[]> = {};
+    transactionsWithCharges.forEach(t => {
+      if (isCreditCardPayment(t)) return;
+      const normalizedDesc = normalizeDesc(t.description || '');
+      const key = `${Math.abs(t.amount).toFixed(2)}-${normalizedDesc}`;
+      if (!byAmountAndDesc[key]) byAmountAndDesc[key] = [];
+      byAmountAndDesc[key].push(t);
+    });
+
+    // Identifica IDs de transações pareadas
+    const pairedIds = new Set<string>();
+    Object.values(byAmountAndDesc).forEach(group => {
+      if (group.length >= 2) {
+        const sorted = [...group].sort((a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
+        const expenses = sorted.filter(t => t.type === 'expense');
+        const incomes = sorted.filter(t => t.type === 'income');
+
+        // Caso 1: Expense + Income
+        if (expenses.length > 0 && incomes.length > 0) {
+          const usedExpenses = new Set<string>();
+          incomes.forEach(income => {
+            const match = expenses.find(exp =>
+              !usedExpenses.has(exp.id) && Math.abs(exp.amount) === Math.abs(income.amount)
+            );
+            if (match) {
+              pairedIds.add(match.id);
+              pairedIds.add(income.id);
+              usedExpenses.add(match.id);
+            }
+          });
+        }
+
+        // Caso 2: Duas expenses idênticas (compra + estorno ambos como expense)
+        if (expenses.length >= 2 && incomes.length === 0) {
+          const usedIds = new Set<string>();
+          for (let i = 0; i < expenses.length; i++) {
+            if (usedIds.has(expenses[i].id)) continue;
+            for (let j = i + 1; j < expenses.length; j++) {
+              if (usedIds.has(expenses[j].id)) continue;
+              if (Math.abs(expenses[i].amount) === Math.abs(expenses[j].amount)) {
+                pairedIds.add(expenses[i].id);
+                pairedIds.add(expenses[j].id);
+                usedIds.add(expenses[i].id);
+                usedIds.add(expenses[j].id);
+                break;
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // Calcula total excluindo transações pareadas
     return transactionsWithCharges.reduce((acc, tx) => {
       if (isCreditCardPayment(tx)) return acc;
-      // Usa getTransactionAmountInBRL para converter moeda estrangeira
+      if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas (estorno+compra)
       const amt = getTransactionAmountInBRL(tx);
       if (tx.type === 'income') return acc - amt;
       return acc + amt;
@@ -1623,73 +1764,113 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // }, [transactions, onUpdate]);
 
   // ============================================================
-  // AUTO-DETECT: Transações pareadas (compra + reembolso idêntico)
-  // Detecta e notifica quando há uma compra e seu reembolso
-  // que podem estar causando confusão no total
+  // AUTO-DETECT: Transações pareadas (compra + estorno idêntico)
+  // Detecta pares de transações com mesmo valor e descrição similar
+  // que se anulam (compra + estorno), mesmo quando ambas vêm como expense
   // ============================================================
-  const pairedTransactions = React.useMemo(() => {
+  const { pairedTransactions, pairedTransactionIds } = React.useMemo(() => {
     const pairs: Array<{ purchase: Transaction, refund: Transaction }> = [];
+    const pairedIds = new Set<string>();
 
-    // Agrupa transações por valor absoluto e descrição similar
+    // Normaliza descrição para comparação
+    const normalizeDesc = (desc: string) => {
+      return (desc || '')
+        .toLowerCase()
+        .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '') // Remove parcelas (ex: 1/12)
+        .replace(/estorno\s*/gi, '')
+        .replace(/reembolso\s*/gi, '')
+        .replace(/devolução\s*/gi, '')
+        .replace(/cancelamento\s*/gi, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    };
+
+    // Agrupa transações por valor absoluto e descrição normalizada
     const byAmountAndDesc: Record<string, Transaction[]> = {};
 
     transactions.forEach(t => {
-      // Normaliza descrição removendo números de parcela e espaços extras
-      const normalizedDesc = (t.description || '')
-        .toLowerCase()
-        .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')
-        .replace(/estorno\s*/g, '')
-        .replace(/reembolso\s*/g, '')
-        .trim();
-
-      const key = `${Math.abs(t.amount)}-${normalizedDesc}`;
+      const normalizedDesc = normalizeDesc(t.description || '');
+      const key = `${Math.abs(t.amount).toFixed(2)}-${normalizedDesc}`;
       if (!byAmountAndDesc[key]) byAmountAndDesc[key] = [];
       byAmountAndDesc[key].push(t);
     });
 
-    // Procura pares onde existe uma expense e um income (reembolso)
+    // Procura pares dentro de cada grupo
     Object.values(byAmountAndDesc).forEach(group => {
       if (group.length >= 2) {
-        const expenses = group.filter(t => t.type === 'expense');
-        const incomes = group.filter(t => t.type === 'income');
+        // Ordena por data para parear corretamente
+        const sorted = [...group].sort((a, b) =>
+          new Date(a.date).getTime() - new Date(b.date).getTime()
+        );
 
-        // Se tem tanto expense quanto income, pode ser par compra+reembolso
+        // Caso 1: Expense + Income (reembolso explícito)
+        const expenses = sorted.filter(t => t.type === 'expense');
+        const incomes = sorted.filter(t => t.type === 'income');
+
         if (expenses.length > 0 && incomes.length > 0) {
-          // Verifica se o income parece ser reembolso da expense
+          const usedExpenses = new Set<string>();
+          const usedIncomes = new Set<string>();
+
           incomes.forEach(income => {
-            const incomeDesc = (income.description || '').toLowerCase();
-            const isRefundType = incomeDesc.includes('estorno') ||
-              incomeDesc.includes('reembolso') ||
-              incomeDesc.includes('devolução') ||
-              incomeDesc.includes('cancelamento');
+            if (usedIncomes.has(income.id)) return;
 
-            if (isRefundType) {
-              // Encontra a expense mais próxima em data
-              const matchingExpense = expenses.sort((a, b) => {
-                const diffA = Math.abs(new Date(a.date).getTime() - new Date(income.date).getTime());
-                const diffB = Math.abs(new Date(b.date).getTime() - new Date(income.date).getTime());
-                return diffA - diffB;
-              })[0];
+            // Encontra expense não pareada mais próxima em data
+            const matchingExpense = expenses.find(exp =>
+              !usedExpenses.has(exp.id) &&
+              Math.abs(exp.amount) === Math.abs(income.amount)
+            );
 
-              if (matchingExpense) {
-                pairs.push({ purchase: matchingExpense, refund: income });
-              }
+            if (matchingExpense) {
+              pairs.push({ purchase: matchingExpense, refund: income });
+              pairedIds.add(matchingExpense.id);
+              pairedIds.add(income.id);
+              usedExpenses.add(matchingExpense.id);
+              usedIncomes.add(income.id);
             }
           });
+        }
+
+        // Caso 2: Duas expenses idênticas (compra + estorno ambos como expense)
+        // Isso acontece quando o banco envia ambos como valor negativo
+        if (expenses.length >= 2 && incomes.length === 0) {
+          // Verifica se temos pares exatos (mesmo valor, mesma descrição)
+          const usedIds = new Set<string>();
+
+          for (let i = 0; i < expenses.length; i++) {
+            if (usedIds.has(expenses[i].id)) continue;
+
+            for (let j = i + 1; j < expenses.length; j++) {
+              if (usedIds.has(expenses[j].id)) continue;
+
+              // Mesmo valor absoluto = provável par compra/estorno
+              if (Math.abs(expenses[i].amount) === Math.abs(expenses[j].amount)) {
+                // O mais antigo é a compra, o mais novo é o estorno
+                const purchase = expenses[i];
+                const refund = expenses[j];
+
+                pairs.push({ purchase, refund });
+                pairedIds.add(purchase.id);
+                pairedIds.add(refund.id);
+                usedIds.add(purchase.id);
+                usedIds.add(refund.id);
+                break; // Cada transação só pode ter um par
+              }
+            }
+          }
         }
       }
     });
 
-    return pairs;
+    return { pairedTransactions: pairs, pairedTransactionIds: pairedIds };
   }, [transactions]);
 
   // Log pares detectados para debug
   React.useEffect(() => {
     if (pairedTransactions.length > 0) {
-      console.log(`[CreditCardTable] 🔍 Detectados ${pairedTransactions.length} pares compra+reembolso:`,
+      console.log(`[CreditCardTable] 🔄 Detectados ${pairedTransactions.length} pares compra+estorno (zerados no total):`,
         pairedTransactions.map(p => ({
-          purchase: { desc: p.purchase.description, amount: -p.purchase.amount, date: p.purchase.date },
-          refund: { desc: p.refund.description, amount: p.refund.amount, date: p.refund.date }
+          purchase: { id: p.purchase.id, desc: p.purchase.description?.slice(0, 30), amount: p.purchase.amount, date: p.purchase.date },
+          refund: { id: p.refund.id, desc: p.refund.description?.slice(0, 30), amount: p.refund.amount, date: p.refund.date }
         }))
       );
     }
@@ -2519,6 +2700,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
 
+                          // Detecta se a transação faz parte de um par compra+estorno (zerando o total)
+                          const isPaired = pairedTransactionIds.has(t.id);
+
                           // Detectar transação de IOF (imposto sobre compra internacional)
                           const descLower = (t.description || '').toLowerCase();
                           const isIOF = (t as any).isIOF === true ||
@@ -2670,6 +2854,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         IOF
                                       </span>
                                     )}
+                                    {isPaired && (
+                                      <span
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
+                                        title="Esta transação foi pareada com outra (compra + estorno) e não entra no total da fatura"
+                                      >
+                                        <ArrowRightLeft size={10} />
+                                        Estornado
+                                      </span>
+                                    )}
                                   </div>
                                   {(t as any).totalInstallments > 1 && (
                                     <span className="text-[10px] text-gray-500 font-mono">
@@ -2705,10 +2898,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               </td>
                               <td className="px-6 py-4 text-right border-r border-[#373734]">
                                 <div className="flex flex-col items-end gap-0.5">
-                                  <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
-                                    : isCharge ? 'text-red-400'
-                                      : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
-                                        : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                  <span className={`font-bold font-mono ${isPaired
+                                    ? 'text-cyan-400/60 line-through'
+                                    : isAdjustment ? 'text-purple-400'
+                                      : isCharge ? 'text-red-400'
+                                        : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
+                                          : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
                                     }`}>
                                     {t.type === 'income' ? '+' : '-'} {formatCurrency(displayAmount)}
                                   </span>

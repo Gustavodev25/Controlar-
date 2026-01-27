@@ -17,12 +17,12 @@ service cloud.firestore {
       );
     }
     match /users/{userId} {
-      // Access: own user document or admin (token-based admin to avoid recursive rule evaluation)
-      allow read, write: if request.auth != null && (request.auth.uid == userId || (request.auth.token.admin == true || request.auth.token.isAdmin == true));
+      // Access: own user document or admin (using isUserAdmin helper to support DB-based roles)
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isUserAdmin());
     }
     match /users/{userId}/{document=**} {
-      // Access: own user document or admin (token-based admin)
-      allow read, write: if request.auth != null && (request.auth.uid == userId || (request.auth.token.admin == true || request.auth.token.isAdmin == true));
+      // Access: own user document or admin (using isUserAdmin helper)
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isUserAdmin());
     }
     match /families/{familyId} {
       allow read: if request.auth != null;

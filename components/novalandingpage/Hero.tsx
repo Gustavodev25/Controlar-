@@ -501,15 +501,24 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                     <motion.div className="w-full max-w-4xl space-y-8 text-center flex flex-col items-center">
 
                         {/* New Premium Scarcity Badge */}
-
-
-                        {/* Guarantee Badge */}
-                        <motion.div variants={itemVariants} className="flex justify-center -mb-4">
-                            <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#00A96E]/10 border border-[#00A96E]/20 backdrop-blur-sm shadow-[0_0_15px_-3px_rgba(0,169,110,0.2)]">
-                                <ShieldCheck size={14} className="text-[#00A96E]" />
-                                <span className="text-[#00A96E] text-[10px] md:text-xs font-bold uppercase tracking-wide">
-                                    Garantia de 7 dias ou seu reembolso
-                                </span>
+                        <motion.div variants={itemVariants} className="flex justify-center mb-2">
+                            <div
+                                className="relative group cursor-pointer"
+                                onClick={() => onSubscribe && onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' })}
+                            >
+                                <div className="absolute -inset-1 bg-gradient-to-r from-[#D97757] via-amber-500 to-[#D97757] rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
+                                <div className="relative px-2 py-1 md:px-4 md:py-1.5 bg-[#1a0f0a] ring-1 ring-white/10 rounded-full leading-none flex items-center gap-2 md:gap-3">
+                                    <span className="flex items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-[#D97757] to-amber-600 text-[10px] font-bold text-white shadow-sm shadow-orange-500/50">
+                                        NOVO
+                                    </span>
+                                    <span className="text-gray-300 text-[10px] md:text-xs tracking-wide">
+                                        Desconto exclusivo liberado: <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D97757] to-amber-500 font-bold">50% OFF</span>
+                                    </span>
+                                    <div className="w-px h-3 bg-white/10 hidden md:block"></div>
+                                    <span className="text-gray-500 text-[10px] font-medium hidden md:flex items-center gap-1 group-hover:text-[#D97757] transition-colors">
+                                        Resgatar <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                                    </span>
+                                </div>
                             </div>
                         </motion.div>
 
@@ -530,13 +539,24 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         <motion.div variants={itemVariants} className="flex flex-col items-center gap-6 pt-4">
 
                             <button onClick={() => {
-                                onLogin('signup');
-                            }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40">
-                                Testar 7 dias grátis
+                                if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' });
+                            }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40 relative overflow-hidden">
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                                Assinar Agora com 50% OFF
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
                             </button>
+
+                            <div className="flex items-center gap-2 mt-2 -mb-2">
+                                <span className="flex h-2 w-2 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                    Cupom <span className="text-emerald-400">PROMO50</span> aplicado automaticamente
+                                </span>
+                            </div>
 
                             {/* Trust & Social Proof */}
                             <div className="flex flex-col items-center gap-4 mt-2">

@@ -824,7 +824,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                     </form>
 
                     <motion.p layout className="mt-8 text-left text-xs text-gray-500">
-                        {isResettingPassword ? (
+                        {isResettingPassword && (
                             <a
                                 href="#"
                                 onClick={(e) => { e.preventDefault(); setIsResettingPassword(false); setRecoveryStep(1); setIsLogin(true); }}
@@ -832,21 +832,6 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                             >
                                 Voltar para Login
                             </a>
-                        ) : (
-                            <>
-                                {isLogin ? 'Ainda não tem conta?' : 'Já tem uma conta?'}
-                                <a
-                                    href="#"
-                                    onClick={(e) => {
-                                        e.preventDefault();
-                                        setIsLogin(!isLogin);
-                                        setStep(1);
-                                    }}
-                                    className="font-bold text-white hover:text-[#d97757] transition-colors ml-1"
-                                >
-                                    {isLogin ? 'Criar agora' : 'Fazer login'}
-                                </a>
-                            </>
                         )}
                     </motion.p>
                 </motion.div>

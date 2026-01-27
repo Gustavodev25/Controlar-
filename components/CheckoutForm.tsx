@@ -836,7 +836,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             <div className="-mt-8 -mx-8 bg-[#00A96E]/10 border-b border-[#00A96E]/10 p-3 flex items-center justify-center gap-2 mb-8">
               <ShieldCheck size={14} className="text-[#00A96E]/80" fill="currentColor" fillOpacity={0.2} />
               <span className="text-[#00A96E]/90 text-xs font-bold uppercase tracking-wide">
-                Garantia de 15 DIAS ou seu dinheiro de volta
+                Garantia de 7 dias ou seu dinheiro de volta
               </span>
             </div>
 

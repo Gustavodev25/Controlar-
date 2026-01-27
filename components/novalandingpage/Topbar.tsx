@@ -244,7 +244,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                 >
                   {/* Login Button - Left Part */}
                   <motion.button
-                    onClick={onLogin}
+                    onClick={() => onLogin()}
                     className="relative flex items-center justify-center h-9 rounded-l-full px-4 hover:bg-white/5 transition-colors overflow-hidden"
                     initial="initial"
                     whileHover="hover"
@@ -269,7 +269,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                   {/* Subscribe Button - Right Part */}
                   <motion.button
                     onClick={() => {
-                      onLogin();
+                      if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
                     }}
                     className="relative flex items-center justify-center h-9 rounded-r-full px-4 bg-[#D97757] hover:bg-[#c66a4e] transition-colors overflow-hidden shadow-lg shadow-[#D97757]/20"
                     initial="initial"
@@ -284,7 +284,7 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
                         }}
                         className="whitespace-nowrap font-medium text-white overflow-hidden text-xs"
                       >
-                        Testar Controlar
+                        Assinar Agora
                       </motion.span>
                     </div>
                   </motion.button>
@@ -366,10 +366,10 @@ export const Topbar: React.FC<TopbarProps> = ({ onLogin, onSubscribe, hideNaviga
 
                   <button
                     onClick={() => {
-                      onLogin();
+                      if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly' });
                     }}
                     className="w-full p-3 rounded-xl bg-[#D97757] hover:bg-[#c56a4d] text-white font-bold text-center transition-colors shadow-lg shadow-[#D97757]/20">
-                    Testar 7 dias grátis
+                    Assinar Agora
                   </button>
                 </div>
               </motion.div>

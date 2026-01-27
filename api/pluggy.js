@@ -982,6 +982,183 @@ router.post('/create-item', withPluggyAuth, async (req, res) => {
     }
 });
 
+// ============================================================
+// HELPER: Detectar e corrigir pares duplicados (Compra + Estorno errado)
+// Alguns bancos enviam o estorno como um segundo DEBITO (negativo)
+// Se encontrarmos 2 transações IDÊNTICAS (mesma data, mesmo valor negativo, mesma descrição)
+// Assumimos que a segunda é o estorno e forçamos virar CRÉDITO (Reembolso)
+// ============================================================
+const detectAndFixDoubledRefunds = (transactions) => {
+    if (!transactions || transactions.length < 2) return transactions;
+
+    // Agrupar por chave: Data|Valor|Descrição
+    const groups = new Map();
+
+    for (const tx of transactions) {
+        // Analisar tanto positivos quanto negativos
+        // Agrupar por valor absoluto para pegar par Expense (+359) e Expense (+359)
+        const dateStr = tx.date.split('T')[0];
+        const key = `${dateStr}|${Math.abs(tx.amount)}|${tx.description.trim()}`;
+
+        if (!groups.has(key)) {
+            groups.set(key, []);
+        }
+        groups.get(key).push(tx);
+    }
+
+    // Identificar duplicatas
+    for (const [key, group] of groups) {
+        // DUPLIICIDADE EXATA (Par): 2 transações iguais
+        if (group.length === 2) {
+            const [tx1, tx2] = group;
+
+            // Verifica sinais: Se forem IGUAIS (ambos + ou ambos -), temos um problema
+            // Se forem diferentes, já se anulam
+            if ((tx1.amount > 0 && tx2.amount > 0) || (tx1.amount < 0 && tx2.amount < 0)) {
+
+                // Marcar a segunda como estorno inferido
+                tx2._isInferredRefund = true;
+
+                console.log(`[SYNC] 🔄 Duplicidade detectada (Provável Estorno): "${tx2.description}" - Valor: ${tx2.amount}`);
+            }
+        }
+    }
+
+    return transactions;
+};
+
+// ============================================================
+// HELPER: Corrigir duplicidades diretamente no Banco de Dados (Pós-processamento)
+// Garante que transações antigas/já salvas também sejam corrigidas
+// ============================================================
+const fixDbDuplicates = async (db, userId) => {
+    try {
+        console.log(`[Fix-Duplicates] 🧹 Starting DB cleanup for user ${userId}`);
+
+        // Buscar transações recentes (últimos 90 dias) de cartão
+        // Focamos em cartão pois é onde ocorre o problema de estorno duplicado
+        const ccRef = db.collection('users').doc(userId).collection('creditCardTransactions');
+        const today = new Date();
+        const ninetyDaysAgo = new Date();
+        ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+        const fromDate = ninetyDaysAgo.toISOString().split('T')[0];
+
+        const snapshot = await ccRef.where('date', '>=', fromDate).get();
+
+        const transactions = [];
+
+
+        snapshot.forEach(doc => {
+            transactions.push({ id: doc.id, ...doc.data() });
+        });
+
+        // Agrupar por chave "Relaxada": Data|Valor
+        // Depois verificamos a descrição dentro do grupo
+        const groups = new Map();
+
+        for (const tx of transactions) {
+            const dateStr = (tx.date || '').split('T')[0];
+            const amount = Math.abs(tx.amount); // Agrupar tudo por valor absoluto
+            const key = `${dateStr}|${amount}`;
+
+            // DEBUG PROBE para o caso específico do usuário (359.20)
+            if (amount > 359 && amount < 360) {
+                console.log(`[DEBUG_PROBE] ID: ${tx.id} | DateRaw: ${tx.date} -> KeyDate: ${dateStr} | AmountRaw: ${tx.amount} | Desc: "${tx.description}"`);
+            }
+
+            if (!groups.has(key)) {
+                groups.set(key, []);
+            }
+            groups.get(key).push(tx);
+        }
+
+        const batch = db.batch();
+        let updateCount = 0;
+        const results = [];
+
+        for (const [key, group] of groups) {
+            // Se tivermos exatamente 2 transações com mesma data e valor absoluto
+            if (group.length === 2) {
+                const [tx1, tx2] = group;
+
+                const d1 = (tx1.description || '').trim().toUpperCase();
+                const d2 = (tx2.description || '').trim().toUpperCase();
+
+                // COMPARAÇÃO DE DESCRIÇÃO (Fuzzy)
+                // 1. Iguais
+                // 2. Um contém o outro
+                // 3. 8 primeiros caracteres iguais (para cobrir "COMPRA * XYZ" vs "COMPRA XYZ")
+                const descriptionsMatch =
+                    d1 === d2 ||
+                    d1.includes(d2) ||
+                    d2.includes(d1) ||
+                    (d1.length > 5 && d2.length > 5 && d1.slice(0, 8) === d2.slice(0, 8));
+
+                if (descriptionsMatch) {
+                    // Verificar sinais
+                    // Se ambos forem negativos (Expense) -> Problema relatado pelo usuário
+                    // Se ambos forem positivos (Income) -> Pode ser duplicidade de estorno, também corrigimos
+                    // Se forem sinais opostos -> Já está zerado, ignorar (ex: compra e estorno correto)
+
+                    const type1 = tx1.type;
+                    const type2 = tx2.type;
+
+                    if (type1 === type2) {
+                        console.log(`[Fix-Duplicates] ⚠️ Found duplicate pair: ${key} | "${d1}" vs "${d2}"`);
+
+                        // Converter a segunda para o tipo oposto
+                        const newType = type1 === 'expense' ? 'income' : 'expense';
+                        const category = newType === 'income' ? 'Reembolso' : 'Uncategorized';
+
+                        batch.update(ccRef.doc(tx2.id), {
+                            type: newType,
+                            category: category,
+                            isRefund: true,
+                            _fixedBy: 'db_cleanup_fuzzy'
+                        });
+
+                        results.push({
+                            fixed: true,
+                            pair: [tx1.description, tx2.description],
+                            amount: tx2.amount,
+                            reason: 'fuzzy_match_date_amount'
+                        });
+                        updateCount++;
+                    }
+                } else {
+                    console.log(`[Fix-Duplicates] ℹ️ Candidate match rejected by description: "${d1}" vs "${d2}"`);
+                }
+            }
+        }
+
+        if (updateCount > 0) {
+            await batch.commit();
+            console.log(`[Fix-Duplicates] ✅ Fixed ${updateCount} transactions in DB`);
+        } else {
+            console.log(`[Fix-Duplicates] No duplicates found to fix.`);
+        }
+
+        return { success: true, fixed: updateCount, details: results };
+
+    } catch (err) {
+        console.error(`[Fix-Duplicates] ❌ Error:`, err.message);
+        return { success: false, error: err.message };
+    }
+};
+
+// ENDPOINT DE DEBUG: Forçar correção de duplicatas
+router.get('/fix-duplicates-debug', async (req, res) => {
+    const { userId } = req.query;
+    if (!userId) return res.status(400).json({ error: 'userId required' });
+
+    if (!firebaseAdmin) return res.status(500).json({ error: 'Firebase not ready' });
+    const db = firebaseAdmin.firestore();
+
+    const result = await fixDbDuplicates(db, userId);
+    res.json(result);
+});
+
+
 // 3. Trigger Sync (Update Item) - OPTIMIZED FOR VERCEL PRO
 // Ultra-fast parallel processing
 // fullSync: boolean - If true, fetches ALL transactions (12 months) regardless of lastSyncedAt
@@ -1240,7 +1417,11 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
 
                 // Use pagination to fetch ALL transactions
-                const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+                let transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+
+                // FIXED: Detectar e corrigir duplicidades de estorno (2x negativo)
+                transactions = detectAndFixDoubledRefunds(transactions);
+
                 return { account, transactions, fromDate: fromStr, syncMode, connectorName };
             });
 
@@ -1326,8 +1507,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
                         // DECISÃO FINAL: É reembolso APENAS se:
                         // 1. Tem keyword específica de reembolso, OU
-                        // 2. API Pluggy diz explicitamente que é CREDIT
-                        const isRefund = isRefundByKeyword || isCreditType;
+                        // 2. API Pluggy diz explicitamente que é CREDIT, OU
+                        // 3. Foi detectado como duplicidade inferida (compra + estorno negativo)
+                        const isRefund = isRefundByKeyword || isCreditType || tx._isInferredRefund;
 
                         // Log para debug quando detectar reembolso
                         if (isRefund) {
@@ -1410,6 +1592,13 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 console.error(`[SYNC] Batch error details:`, JSON.stringify(batchError, null, 2));
                 throw batchError; // Re-throw to be caught by outer catch
             }
+
+
+
+            // ============================================================
+            // STEP 4.1: FIX DUPLICATES IN DB (POST-PROCESSING)
+            // ============================================================
+            await fixDbDuplicates(db, userId);
 
             await updateProgress(65, 'Verificando pagamentos...');
 
@@ -2114,7 +2303,11 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             }
 
             // Use pagination to fetch ALL transactions
-            const transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+            let transactions = await fetchAllTransactions(apiKey, account.id, fromStr);
+
+            // FIXED: Detectar e corrigir duplicidades de estorno (2x negativo)
+            transactions = detectAndFixDoubledRefunds(transactions);
+
             return { account, transactions };
         });
 
@@ -2167,13 +2360,15 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         date: tx.date.split('T')[0],
                         description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
-                        type: (tx.type === 'CREDIT' || tx.amount < 0) ? 'income' : 'expense',
-                        category: tx.category || 'Uncategorized',
+                        type: ((tx.type === 'CREDIT' || tx.amount < 0) || tx._isInferredRefund) ? 'income' : 'expense',
+                        category: (tx.category || 'Uncategorized'),
                         status: 'completed',
                         totalInstallments,
                         installmentNumber,
                         invoiceMonthKey,
-                        pluggyRaw: tx
+                        pluggyRaw: tx,
+                        // Se foi inferido manual
+                        ...(tx._isInferredRefund ? { isRefund: true, category: 'Reembolso' } : {})
                     };
                 } else {
                     // Regular/Savings Transaction
@@ -2209,6 +2404,12 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
         // Commit all batches in parallel
         await Promise.all(batchPromises);
         console.log(`[Sync] Saved ${txCount} transactions`);
+
+        // ============================================================
+        // STEP 4.1: FIX DUPLICATES IN DB (POST-PROCESSING)
+        // ============================================================
+        await fixDbDuplicates(db, userId);
+
 
         // ============================================================
         // STEP 4.5: AUTO-DETECT SUBSCRIPTIONS FROM TRANSACTIONS

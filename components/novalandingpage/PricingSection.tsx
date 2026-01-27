@@ -41,7 +41,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                 'Contas Bancárias Ilimitadas'
             ],
             image: fogueteImg,
-            buttonText: 'Começar Teste Grátis',
+            buttonText: 'Assinar Agora',
             popular: true
         }
     ];
@@ -112,7 +112,8 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
 
                 <div className="flex justify-center w-full max-w-sm mx-auto">
                     {plans.map((plan) => {
-                        const price = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
+                        const originalPrice = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
+                        const price = originalPrice * 0.5; // 50% OFF
                         const isPro = plan.popular;
 
                         return (
@@ -161,15 +162,25 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                                 <div className="text-center mb-8">
 
 
-                                    <div className="flex items-center justify-center gap-1">
-                                        <span className="text-4xl font-bold text-white">
-                                            <NumberFlow
-                                                value={price}
-                                                format={{ style: 'currency', currency: 'BRL' }}
-                                                locales="pt-BR"
-                                            />
-                                        </span>
-                                        <span className="text-gray-500 font-medium">/mês</span>
+                                    <div className="flex flex-col items-center justify-center gap-0">
+                                        <div className="flex items-center gap-2 mb-1">
+                                            <span className="text-gray-500 line-through text-lg font-medium">
+                                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(originalPrice)}
+                                            </span>
+                                            <span className="bg-[#00A96E]/20 text-[#00A96E] text-[10px] font-bold px-2 py-0.5 rounded-full border border-[#00A96E]/30">
+                                                50% OFF
+                                            </span>
+                                        </div>
+                                        <div className="flex items-center gap-1">
+                                            <span className="text-5xl font-bold text-white tracking-tight">
+                                                <NumberFlow
+                                                    value={price}
+                                                    format={{ style: 'currency', currency: 'BRL' }}
+                                                    locales="pt-BR"
+                                                />
+                                            </span>
+                                            <span className="text-gray-500 font-medium">/mês</span>
+                                        </div>
                                     </div>
 
 
@@ -209,16 +220,21 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                                 {/* Botão */}
                                 <button
                                     onClick={() => {
-                                        onLogin('signup');
+                                        if (onSubscribe) onSubscribe({
+                                            planId: 'pro',
+                                            billingCycle: billingCycle,
+                                            couponCode: 'PROMO50'
+                                        });
                                     }}
                                     className={`
-                                        w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98]
+                                        w-full py-4 rounded-xl font-bold text-sm transition-all duration-300 transform hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group
                                         ${isPro
                                             ? 'bg-[#d97757] hover:bg-[#c56a4d] text-white shadow-lg shadow-[#d97757]/25'
                                             : 'bg-transparent border border-gray-700 text-white hover:bg-gray-800 hover:border-gray-600'}
                                     `}
                                 >
-                                    {plan.buttonText}
+                                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                                    Assinar Agora com 50% OFF
                                 </button>
                             </motion.div>
                         );
