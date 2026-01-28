@@ -1031,12 +1031,16 @@ const detectAndFixDoubledRefunds = (transactions) => {
 // HELPER: Corrigir duplicidades diretamente no Banco de Dados (Pós-processamento)
 // Garante que transações antigas/já salvas também sejam corrigidas
 // ============================================================
+// ============================================================
+// HELPER: Corrigir duplicidades diretamente no Banco de Dados (Pós-processamento)
+// Garante que transações antigas/já salvas também sejam corrigidas
+// IMPLEMENTAÇÃO ROBUSTA: Cruzamento por Valor + Descrição + Janela de Datas
+// ============================================================
 const fixDbDuplicates = async (db, userId) => {
     try {
         console.log(`[Fix-Duplicates] 🧹 Starting DB cleanup for user ${userId}`);
 
         // Buscar transações recentes (últimos 90 dias) de cartão
-        // Focamos em cartão pois é onde ocorre o problema de estorno duplicado
         const ccRef = db.collection('users').doc(userId).collection('creditCardTransactions');
         const today = new Date();
         const ninetyDaysAgo = new Date();
@@ -1046,96 +1050,123 @@ const fixDbDuplicates = async (db, userId) => {
         const snapshot = await ccRef.where('date', '>=', fromDate).get();
 
         const transactions = [];
-
-
         snapshot.forEach(doc => {
             transactions.push({ id: doc.id, ...doc.data() });
         });
 
-        // Agrupar por chave "Relaxada": Data|Valor
-        // Depois verificamos a descrição dentro do grupo
+        // 1. Agrupar estritamente por VALOR ABSOLUTO
+        // O valor é o indicador mais forte de conexão entre compra e reembolso
         const groups = new Map();
 
         for (const tx of transactions) {
-            const dateStr = (tx.date || '').split('T')[0];
-            const amount = Math.abs(tx.amount); // Agrupar tudo por valor absoluto
-            const key = `${dateStr}|${amount}`;
+            const amount = Math.abs(tx.amount);
+            // Arredondar para eviar problemas de ponto flutuante, usando 2 casas
+            const amountKey = Math.round(amount * 100);
 
-            // DEBUG PROBE para o caso específico do usuário (359.20)
-            if (amount > 359 && amount < 360) {
-                console.log(`[DEBUG_PROBE] ID: ${tx.id} | DateRaw: ${tx.date} -> KeyDate: ${dateStr} | AmountRaw: ${tx.amount} | Desc: "${tx.description}"`);
+            if (!groups.has(amountKey)) {
+                groups.set(amountKey, []);
             }
-
-            if (!groups.has(key)) {
-                groups.set(key, []);
-            }
-            groups.get(key).push(tx);
+            groups.get(amountKey).push(tx);
         }
 
         const batch = db.batch();
         let updateCount = 0;
         const results = [];
+        const processedIds = new Set(); // Evitar processar a mesma tx duas vezes
 
-        for (const [key, group] of groups) {
-            // Se tivermos exatamente 2 transações com mesma data e valor absoluto
-            if (group.length === 2) {
-                const [tx1, tx2] = group;
+        // 2. Analisar cada grupo de valor
+        for (const [amountKey, group] of groups) {
+            // Se só tem 1 transação com esse valor, não tem par
+            if (group.length < 2) continue;
 
-                const d1 = (tx1.description || '').trim().toUpperCase();
-                const d2 = (tx2.description || '').trim().toUpperCase();
+            // Ordenar por data para facilitar janela temporal
+            group.sort((a, b) => new Date(a.date) - new Date(b.date));
 
-                // COMPARAÇÃO DE DESCRIÇÃO (Fuzzy)
-                // 1. Iguais
-                // 2. Um contém o outro
-                // 3. 8 primeiros caracteres iguais (para cobrir "COMPRA * XYZ" vs "COMPRA XYZ")
-                const descriptionsMatch =
-                    d1 === d2 ||
-                    d1.includes(d2) ||
-                    d2.includes(d1) ||
-                    (d1.length > 5 && d2.length > 5 && d1.slice(0, 8) === d2.slice(0, 8));
+            // Comparar todos contra todos dentro do grupo (complexidade N^2 mas N é pequeno aqui)
+            for (let i = 0; i < group.length; i++) {
+                const tx1 = group[i];
+                if (processedIds.has(tx1.id)) continue;
 
-                if (descriptionsMatch) {
-                    // Verificar sinais
-                    // Se ambos forem negativos (Expense) -> Problema relatado pelo usuário
-                    // Se ambos forem positivos (Income) -> Pode ser duplicidade de estorno, também corrigimos
-                    // Se forem sinais opostos -> Já está zerado, ignorar (ex: compra e estorno correto)
+                for (let j = i + 1; j < group.length; j++) {
+                    const tx2 = group[j];
+                    if (processedIds.has(tx2.id)) continue;
 
-                    const type1 = tx1.type;
-                    const type2 = tx2.type;
+                    // CHECK 1: Janela de Datas (ex: máximo 30 dias de diferença)
+                    const d1 = new Date(tx1.date);
+                    const d2 = new Date(tx2.date);
+                    const diffTime = Math.abs(d2 - d1);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                    if (type1 === type2) {
-                        console.log(`[Fix-Duplicates] ⚠️ Found duplicate pair: ${key} | "${d1}" vs "${d2}"`);
+                    if (diffDays > 30) continue; // Muito distantes para ser reembolso
 
-                        // Converter a segunda para o tipo oposto
-                        const newType = type1 === 'expense' ? 'income' : 'expense';
-                        const category = newType === 'income' ? 'Reembolso' : 'Uncategorized';
+                    // CHECK 2: Descrição Similar
+                    const desc1 = (tx1.description || '').trim().toUpperCase();
+                    const desc2 = (tx2.description || '').trim().toUpperCase();
 
-                        batch.update(ccRef.doc(tx2.id), {
-                            type: newType,
-                            category: category,
-                            isRefund: true,
-                            _fixedBy: 'db_cleanup_fuzzy'
-                        });
+                    // Remover prefixos comuns de "Estorno" para comparar a raiz
+                    const cleanDesc1 = desc1.replace(/(ESTORNO|REEMBOLSO|CANCELAMENTO)/g, '').trim();
+                    const cleanDesc2 = desc2.replace(/(ESTORNO|REEMBOLSO|CANCELAMENTO)/g, '').trim();
 
-                        results.push({
-                            fixed: true,
-                            pair: [tx1.description, tx2.description],
-                            amount: tx2.amount,
-                            reason: 'fuzzy_match_date_amount'
-                        });
-                        updateCount++;
+                    // Matching Fuzzy
+                    const descriptionsMatch =
+                        desc1 === desc2 ||
+                        cleanDesc1 === cleanDesc2 ||
+                        desc1.includes(cleanDesc2) ||
+                        desc2.includes(cleanDesc1) ||
+                        (cleanDesc1.length > 5 && cleanDesc2.length > 5 && cleanDesc1.slice(0, 8) === cleanDesc2.slice(0, 8));
+
+                    if (descriptionsMatch) {
+                        // CURIOSIDADE: Temos um par (Compra x Reembolso ou Compra Duplicada)
+
+                        // Caso A: Sinais opostos (Um + e um -) -> Ex: -359 e +359
+                        // Isso é o cenário ideal, já se anulam matematicamente.
+                        // Mas garantimos que o POSITIVO esteja marcado como Reembolso para UI.
+                        if (tx1.type !== tx2.type) {
+                            const incomeTx = tx1.type === 'income' ? tx1 : tx2;
+                            if (incomeTx.category !== 'Reembolso' || !incomeTx.isRefund) {
+                                batch.update(ccRef.doc(incomeTx.id), {
+                                    category: 'Reembolso',
+                                    isRefund: true,
+                                    _fixedBy: 'refund_matcher_v2'
+                                });
+                                updateCount++;
+                                processedIds.add(tx1.id);
+                                processedIds.add(tx2.id); // Par resolvido
+                            }
+                        }
+                        // Caso B: Sinais IGUAIS (Ambos negativos - Expense) -> Problema do usuário
+                        // Ex: -359 e -359. O segundo é provavelmente o estorno que veio errado
+                        else if (tx1.type === 'expense' && tx2.type === 'expense') {
+                            console.log(`[Fix-Refunds] ⚠️ Found double expense pair: ${amountKey} (R$ ${tx1.amount}) | "${desc1}" vs "${desc2}"`);
+
+                            // Converter a SEGUNDA (mais recente) para income/reembolso
+                            batch.update(ccRef.doc(tx2.id), {
+                                type: 'income',
+                                category: 'Reembolso',
+                                isRefund: true,
+                                _fixedBy: 'refund_matcher_v2_fix_double_expense'
+                            });
+
+                            results.push({
+                                fixed: true,
+                                pair: [desc1, desc2],
+                                amount: tx2.amount,
+                                reason: 'double_expense_fuzzy_match'
+                            });
+                            updateCount++;
+                            processedIds.add(tx1.id);
+                            processedIds.add(tx2.id);
+                        }
                     }
-                } else {
-                    console.log(`[Fix-Duplicates] ℹ️ Candidate match rejected by description: "${d1}" vs "${d2}"`);
                 }
             }
         }
 
         if (updateCount > 0) {
             await batch.commit();
-            console.log(`[Fix-Duplicates] ✅ Fixed ${updateCount} transactions in DB`);
+            console.log(`[Fix-Duplicates] ✅ Fixed/Tagged ${updateCount} transactions in DB`);
         } else {
-            console.log(`[Fix-Duplicates] No duplicates found to fix.`);
+            console.log(`[Fix-Duplicates] No matched refunds found to fix.`);
         }
 
         return { success: true, fixed: updateCount, details: results };

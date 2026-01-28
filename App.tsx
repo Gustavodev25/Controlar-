@@ -1420,6 +1420,20 @@ const App: React.FC = () => {
         sample: data.slice(0, 3).map(tx => ({ id: tx.id, date: tx.date, desc: tx.description?.slice(0, 30), cardId: tx.cardId }))
       });
       setSeparateCreditCardTxs(data);
+
+      // AUTO-CLEANUP: Sempre que chegarem novos dados (ex: após sync), rodar a limpeza de duplicatas
+      // para garantir que os dados antigos/incorretos sejam removidos.
+      // Debounce simples para não chamar excessivamente
+      const now = Date.now();
+      if ((window as any)._lastCleanupTime && (now - (window as any)._lastCleanupTime) < 5000) {
+        return;
+      }
+      (window as any)._lastCleanupTime = now;
+
+      console.log('[AutoCleanup] Executando limpeza de duplicatas após atualização...');
+      dbService.cleanupDuplicateCreditCardTransactions(userId).catch(err => {
+        console.error('[AutoCleanup] Erro na limpeza automática:', err);
+      });
     });
 
 

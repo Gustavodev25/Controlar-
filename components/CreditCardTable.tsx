@@ -1,10 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronsUpDown, Sparkles, MoreVertical, RefreshCcw, ArrowRightLeft } from 'lucide-react';
+import { ChevronsUpDown, Sparkles, MoreVertical, RefreshCcw, ArrowRightLeft, CornerUpLeft } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -411,8 +411,12 @@ const calculateInvoiceSummary = (
   nonInstallmentTxs.forEach(tx => {
     const amt = Math.abs(Number(tx.amount) || 0);
     // TOTAL LÍQUIDO: despesas + valor, income - valor (créditos/reembolsos subtraem do total)
-    // Em cartão de crédito, transações income são créditos/estornos que REDUZEM o valor da fatura
-    const netAmt = tx.type === 'expense' ? amt : -amt;
+    // FIX: Se for expense mas valor negativo, trata como income (refund/estorno)
+    const isRefund = tx.type === 'expense' && Number(tx.amount) < 0;
+    const isIncome = tx.type === 'income' || isRefund;
+
+    // Se for income/refund, SUBTRAI do total (reduz a fatura). Se for expense, SOMA.
+    const netAmt = isIncome ? -amt : amt;
 
     const [ty, tm, td] = (tx.date || '').split('-').map(Number);
     const txDate = new Date(ty, tm - 1, td, 12, 0, 0);
@@ -902,6 +906,20 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     totalInstallments: 1,
     installmentNumber: 1
   });
+
+  // Handler para marcar estorno
+  const handleMarkAsRefund = (t: Transaction) => {
+    const isCurrentRefund = t.type === 'income' && t.category === 'Reembolso';
+    // Se está sendo marcado como estorno (Income), vira crédito na fatura
+    // Se está sendo desmarcado (vira Expense), volta a ser débito
+    onUpdate({
+      ...t,
+      type: isCurrentRefund ? 'expense' : 'income',
+      category: isCurrentRefund ? (t.pluggyRaw?.category || 'Uncategorized') : 'Reembolso',
+      isRefund: !isCurrentRefund,
+      _manualRefund: !isCurrentRefund
+    });
+  };
 
   const handleAddTransaction = async () => {
     if (!newTransaction.description || !newTransaction.amount || !newTransaction.date) {
@@ -1516,7 +1534,19 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (isCreditCardPayment(tx)) return acc;
         if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas
         const amt = getTransactionAmountInBRL(tx);
-        return tx.type === 'income' ? acc - amt : acc + amt;
+        // FIX: Treat negative expenses as income (refunds/credits)
+        // Check raw amount if available, otherwise assume negative implies credit for expense type
+        const rawAmount = (tx as any).amountOriginal || tx.amount;
+        const isNegativeExpense = tx.type === 'expense' && rawAmount < 0;
+
+        // NOVA VERIFICAÇÃO: Considerar flags manuais de reembolso
+        // Essas flags são definidas quando o usuário marca uma transação como reembolso manualmente
+        const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
+        const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
+
+        const effectiveType = (tx.type === 'income' || isNegativeExpense || isManualRefund || isRefundCategory) ? 'income' : 'expense';
+
+        return effectiveType === 'income' ? acc - amt : acc + amt;
       }, 0);
     };
 
@@ -1529,6 +1559,32 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       next: calcTotalWithRefundDetection(invoiceSummary.nextInvoice.transactions)
     };
   }, [invoiceSummary, selectedCard, exchangeRatesLoaded]);
+
+  // ============================================================
+  // TOTAIS PARA CARDS DE FATURA ATUAL E PRÓXIMA
+  // Usa a mesma lógica simples do totalAmount da tabela
+  // Isso garante que o valor do card seja igual ao TOTAL mostrado na tabela
+  // ============================================================
+  const cardTotals = useMemo(() => {
+    const calcSimpleTotal = (txs: Transaction[]) => {
+      return txs.reduce((acc, tx) => {
+        if (isCreditCardPayment(tx)) return acc;
+        const amt = getTransactionAmountInBRL(tx);
+
+        // Considerar flags manuais de reembolso
+        const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
+        const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
+
+        if (tx.type === 'income' || isManualRefund || isRefundCategory) return acc - amt;
+        return acc + amt;
+      }, 0);
+    };
+
+    return {
+      current: calcSimpleTotal(invoiceSummary.currentInvoice.transactions),
+      next: calcSimpleTotal(invoiceSummary.nextInvoice.transactions)
+    };
+  }, [invoiceSummary, exchangeRatesLoaded]);
 
   // Filter invoice transactions with search, date filters and sorting
   const filteredTransactions = useMemo(() => {
@@ -1606,57 +1662,26 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       byAmountAndDesc[key].push(t);
     });
 
+    // A lógica de paramento de transações (compra vs estorno) foi DESATIVADA a pedido do usuário.
+    // "remover a logica que tem tambem para definir isso"
+
     // Identifica IDs de transações pareadas
     const pairedIds = new Set<string>();
-    Object.values(byAmountAndDesc).forEach(group => {
-      if (group.length >= 2) {
-        const sorted = [...group].sort((a, b) =>
-          new Date(a.date).getTime() - new Date(b.date).getTime()
-        );
-        const expenses = sorted.filter(t => t.type === 'expense');
-        const incomes = sorted.filter(t => t.type === 'income');
 
-        // Caso 1: Expense + Income
-        if (expenses.length > 0 && incomes.length > 0) {
-          const usedExpenses = new Set<string>();
-          incomes.forEach(income => {
-            const match = expenses.find(exp =>
-              !usedExpenses.has(exp.id) && Math.abs(exp.amount) === Math.abs(income.amount)
-            );
-            if (match) {
-              pairedIds.add(match.id);
-              pairedIds.add(income.id);
-              usedExpenses.add(match.id);
-            }
-          });
-        }
-
-        // Caso 2: Duas expenses idênticas (compra + estorno ambos como expense)
-        if (expenses.length >= 2 && incomes.length === 0) {
-          const usedIds = new Set<string>();
-          for (let i = 0; i < expenses.length; i++) {
-            if (usedIds.has(expenses[i].id)) continue;
-            for (let j = i + 1; j < expenses.length; j++) {
-              if (usedIds.has(expenses[j].id)) continue;
-              if (Math.abs(expenses[i].amount) === Math.abs(expenses[j].amount)) {
-                pairedIds.add(expenses[i].id);
-                pairedIds.add(expenses[j].id);
-                usedIds.add(expenses[i].id);
-                usedIds.add(expenses[j].id);
-                break;
-              }
-            }
-          }
-        }
-      }
-    });
+    // LOGICA REMOVIDA: Não tentamos mais adivinhar pares.
+    // Apenas passamos reto.
 
     // Calcula total excluindo transações pareadas
     return transactionsWithCharges.reduce((acc, tx) => {
       if (isCreditCardPayment(tx)) return acc;
       if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas (estorno+compra)
       const amt = getTransactionAmountInBRL(tx);
-      if (tx.type === 'income') return acc - amt;
+
+      // Considerar flags manuais de reembolso
+      const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
+      const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
+
+      if (tx.type === 'income' || isManualRefund || isRefundCategory) return acc - amt;
       return acc + amt;
     }, 0);
   }, [transactionsWithCharges, exchangeRatesLoaded]);
@@ -1861,7 +1886,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       }
     });
 
-    return { pairedTransactions: pairs, pairedTransactionIds: pairedIds };
+    // LOGICA REMOVIDA
+    return {
+      pairedTransactions: [],
+      pairedTransactionIds: new Set<string>()
+    };
   }, [transactions]);
 
   // Log pares detectados para debug
@@ -1907,6 +1936,53 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const handleExport = () => {
     const dateStr = new Date().toISOString().split('T')[0];
     exportToCSV(filteredTransactions, `fatura_cartao_${dateStr}.csv`);
+  };
+
+  const handleExportJSON = () => {
+    let targetInvoice;
+    let label = 'atual';
+
+    // Determine which invoice to export based on selection
+    // Default to Current if 'all' is selected, otherwise respect selection
+    if (selectedInvoice === 'last') {
+      targetInvoice = invoiceSummary.lastInvoice;
+      label = 'anterior';
+    } else if (selectedInvoice === 'next') {
+      targetInvoice = invoiceSummary.nextInvoice;
+      label = 'proxima';
+    } else {
+      // Current or All -> Export Current Invoice (Total)
+      targetInvoice = invoiceSummary.currentInvoice;
+      label = 'atual';
+    }
+
+    const data = {
+      exportDate: new Date().toISOString(),
+      cardId: selectedCard?.id,
+      cardName: selectedCard?.name || selectedCard?.institution,
+      invoiceType: label,
+      invoicePeriod: {
+        start: label === 'atual' ? invoiceSummary.currentInvoiceStart : (label === 'anterior' ? invoiceSummary.lastInvoiceStart : invoiceSummary.nextInvoiceStart),
+        end: label === 'atual' ? invoiceSummary.currentInvoiceEnd : (label === 'anterior' ? invoiceSummary.lastInvoiceEnd : invoiceSummary.nextInvoiceEnd),
+        dueDate: label === 'atual' ? invoiceSummary.currentDueDate : (label === 'anterior' ? invoiceSummary.lastDueDate : invoiceSummary.nextDueDate),
+      },
+      summary: {
+        total: targetInvoice.total,
+        count: targetInvoice.transactions.length
+      },
+      transactions: targetInvoice.transactions
+    };
+
+    const jsonString = JSON.stringify(data, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `fatura_${label}_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   // Usar categorias do mapeamento Pluggy ao invés de hardcoded
@@ -1967,6 +2043,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           >
             <FileText size={18} />
             <span className="hidden sm:inline">Exportar</span>
+          </button>
+
+          <button
+            onClick={handleExportJSON}
+            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+            title="Baixar JSON da Fatura"
+          >
+            <Code size={18} />
+            <span className="hidden sm:inline">JSON</span>
           </button>
 
 
@@ -2313,7 +2398,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                             <div className="flex flex-col gap-0.5 w-full">
                               <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'current' ? 'text-[#d97757]' : 'text-white'}`}>
-                                {formatCurrency(visualTotals.current)}
+                                {formatCurrency(cardTotals.current)}
                               </span>
                               <span className="text-[10px] text-gray-500">
                                 {invoiceSummary.currentInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.currentInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -2343,7 +2428,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                             <div className="flex flex-col gap-0.5 w-full">
                               <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'next' ? 'text-blue-400' : 'text-white'}`}>
-                                {formatCurrency(visualTotals.next)}
+                                {formatCurrency(cardTotals.next)}
                               </span>
                               <span className="text-[10px] text-gray-500">
                                 {invoiceSummary.nextInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.nextInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -2553,12 +2638,24 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       </motion.div>
                     )}
                   </AnimatePresence>
+
+                  {/* Aviso informativo sobre estornos manuais */}
+                  <div className="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/10 flex items-center gap-3 rounded-t-xl">
+                    <div className="flex-shrink-0">
+                      <AlertCircle size={16} className="text-amber-400" />
+                    </div>
+                    <p className="text-xs text-amber-200/80">
+                      <span className="font-semibold text-amber-300">Dica:</span> Alguns bancos não identificam estornos automaticamente.
+                      Se uma transação é um reembolso/estorno, você pode marcá-la clicando nos <span className="font-semibold">3 pontinhos (⋮)</span> e selecionando <span className="font-semibold">"Marcar como Estorno"</span>.
+                    </p>
+                  </div>
+
                   {/* Responsive Table Grid */}
                   <div className="overflow-auto flex-1 custom-scrollbar z-0 pb-20 sm:pb-0">
                     <table className="min-w-[1000px] w-full border-collapse text-sm text-left h-full">
                       <thead className="bg-[#333432] sticky top-0 z-10 text-xs font-bold text-gray-400 uppercase tracking-wider shadow-sm">
                         <tr>
-                          <th className="px-4 py-4 border-b border-r border-[#373734] w-12 text-center first:rounded-tl-xl align-middle">
+                          <th className="px-4 py-4 border-b border-r border-[#373734] w-12 text-center align-middle">
                             <div className="flex items-center justify-center h-full">
                               <button
                                 onClick={handleSelectAll}
@@ -2682,7 +2779,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           </th>
 
                           <th className="px-6 py-4 border-b border-r border-[#373734] w-32 text-center">Status</th>
-
+                          <th className="px-6 py-4 border-b border-[#373734] w-16 text-center">Ações</th>
                         </tr>
                       </thead>
 
@@ -2743,7 +2840,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     ? isLate
                                       ? 'bg-amber-500/5 hover:bg-amber-500/10'
                                       : 'bg-emerald-500/5 hover:bg-emerald-500/10'
-                                    : 'hover:bg-[#373734]/30'
+                                    : (t.isRefund || t.category === 'Reembolso') // Highlight refunds
+                                      ? 'bg-blue-500/5 hover:bg-blue-500/10'
+                                      : 'hover:bg-[#373734]/30'
                                 }`}
                             >
                               <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
@@ -2805,6 +2904,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         Ajuste
                                       </span>
                                     )}
+                                    {(t.isRefund || t.category === 'Reembolso') && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                        <CornerUpLeft size={10} /> Reembolso
+                                      </span>
+                                    )}
                                     {isCharge && (
                                       <span
                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-red-500/10 text-red-400 border border-red-500/20"
@@ -2855,13 +2959,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                       </span>
                                     )}
                                     {isPaired && (
-                                      <span
-                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-cyan-500/10 text-cyan-400 border border-cyan-500/20"
-                                        title="Esta transação foi pareada com outra (compra + estorno) e não entra no total da fatura"
-                                      >
-                                        <ArrowRightLeft size={10} />
-                                        Estornado
-                                      </span>
+                                      null
                                     )}
                                   </div>
                                   {(t as any).totalInstallments > 1 && (
@@ -2898,12 +2996,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               </td>
                               <td className="px-6 py-4 text-right border-r border-[#373734]">
                                 <div className="flex flex-col items-end gap-0.5">
-                                  <span className={`font-bold font-mono ${isPaired
-                                    ? 'text-cyan-400/60 line-through'
-                                    : isAdjustment ? 'text-purple-400'
-                                      : isCharge ? 'text-red-400'
-                                        : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
-                                          : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                  <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
+                                    : isCharge ? 'text-red-400'
+                                      : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
+                                        : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
                                     }`}>
                                     {t.type === 'income' ? '+' : '-'} {formatCurrency(displayAmount)}
                                   </span>
@@ -2951,35 +3047,54 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   </span>
                                 )}
                               </td>
-                              {isManualModeActive && (
-                                <td className="px-6 py-4 text-center">
-                                  {!isCharge && !isPayment && !isAdjustment && (
-                                    <div className="flex items-center justify-center gap-2">
-                                      <button
-                                        onClick={() => handleEditClick(t)}
-                                        className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
-                                        title="Editar"
-                                      >
-                                        <Edit2 size={16} />
-                                      </button>
-                                      <button
-                                        onClick={() => setDeleteId(t.id)}
-                                        className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                                        title="Excluir"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </td>
-                              )}
+                              <td className="px-6 py-4 text-center">
+                                <div className="flex items-center justify-center">
+                                  <Dropdown>
+                                    <DropdownTrigger className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors">
+                                      <MoreVertical size={16} />
+                                    </DropdownTrigger>
+                                    <DropdownContent align="right" width="w-48">
+                                      {/* Marcar como Reembolso (Always visible for non-payments/adjustments) */}
+                                      {!isPayment && !isAdjustment && !isCharge && (
+                                        <DropdownItem
+                                          onClick={() => handleMarkAsRefund(t)}
+                                          icon={CornerUpLeft}
+                                          className={t.category === 'Reembolso' ? "text-blue-400" : ""}
+                                        >
+                                          {t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Marcar como Estorno'}
+                                        </DropdownItem>
+                                      )}
+
+                                      {/* Manual Actions */}
+                                      {isManualModeActive && !isCharge && !isPayment && !isAdjustment && (
+                                        <>
+                                          <DropdownItem
+                                            onClick={() => handleEditClick(t)}
+                                            icon={Edit2}
+                                          >
+                                            Editar
+                                          </DropdownItem>
+                                          <div className="h-px bg-[#373734] my-1" />
+                                          <DropdownItem
+                                            onClick={() => setDeleteId(t.id)}
+                                            icon={Trash2}
+                                            className="text-red-400 hover:text-red-300"
+                                          >
+                                            Excluir
+                                          </DropdownItem>
+                                        </>
+                                      )}
+                                    </DropdownContent>
+                                  </Dropdown>
+                                </div>
+                              </td>
                             </tr>
                           );
                         })}
 
                         {transactionsWithCharges.length === 0 && (
                           <tr className="h-full">
-                            <td colSpan={isManualModeActive ? 7 : 6} className="p-4 h-full">
+                            <td colSpan={8} className="p-4 h-full">
                               <EmptyState
                                 title="Nenhum lançamento de cartão encontrado"
                                 description="Seus gastos com cartão aparecerão aqui."
@@ -3564,7 +3679,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
 
         </div >
-      )}
+      )
+      }
     </div >
   );
 };

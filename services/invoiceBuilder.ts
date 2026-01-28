@@ -165,11 +165,25 @@ export const isCreditCardPayment = (tx: Transaction): boolean => {
 /**
  * Verifica se uma transação é um reembolso/estorno/crédito
  * IMPORTANTE: Não deve classificar "Pagamento de Fatura" como reembolso.
+ * 
+ * Verifica também as flags manuais (isRefund, _manualRefund) que são
+ * definidas quando o usuário marca manualmente uma transação como reembolso.
  */
 export const isTransactionRefund = (tx: Transaction): boolean => {
   // Se for pagamento de fatura, NÃO é reembolso
   if (isCreditCardPayment(tx)) {
     return false;
+  }
+
+  // 1. NOVA REGRA: Verifica flags manuais de reembolso definidas pelo usuário
+  // Se o usuário marcou manualmente como reembolso, respeitar essa escolha
+  if ((tx as any).isRefund === true || (tx as any)._manualRefund === true) {
+    return true;
+  }
+
+  // 2. Se o type é 'income' e categoria é 'Reembolso' (marcado pelo handleMarkAsRefund)
+  if (tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso') {
+    return true;
   }
 
   const d = (tx.description || '').toLowerCase();
@@ -499,6 +513,7 @@ export const processInstallments = (
  */
 export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
   const isPayment = isCreditCardPayment(tx);
+  // FIX: rely only on explicit flags or helper detection, not just negative amount
   const isRefund = isTransactionRefund(tx);
 
   // Determina tipo e sinal baseado na natureza da transação

@@ -471,7 +471,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           || tx.invoiceDate?.slice(0, 7)
           || tx.date?.slice(0, 7);
         if (!key) return;
-        const isPayment = (tx.type === 'income') || (tx.amount < 0);
+        // FIX: Only treat as payment/credit if it is explicitly Income OR Refund.
+        // Do NOT assume negative amount is a payment (expenses can be negative).
+        const isPayment = (tx.type === 'income') || (tx as any).isRefund || tx.category === 'Reembolso';
         const delta = Math.abs(tx.amount || 0) * (isPayment ? -1 : 1);
         cardMonthSums.set(key, (cardMonthSums.get(key) || 0) + delta);
       });
@@ -1231,7 +1233,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                             <div className="flex items-baseline gap-2">
                               <p className={`text-2xl font-bold mt-0.5 ${isCurrent ? 'text-white' : 'text-gray-400'}`}>
                                 <NumberFlow
-                                  value={displayValue}
+                                  value={Math.abs(displayValue)}
                                   format={{ style: 'currency', currency: 'BRL' }}
                                   locales="pt-BR"
                                 />

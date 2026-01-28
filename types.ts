@@ -192,6 +192,10 @@ export interface Transaction {
 
   // Invoice Manual Override
   manualInvoiceMonth?: string; // YYYY-MM overrides the automatic date-based calculation
+
+  // Refund & Adjustment Flags
+  isRefund?: boolean;
+  _manualRefund?: boolean;
 }
 
 

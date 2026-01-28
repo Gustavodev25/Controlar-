@@ -563,7 +563,10 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
   // Totais baseados no estado atual (considerando o mês filtrado para status "Pago")
   const totalMonthly = useMemo(() => {
     return subscriptions
-      .filter(s => s.status === 'active' && !isSubscriptionPaidThisMonth(s))
+      .filter(s => {
+        const isConfirmed = s.source !== 'auto_detected' || s.confirmed;
+        return s.status === 'active' && !isSubscriptionPaidThisMonth(s) && isConfirmed;
+      })
       .reduce((acc, curr) => {
         const monthlyAmount = curr.billingCycle === 'monthly' ? curr.amount : curr.amount / 12;
         return acc + monthlyAmount;
