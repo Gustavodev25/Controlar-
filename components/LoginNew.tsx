@@ -435,13 +435,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                             city: formData.city,
                             state: formData.state
                         },
-                        subscription: {
-                            plan: 'pro',
-                            status: 'trial',
-                            billingCycle: 'monthly',
-                            trialStartedAt: new Date().toISOString(),
-                            trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                        },
+                        subscription: undefined,
                         createdAt: new Date().toISOString()
                     });
                     // Success - Redirect handled by auth listener or we can force it
@@ -476,13 +470,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                     baseSalary: 0,
                     avatarUrl: user.photoURL || undefined,
                     isAdmin: false,
-                    subscription: {
-                        plan: 'pro',
-                        status: 'trial',
-                        billingCycle: 'monthly',
-                        trialStartedAt: new Date().toISOString(),
-                        trialEndsAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-                    },
+                    subscription: undefined,
                     createdAt: new Date().toISOString()
                 });
                 localStorage.setItem('is_new_signup', 'true');
@@ -593,7 +581,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                                 recoveryStep === 1 ? 'Recuperar Senha' :
                                     recoveryStep === 2 ? 'Digite o Código' : 'Nova Senha'
                             ) : (
-                                isLogin ? <span>Boas-vindas ao <ShiningText text="Controlar+" /></span> : 'Crie sua conta'
+                                isLogin ? <span>Boas-vindas ao <ShiningText text="Controlar+" /></span> : 'Começar Agora'
                             )}
                         </h1>
                         <p className="text-gray-400 text-sm">
@@ -605,7 +593,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                                     ? 'Acesse sua conta para continuar.'
                                     : step === 1
                                         ? 'Preencha seus dados iniciais.'
-                                        : 'Finalize seu cadastro.'
+                                        : 'Acesse o plano Pro e crie sua conta.'
                             )}
                         </p>
                     </motion.div>
@@ -696,131 +684,61 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                                     </div>
                                 </motion.div>
                             ) : (
-                                /* REGISTER FIELDS */
-                                step === 1 ? (
-                                    <motion.div
-                                        key="register-step1"
-                                        initial={{ opacity: 0, filter: "blur(10px)" }}
-                                        animate={{ opacity: 1, filter: "blur(0px)" }}
-                                        exit={{ opacity: 0, filter: "blur(10px)" }}
-                                        transition={{ duration: 0.2 }}
-                                        className="space-y-4"
-                                    >
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Nome Completo</label>
-                                            <div className="relative group">
-                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><User size={18} /></div>
-                                                <input type="text" required value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} placeholder="Seu nome" className="input-primary pl-11 bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">E-mail</label>
-                                            <div className="relative group">
-                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><Mail size={18} /></div>
-                                                <input type="email" required value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="seu@email.com" className="input-primary pl-11 bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                            </div>
-                                        </div>
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Senha</label>
-                                            <div className="relative group">
-                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><Lock size={18} /></div>
-                                                <input type="password" required value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} placeholder="••••••••" className="input-primary pl-11 bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                            </div>
-                                        </div>
-                                    </motion.div>
-                                ) : (
-                                    <motion.div
-                                        key="register-step2"
-                                        initial={{ opacity: 0, filter: "blur(10px)" }}
-                                        animate={{ opacity: 1, filter: "blur(0px)" }}
-                                        exit={{ opacity: 0, filter: "blur(10px)" }}
-                                        transition={{ duration: 0.2 }}
-                                        className="space-y-4"
-                                    >
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="space-y-1.5">
-                                                <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">CPF</label>
-                                                <input type="text" maxLength={14} required value={formatCPF(formData.cpf)} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} placeholder="000.000.000-00" className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                            </div>
-                                            <div className="space-y-1.5">
-                                                <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Data Nasc.</label>
-                                                <CustomDatePicker
-                                                    value={formData.birthDate}
-                                                    onChange={(val) => setFormData({ ...formData, birthDate: val })}
-                                                    placeholder="dd/mm/aaaa"
-                                                    dropdownMode="fixed"
-                                                />
-                                            </div>
+                                <motion.div
+                                    key="register-pro-cta"
+                                    initial={{ opacity: 0, scale: 0.95 }}
+                                    animate={{ opacity: 1, scale: 1 }}
+                                    exit={{ opacity: 0, scale: 0.95 }}
+                                    transition={{ duration: 0.3 }}
+                                    className="space-y-6 py-4"
+                                >
+                                    <div className="text-center space-y-4">
+                                        <div className="bg-[#d97757]/10 p-4 rounded-xl border border-[#d97757]/20">
+                                            <p className="text-sm text-gray-300 leading-relaxed">
+                                                Para garantir a melhor experiência, o <strong>Controlar+</strong> é exclusivo para assinantes <span className="text-[#d97757] font-bold">Pro</span>.
+                                            </p>
                                         </div>
 
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">CEP</label>
-                                            <input type="text" maxLength={9} required value={formData.cep} onChange={handleCepChange} placeholder="00000-000" className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
+                                        <div className="space-y-2">
+                                            <p className="text-xs text-gray-400">Ao assinar, você desbloqueia:</p>
+                                            <ul className="text-xs text-gray-300 space-y-1">
+                                                <li className="flex items-center justify-center gap-1"><Check size={12} className="text-[#d97757]" /> Integração bancária automática</li>
+                                                <li className="flex items-center justify-center gap-1"><Check size={12} className="text-[#d97757]" /> Gestão completa de cartões</li>
+                                                <li className="flex items-center justify-center gap-1"><Check size={12} className="text-[#d97757]" /> Assistente financeiro com IA</li>
+                                            </ul>
                                         </div>
 
-                                        <div className="space-y-1.5">
-                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Telefone / WhatsApp <span className="text-[#d97757]">*</span></label>
-                                            <div className="relative group">
-                                                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><Phone size={18} /></div>
-                                                <input type="text" maxLength={15} required value={formatPhone(formData.phone)} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} placeholder="(00) 90000-0000" className="input-primary pl-11 bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                            </div>
-                                        </div>
-
-                                        <AnimatePresence>
-                                            {showAddressFields && (
-                                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 overflow-hidden">
-                                                    <div className="flex gap-4">
-                                                        <div className="w-2/3 space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Rua</label>
-                                                            <input type="text" required value={formData.street} onChange={(e) => setFormData({ ...formData, street: e.target.value })} className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                                        </div>
-                                                        <div className="w-1/3 space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Número</label>
-                                                            <input type="text" required value={formData.number} onChange={(e) => setFormData({ ...formData, number: e.target.value })} className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="flex gap-4">
-                                                        <div className="w-1/2 space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Cidade</label>
-                                                            <input type="text" required value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                                        </div>
-                                                        <div className="w-1/2 space-y-1.5">
-                                                            <label className="text-[10px] font-bold text-gray-400 pl-1 uppercase tracking-wider">Estado</label>
-                                                            <input type="text" required value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="input-primary bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757]" />
-                                                        </div>
-                                                    </div>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-
-                                        <div
-                                            className="flex items-center gap-2 pt-2 cursor-pointer group"
-                                            onClick={() => setAcceptedTerms(!acceptedTerms)}
+                                        <button
+                                            type="button"
+                                            onClick={() => onSubscribe && onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' })}
+                                            className="w-full bg-[#d97757] hover:bg-[#c66a4e] text-white font-bold py-4 rounded-xl shadow-lg hover:shadow-[#d97757]/20 transition-all transform hover:-translate-y-1 flex items-center justify-center gap-2 group"
                                         >
-                                            <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${acceptedTerms ? 'bg-[#d97757] border-[#d97757] text-white' : 'bg-[#1A1A19] border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                                <Check size={12} strokeWidth={4} />
-                                            </div>
-                                            <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors">
-                                                Li e aceito os <button type="button" onClick={(e) => { e.stopPropagation(); setShowTerms(true); }} className="text-[#d97757] hover:underline font-medium">Termos de Uso</button> do sistema.
-                                            </span>
-                                        </div>
-                                    </motion.div>
-                                )
+                                            <span>Assinar PRO e Criar Conta</span>
+                                            <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
+                                        </button>
+
+                                        <p className="text-[10px] text-gray-500">
+                                            7 dias de garantia • Cancele quando quiser
+                                        </p>
+                                    </div>
+                                </motion.div>
                             )}
                         </AnimatePresence>
 
-                        <Button
-                            type="submit"
-                            isLoading={isLoading}
-                            fullWidth
-                            size="lg"
-                            className="mt-4 relative z-20"
-                        >
-                            {isResettingPassword
-                                ? (recoveryStep === 1 ? 'Enviar Código' : recoveryStep === 2 ? 'Verificar Código' : 'Redefinir Senha')
-                                : (isLogin ? 'Entrar' : (step === 1 ? 'Continuar' : 'Finalizar Cadastro'))
-                            }
-                        </Button>
+                        {(isLogin || isResettingPassword) && (
+                            <Button
+                                type="submit"
+                                isLoading={isLoading}
+                                fullWidth
+                                size="lg"
+                                className="mt-4 relative z-20"
+                            >
+                                {isResettingPassword
+                                    ? (recoveryStep === 1 ? 'Enviar Código' : recoveryStep === 2 ? 'Verificar Código' : 'Redefinir Senha')
+                                    : 'Entrar'
+                                }
+                            </Button>
+                        )}
                     </form>
 
                     <motion.p layout className="mt-8 text-left text-xs text-gray-500">

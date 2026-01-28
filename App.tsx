@@ -3524,8 +3524,8 @@ const App: React.FC = () => {
         isProcessing={isProcessingInvite}
       />
 
-      {/* Trial Expired Paywall - Blocks app when trial ends */}
-      {isTrialExpired && currentUser && activeTab !== 'subscription' && (
+      {/* Trial Expired Paywall - Blocks app when trial ends, OR if user is on starter plan (Plan Paywall) */}
+      {(isTrialExpired || effectivePlan === 'starter') && currentUser && activeTab !== 'subscription' && (
         <TrialExpiredPaywall
           userName={currentUser.name.split(' ')[0]}
           onSubscribe={() => {
