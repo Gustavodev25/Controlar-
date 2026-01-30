@@ -907,6 +907,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     installmentNumber: 1
   });
 
+  // Partial Refund States
+  const [isPartialRefundModalOpen, setIsPartialRefundModalOpen] = useState(false);
+  const [partialRefundTarget, setPartialRefundTarget] = useState<Transaction | null>(null);
+  const [partialAmount, setPartialAmount] = useState<string>('');
+
   // Handler para marcar estorno
   const handleMarkAsRefund = (t: Transaction) => {
     const isCurrentRefund = t.type === 'income' && t.category === 'Reembolso';
@@ -919,6 +924,60 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       isRefund: !isCurrentRefund,
       _manualRefund: !isCurrentRefund
     });
+  };
+
+  const handlePartialRefundSubmit = async () => {
+    if (!partialRefundTarget || !partialAmount) return;
+
+    // Limpa o valor para garantir que seja um número positivo
+    const cleanValue = partialAmount.toString().replace(/[R$\s]/g, '').replace(',', '.');
+    const amount = Math.abs(parseFloat(cleanValue));
+
+    // Usa Math.abs no target para comparar magnitudes (ex: estornar 10 de -50)
+    if (isNaN(amount) || amount <= 0 || amount > Math.abs(partialRefundTarget.amount)) {
+      toast.warning('Informe um valor válido (não superior ao original)');
+      return;
+    }
+
+    try {
+      if (onAdd && selectedCardId) {
+        // 1. Reduz o valor da transação original (ajusta conforme o sinal)
+        const isNegative = partialRefundTarget.amount < 0;
+        const updatedOriginal = {
+          ...partialRefundTarget,
+          amount: isNegative 
+            ? partialRefundTarget.amount + amount 
+            : partialRefundTarget.amount - amount
+        };
+        onUpdate(updatedOriginal);
+
+        // 2. Cria a nova transação de estorno (crédito)
+        const payload: Omit<Transaction, 'id'> = {
+          ...partialRefundTarget,
+          description: `Estorno Parcial: ${partialRefundTarget.description}`,
+          amount: amount,
+          type: 'income',
+          category: 'Reembolso',
+          isRefund: true,
+          _manualRefund: true,
+          status: 'completed',
+          date: new Date().toISOString().split('T')[0],
+          installmentNumber: 1,
+          totalInstallments: 1
+        };
+        // @ts-ignore
+        delete payload.id;
+
+        await onAdd(payload);
+        toast.success(`Estorno parcial de ${formatCurrency(amount)} aplicado. Valor original reduzido para ${formatCurrency(updatedOriginal.amount)}.`);
+        setIsPartialRefundModalOpen(false);
+        setPartialRefundTarget(null);
+        setPartialAmount('');
+      }
+    } catch (error) {
+      console.error('Error adding partial refund:', error);
+      toast.error('Erro ao adicionar estorno parcial');
+    }
   };
 
   const handleAddTransaction = async () => {
@@ -2646,7 +2705,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     </div>
                     <p className="text-xs text-amber-200/80">
                       <span className="font-semibold text-amber-300">Dica:</span> Alguns bancos não identificam estornos automaticamente.
-                      Se uma transação é um reembolso/estorno, você pode marcá-la clicando nos <span className="font-semibold">3 pontinhos (⋮)</span> e selecionando <span className="font-semibold">"Marcar como Estorno"</span>.
+                      Se uma transação é um reembolso/estorno, você pode marcá-la clicando no ícone de <span className="font-semibold">Estorno</span> ao final da linha.
                     </p>
                   </div>
 
@@ -2793,6 +2852,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         {transactionsWithCharges.map((t, index) => {
                           const isCharge = (t as any).isCharge === true;
                           const isPayment = (t as any).isPayment === true;
+                          const isRefund = (t as any).isRefund === true || t.category === 'Reembolso';
                           const isLate = (t as any).isLate === true;
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
@@ -2840,9 +2900,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     ? isLate
                                       ? 'bg-amber-500/5 hover:bg-amber-500/10'
                                       : 'bg-emerald-500/5 hover:bg-emerald-500/10'
-                                    : (t.isRefund || t.category === 'Reembolso') // Highlight refunds
-                                      ? 'bg-blue-500/5 hover:bg-blue-500/10'
-                                      : 'hover:bg-[#373734]/30'
+                                    : 'hover:bg-[#373734]/30'
                                 }`}
                             >
                               <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
@@ -2895,7 +2953,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     {isPayment && (
                                       <Check size={14} className={isLate ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'} />
                                     )}
-                                    <span className={isAdjustment ? 'text-purple-300' : isCharge ? 'text-red-300' : isPayment ? (isLate ? 'text-amber-300' : 'text-emerald-300') : ''}>{t.description}</span>
+                                    <span className={`
+                                      ${isRefund ? 'line-through text-gray-500' : ''}
+                                      ${isAdjustment ? 'text-purple-300' : isCharge ? 'text-red-300' : isPayment ? (isLate ? 'text-amber-300' : 'text-emerald-300') : ''}
+                                    `}>
+                                      {t.description}
+                                    </span>
                                     {isAdjustment && (
                                       <span
                                         className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-purple-500/10 text-purple-400 border border-purple-500/20"
@@ -2904,8 +2967,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         Ajuste
                                       </span>
                                     )}
-                                    {(t.isRefund || t.category === 'Reembolso') && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                    {isRefund && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide text-blue-400">
                                         <CornerUpLeft size={10} /> Reembolso
                                       </span>
                                     )}
@@ -2999,9 +3062,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
                                     : isCharge ? 'text-red-400'
                                       : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
-                                        : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                        : isRefund ? 'text-gray-500 line-through'
+                                          : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
                                     }`}>
-                                    {t.type === 'income' ? '+' : '-'} {formatCurrency(displayAmount)}
+                                    {isRefund ? '' : (t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
                                   </span>
                                   {/* Sinalizador de moeda estrangeira (USD, EUR, etc.) */}
                                   {isInternational && (
@@ -3049,43 +3113,41 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               </td>
                               <td className="px-6 py-4 text-center">
                                 <div className="flex items-center justify-center">
-                                  <Dropdown>
-                                    <DropdownTrigger className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors">
-                                      <MoreVertical size={16} />
-                                    </DropdownTrigger>
-                                    <DropdownContent align="right" width="w-48">
-                                      {/* Marcar como Reembolso (Always visible for non-payments/adjustments) */}
-                                      {!isPayment && !isAdjustment && !isCharge && (
+                                  {!isPayment && !isAdjustment && !isCharge && (
+                                    <Dropdown>
+                                      <DropdownTrigger>
+                                        <button
+                                          className={`p-2 rounded-xl transition-colors ${t.category === 'Reembolso'
+                                              ? "text-blue-400 hover:bg-blue-500/10"
+                                              : "text-gray-400 hover:text-white hover:bg-[#373734]"
+                                            }`}
+                                          title={t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Opções de Estorno'}
+                                        >
+                                          <CornerUpLeft size={16} />
+                                        </button>
+                                      </DropdownTrigger>
+                                      <DropdownContent align="right" width="w-48">
                                         <DropdownItem
                                           onClick={() => handleMarkAsRefund(t)}
                                           icon={CornerUpLeft}
-                                          className={t.category === 'Reembolso' ? "text-blue-400" : ""}
                                         >
-                                          {t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Marcar como Estorno'}
+                                          {t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Valor Total'}
                                         </DropdownItem>
-                                      )}
-
-                                      {/* Manual Actions */}
-                                      {isManualModeActive && !isCharge && !isPayment && !isAdjustment && (
-                                        <>
+                                        {t.category !== 'Reembolso' && (
                                           <DropdownItem
-                                            onClick={() => handleEditClick(t)}
-                                            icon={Edit2}
+                                            onClick={() => {
+                                              setPartialRefundTarget(t);
+                                              setPartialAmount(t.amount.toString());
+                                              setIsPartialRefundModalOpen(true);
+                                            }}
+                                            icon={Plus}
                                           >
-                                            Editar
+                                            Valor Parcial
                                           </DropdownItem>
-                                          <div className="h-px bg-[#373734] my-1" />
-                                          <DropdownItem
-                                            onClick={() => setDeleteId(t.id)}
-                                            icon={Trash2}
-                                            className="text-red-400 hover:text-red-300"
-                                          >
-                                            Excluir
-                                          </DropdownItem>
-                                        </>
-                                      )}
-                                    </DropdownContent>
-                                  </Dropdown>
+                                        )}
+                                      </DropdownContent>
+                                    </Dropdown>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -3132,6 +3194,58 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               </>
             )
           }
+
+          {/* Partial Refund Modal */}
+          {partialRefundTarget && (
+            <UniversalModal
+              isOpen={isPartialRefundModalOpen}
+              onClose={() => {
+                setIsPartialRefundModalOpen(false);
+                setPartialRefundTarget(null);
+                setPartialAmount('');
+              }}
+              title="Estorno Parcial"
+              icon={<Plus size={18} />}
+              themeColor="#3b82f6"
+              footer={
+                <div className="flex gap-3">
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="w-full"
+                    onClick={handlePartialRefundSubmit}
+                  >
+                    Confirmar Estorno
+                  </Button>
+                </div>
+              }
+            >
+              <div className="space-y-4">
+                <p className="text-sm text-gray-400">
+                  Informe o valor que deseja estornar da transação: <br />
+                  <span className="text-white font-medium">{partialRefundTarget.description}</span>
+                </p>
+
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor do Estorno (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
+                    <input
+                      type="text"
+                      className="w-full bg-[#1a1a19] border border-[#373734] rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors font-bold text-lg"
+                      placeholder="0,00"
+                      value={partialAmount}
+                      onChange={(e) => setPartialAmount(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Valor original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(partialRefundTarget.amount)}
+                  </p>
+                </div>
+              </div>
+            </UniversalModal>
+          )}
 
           {/* Delete Confirmation */}
           <ConfirmationBar
