@@ -10,10 +10,14 @@ global.console = {
 };
 
 // Mock do crypto para ambientes de teste
-global.crypto = {
-  ...global.crypto,
-  randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9),
-};
+Object.defineProperty(global, 'crypto', {
+  value: {
+    ...global.crypto,
+    randomUUID: () => 'test-uuid-' + Math.random().toString(36).substr(2, 9),
+  },
+  writable: true,
+  configurable: true
+});
 
 // Mock do localStorage
 const localStorageMock = {

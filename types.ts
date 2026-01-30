@@ -191,7 +191,7 @@ export interface Transaction {
   amountInAccountCurrency?: number; // Valor convertido para moeda da conta (BRL)
 
   // Invoice Manual Override
-  manualInvoiceMonth?: string; // YYYY-MM overrides the automatic date-based calculation
+  manualInvoiceMonth?: string | null; // YYYY-MM overrides the automatic date-based calculation
 
   // Refund & Adjustment Flags
   isRefund?: boolean;
@@ -420,7 +420,7 @@ export interface InvoiceItem {
   pluggyRaw?: any;
 
   // Manual Override (propagated from Transaction)
-  manualInvoiceMonth?: string;
+  manualInvoiceMonth?: string | null;
 }
 
 /**
@@ -598,6 +598,8 @@ export interface ConnectedAccount {
   balanceDueDate?: string;
   closingDay?: number;
   dueDay?: number;
+  manualClosingDay?: number; // User-defined closing day
+  manualDueDay?: number;     // User-defined due day
   minimumPayment?: number;
   bills?: ProviderBill[];
   // NOVO: Períodos de fatura pré-calculados (fonte única de verdade)
@@ -653,6 +655,7 @@ export interface ConnectedAccount {
   lastSyncedAt?: string;  // ISO timestamp of last sync
 
   // Manual closing date overrides
+  manualBeforeLastClosingDate?: string; // YYYY-MM-DD (End of the invoice before the last one)
   manualLastClosingDate?: string; // YYYY-MM-DD
   manualCurrentClosingDate?: string; // YYYY-MM-DD
   hidden?: boolean;

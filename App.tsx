@@ -69,6 +69,7 @@ import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { translatePluggyCategory } from './services/openFinanceService';
+import { isTransactionRefund } from './services/invoiceBuilder';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 import { UAParser } from 'ua-parser-js';
@@ -1894,6 +1895,9 @@ const App: React.FC = () => {
   // Split transactions by Account Type for different tabs
   const checkingTransactions = useMemo(() => {
     const result = memberFilteredTransactions.filter(t => {
+      // FILTRO DE ESTORNO: Removido do Histórico de Movimentações a pedido do usuário
+      if (isTransactionRefund(t)) return false;
+
       // Check linked account first
       if (t.accountId) {
         const account = accountMap.get(t.accountId);
@@ -2160,16 +2164,30 @@ const App: React.FC = () => {
       // REMOVED: behavior changed to keep flow stats visible
       // if (!includeCheckingInStats && isAccountTransaction) return false;
 
+      // EXCLUDE Refunds/Estornos from Income (they should reduce expenses instead)
+      if (isTransactionRefund(t)) return false;
+
       return true;
     };
 
     const incomes = filteredDashboardTransactions.filter(incomeFilter);
+
+    // Filter for Checking Refunds to subtract from expenses
+    const checkingRefunds = filteredDashboardTransactions.filter(t => {
+      if (!isTransactionRefund(t)) return false;
+      const isAccountTransaction = (t as any).sourceType === 'account' ||
+        (t.accountId && checkingAccountIds.has(t.accountId));
+      return isAccountTransaction;
+    });
 
     // Initial filtering for Checking Expenses (Logic kept, logs removed)
     const checkingTxs = filteredDashboardTransactions.filter(t => t.accountId && checkingAccountIds.has(t.accountId));
 
     // Base Expenses (All types) - Exclude credit card transactions entirely
     const baseExpenses = filteredDashboardTransactions.filter(t => {
+      // Excluir Estornos/Reembolsos das despesas base (serão subtraídos no total)
+      if (isTransactionRefund(t)) return false;
+
       // Check description for expense patterns (for transactions that may have wrong type)
       const desc = (t.description || '').toUpperCase();
 
@@ -2264,7 +2282,11 @@ const App: React.FC = () => {
     });
 
     const totalIncome = incomes.reduce((acc, t) => acc + Math.abs(t.amount), 0);
-    const nonCCSpending = baseExpenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const totalCheckingRefunds = checkingRefunds.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+    const baseSpending = baseExpenses.reduce((acc, t) => acc + Math.abs(t.amount), 0);
+
+    // Despesa líquida: Despesas base - Estornos/Reembolsos da conta corrente
+    const nonCCSpending = Math.max(0, baseSpending - totalCheckingRefunds);
 
     // Calculate Account-level Credit Data (Debt & Limit) - Only for ENABLED cards
     let ccBillsInView = 0;

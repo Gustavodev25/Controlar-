@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code, Calculator
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -20,6 +20,7 @@ import {
   calculateFutureLimitImpact,
   getTransactionInvoiceMonthKey,
   isCreditCardPayment,
+  isTransactionRefund,
   buildInvoices,
   generateInvoiceForecast,
   type InvoiceBuildResult,
@@ -30,10 +31,7 @@ import {
 import { exportToCSV } from '../utils/export';
 import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 import { getExchangeRateSync, fetchExchangeRates } from '../services/currencyService';
-
-// ============================================================ 
-// Helper: Calculate Invoice Logic (Extracted for Preview)
-// ============================================================ 
+import { RefundModal } from './RefundModal';
 
 // Mapeamento de meses
 const MONTH_NAMES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
@@ -147,7 +145,7 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
             <>
               <div className="h-px bg-[#373734] my-1" />
               <DropdownItem
-                onClick={() => onUpdate({ ...transaction, manualInvoiceMonth: undefined })}
+                onClick={() => onUpdate({ ...transaction, manualInvoiceMonth: null })}
                 className="text-red-400 hover:text-red-300"
                 icon={X}
               >
@@ -162,498 +160,9 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
 };
 
 
-const calculateInvoiceSummary = (
-  card: ConnectedAccount | undefined,
-  transactions: Transaction[],
-  selectedCardId: string
-) => {
-  const today = new Date();
-
-  // ========================================
-  // IMPORTANTE: NÃO usar invoicePeriods do backend para DATAS - sempre calcular localmente
-  // Isso garante que a lógica correta seja usada (o backend pode ter dados antigos)
-  // Apenas pegamos o closingDay e dueDay do backend
-  // ========================================
-  const invoicePeriods = card?.invoicePeriods; // Mantido apenas para acessar dueDay e monthKeys
-  const closingDay = invoicePeriods?.closingDay || card?.closingDay || 10;
-
-
-  // Helper para converter string YYYY-MM-DD para Date
-  const parseDate = (dateStr: string): Date => {
-    const [y, m, d] = dateStr.split('-').map(Number);
-    return new Date(y, m - 1, d, 23, 59, 59);
-  };
-
-  // Helper para criar data de fechamento (fallback se não tiver invoicePeriods)
-  const getClosingDate = (year: number, month: number, day: number): Date => {
-    const lastDayOfMonth = new Date(year, month + 1, 0).getDate();
-    const safeDay = Math.min(day, lastDayOfMonth);
-    return new Date(year, month, safeDay, 23, 59, 59);
-  };
-
-  let currentClosingDate: Date;
-  let lastClosingDate: Date;
-  let nextClosingDate: Date;
-  let beforeLastClosingDate: Date;
-
-  // ========================================
-  // PRIORIDADE 1: Modo manual (datas específicas definidas pelo usuário)
-  // ========================================
-  if (card?.manualLastClosingDate && card?.manualCurrentClosingDate) {
-    console.log('[FRONTEND] Usando modo MANUAL (datas específicas)');
-
-    const [ly, lm, ld] = card.manualLastClosingDate.split('-').map(Number);
-    lastClosingDate = new Date(ly, lm - 1, ld, 23, 59, 59);
-
-    const [cy, cm, cd] = card.manualCurrentClosingDate.split('-').map(Number);
-    currentClosingDate = new Date(cy, cm - 1, cd, 23, 59, 59);
-
-    // Inferir Próxima (Current + 1 mês)
-    nextClosingDate = new Date(currentClosingDate);
-    nextClosingDate.setMonth(nextClosingDate.getMonth() + 1);
-    const nextMonthLastDay = new Date(nextClosingDate.getFullYear(), nextClosingDate.getMonth() + 1, 0).getDate();
-    if (currentClosingDate.getDate() > nextMonthLastDay) {
-      nextClosingDate.setDate(nextMonthLastDay);
-    }
-
-    // Inferir Anterior à Última (Last - 1 mês)
-    beforeLastClosingDate = new Date(lastClosingDate);
-    beforeLastClosingDate.setMonth(beforeLastClosingDate.getMonth() - 1);
-    const prevMonthLastDay = new Date(beforeLastClosingDate.getFullYear(), beforeLastClosingDate.getMonth() + 1, 0).getDate();
-    if (lastClosingDate.getDate() > prevMonthLastDay) {
-      beforeLastClosingDate.setDate(prevMonthLastDay);
-    }
-
-    // ========================================
-    // PRIORIDADE 2: Cálculo automático (SEMPRE recalcula)
-    // ========================================
-  } else {
-    console.log('[FRONTEND] Calculando automaticamente:', { closingDay, today: today.toISOString() });
-
-    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
-    if (today.getDate() < closingDay) {
-      currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
-    } else {
-      const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
-      const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
-      currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
-    }
-
-    const lastClosingMonth = currentClosingDate.getMonth() === 0 ? 11 : currentClosingDate.getMonth() - 1;
-    const lastClosingYear = currentClosingDate.getMonth() === 0 ? currentClosingDate.getFullYear() - 1 : currentClosingDate.getFullYear();
-    lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
-
-    const nextClosingMonth = currentClosingDate.getMonth() === 11 ? 0 : currentClosingDate.getMonth() + 1;
-    const nextClosingYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
-    nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
-
-    const beforeLastClosingMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
-    const beforeLastClosingYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
-    beforeLastClosingDate = getClosingDate(beforeLastClosingYear, beforeLastClosingMonth, closingDay);
-  }
-
-  const cardTransactions = selectedCardId === 'all'
-    ? transactions
-    : transactions.filter(t => {
-      const txCardId = t.cardId ? String(t.cardId) : '';
-      const txAccountId = t.accountId ? String(t.accountId) : '';
-      return txCardId === selectedCardId || txAccountId === selectedCardId;
-    });
-
-  const lastInvoiceStart = new Date(beforeLastClosingDate);
-  lastInvoiceStart.setDate(lastInvoiceStart.getDate() + 1);
-  lastInvoiceStart.setHours(0, 0, 0, 0);
-
-  const currentInvoiceStart = new Date(lastClosingDate);
-  currentInvoiceStart.setDate(currentInvoiceStart.getDate() + 1);
-  currentInvoiceStart.setHours(0, 0, 0, 0);
-
-  const nextInvoiceStart = new Date(currentClosingDate);
-  nextInvoiceStart.setDate(nextInvoiceStart.getDate() + 1);
-  nextInvoiceStart.setHours(0, 0, 0, 0);
-
-  // DEBUG: Mostrar períodos de fatura calculados
-  console.log('[PERIODOS DEBUG]', {
-    cardName: card?.name || card?.institution,
-    closingDay,
-    lastInvoice: {
-      start: lastInvoiceStart.toLocaleDateString('pt-BR'),
-      end: lastClosingDate.toLocaleDateString('pt-BR')
-    },
-    currentInvoice: {
-      start: currentInvoiceStart.toLocaleDateString('pt-BR'),
-      end: currentClosingDate.toLocaleDateString('pt-BR')
-    },
-    nextInvoice: {
-      start: nextInvoiceStart.toLocaleDateString('pt-BR'),
-      end: nextClosingDate.toLocaleDateString('pt-BR')
-    },
-    totalTransactions: cardTransactions.length,
-    sampleTxDates: cardTransactions.slice(0, 5).map(t => t.date)
-  });
-
-  let lastInvoiceTotal = 0;
-  let currentInvoiceTotal = 0;
-  let nextInvoiceTotal = 0;
-  let allFutureTotal = 0;
-  const lastInvoiceTransactions: Transaction[] = [];
-  const currentInvoiceTransactions: Transaction[] = [];
-  const nextInvoiceTransactions: Transaction[] = [];
-  let totalUsed = 0;
-
-  const installmentSeries: Record<string, { firstInstDate: Date; transactions: Transaction[] }> = {};
-  const nonInstallmentTxs: Transaction[] = [];
-  const processedInstallmentIds = new Set<string>();
-
-  const extractInstallmentFromDesc = (desc: string): { current: number; total: number } | null => {
-    const match = desc.match(/(\d+)\s*\/\s*(\d+)/);
-    if (match) {
-      return { current: parseInt(match[1]), total: parseInt(match[2]) };
-    }
-    return null;
-  };
-
-  const normalizeDescription = (desc: string) => {
-    return desc
-      .trim()
-      .toLowerCase()
-      .replace(/\s*\d+\s*\/\s*\d+\s*$/g, '')
-      .replace(/\s*\d+\/\d+\s*/g, '')
-      .replace(/\s*parcela\s*\d+\s*/gi, '')
-      .replace(/\s+/g, ' ')
-      .trim();
-  };
-
-  const isTxCreditCardPayment = (tx: Transaction) => {
-    const d = (tx.description || '').toLowerCase();
-    const c = (tx.category || '').toLowerCase();
-
-    // Keywords que indicam REEMBOLSO/ESTORNO (NÃO são pagamentos de fatura)
-    const isRefund =
-      d.includes('estorno') ||
-      d.includes('reembolso') ||
-      d.includes('devolução') ||
-      d.includes('cancelamento') ||
-      d.includes('refund') ||
-      d.includes('chargeback') ||
-      d.includes('crédito') ||
-      d.includes('credito') ||
-      c.includes('refund') ||
-      c.includes('estorno') ||
-      c.includes('reembolso');
-
-    // Se for reembolso, NÃO é pagamento de fatura
-    if (isRefund) {
-      return false;
-    }
-
-    // Keywords que indicam PAGAMENTO DE FATURA
-    return (
-      c.includes('credit card payment') ||
-      c === 'pagamento de fatura' ||
-      d.includes('pagamento de fatura') ||
-      d.includes('pagamento fatura') ||
-      d.includes('pagamento recebido') ||
-      d.includes('credit card payment') ||
-      d.includes('pag fatura') ||
-      d.includes('pgto fatura') ||
-      d === 'pgto'
-    );
-  };
-
-  const paymentTransactions: Transaction[] = [];
-
-  cardTransactions.forEach(tx => {
-    if (!tx.date) return;
-
-    if (isTxCreditCardPayment(tx)) {
-      paymentTransactions.push(tx);
-      return;
-    }
-
-    const descInstallment = extractInstallmentFromDesc(tx.description || '');
-    // Se não tiver número da parcela, assume que é a 1ª (para projeção correta)
-    const installmentNumber = tx.installmentNumber || descInstallment?.current || 1;
-    // Compatibilidade: dados antigos usam 'installments', novos usam 'totalInstallments'
-    const totalInstallments = tx.totalInstallments || (tx as any).installments || descInstallment?.total || 0;
-
-    if (totalInstallments > 1) {
-      const normalizedDesc = normalizeDescription(tx.description || '');
-      const cardIdentifier = tx.cardId || tx.accountId || 'unknown';
-      const seriesKey = `${cardIdentifier}-${normalizedDesc}-${totalInstallments}`;
-
-      if (!installmentSeries[seriesKey]) {
-        installmentSeries[seriesKey] = { firstInstDate: new Date(9999, 0, 1), transactions: [] };
-      }
-
-      const txWithInstallment = {
-        ...tx,
-        installmentNumber: installmentNumber,
-        totalInstallments: totalInstallments
-      };
-      installmentSeries[seriesKey].transactions.push(txWithInstallment);
-
-      const [ty, tm, td] = (tx.date || '').split('-').map(Number);
-      const txDate = new Date(ty, tm - 1, td, 12, 0, 0);
-
-      if (installmentNumber === 1) {
-        installmentSeries[seriesKey].firstInstDate = txDate;
-      } else if (installmentSeries[seriesKey].firstInstDate.getFullYear() === 9999) {
-        const firstInstDate = new Date(txDate);
-        firstInstDate.setMonth(firstInstDate.getMonth() - (installmentNumber - 1));
-        installmentSeries[seriesKey].firstInstDate = firstInstDate;
-      }
-    } else {
-      nonInstallmentTxs.push(tx);
-    }
-  });
-
-  nonInstallmentTxs.forEach(tx => {
-    const amt = Math.abs(Number(tx.amount) || 0);
-    // TOTAL LÍQUIDO: despesas + valor, income - valor (créditos/reembolsos subtraem do total)
-    // FIX: Se for expense mas valor negativo, trata como income (refund/estorno)
-    const isRefund = tx.type === 'expense' && Number(tx.amount) < 0;
-    const isIncome = tx.type === 'income' || isRefund;
-
-    // Se for income/refund, SUBTRAI do total (reduz a fatura). Se for expense, SOMA.
-    const netAmt = isIncome ? -amt : amt;
-
-    const [ty, tm, td] = (tx.date || '').split('-').map(Number);
-    const txDate = new Date(ty, tm - 1, td, 12, 0, 0);
-
-    totalUsed += netAmt;
-
-    if (txDate >= lastInvoiceStart && txDate <= lastClosingDate) {
-      lastInvoiceTotal += netAmt;
-      lastInvoiceTransactions.push(tx);
-    } else if (txDate >= currentInvoiceStart && txDate <= currentClosingDate) {
-      currentInvoiceTotal += netAmt;
-      currentInvoiceTransactions.push(tx);
-    } else if (txDate >= nextInvoiceStart && txDate <= nextClosingDate) {
-      nextInvoiceTotal += netAmt;
-      nextInvoiceTransactions.push(tx);
-    }
-
-    // Calcular Total Futuro (Tudo após a fatura atual)
-    if (txDate > currentClosingDate) {
-      allFutureTotal += netAmt;
-    }
-  });
-
-  const dateToNumber = (d: Date) => d.getFullYear() * 10000 + d.getMonth() * 100 + d.getDate();
-  const lastInvoiceStartNum = dateToNumber(lastInvoiceStart);
-  const lastClosingDateNum = dateToNumber(lastClosingDate);
-  const currentInvoiceStartNum = dateToNumber(currentInvoiceStart);
-  const currentClosingDateNum = dateToNumber(currentClosingDate);
-  const nextInvoiceStartNum = dateToNumber(nextInvoiceStart);
-  const nextClosingDateNum = dateToNumber(nextClosingDate);
-
-  // DEBUG: Log parcelas detectadas
-  console.log('[PARCELAS DEBUG]', {
-    cardName: card?.name || card?.institution,
-    totalSeries: Object.keys(installmentSeries).length,
-    series: Object.entries(installmentSeries).map(([key, s]) => ({
-      key,
-      totalInst: s.transactions[0]?.totalInstallments || (s.transactions[0] as any)?.installments || 1,
-      firstInstDate: s.firstInstDate.toLocaleDateString('pt-BR'),
-      txCount: s.transactions.length,
-      desc: s.transactions[0]?.description?.slice(0, 30)
-    }))
-  });
-
-  Object.values(installmentSeries).forEach(series => {
-    const { firstInstDate, transactions } = series;
-    // Compatibilidade: dados antigos usam 'installments', novos usam 'totalInstallments'
-    const totalInst = transactions[0]?.totalInstallments || (transactions[0] as any)?.installments || 1;
-    const amt = Math.abs(Number(transactions[0]?.amount) || 0);
-    // Parcelas são tipicamente despesas, mas respeitamos o tipo se definido
-    const baseTx = transactions[0];
-    const netAmt = baseTx?.type === 'income' ? -amt : amt;
-
-    for (let instNum = 1; instNum <= totalInst; instNum++) {
-      const instDate = new Date(firstInstDate);
-      instDate.setMonth(instDate.getMonth() + (instNum - 1));
-      const instDateNum = dateToNumber(instDate);
-
-      const existingTx = transactions.find(tx => (tx.installmentNumber || 1) === instNum);
-
-      let txToAdd: Transaction;
-      if (existingTx) {
-        txToAdd = existingTx;
-        processedInstallmentIds.add(existingTx.id);
-      } else {
-        txToAdd = {
-          ...baseTx,
-          id: `proj_${baseTx.id}_${instNum}`,
-          date: instDate.toISOString().split('T')[0],
-          installmentNumber: instNum,
-          isProjected: true
-        };
-      }
-
-      totalUsed += netAmt;
-
-      if (instDateNum >= lastInvoiceStartNum && instDateNum <= lastClosingDateNum) {
-        lastInvoiceTotal += netAmt;
-        lastInvoiceTransactions.push(txToAdd);
-      } else if (instDateNum >= currentInvoiceStartNum && instDateNum <= currentClosingDateNum) {
-        currentInvoiceTotal += netAmt;
-        currentInvoiceTransactions.push(txToAdd);
-      } else if (instDateNum >= nextInvoiceStartNum && instDateNum <= nextClosingDateNum) {
-        nextInvoiceTotal += netAmt;
-        nextInvoiceTransactions.push(txToAdd);
-      }
-
-      // Calcular Total Futuro (Tudo após a fatura atual)
-      if (instDate > currentClosingDate) {
-        allFutureTotal += netAmt;
-      }
-    }
-  });
-
-  // Usar dueDay do backend se disponível
-  const dueDayFromPluggy = invoicePeriods?.dueDay ||
-    (card?.currentBill?.dueDate ? new Date(card.currentBill.dueDate).getDate() : null) ||
-    card?.dueDay || 10;
-
-  // Usar due dates do backend se disponíveis, senão calcular
-  let lastDueDate: Date;
-  let currentDueDate: Date;
-  let nextDueDateCalc: Date;
-
-  if (invoicePeriods?.lastInvoice?.dueDate) {
-    lastDueDate = parseDate(invoicePeriods.lastInvoice.dueDate);
-    currentDueDate = parseDate(invoicePeriods.currentInvoice.dueDate);
-    nextDueDateCalc = parseDate(invoicePeriods.nextInvoice.dueDate);
-  } else {
-    const lastDueMonth = lastClosingDate.getMonth() === 11 ? 0 : lastClosingDate.getMonth() + 1;
-    const lastDueYear = lastClosingDate.getMonth() === 11 ? lastClosingDate.getFullYear() + 1 : lastClosingDate.getFullYear();
-    lastDueDate = new Date(lastDueYear, lastDueMonth, dueDayFromPluggy);
-
-    const currentDueMonth = currentClosingDate.getMonth() === 11 ? 0 : currentClosingDate.getMonth() + 1;
-    const currentDueYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
-    currentDueDate = new Date(currentDueYear, currentDueMonth, dueDayFromPluggy);
-
-    const nextDueMonth = nextClosingDate.getMonth() === 11 ? 0 : nextClosingDate.getMonth() + 1;
-    const nextDueYear = nextClosingDate.getMonth() === 11 ? nextClosingDate.getFullYear() + 1 : nextClosingDate.getFullYear();
-    nextDueDateCalc = new Date(nextDueYear, nextDueMonth, dueDayFromPluggy);
-  }
-
-  // Usar monthKeys do backend se disponíveis
-  const lastMonthKey = invoicePeriods?.lastInvoice?.monthKey ||
-    `${lastClosingDate.getFullYear()}-${String(lastClosingDate.getMonth() + 1).padStart(2, '0')}`;
-  const currentMonthKey = invoicePeriods?.currentInvoice?.monthKey ||
-    `${currentClosingDate.getFullYear()}-${String(currentClosingDate.getMonth() + 1).padStart(2, '0')}`;
-  const nextMonthKey = invoicePeriods?.nextInvoice?.monthKey ||
-    `${nextClosingDate.getFullYear()}-${String(nextClosingDate.getMonth() + 1).padStart(2, '0')}`;
-
-  // ============================================================
-  // Processa pagamentos (associa à fatura que está sendo quitada)
-  // ============================================================
-  // REGRA: Um pagamento feito durante o período da fatura ATUAL
-  // está quitando a fatura FECHADA (anterior).
-  // Para cada fatura, mostramos apenas o pagamento que a quita.
-  // ============================================================
-
-  // Encontrar o pagamento que quita a fatura FECHADA
-  // (pagamento feito durante o período da fatura ATUAL)
-  const paymentForClosedInvoice = paymentTransactions.find(tx => {
-    if (!tx.date) return false;
-    const [py, pm, pd] = (tx.date || '').split('-').map(Number);
-    const paymentDate = new Date(py, pm - 1, pd);
-    const paymentDateNum = paymentDate.getFullYear() * 10000 + (paymentDate.getMonth() + 1) * 100 + paymentDate.getDate();
-    const currentStartNum = currentInvoiceStart.getFullYear() * 10000 + (currentInvoiceStart.getMonth() + 1) * 100 + currentInvoiceStart.getDate();
-    const currentEndNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
-    return paymentDateNum >= currentStartNum && paymentDateNum <= currentEndNum;
-  });
-
-  if (paymentForClosedInvoice) {
-    // NÃO subtraimos o pagamento do total - mostramos apenas para referência
-    // lastInvoiceTotal permanece como total BRUTO da fatura
-
-    const [py, pm, pd] = (paymentForClosedInvoice.date || '').split('-').map(Number);
-    const paymentDate = new Date(py, pm - 1, pd);
-    const daysLate = Math.floor((paymentDate.getTime() - lastDueDate.getTime()) / (1000 * 60 * 60 * 24));
-
-    lastInvoiceTransactions.push({
-      ...paymentForClosedInvoice,
-      isPayment: true,
-      daysLate: daysLate > 0 ? daysLate : 0,
-      isLate: daysLate > 0
-    } as Transaction);
-  }
-
-  // ========================================
-  // CÁLCULO DA FATURA ATUAL (SOMA PURA)
-  // ========================================
-  // Regra antiga removida: Fatura Atual = Limite Usado - Total Futuro - (Última Fatura se não paga)
-  // Nova Regra: Fatura Atual = Soma das transações do período
-
-  const usedCreditLimit = card?.usedCreditLimit || Math.abs(card?.balance || 0);
-  const isLastInvoicePaid = card?.currentBill?.status === 'CLOSED';
-
-  // Valor da última fatura (usa API se disponível, senão usa calculado)
-  // Mantemos isso apenas para saber se foi paga ou não, mas não afeta a fatura atual
-  const lastInvoiceValue = card?.currentBill?.totalAmount || lastInvoiceTotal;
-
-  // Se não detectamos parcelas nas transações, usar as bills com state='FUTURE' para allFutureTotal
-  // Isso é útil apenas para exibição do "Total Futuro", não afeta a fatura atual
-  let finalAllFutureTotal = allFutureTotal;
-
-  if (allFutureTotal === 0 && card?.bills && card.bills.length > 0) {
-    const futureBillsTotal = card.bills
-      .filter(bill => {
-        if (bill.state === 'FUTURE') return true;
-        if (bill.dueDate) {
-          const billDue = new Date(bill.dueDate);
-          return billDue > currentDueDate;
-        }
-        return false;
-      })
-      .reduce((sum, bill) => sum + (bill.totalAmount || 0), 0);
-
-    if (futureBillsTotal > 0) {
-      finalAllFutureTotal = futureBillsTotal;
-    }
-  }
-
-  // DEBUG SIMPLIFICADO
-  console.log('[DEBUG] CÁLCULO DE FATURAS (FALLBACK) - SOMA DE TRANSAÇÕES', {
-    lastInvoiceTotal,
-    currentInvoiceTotal,
-    nextInvoiceTotal,
-    allFutureTotal,
-    finalAllFutureTotal
-  });
-
-  return {
-    closingDay,
-    dueDay: dueDayFromPluggy,
-    beforeLastClosingDate,
-    lastClosingDate,
-    currentClosingDate,
-    nextClosingDate,
-    lastInvoiceStart,
-    lastInvoiceEnd: lastClosingDate,
-    currentInvoiceStart,
-    currentInvoiceEnd: currentClosingDate,
-    nextInvoiceStart,
-    nextInvoiceEnd: nextClosingDate,
-    lastInvoice: { transactions: lastInvoiceTransactions, total: lastInvoiceTotal },
-    currentInvoice: { transactions: currentInvoiceTransactions, total: currentInvoiceTotal }, // SOMA PURA
-    nextInvoice: { transactions: nextInvoiceTransactions, total: nextInvoiceTotal },
-    totalUsed,
-    usedCreditLimit,
-    isLastInvoicePaid,
-    lastDueDate,
-    currentDueDate,
-    nextDueDate: nextDueDateCalc,
-    lastMonthKey,
-    currentMonthKey,
-    nextMonthKey,
-    allFutureTotal: finalAllFutureTotal
-  };
-};
+// ============================================================  
+// COMPONENTE PRINCIPAL
+// ============================================================ 
 
 // ============================================================  
 // COMPONENTE PRINCIPAL
@@ -741,6 +250,9 @@ const useInvoiceBuilder = (
         isProjected: item.isProjected,
         isPayment: item.isPayment,
         manualInvoiceMonth: item.manualInvoiceMonth,
+        // Vincular ao cartão selecionado para permitir edição/exclusão
+        cardId: cardId,
+        accountId: cardId,
         // Dados de moeda para transações internacionais
         currencyCode: item.currencyCode,
         amountOriginal: item.amountOriginal,
@@ -890,6 +402,31 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundTransaction, setRefundTransaction] = useState<Transaction | null>(null);
+
+  const handleRefundConfirm = (amount: number, tx?: Transaction) => {
+    const targetTx = tx || refundTransaction;
+    if (!targetTx) return;
+
+    // Se o valor do estorno for igual ao valor da transação, marcamos a própria transação
+    // Note: usamos Math.abs para comparar valores positivos
+    const originalAmount = Math.abs(targetTx.amount);
+    const isTotalRefund = Math.abs(amount - originalAmount) < 0.01;
+
+    onUpdate({
+      ...targetTx,
+      category: 'Reembolso',
+      isRefund: true,
+      // Se for parcial, poderíamos guardar o valor estornado (opcional dependendo do uso posterior)
+      ...(isTotalRefund ? {} : { _refundAmount: amount })
+    });
+
+    toast.success(isTotalRefund ? "Transação marcada como reembolso total!" : "Transação marcada como reembolso parcial!");
+    setIsRefundModalOpen(false);
+    setRefundTransaction(null);
+  };
+
   // Auto-remove duplicates
   const [hasCheckedDuplicates, setHasCheckedDuplicates] = useState(false);
 
@@ -907,78 +444,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     installmentNumber: 1
   });
 
-  // Partial Refund States
-  const [isPartialRefundModalOpen, setIsPartialRefundModalOpen] = useState(false);
-  const [partialRefundTarget, setPartialRefundTarget] = useState<Transaction | null>(null);
-  const [partialAmount, setPartialAmount] = useState<string>('');
 
-  // Handler para marcar estorno
-  const handleMarkAsRefund = (t: Transaction) => {
-    const isCurrentRefund = t.type === 'income' && t.category === 'Reembolso';
-    // Se está sendo marcado como estorno (Income), vira crédito na fatura
-    // Se está sendo desmarcado (vira Expense), volta a ser débito
-    onUpdate({
-      ...t,
-      type: isCurrentRefund ? 'expense' : 'income',
-      category: isCurrentRefund ? (t.pluggyRaw?.category || 'Uncategorized') : 'Reembolso',
-      isRefund: !isCurrentRefund,
-      _manualRefund: !isCurrentRefund
-    });
-  };
 
-  const handlePartialRefundSubmit = async () => {
-    if (!partialRefundTarget || !partialAmount) return;
 
-    // Limpa o valor para garantir que seja um número positivo
-    const cleanValue = partialAmount.toString().replace(/[R$\s]/g, '').replace(',', '.');
-    const amount = Math.abs(parseFloat(cleanValue));
-
-    // Usa Math.abs no target para comparar magnitudes (ex: estornar 10 de -50)
-    if (isNaN(amount) || amount <= 0 || amount > Math.abs(partialRefundTarget.amount)) {
-      toast.warning('Informe um valor válido (não superior ao original)');
-      return;
-    }
-
-    try {
-      if (onAdd && selectedCardId) {
-        // 1. Reduz o valor da transação original (ajusta conforme o sinal)
-        const isNegative = partialRefundTarget.amount < 0;
-        const updatedOriginal = {
-          ...partialRefundTarget,
-          amount: isNegative 
-            ? partialRefundTarget.amount + amount 
-            : partialRefundTarget.amount - amount
-        };
-        onUpdate(updatedOriginal);
-
-        // 2. Cria a nova transação de estorno (crédito)
-        const payload: Omit<Transaction, 'id'> = {
-          ...partialRefundTarget,
-          description: `Estorno Parcial: ${partialRefundTarget.description}`,
-          amount: amount,
-          type: 'income',
-          category: 'Reembolso',
-          isRefund: true,
-          _manualRefund: true,
-          status: 'completed',
-          date: new Date().toISOString().split('T')[0],
-          installmentNumber: 1,
-          totalInstallments: 1
-        };
-        // @ts-ignore
-        delete payload.id;
-
-        await onAdd(payload);
-        toast.success(`Estorno parcial de ${formatCurrency(amount)} aplicado. Valor original reduzido para ${formatCurrency(updatedOriginal.amount)}.`);
-        setIsPartialRefundModalOpen(false);
-        setPartialRefundTarget(null);
-        setPartialAmount('');
-      }
-    } catch (error) {
-      console.error('Error adding partial refund:', error);
-      toast.error('Erro ao adicionar estorno parcial');
-    }
-  };
 
   const handleAddTransaction = async () => {
     if (!newTransaction.description || !newTransaction.amount || !newTransaction.date) {
@@ -1049,7 +517,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Card Settings Modal
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
-  const [cardSettings, setCardSettings] = useState<{ closingDay: number; manualLastClosingDate?: string; manualCurrentClosingDate?: string }>({ closingDay: 1 });
+  const [cardSettings, setCardSettings] = useState<{
+    closingDay: number;
+    dueDay: number;
+    manualBeforeLastClosingDate?: string;
+    manualLastClosingDate?: string;
+    manualCurrentClosingDate?: string
+  }>({ closingDay: 1, dueDay: 10 });
 
   // Filter Modal State (Mobile)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -1317,6 +791,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           totalInstallments: item.totalInstallments,
           isProjected: item.isProjected,
           isPayment: item.isPayment,
+          // Vincular ao cartão selecionado para permitir edição/exclusão
+          cardId: selectedCard?.id,
+          accountId: selectedCard?.id,
           // Dados de moeda para transações internacionais
           currencyCode: item.currencyCode,
           amountOriginal: item.amountOriginal,
@@ -1376,8 +853,19 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     }
 
     // Fallback para o sistema antigo se não houver dados
-    console.log('[DEBUG] USANDO FALLBACK calculateInvoiceSummary - invoiceBuilderData é null');
-    return calculateInvoiceSummary(selectedCard, transactions, selectedCardId);
+    console.warn('[CreditCardTable] useInvoiceBuilder não retornou dados para o cartão:', selectedCardId);
+    return {
+      lastInvoice: { transactions: [], total: 0 },
+      currentInvoice: { transactions: [], total: 0 },
+      nextInvoice: { transactions: [], total: 0 },
+      lastDueDate: new Date(),
+      currentDueDate: new Date(),
+      nextDueDate: new Date(),
+      lastMonthKey: '',
+      currentMonthKey: '',
+      nextMonthKey: '',
+      allFutureTotal: 0
+    };
   }, [invoiceBuilderData, selectedCard, transactions, selectedCardId]);
 
   // Get transactions from selected invoice
@@ -1487,6 +975,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     const lastInvoicePayments = invoiceSummary.lastInvoice.transactions.filter(t => isCreditCardPayment(t));
     const lastInvoicePaidAmount = lastInvoicePayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
     const lastInvoiceTotal = selectedCard?.currentBill?.totalAmount || invoiceSummary.lastInvoice.total;
+    const lastInvoiceDivergence = selectedCard?.currentBill?.totalAmount
+      ? Math.abs(selectedCard.currentBill.totalAmount - invoiceSummary.lastInvoice.total) > 0.01
+      : false;
 
     // Verificar se há pagamento na fatura atual
     const currentInvoicePayments = invoiceSummary.currentInvoice.transactions.filter(t => isCreditCardPayment(t));
@@ -1499,6 +990,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         isPaid: isLastInvoicePaid,
         paidAmount: lastInvoicePaidAmount,
         total: lastInvoiceTotal,
+        calculatedTotal: invoiceSummary.lastInvoice.total,
+        hasDivergence: lastInvoiceDivergence,
         payments: lastInvoicePayments,
         status: billStatus // Adiciona o status original para debug/display
       },
@@ -1592,20 +1085,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       return txs.reduce((acc, tx) => {
         if (isCreditCardPayment(tx)) return acc;
         if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas
+
         const amt = getTransactionAmountInBRL(tx);
-        // FIX: Treat negative expenses as income (refunds/credits)
-        // Check raw amount if available, otherwise assume negative implies credit for expense type
-        const rawAmount = (tx as any).amountOriginal || tx.amount;
-        const isNegativeExpense = tx.type === 'expense' && rawAmount < 0;
+        const isRefund = isTransactionRefund(tx);
 
-        // NOVA VERIFICAÇÃO: Considerar flags manuais de reembolso
-        // Essas flags são definidas quando o usuário marca uma transação como reembolso manualmente
-        const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
-        const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
-
-        const effectiveType = (tx.type === 'income' || isNegativeExpense || isManualRefund || isRefundCategory) ? 'income' : 'expense';
-
-        return effectiveType === 'income' ? acc - amt : acc + amt;
+        if (tx.type === 'income' || isRefund) return acc - amt;
+        return acc + amt;
       }, 0);
     };
 
@@ -1628,13 +1113,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     const calcSimpleTotal = (txs: Transaction[]) => {
       return txs.reduce((acc, tx) => {
         if (isCreditCardPayment(tx)) return acc;
+
         const amt = getTransactionAmountInBRL(tx);
+        const isRefund = isTransactionRefund(tx);
 
-        // Considerar flags manuais de reembolso
-        const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
-        const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
-
-        if (tx.type === 'income' || isManualRefund || isRefundCategory) return acc - amt;
+        if (tx.type === 'income' || isRefund) return acc - amt;
         return acc + amt;
       }, 0);
     };
@@ -1734,13 +1217,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     return transactionsWithCharges.reduce((acc, tx) => {
       if (isCreditCardPayment(tx)) return acc;
       if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas (estorno+compra)
+
       const amt = getTransactionAmountInBRL(tx);
+      const isRefund = isTransactionRefund(tx);
 
-      // Considerar flags manuais de reembolso
-      const isManualRefund = (tx as any).isRefund === true || (tx as any)._manualRefund === true;
-      const isRefundCategory = tx.type === 'income' && (tx.category || '').toLowerCase() === 'reembolso';
-
-      if (tx.type === 'income' || isManualRefund || isRefundCategory) return acc - amt;
+      if (tx.type === 'income' || isRefund) return acc - amt;
       return acc + amt;
     }, 0);
   }, [transactionsWithCharges, exchangeRatesLoaded]);
@@ -2234,6 +1715,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         onClick={() => {
                           setCardSettings({
                             closingDay: selectedCard.closingDay || 10,
+                            dueDay: selectedCard.dueDay || 20,
+                            manualBeforeLastClosingDate: selectedCard.manualBeforeLastClosingDate,
                             manualLastClosingDate: selectedCard.manualLastClosingDate,
                             manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
                           });
@@ -2292,6 +1775,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           onClick={() => {
                             setCardSettings({
                               closingDay: selectedCard.closingDay || 10,
+                              dueDay: selectedCard.dueDay || 20,
+                              manualBeforeLastClosingDate: selectedCard.manualBeforeLastClosingDate,
                               manualLastClosingDate: selectedCard.manualLastClosingDate,
                               manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
                             });
@@ -2383,9 +1868,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   </span>
                                 </div>
                               ) : (
-                                <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                  {formatCurrency(invoicePaymentInfo.last.total)}
-                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
+                                    {formatCurrency(invoicePaymentInfo.last.total)}
+                                  </span>
+                                </div>
                               )}
                               <span className="text-[10px] text-gray-500">
                                 {invoiceSummary.lastInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.lastInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
@@ -2698,16 +2185,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     )}
                   </AnimatePresence>
 
-                  {/* Aviso informativo sobre estornos manuais */}
-                  <div className="px-4 py-2.5 bg-amber-500/5 border-b border-amber-500/10 flex items-center gap-3 rounded-t-xl">
-                    <div className="flex-shrink-0">
-                      <AlertCircle size={16} className="text-amber-400" />
-                    </div>
-                    <p className="text-xs text-amber-200/80">
-                      <span className="font-semibold text-amber-300">Dica:</span> Alguns bancos não identificam estornos automaticamente.
-                      Se uma transação é um reembolso/estorno, você pode marcá-la clicando no ícone de <span className="font-semibold">Estorno</span> ao final da linha.
-                    </p>
-                  </div>
+
 
                   {/* Responsive Table Grid */}
                   <div className="overflow-auto flex-1 custom-scrollbar z-0 pb-20 sm:pb-0">
@@ -2856,6 +2334,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           const isLate = (t as any).isLate === true;
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
+                          const isProjected = (t as any).isProjected === true;
 
                           // Detecta se a transação faz parte de um par compra+estorno (zerando o total)
                           const isPaired = pairedTransactionIds.has(t.id);
@@ -3112,42 +2591,103 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 )}
                               </td>
                               <td className="px-6 py-4 text-center">
-                                <div className="flex items-center justify-center">
-                                  {!isPayment && !isAdjustment && !isCharge && (
-                                    <Dropdown>
-                                      <DropdownTrigger>
-                                        <button
-                                          className={`p-2 rounded-xl transition-colors ${t.category === 'Reembolso'
-                                              ? "text-blue-400 hover:bg-blue-500/10"
-                                              : "text-gray-400 hover:text-white hover:bg-[#373734]"
-                                            }`}
-                                          title={t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Opções de Estorno'}
-                                        >
-                                          <CornerUpLeft size={16} />
-                                        </button>
-                                      </DropdownTrigger>
-                                      <DropdownContent align="right" width="w-48">
-                                        <DropdownItem
-                                          onClick={() => handleMarkAsRefund(t)}
-                                          icon={CornerUpLeft}
-                                        >
-                                          {t.category === 'Reembolso' ? 'Desmarcar Reembolso' : 'Valor Total'}
-                                        </DropdownItem>
-                                        {t.category !== 'Reembolso' && (
-                                          <DropdownItem
-                                            onClick={() => {
-                                              setPartialRefundTarget(t);
-                                              setPartialAmount(t.amount.toString());
-                                              setIsPartialRefundModalOpen(true);
-                                            }}
-                                            icon={Plus}
-                                          >
-                                            Valor Parcial
-                                          </DropdownItem>
-                                        )}
-                                      </DropdownContent>
-                                    </Dropdown>
+                                <div className="flex items-center justify-center gap-1">
+                                  {/* Ações Diretas para Cartão Manual (Editar/Excluir) */}
+                                  {(isManualMode || creditCardAccounts.find(c => c.id === (t.cardId || t.accountId))?.connectionMode === 'MANUAL') && !isAdjustment && !isCharge && !isPayment && !isProjected && (
+                                    <>
+                                      <button
+                                        onClick={() => {
+                                          setEditTransaction(t);
+                                          setIsEditModalOpen(true);
+                                        }}
+                                        className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-[#373734] transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Edit2 size={16} />
+                                      </button>
+                                      <button
+                                        onClick={() => setDeleteId(t.id)}
+                                        className="p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                        title="Excluir"
+                                      >
+                                        <Trash2 size={16} />
+                                      </button>
+                                    </>
                                   )}
+
+                                  {/* Botão de Estorno (Dropdown com Total/Parcial ou Remover) */}
+                                   {!isAdjustment && !isCharge && !isPayment && !isProjected && (t.type === 'expense' || isRefund) && (
+                                     <Dropdown>
+                                       <DropdownTrigger
+                                         className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                                           isRefund 
+                                             ? 'text-emerald-400 bg-emerald-500/10' 
+                                             : 'text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10'
+                                         }`}
+                                         title={isRefund ? "Gerenciar Estorno" : "Lançar Estorno"}
+                                       >
+                                         <RotateCcw size={16} />
+                                       </DropdownTrigger>
+                                       <DropdownContent align="right" className="w-56">
+                                         <div className="px-3 py-2 text-[10px] text-gray-500 font-semibold uppercase tracking-wider border-b border-[#373734] mb-1">
+                                           {isRefund ? 'Gerenciar Estorno' : 'Tipo de Estorno'}
+                                         </div>
+                                         
+                                         {isRefund ? (
+                                           <>
+                                             <DropdownItem
+                                               onClick={() => {
+                                                 onUpdate({
+                                                   ...t,
+                                                   category: 'Outros', // Categoria padrão ao remover estorno
+                                                   isRefund: false,
+                                                   _refundAmount: undefined
+                                                 });
+                                                 toast.success("Estorno removido com sucesso!");
+                                               }}
+                                               icon={X}
+                                               className="text-red-400"
+                                             >
+                                               Remover Estorno
+                                             </DropdownItem>
+                                             <div className="h-px bg-[#373734] my-1" />
+                                             <DropdownItem
+                                               onClick={() => {
+                                                 setRefundTransaction(t);
+                                                 setIsRefundModalOpen(true);
+                                               }}
+                                               icon={Calculator}
+                                               className="text-blue-400"
+                                             >
+                                               Alterar Valor (Parcial)
+                                             </DropdownItem>
+                                           </>
+                                         ) : (
+                                           <>
+                                             <DropdownItem
+                                               onClick={() => {
+                                                 handleRefundConfirm(Math.abs(t.amount), t);
+                                               }}
+                                               icon={Check}
+                                               className="text-emerald-400"
+                                             >
+                                               Valor Total
+                                             </DropdownItem>
+                                             <DropdownItem
+                                               onClick={() => {
+                                                 setRefundTransaction(t);
+                                                 setIsRefundModalOpen(true);
+                                               }}
+                                               icon={Calculator}
+                                               className="text-blue-400"
+                                             >
+                                               Valor Parcial
+                                             </DropdownItem>
+                                           </>
+                                         )}
+                                       </DropdownContent>
+                                     </Dropdown>
+                                   )}
                                 </div>
                               </td>
                             </tr>
@@ -3195,57 +2735,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             )
           }
 
-          {/* Partial Refund Modal */}
-          {partialRefundTarget && (
-            <UniversalModal
-              isOpen={isPartialRefundModalOpen}
-              onClose={() => {
-                setIsPartialRefundModalOpen(false);
-                setPartialRefundTarget(null);
-                setPartialAmount('');
-              }}
-              title="Estorno Parcial"
-              icon={<Plus size={18} />}
-              themeColor="#3b82f6"
-              footer={
-                <div className="flex gap-3">
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="w-full"
-                    onClick={handlePartialRefundSubmit}
-                  >
-                    Confirmar Estorno
-                  </Button>
-                </div>
-              }
-            >
-              <div className="space-y-4">
-                <p className="text-sm text-gray-400">
-                  Informe o valor que deseja estornar da transação: <br />
-                  <span className="text-white font-medium">{partialRefundTarget.description}</span>
-                </p>
 
-                <div className="space-y-1.5">
-                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor do Estorno (R$)</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 font-bold">R$</span>
-                    <input
-                      type="text"
-                      className="w-full bg-[#1a1a19] border border-[#373734] rounded-xl py-3 pl-10 pr-4 text-white focus:outline-none focus:border-blue-500 transition-colors font-bold text-lg"
-                      placeholder="0,00"
-                      value={partialAmount}
-                      onChange={(e) => setPartialAmount(e.target.value)}
-                      autoFocus
-                    />
-                  </div>
-                  <p className="text-[10px] text-gray-500">
-                    Valor original: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(partialRefundTarget.amount)}
-                  </p>
-                </div>
-              </div>
-            </UniversalModal>
-          )}
 
           {/* Delete Confirmation */}
           <ConfirmationBar
@@ -3470,6 +2960,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                     if (selectedCard && onUpdateAccount) {
                       await onUpdateAccount(selectedCard.id, {
                         closingDay: cardSettings.closingDay,
+                        dueDay: cardSettings.dueDay,
+                        manualBeforeLastClosingDate: cardSettings.manualBeforeLastClosingDate,
                         manualLastClosingDate: cardSettings.manualLastClosingDate,
                         manualCurrentClosingDate: cardSettings.manualCurrentClosingDate
                       });
@@ -3489,111 +2981,49 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
 
                 <div className="p-3 bg-gray-900/50 rounded-xl border border-gray-800/60">
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-4">
                     <div className="space-y-1">
                       <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider pl-1">
-                        Fechamento Última Fatura
+                        Fechamento Fatura Retrasada (Define início da Anterior)
                       </label>
                       <CustomDatePicker
-                        value={cardSettings.manualLastClosingDate || ''}
-                        onChange={(val) => setCardSettings({ ...cardSettings, manualLastClosingDate: val })}
+                        value={cardSettings.manualBeforeLastClosingDate || ''}
+                        onChange={(val) => setCardSettings({ ...cardSettings, manualBeforeLastClosingDate: val })}
                         placeholder="Data de fechamento"
                         dropdownMode="fixed"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider pl-1">
-                        Fechamento Fatura Atual
-                      </label>
-                      <CustomDatePicker
-                        value={cardSettings.manualCurrentClosingDate || ''}
-                        onChange={(val) => setCardSettings({ ...cardSettings, manualCurrentClosingDate: val })}
-                        placeholder="Data de fechamento"
-                        dropdownMode="fixed"
-                      />
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider pl-1">
+                          Fechamento Fatura Anterior
+                        </label>
+                        <CustomDatePicker
+                          value={cardSettings.manualLastClosingDate || ''}
+                          onChange={(val) => setCardSettings({ ...cardSettings, manualLastClosingDate: val })}
+                          placeholder="Data de fechamento"
+                          dropdownMode="fixed"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[10px] text-gray-500 font-bold uppercase tracking-wider pl-1">
+                          Fechamento Fatura Atual
+                        </label>
+                        <CustomDatePicker
+                          value={cardSettings.manualCurrentClosingDate || ''}
+                          onChange={(val) => setCardSettings({ ...cardSettings, manualCurrentClosingDate: val })}
+                          placeholder="Data de fechamento"
+                          dropdownMode="fixed"
+                        />
+                      </div>
                     </div>
                   </div>
                   <p className="text-[10px] text-gray-500 mt-2 text-center">
-                    Preencher estas datas sobrescreve o cálculo automático pelo Dia do Fechamento.
+                    Preencher as datas específicas sobrescreve o cálculo automático.
                   </p>
                 </div>
-              </div>
-
-              {/* Preview */}
-              {/* Preview */}
-              <div className="pt-2">
-                <p className="text-[10px] text-gray-500 mb-3 font-bold uppercase tracking-wider pl-1">Prévia de Novos Ciclos</p>
-
-                {cardSettings.manualLastClosingDate && cardSettings.manualCurrentClosingDate ? (() => {
-                  // Calculate real preview with simplified method (calling the main calculator with override)
-                  const previewSummary = calculateInvoiceSummary({
-                    ...selectedCard,
-                    ...cardSettings
-                  } as any, transactions, selectedCardId);
-
-                  const currentStart = previewSummary.currentInvoiceStart;
-                  const currentClosing = previewSummary.currentInvoiceEnd;
-                  const nextStart = previewSummary.nextInvoiceStart;
-                  const nextClosing = previewSummary.nextInvoiceEnd;
-
-                  return (
-                    <div className="grid grid-cols-2 gap-3">
-                      {/* Fatura Atual */}
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between group hover:border-white/20 transition-all">
-                        <div>
-                          <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide mb-2">Fatura Atual</p>
-                          <p className="text-xl font-bold text-white font-mono tracking-tight">
-                            {formatCurrency(previewSummary.currentInvoice.total)}
-                          </p>
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-white/5 space-y-1">
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-gray-500">Período</span>
-                            <span className="text-gray-300 font-medium">
-                              {currentStart.getDate()}/{currentStart.getMonth() + 1} até {currentClosing.getDate()}/{currentClosing.getMonth() + 1}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-gray-500">Fecha em</span>
-                            <span className="text-gray-300 font-medium">{formatDate(cardSettings.manualCurrentClosingDate)}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Próxima Fatura */}
-                      <div className="bg-white/5 border border-white/10 rounded-2xl p-4 flex flex-col justify-between group hover:border-white/20 transition-all">
-                        <div>
-                          <p className="text-[10px] text-[#d97757] font-bold uppercase tracking-wide mb-2">Próxima Fatura</p>
-                          <p className="text-xl font-bold text-white font-mono tracking-tight">
-                            {formatCurrency(previewSummary.nextInvoice.total)}
-                          </p>
-                        </div>
-                        <div className="mt-4 pt-4 border-t border-white/5 space-y-1">
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-gray-500">Período</span>
-                            <span className="text-gray-300 font-medium">
-                              {nextStart.getDate()}/{nextStart.getMonth() + 1} até {nextClosing.getDate()}/{nextClosing.getMonth() + 1}
-                            </span>
-                          </div>
-                          <div className="flex justify-between items-center text-[10px]">
-                            <span className="text-gray-500">Total Futuro</span>
-                            <span className="text-[#d97757] font-medium">{formatCurrency(previewSummary.allFutureTotal)}</span>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })() : (
-                  <div className="flex flex-col items-center justify-center py-8 bg-white/5 border border-white/5 border-dashed rounded-2xl text-center">
-                    <div className="w-8 h-8 rounded-full bg-white/5 flex items-center justify-center mb-2">
-                      <Calendar size={14} className="text-gray-500" />
-                    </div>
-                    <p className="text-xs text-gray-400 font-medium">
-                      Configure as datas acima para visualizar
-                    </p>
-                  </div>
-                )}
               </div>
             </div>
           </UniversalModal>
@@ -3704,6 +3134,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
               </div>
             </div>
           </UniversalModal>
+
+          {/* Refund Modal */}
+          <RefundModal
+            isOpen={isRefundModalOpen}
+            onClose={() => {
+              setIsRefundModalOpen(false);
+              setRefundTransaction(null);
+            }}
+            transaction={refundTransaction}
+            onConfirm={handleRefundConfirm}
+          />
 
           {/* Mobile Filters Modal */}
           <UniversalModal

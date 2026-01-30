@@ -21,6 +21,18 @@ import {
   InstallmentForecast
 } from '../types';
 
+import { 
+  adjustClosingDate, 
+  adjustDueDate,
+  isBusinessDay
+} from '../utils/dateUtils';
+
+import {
+  toCents,
+  fromCents,
+  sumMoney
+} from '../utils/moneyUtils';
+
 // ============================================================
 // HELPERS
 // ============================================================
@@ -153,6 +165,7 @@ export const calculateInstallmentMonth = (
 
 /**
  * Calcula a data de fechamento para um mês específico
+ * Considera regras bancárias para fins de semana e feriados.
  */
 export const calculateBillingDate = (
   monthKey: string,
@@ -161,11 +174,14 @@ export const calculateBillingDate = (
   const [year, month] = monthKey.split('-').map(Number);
   const lastDayOfMonth = new Date(year, month, 0).getDate();
   const safeDay = Math.min(billingDay, lastDayOfMonth);
-  return `${year}-${String(month).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+  
+  const closingDate = new Date(year, month - 1, safeDay, 12, 0, 0);
+  return toDateStr(adjustClosingDate(closingDate));
 };
 
 /**
  * Calcula a data de vencimento para um mês específico
+ * Considera regras bancárias para fins de semana e feriados.
  */
 export const calculateDueDate = (
   monthKey: string,
@@ -182,10 +198,11 @@ export const calculateDueDate = (
     dueYear += 1;
   }
 
-  const lastDayOfMonth = new Date(dueYear, dueMonth, 0).getDate();
-  const safeDay = Math.min(dueDay, lastDayOfMonth);
+  const lastDayOfTargetMonth = new Date(dueYear, dueMonth, 0).getDate();
+  const safeDay = Math.min(dueDay, lastDayOfTargetMonth);
 
-  return `${dueYear}-${String(dueMonth).padStart(2, '0')}-${String(safeDay).padStart(2, '0')}`;
+  const dueDate = new Date(dueYear, dueMonth - 1, safeDay, 12, 0, 0);
+  return toDateStr(adjustDueDate(dueDate));
 };
 
 // ============================================================
@@ -589,7 +606,7 @@ export const generateInstallmentForecast = (
 
     const forecast: InstallmentForecast = {
       monthKey,
-      totalAmount: monthInstallments.reduce((sum, inst) => sum + inst.amount, 0),
+      totalAmount: sumMoney(...monthInstallments.map(inst => inst.amount)),
       installmentsCount: monthInstallments.length,
       purchases: monthInstallments.map(inst => ({
         purchaseId: inst.purchaseId,
@@ -615,23 +632,30 @@ export const calculateFutureCommitment = (
   const today = new Date();
   const currentMonth = toMonthKey(today);
 
-  let total = 0;
-  const byMonth: Record<string, number> = {};
+  let totalCents = 0;
+  const byMonthCents: Record<string, number> = {};
 
   purchases.forEach(({ installments }) => {
     installments.forEach(inst => {
       if (inst.referenceMonth > currentMonth) {
-        total += inst.amount;
+        const amountCents = toCents(inst.amount);
+        totalCents += amountCents;
 
-        if (!byMonth[inst.referenceMonth]) {
-          byMonth[inst.referenceMonth] = 0;
+        if (!byMonthCents[inst.referenceMonth]) {
+          byMonthCents[inst.referenceMonth] = 0;
         }
-        byMonth[inst.referenceMonth] += inst.amount;
+        byMonthCents[inst.referenceMonth] += amountCents;
       }
     });
   });
 
-  return { total, byMonth };
+  // Converte de volta para decimal
+  const byMonth: Record<string, number> = {};
+  Object.entries(byMonthCents).forEach(([month, cents]) => {
+    byMonth[month] = fromCents(cents);
+  });
+
+  return { total: fromCents(totalCents), byMonth };
 };
 
 // ============================================================

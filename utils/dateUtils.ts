@@ -1,87 +1,223 @@
-// Utilitários de data respeitando o fuso horário local
-export const toLocalISOString = (date: Date = new Date()) => {
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString();
+
+/**
+ * Utilitários de Data para Regras Bancárias Brasileiras
+ */
+
+// Feriados Nacionais Brasileiros (Fixos)
+const NATIONAL_HOLIDAYS = [
+  '01-01', // Confraternização Universal
+  '04-21', // Tiradentes
+  '05-01', // Dia do Trabalho
+  '09-07', // Independência do Brasil
+  '10-12', // Nossa Senhora Aparecida
+  '11-02', // Finados
+  '11-15', // Proclamação da República
+  '11-20', // Dia da Consciência Negra (Novo feriado nacional)
+  '12-25', // Natal
+];
+
+/**
+ * Calcula feriados móveis (Carnaval, Sexta-feira Santa, Corpus Christi)
+ * Baseado no cálculo da Páscoa (Algoritmo de Meeus/Jones/Butcher)
+ */
+const getMovableHolidays = (year: number): string[] => {
+  const a = year % 19;
+  const b = Math.floor(year / 100);
+  const c = year % 100;
+  const d = Math.floor(b / 4);
+  const e = b % 4;
+  const f = Math.floor((b + 8) / 25);
+  const g = Math.floor((b - f + 1) / 3);
+  const h = (19 * a + b - d - g + 15) % 30;
+  const i = Math.floor(c / 4);
+  const k = c % 4;
+  const l = (32 + 2 * e + 2 * i - h - k) % 7;
+  const m = Math.floor((a + 11 * h + 22 * l) / 451);
+  const month = Math.floor((h + l - 7 * m + 114) / 31);
+  const day = ((h + l - 7 * m + 114) % 31) + 1;
+
+  const easter = new Date(year, month - 1, day);
+  
+  const formatDate = (date: Date) => {
+    const m = String(date.getMonth() + 1).padStart(2, '0');
+    const d = String(date.getDate()).padStart(2, '0');
+    return `${m}-${d}`;
+  };
+
+  const holidays = [];
+  
+  // Carnaval (47 dias antes da Páscoa)
+  const carnival = new Date(easter);
+  carnival.setDate(easter.getDate() - 47);
+  holidays.push(formatDate(carnival));
+  
+  // Segunda de Carnaval (48 dias antes da Páscoa)
+  const carnivalMonday = new Date(easter);
+  carnivalMonday.setDate(easter.getDate() - 48);
+  holidays.push(formatDate(carnivalMonday));
+
+  // Sexta-feira Santa (2 dias antes da Páscoa)
+  const goodFriday = new Date(easter);
+  goodFriday.setDate(easter.getDate() - 2);
+  holidays.push(formatDate(goodFriday));
+
+  // Corpus Christi (60 dias após a Páscoa)
+  const corpusChristi = new Date(easter);
+  corpusChristi.setDate(easter.getDate() + 60);
+  holidays.push(formatDate(corpusChristi));
+
+  return holidays;
 };
 
-export const toLocalISODate = (date: Date = new Date()) => toLocalISOString(date).split("T")[0];
+/**
+ * Verifica se uma data é feriado nacional ou móvel
+ */
+export const isHoliday = (date: Date): boolean => {
+  const year = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const dateStr = `${m}-${d}`;
 
-export const getCurrentLocalMonth = (date: Date = new Date()) => toLocalISODate(date).slice(0, 7);
+  if (NATIONAL_HOLIDAYS.includes(dateStr)) return true;
+  
+  const movable = getMovableHolidays(year);
+  return movable.includes(dateStr);
+};
 
-// Helper to determine if a date is a business day (Mon-Fri)
+/**
+ * Verifica se é dia útil (segunda a sexta e não feriado)
+ */
 export const isBusinessDay = (date: Date): boolean => {
   const day = date.getDay();
-  return day !== 0 && day !== 6;
+  if (day === 0 || day === 6) return false; // Domingo ou Sábado
+  return !isHoliday(date);
 };
 
-// Helper to add business days to a date
-export const addBusinessDays = (date: Date, days: number): Date => {
-  const result = new Date(date);
-  let added = 0;
-  while (added < days) {
-    result.setDate(result.getDate() + 1);
-    if (isBusinessDay(result)) {
-      added++;
-    }
+/**
+ * Retorna o próximo dia útil a partir de uma data
+ */
+export const getNextBusinessDay = (date: Date): Date => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + 1);
+  while (!isBusinessDay(next)) {
+    next.setDate(next.getDate() + 1);
   }
-  return result;
+  return next;
 };
 
-// Helper to get the Nth business day of a month
-export const getNthBusinessDay = (year: number, month: number, n: number): Date => {
-  let date = new Date(year, month, 1);
-  // Adjust if the 1st is not a business day?
-  // Usually "5th business day" means counting business days from the start.
-  // If 1st is Saturday, 2nd Sunday, 3rd Monday (1st business day).
-  let count = 0;
-
-  // Start checking from day 1
-  while (count < n) {
-    if (isBusinessDay(date)) {
-      count++;
-    }
-    if (count < n) {
-      date.setDate(date.getDate() + 1);
-    }
+/**
+ * Retorna o dia útil anterior a partir de uma data
+ */
+export const getPreviousBusinessDay = (date: Date): Date => {
+  const prev = new Date(date);
+  prev.setDate(prev.getDate() - 1);
+  while (!isBusinessDay(prev)) {
+    prev.setDate(prev.getDate() - 1);
   }
-  return date;
+  return prev;
 };
 
-// Helper to get the last business day of a month
-export const getLastBusinessDay = (year: number, month: number): Date => {
-  const lastDay = new Date(year, month + 1, 0); // Last day of the month
-  while (!isBusinessDay(lastDay)) {
-    lastDay.setDate(lastDay.getDate() - 1);
+/**
+ * Ajusta data de vencimento bancário.
+ * Se cair em fim de semana ou feriado, move para o PRÓXIMO dia útil.
+ */
+export const adjustDueDate = (date: Date): Date => {
+  if (isBusinessDay(date)) return date;
+  
+  const adjusted = new Date(date);
+  while (!isBusinessDay(adjusted)) {
+    adjusted.setDate(adjusted.getDate() + 1);
   }
-  return lastDay;
+  return adjusted;
 };
 
-// Main function to calculate payment date based on configuration
-export const calculatePaymentDate = (paymentDay: number | string, referenceDate: Date = new Date()): Date => {
+/**
+ * Ajusta data de fechamento de fatura.
+ * Regra comum: Se o dia de fechamento cai em fim de semana/feriado, 
+ * o fechamento ocorre no dia útil ANTERIOR para garantir que a fatura
+ * seja processada antes do vencimento.
+ */
+export const adjustClosingDate = (date: Date): Date => {
+  if (isBusinessDay(date)) return date;
+  
+  const adjusted = new Date(date);
+  while (!isBusinessDay(adjusted)) {
+    adjusted.setDate(adjusted.getDate() - 1);
+  }
+  return adjusted;
+};
+
+/**
+ * Retorna uma data no formato ISO local (YYYY-MM-DD)
+ * Evita problemas de fuso horário que o .toISOString() costuma causar
+ */
+export const toLocalISODate = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+/**
+ * Retorna uma data e hora no formato ISO local (YYYY-MM-DDTHH:mm:ss.sss)
+ */
+export const toLocalISOString = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  const seconds = String(date.getSeconds()).padStart(2, '0');
+  const ms = String(date.getMilliseconds()).padStart(3, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}:${seconds}.${ms}`;
+};
+
+/**
+ * Retorna o mês atual no formato local (YYYY-MM)
+ */
+export const getCurrentLocalMonth = (date: Date = new Date()): string => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  return `${year}-${month}`;
+};
+
+/**
+ * Calcula a data de pagamento com base em regras (Dia fixo ou Dia Útil)
+ */
+export const calculatePaymentDate = (paymentDay: number | string, referenceDate: Date): Date => {
   const year = referenceDate.getFullYear();
   const month = referenceDate.getMonth();
 
-  // Check if paymentDay is a special string
-  if (typeof paymentDay === 'string') {
-    if (paymentDay === 'business_day_5') {
-      return getNthBusinessDay(year, month, 5);
+  if (paymentDay === 'business_day_5') {
+    let date = new Date(year, month, 1);
+    let businessDaysCount = 0;
+    while (businessDaysCount < 5) {
+      if (isBusinessDay(date)) {
+        businessDaysCount++;
+      }
+      if (businessDaysCount < 5) {
+        date.setDate(date.getDate() + 1);
+      }
     }
-    if (paymentDay === 'business_day_last') {
-      return getLastBusinessDay(year, month);
-    }
-    if (paymentDay === 'last_day') {
-      return new Date(year, month + 1, 0);
-    }
+    return date;
   }
 
-  // Handle number (fixed day)
+  if (paymentDay === 'business_day_last') {
+    let date = new Date(year, month + 1, 0); // Last day of month
+    while (!isBusinessDay(date)) {
+      date.setDate(date.getDate() - 1);
+    }
+    return date;
+  }
+
+  if (paymentDay === 'last_day') {
+    return new Date(year, month + 1, 0);
+  }
+
+  // Dia Fixo
   const day = typeof paymentDay === 'string' ? parseInt(paymentDay) : paymentDay;
-  if (!isNaN(day)) {
-    // Handle overflow (e.g. Feb 30) -> Last day of month
-    const lastDay = new Date(year, month + 1, 0).getDate();
-    return new Date(year, month, Math.min(day, lastDay));
-  }
-
-  // Fallback
-  return new Date(year, month, 5);
+  const date = new Date(year, month, day);
+  
+  // Se cair em fim de semana ou feriado, move para o próximo dia útil
+  return adjustDueDate(date);
 };

@@ -989,41 +989,7 @@ router.post('/create-item', withPluggyAuth, async (req, res) => {
 // Assumimos que a segunda é o estorno e forçamos virar CRÉDITO (Reembolso)
 // ============================================================
 const detectAndFixDoubledRefunds = (transactions) => {
-    if (!transactions || transactions.length < 2) return transactions;
-
-    // Agrupar por chave: Data|Valor|Descrição
-    const groups = new Map();
-
-    for (const tx of transactions) {
-        // Analisar tanto positivos quanto negativos
-        // Agrupar por valor absoluto para pegar par Expense (+359) e Expense (+359)
-        const dateStr = tx.date.split('T')[0];
-        const key = `${dateStr}|${Math.abs(tx.amount)}|${tx.description.trim()}`;
-
-        if (!groups.has(key)) {
-            groups.set(key, []);
-        }
-        groups.get(key).push(tx);
-    }
-
-    // Identificar duplicatas
-    for (const [key, group] of groups) {
-        // DUPLIICIDADE EXATA (Par): 2 transações iguais
-        if (group.length === 2) {
-            const [tx1, tx2] = group;
-
-            // Verifica sinais: Se forem IGUAIS (ambos + ou ambos -), temos um problema
-            // Se forem diferentes, já se anulam
-            if ((tx1.amount > 0 && tx2.amount > 0) || (tx1.amount < 0 && tx2.amount < 0)) {
-
-                // Marcar a segunda como estorno inferido
-                tx2._isInferredRefund = true;
-
-                console.log(`[SYNC] 🔄 Duplicidade detectada (Provável Estorno): "${tx2.description}" - Valor: ${tx2.amount}`);
-            }
-        }
-    }
-
+    // Desativado: Reembolsos devem ser marcados manualmente pelo usuário
     return transactions;
 };
 
@@ -1122,40 +1088,14 @@ const fixDbDuplicates = async (db, userId) => {
                         // Isso é o cenário ideal, já se anulam matematicamente.
                         // Mas garantimos que o POSITIVO esteja marcado como Reembolso para UI.
                         if (tx1.type !== tx2.type) {
-                            const incomeTx = tx1.type === 'income' ? tx1 : tx2;
-                            if (incomeTx.category !== 'Reembolso' || !incomeTx.isRefund) {
-                                batch.update(ccRef.doc(incomeTx.id), {
-                                    category: 'Reembolso',
-                                    isRefund: true,
-                                    _fixedBy: 'refund_matcher_v2'
-                                });
-                                updateCount++;
-                                processedIds.add(tx1.id);
-                                processedIds.add(tx2.id); // Par resolvido
-                            }
+                            // Sinais opostos já se anulam matematicamente.
+                            // Não marcamos mais como Reembolso automaticamente (solicitação do usuário: sempre manual)
                         }
                         // Caso B: Sinais IGUAIS (Ambos negativos - Expense) -> Problema do usuário
                         // Ex: -359 e -359. O segundo é provavelmente o estorno que veio errado
                         else if (tx1.type === 'expense' && tx2.type === 'expense') {
-                            console.log(`[Fix-Refunds] ⚠️ Found double expense pair: ${amountKey} (R$ ${tx1.amount}) | "${desc1}" vs "${desc2}"`);
-
-                            // Converter a SEGUNDA (mais recente) para income/reembolso
-                            batch.update(ccRef.doc(tx2.id), {
-                                type: 'income',
-                                category: 'Reembolso',
-                                isRefund: true,
-                                _fixedBy: 'refund_matcher_v2_fix_double_expense'
-                            });
-
-                            results.push({
-                                fixed: true,
-                                pair: [desc1, desc2],
-                                amount: tx2.amount,
-                                reason: 'double_expense_fuzzy_match'
-                            });
-                            updateCount++;
-                            processedIds.add(tx1.id);
-                            processedIds.add(tx2.id);
+                            // Não convertemos mais automaticamente para evitar falsos positivos
+                            // O usuário deve tratar isso manualmente se desejar
                         }
                     }
                 }
@@ -1536,19 +1476,11 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                         // Só considerar positivo se também for tipo CREDIT da API.
                         const isCreditType = tx.type === 'CREDIT';
 
-                        // DECISÃO FINAL: É reembolso APENAS se:
-                        // 1. Tem keyword específica de reembolso, OU
-                        // 2. API Pluggy diz explicitamente que é CREDIT, OU
-                        // 3. Foi detectado como duplicidade inferida (compra + estorno negativo)
-                        const isRefund = isRefundByKeyword || isCreditType || tx._isInferredRefund;
-
-                        // Log para debug quando detectar reembolso
-                        if (isRefund) {
-                            console.log(`[SYNC] 💳 Reembolso detectado: "${tx.description}" - Valor: ${tx.amount}, Motivo: ${isRefundByKeyword ? 'keyword' : 'CREDIT type'}`);
-                        }
-
-                        // Determinar tipo final
-                        const isIncome = isRefund;
+                        // DECISÃO FINAL: É crédito (income) se:
+                        // 1. API Pluggy diz explicitamente que é CREDIT, OU
+                        // 2. Foi detectado como duplicidade inferida (compra + estorno negativo)
+                        // 3. Tem keyword de reembolso (quase sempre é crédito)
+                        const isIncome = isCreditType || isRefundByKeyword;
 
                         mappedTx = {
                             cardId: account.id,
@@ -1558,7 +1490,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             description: enrichTransactionDescription(tx),
                             amount: Math.abs(tx.amount),
                             type: isIncome ? 'income' : 'expense',
-                            category: isRefund ? 'Reembolso' : (tx.category || 'Uncategorized'),
+                            category: tx.category || 'Uncategorized',
                             status: 'completed',
                             totalInstallments,
                             installmentNumber,
@@ -1592,7 +1524,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             // Timestamp completo para ordenação precisa (ISO 8601)
                             timestamp: tx.date, // Mantém horário e fuso original
                             accountId: tx.accountId,
-                            category: isRefund ? 'Reembolso' : (tx.category || 'Uncategorized'),
+                            category: tx.category || 'Uncategorized',
                             status: 'completed',
                             updatedAt: syncTimestamp,
                             isInvestment: isSavings,
@@ -2391,15 +2323,13 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         date: tx.date.split('T')[0],
                         description: enrichTransactionDescription(tx),
                         amount: Math.abs(tx.amount),
-                        type: ((tx.type === 'CREDIT' || tx.amount < 0) || tx._isInferredRefund) ? 'income' : 'expense',
+                        type: (tx.type === 'CREDIT' || tx.amount < 0) ? 'income' : 'expense',
                         category: (tx.category || 'Uncategorized'),
                         status: 'completed',
                         totalInstallments,
                         installmentNumber,
                         invoiceMonthKey,
-                        pluggyRaw: tx,
-                        // Se foi inferido manual
-                        ...(tx._isInferredRefund ? { isRefund: true, category: 'Reembolso' } : {})
+                        pluggyRaw: tx
                     };
                 } else {
                     // Regular/Savings Transaction
