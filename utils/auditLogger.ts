@@ -20,14 +20,14 @@ class AuditLogger {
       details,
       result,
     };
-    
+
     this.logs.push(entry);
-    
+
     // Em produção, isso poderia ser enviado para um serviço de logs ou banco de dados
-    console.log(`[AUDIT][${entry.operation}]`, {
-      details: entry.details,
-      result: entry.result
-    });
+    // console.log(`[AUDIT][${entry.operation}]`, {
+    //   details: entry.details,
+    //   result: entry.result
+    // });
   }
 
   getLogs() {

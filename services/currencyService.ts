@@ -40,10 +40,7 @@ export const fetchExchangeRates = async (): Promise<ExchangeRates> => {
             lastUpdated: Date.now()
         };
 
-        console.log('[ExchangeService] Cotações atualizadas:', {
-            USD_BRL: cachedRates.rates.BRL,
-            timestamp: new Date().toISOString()
-        });
+        // Log removed
 
         return cachedRates;
     } catch (error) {

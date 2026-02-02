@@ -6,7 +6,7 @@ import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
   ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code, Calculator
 } from './Icons';
-import { CustomAutocomplete, CustomDatePicker, CustomSelect } from './UIComponents';
+import { CustomAutocomplete, CustomDatePicker, CustomSelect, CurrencyInput } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
 import { ConfirmationBar } from './ConfirmationBar';
 import { useToasts } from './Toast';
@@ -20,7 +20,7 @@ import {
   calculateFutureLimitImpact,
   getTransactionInvoiceMonthKey,
   isCreditCardPayment,
-  isTransactionRefund,
+
   buildInvoices,
   generateInvoiceForecast,
   type InvoiceBuildResult,
@@ -31,7 +31,7 @@ import {
 import { exportToCSV } from '../utils/export';
 import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 import { getExchangeRateSync, fetchExchangeRates } from '../services/currencyService';
-import { RefundModal } from './RefundModal';
+
 
 // Mapeamento de meses
 const MONTH_NAMES = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
@@ -102,12 +102,7 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
       console.error('[InvoiceTag] Tentativa de mover para key vazio');
       return;
     }
-    console.log('[InvoiceTag] Movendo transação para fatura:', {
-      transactionId: transaction.id,
-      description: transaction.description,
-      fromMonth: effectiveMonthKey,
-      toMonth: targetKey
-    });
+    // Log removed
     onUpdate({ ...transaction, manualInvoiceMonth: targetKey });
   };
 
@@ -182,6 +177,7 @@ interface CreditCardTableProps {
   onUpdateAccount?: (accountId: string, updates: Partial<ConnectedAccount>) => Promise<void>;
   onOpenFeedback?: () => void;
   onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => void;
+  isAdmin?: boolean; // Controla visibilidade de recursos de debug (ex: Ver JSON)
 }
 
 
@@ -213,29 +209,17 @@ const useInvoiceBuilder = (
   monthOffset: number = 0
 ) => {
   return useMemo(() => {
-    console.log('[DEBUG] useInvoiceBuilder chamado:', {
-      hasCard: !!card,
-      cardId,
-      cardName: card?.name || card?.institution,
-      transactionsCount: transactions.length,
-      monthOffset
-    });
+    // Log removed
 
     if (!card) {
-      console.log('[DEBUG] useInvoiceBuilder retornando null - card undefined');
+      // Log removed
       return null;
     }
 
     const result = buildInvoices(card, transactions, cardId, monthOffset);
 
-    console.log('[DEBUG] useInvoiceBuilder resultado:', {
-      closedInvoiceTotal: result.closedInvoice.total,
-      currentInvoiceTotal: result.currentInvoice.total,
-      futureInvoicesCount: result.futureInvoices.length,
-      allFutureTotal: result.allFutureTotal
-    });
+    // Log removed
 
-    // Converte InvoiceItems para formato Transaction para compatibilidade
     const itemsToTransactions = (items: InvoiceItem[]): Transaction[] => {
       return items.map(item => ({
         id: item.id,
@@ -258,7 +242,7 @@ const useInvoiceBuilder = (
         amountOriginal: item.amountOriginal,
         amountInAccountCurrency: item.amountInAccountCurrency,
         pluggyRaw: item.pluggyRaw
-      }));
+      } as any));
     };
 
     return {
@@ -323,7 +307,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   billTotalsByMonthKey = {},
   onUpdateAccount,
   onOpenFeedback,
-  onBulkUpdate
+  onBulkUpdate,
+  isAdmin = false
 }) => {
   // Filter hidden accounts
   const visibleCreditCardAccounts = React.useMemo(() =>
@@ -359,7 +344,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   React.useEffect(() => {
     fetchExchangeRates().then(() => {
       setExchangeRatesLoaded(true);
-      console.log('[CreditCardTable] Cotações de câmbio carregadas');
+      // Log removed
     });
   }, []);
 
@@ -375,13 +360,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // DEBUG: Log das transações e cartões recebidos
   React.useEffect(() => {
-    console.log('[DEBUG CreditCardTable]', {
-      transactionsReceived: transactions.length,
-      creditCardAccountsCount: creditCardAccounts.length,
-      creditCardAccountsIds: creditCardAccounts.map(c => ({ id: c.id, name: c.name || c.institution })),
-      selectedCardId,
-      sampleTransactions: transactions.slice(0, 3).map(tx => ({ id: tx.id, date: tx.date, desc: tx.description?.slice(0, 30), accountId: tx.accountId, cardId: tx.cardId }))
-    });
+    // Log removed
   }, [transactions, creditCardAccounts, selectedCardId]);
 
   // Invoice Filter (Todas, Última, Atual, Próxima)
@@ -402,30 +381,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   const [editTransaction, setEditTransaction] = useState<Transaction | null>(null);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
+  // Modal para visualizar JSON bruto da transação (debug)
+  const [jsonModalData, setJsonModalData] = useState<Transaction | null>(null);
+
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
-  const [refundTransaction, setRefundTransaction] = useState<Transaction | null>(null);
+  const [refundSourceTransaction, setRefundSourceTransaction] = useState<Transaction | null>(null);
+  const [refundTab, setRefundTab] = useState<'total' | 'custom'>('total');
+  const [refundCustomAmount, setRefundCustomAmount] = useState<number>(0);
 
-  const handleRefundConfirm = (amount: number, tx?: Transaction) => {
-    const targetTx = tx || refundTransaction;
-    if (!targetTx) return;
 
-    // Se o valor do estorno for igual ao valor da transação, marcamos a própria transação
-    // Note: usamos Math.abs para comparar valores positivos
-    const originalAmount = Math.abs(targetTx.amount);
-    const isTotalRefund = Math.abs(amount - originalAmount) < 0.01;
-
-    onUpdate({
-      ...targetTx,
-      category: 'Reembolso',
-      isRefund: true,
-      // Se for parcial, poderíamos guardar o valor estornado (opcional dependendo do uso posterior)
-      ...(isTotalRefund ? {} : { _refundAmount: amount })
-    });
-
-    toast.success(isTotalRefund ? "Transação marcada como reembolso total!" : "Transação marcada como reembolso parcial!");
-    setIsRefundModalOpen(false);
-    setRefundTransaction(null);
-  };
 
   // Auto-remove duplicates
   const [hasCheckedDuplicates, setHasCheckedDuplicates] = useState(false);
@@ -513,6 +477,69 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       console.error(error);
       toast.error('Erro ao adicionar compra');
     }
+  };
+
+  const openRefundModal = (tx: Transaction) => {
+    setRefundSourceTransaction(tx);
+    setRefundTab('total');
+    setRefundCustomAmount(Math.abs(tx.amount));
+    setIsRefundModalOpen(true);
+  };
+
+  const closeRefundModal = () => {
+    setIsRefundModalOpen(false);
+    setRefundSourceTransaction(null);
+    setRefundTab('total');
+    setRefundCustomAmount(0);
+  };
+
+  const refundMaxAmount = refundSourceTransaction ? Math.abs(refundSourceTransaction.amount) : 0;
+  const refundAmountToCreate = refundTab === 'total' ? refundMaxAmount : refundCustomAmount;
+
+  const handleConfirmRefund = async () => {
+    if (!refundSourceTransaction) return;
+    if (!onAdd) return;
+
+    if (!refundAmountToCreate || refundAmountToCreate <= 0 || refundAmountToCreate > refundMaxAmount) {
+      toast.warning('Informe um valor válido para o estorno');
+      return;
+    }
+
+    const cardLinkId = refundSourceTransaction.cardId || refundSourceTransaction.accountId || selectedCardId;
+    if (!cardLinkId) {
+      toast.error('Cartão não identificado para criar o estorno');
+      return;
+    }
+
+    const srcCurrencyCode = (refundSourceTransaction as any).currencyCode || (refundSourceTransaction as any).pluggyRaw?.currencyCode;
+    const srcAmountOriginal = (refundSourceTransaction as any).amountOriginal;
+
+    let amountOriginal: number | undefined = undefined;
+    if (srcCurrencyCode && srcCurrencyCode !== 'BRL' && typeof srcAmountOriginal === 'number' && refundMaxAmount > 0) {
+      amountOriginal = Math.abs(srcAmountOriginal) * (refundAmountToCreate / refundMaxAmount);
+    }
+
+    const payload: any = {
+      memberId: refundSourceTransaction.memberId,
+      date: refundSourceTransaction.date,
+      description: `Estorno - ${refundSourceTransaction.description}`,
+      amount: refundAmountToCreate,
+      category: refundSourceTransaction.category || 'Geral',
+      type: 'income',
+      status: 'completed',
+      accountId: cardLinkId,
+      accountType: 'CREDIT_CARD',
+      cardId: cardLinkId,
+      currencyCode: srcCurrencyCode,
+      amountOriginal,
+      manualInvoiceMonth: (refundSourceTransaction as any).manualInvoiceMonth ?? null,
+      _syntheticRefund: true,
+      refundOfId: refundSourceTransaction.id
+    };
+
+    await onAdd(payload);
+    toast.success(refundTab === 'total' ? 'Estorno total criado!' : 'Estorno parcial criado!');
+    closeRefundModal();
   };
 
   // Card Settings Modal
@@ -751,24 +778,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   // Calculate invoice summary - AGORA USA O NOVO SISTEMA
   const invoiceSummary = useMemo(() => {
     // DEBUG: Verificar qual sistema está sendo usado
-    console.log('[DEBUG] invoiceSummary - Sistema escolhido:', {
-      temInvoiceBuilderData: !!invoiceBuilderData,
-      selectedCardId,
-      selectedCardName: selectedCard?.name || selectedCard?.institution,
-      transactionsCount: transactions.length
-    });
+    // Log removed
 
     // Se temos dados do novo sistema, usa eles
     if (invoiceBuilderData) {
       const { closedInvoice, currentInvoice, futureInvoices, periods, allFutureTotal } = invoiceBuilderData;
 
-      console.log('[DEBUG] USANDO INVOICEBUILDER:', {
-        closedInvoiceTotal: closedInvoice.total,
-        currentInvoiceTotal: currentInvoice.total,
-        futureInvoicesCount: futureInvoices.length,
-        allFutureTotal,
-        closingDay: periods.closingDay
-      });
+      // Log removed
 
       // Helper para converter string YYYY-MM-DD para Date
       const toDate = (dateStr: string | Date): Date => {
@@ -853,7 +869,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     }
 
     // Fallback para o sistema antigo se não houver dados
-    console.warn('[CreditCardTable] useInvoiceBuilder não retornou dados para o cartão:', selectedCardId);
+    // Log removed
     return {
       lastInvoice: { transactions: [], total: 0 },
       currentInvoice: { transactions: [], total: 0 },
@@ -1087,9 +1103,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas
 
         const amt = getTransactionAmountInBRL(tx);
-        const isRefund = isTransactionRefund(tx);
 
-        if (tx.type === 'income' || isRefund) return acc - amt;
+        if (tx.type === 'income') return acc - amt;
         return acc + amt;
       }, 0);
     };
@@ -1115,9 +1130,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (isCreditCardPayment(tx)) return acc;
 
         const amt = getTransactionAmountInBRL(tx);
-        const isRefund = isTransactionRefund(tx);
 
-        if (tx.type === 'income' || isRefund) return acc - amt;
+        if (tx.type === 'income') return acc - amt;
         return acc + amt;
       }, 0);
     };
@@ -1177,6 +1191,178 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     return [...chargeTransactions, ...filteredTransactions];
   }, [chargeTransactions, filteredTransactions]);
 
+  const { groupedTransactionsWithCharges, linkedRefundsByParentId, resolvedRefundParentById } = useMemo(() => {
+    const visibleIds = new Set(transactionsWithCharges.map(t => t.id));
+    const byId = new Map<string, Transaction>();
+    transactionsWithCharges.forEach(t => byId.set(t.id, t));
+
+    const resolvedParentByRefundId = new Map<string, string>();
+
+    const normalizeForMatch = (desc: string) =>
+      (desc || '')
+        .toLowerCase()
+        .replace(/\s+/g, ' ')
+        .trim();
+
+    const stripRefundPrefix = (desc: string) =>
+      (desc || '')
+        .replace(/^estorno\s*-\s*/i, '')
+        .replace(/^estorno\s+/i, '')
+        .trim();
+
+    const getDateNumber = (t: Transaction) => {
+      const d = t.timestamp || t.date || '';
+      const isoDate = d.includes('T') ? d.split('T')[0] : d;
+      const [y, m, day] = isoDate.split('-').map(Number);
+      if (!y || !m || !day) return 0;
+      return y * 10000 + m * 100 + day;
+    };
+
+    // PASSO 1: Parear por refundOfId explícito (estornos criados pelo sistema)
+    transactionsWithCharges.forEach(t => {
+      const refundOfId = (t as any).refundOfId as string | undefined;
+      if (refundOfId && visibleIds.has(refundOfId)) {
+        resolvedParentByRefundId.set(t.id, refundOfId);
+      }
+    });
+
+    // PASSO 2: Para estornos com refundOfId mas parent não visível,
+    // tentar encontrar pelo nome da transação original
+    transactionsWithCharges.forEach(t => {
+      if (resolvedParentByRefundId.has(t.id)) return; // já pareado
+
+      const refundOfId = (t as any).refundOfId as string | undefined;
+      if (!refundOfId) return; // não tem refundOfId
+
+      // Parent não está visível, tentar encontrar por descrição
+      const desc = (t.description || '').trim();
+      const baseDesc = stripRefundPrefix(desc);
+      if (!baseDesc) return;
+
+      const targetDesc = normalizeForMatch(baseDesc);
+
+      // Buscar transação original pela descrição
+      for (const candidate of transactionsWithCharges) {
+        if (candidate.id === t.id) continue;
+        if ((candidate as any)._syntheticRefund === true) continue;
+        const candidateDescLower = (candidate.description || '').toLowerCase();
+        if (candidateDescLower.startsWith('estorno -') || candidateDescLower.startsWith('estorno ')) continue;
+
+        const candidateDesc = normalizeForMatch(candidate.description || '');
+        if (candidateDesc === targetDesc) {
+          resolvedParentByRefundId.set(t.id, candidate.id);
+          break;
+        }
+      }
+    });
+
+    // ============================================================
+    // DETECÇÃO AUTOMÁTICA DE PARES ESTORNO + COMPRA
+    // Detecta transações que:
+    // 1. Têm flag _syntheticRefund === true
+    // 2. OU começam com "Estorno -" / "Estorno " na descrição
+    // 3. E têm tipo 'income' (valor positivo) 
+    // ============================================================
+    transactionsWithCharges.forEach(t => {
+      if (resolvedParentByRefundId.has(t.id)) return;
+
+      const desc = (t.description || '').trim();
+      const descLower = desc.toLowerCase();
+
+      // Detecta se é um estorno: flag explícita OU descrição começa com "Estorno"
+      const isSyntheticRefund = (t as any)._syntheticRefund === true;
+      const startsWithEstorno = descLower.startsWith('estorno -') || descLower.startsWith('estorno ');
+      const isRefundByType = t.type === 'income' && (
+        descLower.includes('estorno') ||
+        descLower.includes('reembolso') ||
+        descLower.includes('devolução') ||
+        descLower.includes('cancelamento')
+      );
+
+      // Se não é estorno de nenhuma forma, pula
+      if (!isSyntheticRefund && !startsWithEstorno && !isRefundByType) return;
+
+      const baseDesc = stripRefundPrefix(desc);
+      if (!baseDesc) return;
+
+      const targetDesc = normalizeForMatch(baseDesc);
+      const targetAmount = Math.abs(t.amount);
+      const targetDate = getDateNumber(t);
+
+      // Se for estorno sintético (criado pelo sistema), não exigir valor igual
+      const hasExplicitRefundLink = (t as any).refundOfId || (t as any)._syntheticRefund;
+
+      const candidates: Transaction[] = [];
+      transactionsWithCharges.forEach(candidate => {
+        if (candidate.id === t.id) return;
+        if (!visibleIds.has(candidate.id)) return;
+        // Candidato não pode ser também um estorno
+        const candidateDescLower = (candidate.description || '').toLowerCase();
+        if ((candidate as any)._syntheticRefund === true) return;
+        if (candidateDescLower.startsWith('estorno -') || candidateDescLower.startsWith('estorno ')) return;
+        if (isCreditCardPayment(candidate)) return;
+
+        const candidateDesc = normalizeForMatch(candidate.description || '');
+        // Só verificar valor se não for estorno sintético
+        if (!hasExplicitRefundLink) {
+          const candidateAmount = Math.abs(candidate.amount);
+          if (candidateAmount !== targetAmount) return;
+        }
+        if (candidateDesc !== targetDesc) return;
+        candidates.push(candidate);
+      });
+
+      if (candidates.length === 0) return;
+
+      candidates.sort((a, b) => {
+        const aDiff = Math.abs(getDateNumber(a) - targetDate);
+        const bDiff = Math.abs(getDateNumber(b) - targetDate);
+        if (aDiff !== bDiff) return aDiff - bDiff;
+        return (b.timestamp || b.date || '').localeCompare(a.timestamp || a.date || '');
+      });
+
+      resolvedParentByRefundId.set(t.id, candidates[0].id);
+    });
+
+    const refundsByParentId = new Map<string, Transaction[]>();
+    resolvedParentByRefundId.forEach((parentId, refundId) => {
+      if (!visibleIds.has(parentId)) return;
+      const refundTx = byId.get(refundId);
+      if (!refundTx) return;
+      const list = refundsByParentId.get(parentId) || [];
+      list.push(refundTx);
+      refundsByParentId.set(parentId, list);
+    });
+
+    refundsByParentId.forEach(refunds => {
+      refunds.sort((a, b) => {
+        const aTimestamp = a.timestamp || a.date || '';
+        const bTimestamp = b.timestamp || b.date || '';
+        if (aTimestamp < bTimestamp) return 1;
+        if (aTimestamp > bTimestamp) return -1;
+        return a.id.localeCompare(b.id);
+      });
+    });
+
+    const list: Transaction[] = [];
+    transactionsWithCharges.forEach(t => {
+      const parentId = resolvedParentByRefundId.get(t.id);
+      if (parentId && visibleIds.has(parentId)) return;
+
+      list.push(t);
+      const linked = refundsByParentId.get(t.id);
+      if (linked?.length) {
+        linked.forEach(r => list.push(r));
+      }
+    });
+
+    return {
+      groupedTransactionsWithCharges: list,
+      linkedRefundsByParentId: refundsByParentId,
+      resolvedRefundParentById: resolvedParentByRefundId
+    };
+  }, [transactionsWithCharges]);
+
   // Calculate total amount from filtered transactions (incluindo encargos)
   // Usa conversão de moeda em tempo real para transações internacionais
   // INCLUI detecção de pares compra+estorno que se anulam
@@ -1219,9 +1405,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       if (pairedIds.has(tx.id)) return acc; // Ignora transações pareadas (estorno+compra)
 
       const amt = getTransactionAmountInBRL(tx);
-      const isRefund = isTransactionRefund(tx);
 
-      if (tx.type === 'income' || isRefund) return acc - amt;
+      if (tx.type === 'income') return acc - amt;
       return acc + amt;
     }, 0);
   }, [transactionsWithCharges, exchangeRatesLoaded]);
@@ -2325,22 +2510,35 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         transition={{ duration: 0.3, ease: "easeOut" }}
-                        className="divide-y divide-[#373734]"
+                        className=""
                       >
-                        {transactionsWithCharges.map((t, index) => {
+                        {groupedTransactionsWithCharges.map((t, index) => {
                           const isCharge = (t as any).isCharge === true;
                           const isPayment = (t as any).isPayment === true;
-                          const isRefund = (t as any).isRefund === true || t.category === 'Reembolso';
+                          // Detecta descLower primeiro para usar na detecção de estorno
+                          const descLower = (t.description || '').toLowerCase();
+                          // Detecta estorno: flag OU descrição que começa com "Estorno -"
+                          const isSyntheticRefund = (t as any)._syntheticRefund === true ||
+                            descLower.startsWith('estorno -') ||
+                            descLower.startsWith('estorno ');
+                          // const refundAppliedAmount = removed
+                          const hasAppliedRefund = false;
+                          const resolvedRefundOfId = resolvedRefundParentById.get(t.id);
+                          const isLinkedRefund = !!resolvedRefundOfId;
+                          const hasLinkedRefund = linkedRefundsByParentId.has(t.id);
                           const isLate = (t as any).isLate === true;
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
                           const isProjected = (t as any).isProjected === true;
 
+                          // Detecta se PODE ser reembolso (para sugerir ao usuário)
+                          const mightBeRefund = false; // logic removed
+
                           // Detecta se a transação faz parte de um par compra+estorno (zerando o total)
                           const isPaired = pairedTransactionIds.has(t.id);
 
                           // Detectar transação de IOF (imposto sobre compra internacional)
-                          const descLower = (t.description || '').toLowerCase();
+                          // Reusa descLower já declarado acima
                           const isIOF = (t as any).isIOF === true ||
                             descLower.includes('iof') ||
                             descLower.includes('imposto') ||
@@ -2368,10 +2566,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                             displayAmount = Math.abs(t.amount);
                           }
 
+                          // Determina se faz parte de um par estornado (amarelo vibrante)
+                          const isRefundPair = hasLinkedRefund || isLinkedRefund || isSyntheticRefund;
+                          // Verifica se é a última transação do grupo de estorno (para colocar borda inferior)
+                          const isLastInRefundGroup = isLinkedRefund && !linkedRefundsByParentId.has(t.id);
+
                           return (
                             <tr
                               key={t.id}
-                              className={`transition-colors group border-b border-[#373734] ${isAdjustment
+                              className={`transition-colors group ${(hasLinkedRefund && !isLastInRefundGroup) ? 'border-b-0' : 'border-b'} border-[#373734] ${isAdjustment
                                 ? 'bg-purple-500/5 hover:bg-purple-500/10'
                                 : isCharge
                                   ? 'bg-red-500/5 hover:bg-red-500/10'
@@ -2382,30 +2585,32 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     : 'hover:bg-[#373734]/30'
                                 }`}
                             >
-                              <td className="px-4 py-4 border-b border-r border-[#373734] text-center align-middle">
+                              <td className={`px-4 py-4 border-r border-[#373734] text-center align-middle ${(hasLinkedRefund && !isLastInRefundGroup) ? '' : 'border-b'}`}>
                                 <div className="flex items-center justify-center h-full">
-                                  <button
-                                    onClick={(e) => handleSelectOne(t.id, e)}
-                                    className="group flex items-center justify-center w-full h-full"
-                                  >
-                                    <div
-                                      data-tour={index === 0 ? "row-checkbox-0" : undefined}
-                                      className={`
+                                  {isSyntheticRefund ? null : (
+                                    <button
+                                      onClick={(e) => handleSelectOne(t.id, e)}
+                                      className="group flex items-center justify-center w-full h-full"
+                                    >
+                                      <div
+                                        data-tour={index === 0 ? "row-checkbox-0" : undefined}
+                                        className={`
                                       w-5 h-5 rounded-md border transition-all flex items-center justify-center
                                       ${selectedIds.includes(t.id)
-                                          ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
-                                          : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
-                                        }
+                                            ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20'
+                                            : 'bg-[#3a3a38] border-[#454542] group-hover:border-[#d97757]/50 text-transparent'
+                                          }
                                     `}>
-                                      <Check size={12} strokeWidth={3} />
-                                    </div>
-                                  </button>
+                                        <Check size={12} strokeWidth={3} />
+                                      </div>
+                                    </button>
+                                  )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 whitespace-nowrap text-gray-400 font-mono text-xs border-r border-[#373734]">
+                              <td className={`px-6 py-4 whitespace-nowrap font-mono text-xs border-r border-[#373734] text-gray-400 ${(hasLinkedRefund && !isLastInRefundGroup) ? '' : 'border-b'}`}>
                                 {formatDate(t.date)}
                               </td>
-                              <td className="px-6 py-4 border-r border-[#373734]">
+                              <td className={`px-6 py-4 border-r border-[#373734] ${(hasLinkedRefund && !isLastInRefundGroup) ? '' : 'border-b'}`}>
                                 <div className="flex items-center justify-center">
                                   <InvoiceTag
                                     transaction={t}
@@ -2416,7 +2621,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 </div>
                               </td>
 
-                              <td className="px-6 py-4 text-gray-200 font-medium border-r border-[#373734]">
+                              <td className={`px-6 py-4 font-medium border-r border-[#373734] text-gray-200 ${(hasLinkedRefund && !isLastInRefundGroup) ? '' : 'border-b'}`}>
                                 <div className="flex flex-col gap-1">
                                   <div className="flex items-center gap-2 flex-wrap">
                                     {isAdjustment && (
@@ -2426,16 +2631,16 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         <path d="M12 8h.01" />
                                       </svg>
                                     )}
+                                    {isLinkedRefund && (
+                                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-500 shrink-0"><path d="M9 14l-4 -4l4 -4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg>
+                                    )}
                                     {isCharge && (
                                       <AlertCircle size={14} className="text-red-400 shrink-0" />
                                     )}
                                     {isPayment && (
                                       <Check size={14} className={isLate ? 'text-amber-400 shrink-0' : 'text-emerald-400 shrink-0'} />
                                     )}
-                                    <span className={`
-                                      ${isRefund ? 'line-through text-gray-500' : ''}
-                                      ${isAdjustment ? 'text-purple-300' : isCharge ? 'text-red-300' : isPayment ? (isLate ? 'text-amber-300' : 'text-emerald-300') : ''}
-                                    `}>
+                                    <span className={`${isAdjustment ? 'text-purple-300' : isCharge ? 'text-red-300' : isPayment ? (isLate ? 'text-amber-300' : 'text-emerald-300') : ''} ${isLinkedRefund ? 'pl-6' : ''}`}>
                                       {t.description}
                                     </span>
                                     {isAdjustment && (
@@ -2446,10 +2651,45 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                         Ajuste
                                       </span>
                                     )}
-                                    {isRefund && (
-                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide text-blue-400">
-                                        <CornerUpLeft size={10} /> Reembolso
+                                    {hasAppliedRefund && (
+                                      <span className="inline-flex items-center gap-1">
+                                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-medium tracking-wide bg-yellow-500/15 text-yellow-400/80 border border-yellow-500/25">
+                                          <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14l-4 -4l4 -4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg>
+                                          Reembolso
+                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            onUpdate({ id: t.id, _refundAmount: null } as any);
+                                            toast.success('Reembolso removido!');
+                                          }}
+                                          className="inline-flex items-center justify-center p-1 rounded-full text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                          title="Remover reembolso"
+                                        >
+                                          <X size={12} />
+                                        </button>
                                       </span>
+                                    )}
+
+                                    {isSyntheticRefund && (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-medium tracking-wide bg-yellow-500/15 text-yellow-400/80 border border-yellow-500/25">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 14l-4 -4l4 -4" /><path d="M5 10h11a4 4 0 1 1 0 8h-1" /></svg>
+                                        Estorno
+                                      </span>
+                                    )}
+                                    {/* Badge clicável para sugerir estorno (Mesmo em projetadas) */}
+                                    {mightBeRefund && (
+                                      <button
+                                        onClick={() => {
+                                          onUpdate({ id: t.id, _refundAmount: Math.abs(t.amount) } as any);
+                                          toast.success("Reembolso aplicado!");
+                                        }}
+                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] uppercase font-bold tracking-wide bg-amber-500/20 text-amber-300 border border-amber-500/30 hover:bg-amber-500/30 transition-colors cursor-pointer animate-pulse"
+                                        title="O sistema detectou que isso pode ser um estorno. Clique para confirmar."
+                                      >
+                                        <CornerUpLeft size={10} /> Confirmar Estorno?
+                                      </button>
                                     )}
                                     {isCharge && (
                                       <span
@@ -2516,7 +2756,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   )}
                                 </div>
                               </td>
-                              <td className="px-6 py-4 text-gray-400 border-r border-[#373734]">
+                              <td className="px-6 py-4 border-r border-[#373734] text-gray-400">
                                 <div className="flex items-center gap-2">
                                   <div className={`p-1.5 rounded-lg border ${isAdjustment ? 'bg-purple-500/10 text-purple-400 border-purple-500/20'
                                     : isCharge ? 'bg-red-500/10 text-red-400 border-red-500/20'
@@ -2541,10 +2781,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                   <span className={`font-bold font-mono ${isAdjustment ? 'text-purple-400'
                                     : isCharge ? 'text-red-400'
                                       : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
-                                        : isRefund ? 'text-gray-500 line-through'
-                                          : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                        : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
                                     }`}>
-                                    {isRefund ? '' : (t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
+                                    {(t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
                                   </span>
                                   {/* Sinalizador de moeda estrangeira (USD, EUR, etc.) */}
                                   {isInternational && (
@@ -2592,6 +2831,19 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                               </td>
                               <td className="px-6 py-4 text-center">
                                 <div className="flex items-center justify-center gap-1">
+                                  {!!onAdd && !isAdjustment && !isCharge && !isPayment && !isProjected && !isSyntheticRefund && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        openRefundModal(t);
+                                      }}
+                                      disabled={isPaired || hasLinkedRefund}
+                                      className="p-2 rounded-xl text-gray-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                                      title={hasLinkedRefund ? "Transação já estornada" : "Estornar"}
+                                    >
+                                      <RotateCcw size={16} />
+                                    </button>
+                                  )}
                                   {/* Ações Diretas para Cartão Manual (Editar/Excluir) */}
                                   {(isManualMode || creditCardAccounts.find(c => c.id === (t.cardId || t.accountId))?.connectionMode === 'MANUAL') && !isAdjustment && !isCharge && !isPayment && !isProjected && (
                                     <>
@@ -2615,79 +2867,28 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                     </>
                                   )}
 
-                                  {/* Botão de Estorno (Dropdown com Total/Parcial ou Remover) */}
-                                   {!isAdjustment && !isCharge && !isPayment && !isProjected && (t.type === 'expense' || isRefund) && (
-                                     <Dropdown>
-                                       <DropdownTrigger
-                                         className={`p-2 rounded-xl transition-colors cursor-pointer ${
-                                           isRefund 
-                                             ? 'text-emerald-400 bg-emerald-500/10' 
-                                             : 'text-gray-400 hover:text-emerald-400 hover:bg-emerald-500/10'
-                                         }`}
-                                         title={isRefund ? "Gerenciar Estorno" : "Lançar Estorno"}
-                                       >
-                                         <RotateCcw size={16} />
-                                       </DropdownTrigger>
-                                       <DropdownContent align="right" className="w-56">
-                                         <div className="px-3 py-2 text-[10px] text-gray-500 font-semibold uppercase tracking-wider border-b border-[#373734] mb-1">
-                                           {isRefund ? 'Gerenciar Estorno' : 'Tipo de Estorno'}
-                                         </div>
-                                         
-                                         {isRefund ? (
-                                           <>
-                                             <DropdownItem
-                                               onClick={() => {
-                                                 onUpdate({
-                                                   ...t,
-                                                   category: 'Outros', // Categoria padrão ao remover estorno
-                                                   isRefund: false,
-                                                   _refundAmount: undefined
-                                                 });
-                                                 toast.success("Estorno removido com sucesso!");
-                                               }}
-                                               icon={X}
-                                               className="text-red-400"
-                                             >
-                                               Remover Estorno
-                                             </DropdownItem>
-                                             <div className="h-px bg-[#373734] my-1" />
-                                             <DropdownItem
-                                               onClick={() => {
-                                                 setRefundTransaction(t);
-                                                 setIsRefundModalOpen(true);
-                                               }}
-                                               icon={Calculator}
-                                               className="text-blue-400"
-                                             >
-                                               Alterar Valor (Parcial)
-                                             </DropdownItem>
-                                           </>
-                                         ) : (
-                                           <>
-                                             <DropdownItem
-                                               onClick={() => {
-                                                 handleRefundConfirm(Math.abs(t.amount), t);
-                                               }}
-                                               icon={Check}
-                                               className="text-emerald-400"
-                                             >
-                                               Valor Total
-                                             </DropdownItem>
-                                             <DropdownItem
-                                               onClick={() => {
-                                                 setRefundTransaction(t);
-                                                 setIsRefundModalOpen(true);
-                                               }}
-                                               icon={Calculator}
-                                               className="text-blue-400"
-                                             >
-                                               Valor Parcial
-                                             </DropdownItem>
-                                           </>
-                                         )}
-                                       </DropdownContent>
-                                     </Dropdown>
-                                   )}
+
+
+                                  {/* Botão Ver JSON (Debug - Apenas Admin) */}
+                                  {isAdmin && (
+                                    <button
+                                      onClick={() => setJsonModalData(t)}
+                                      className="p-2 rounded-xl text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/10 transition-colors opacity-50 hover:opacity-100"
+                                      title="Ver dados brutos (JSON)"
+                                    >
+                                      <Code size={16} />
+                                    </button>
+                                  )}
+                                  {/* Botão Excluir (Apenas Admin) */}
+                                  {isAdmin && !isAdjustment && !isCharge && (
+                                    <button
+                                      onClick={() => setDeleteId(t.id)}
+                                      className="p-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-50 hover:opacity-100"
+                                      title="Excluir transação (Admin)"
+                                    >
+                                      <Trash2 size={16} />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -3028,6 +3229,87 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             </div>
           </UniversalModal>
 
+          <UniversalModal
+            isOpen={isRefundModalOpen}
+            onClose={closeRefundModal}
+            title="Estornar Transação"
+            icon={<RotateCcw size={18} />}
+            themeColor="#10b981"
+            footer={
+              <div className="flex w-full">
+                <Button
+                  variant="primary"
+                  size="lg"
+                  className="w-full"
+                  onClick={handleConfirmRefund}
+                  disabled={!refundSourceTransaction || refundAmountToCreate <= 0 || refundAmountToCreate > refundMaxAmount}
+                >
+                  Confirmar Estorno
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-5">
+              <div className="p-4 rounded-2xl bg-gray-900/40 border border-gray-800/60">
+                <div className="text-xs text-gray-400">Transação</div>
+                <div className="text-sm text-white font-semibold mt-1">{refundSourceTransaction?.description || '-'}</div>
+                <div className="text-xs text-gray-500 mt-1 flex items-center justify-between">
+                  <span>{refundSourceTransaction ? formatDate(refundSourceTransaction.date) : '-'}</span>
+                  <span className="font-mono">{refundSourceTransaction ? formatCurrency(Math.abs(refundSourceTransaction.amount)) : '-'}</span>
+                </div>
+              </div>
+
+              <div className="bg-gray-900/30 border border-gray-800/60 rounded-2xl p-1 flex gap-1 relative overflow-hidden">
+                <motion.div
+                  className="absolute top-1 bottom-1 w-1/2 rounded-xl bg-emerald-500/15 border border-emerald-500/20"
+                  animate={{ left: refundTab === 'total' ? '0%' : '50%' }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 40 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRefundTab('total');
+                    setRefundCustomAmount(refundMaxAmount);
+                  }}
+                  className={`flex-1 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-colors relative z-10 ${refundTab === 'total'
+                    ? 'text-emerald-300'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  Valor Total
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRefundTab('custom')}
+                  className={`flex-1 px-4 py-2 rounded-xl text-xs font-bold uppercase tracking-wide transition-colors relative z-10 ${refundTab === 'custom'
+                    ? 'text-emerald-300'
+                    : 'text-gray-400 hover:text-white'
+                    }`}
+                >
+                  Valor Personalizado
+                </button>
+              </div>
+
+              {refundTab === 'custom' && (
+                <div className="space-y-2">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Valor do estorno (R$)</label>
+                  <div className="relative">
+                    <DollarSign className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                    <CurrencyInput
+                      value={refundCustomAmount}
+                      onValueChange={(val) => setRefundCustomAmount(val)}
+                      placeholder="0,00"
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-mono"
+                    />
+                  </div>
+                  <div className="text-[11px] text-gray-500">
+                    Máximo: <span className="font-mono">{formatCurrency(refundMaxAmount)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          </UniversalModal>
+
           {/* Add Manual Transaction Modal */}
           <UniversalModal
             isOpen={isAddModalOpen}
@@ -3135,16 +3417,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
             </div>
           </UniversalModal>
 
-          {/* Refund Modal */}
-          <RefundModal
-            isOpen={isRefundModalOpen}
-            onClose={() => {
-              setIsRefundModalOpen(false);
-              setRefundTransaction(null);
-            }}
-            transaction={refundTransaction}
-            onConfirm={handleRefundConfirm}
-          />
+
 
           {/* Mobile Filters Modal */}
           <UniversalModal
@@ -3228,6 +3501,103 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                 />
               </div>
             </div>
+          </UniversalModal>
+
+          {/* Modal de visualização do JSON bruto da transação */}
+          <UniversalModal
+            isOpen={!!jsonModalData}
+            onClose={() => setJsonModalData(null)}
+            title="Dados Brutos da Transação"
+            width="max-w-3xl"
+          >
+            {jsonModalData && (
+              <div className="space-y-4">
+                {/* Header com descrição */}
+                <div className="flex items-center gap-3 p-3 bg-[#1a1a19] rounded-lg border border-[#373734]">
+                  <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                    <Code size={20} />
+                  </div>
+                  <div>
+                    <p className="font-medium text-white">{jsonModalData.description}</p>
+                    <p className="text-xs text-gray-500">
+                      {jsonModalData.date} • {jsonModalData.id}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Seção específica: creditCardMetadata (parcelamento) */}
+                {(jsonModalData as any).pluggyRaw?.creditCardMetadata && (
+                  <div className="p-4 bg-[#1a1a19] rounded-lg border border-cyan-500/30">
+                    <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-3">
+                      Credit Card Metadata (Parcelamento)
+                    </h4>
+                    <pre className="text-sm text-cyan-300 font-mono whitespace-pre-wrap break-all bg-[#0d0d0c] p-3 rounded-lg overflow-auto max-h-40">
+                      {JSON.stringify((jsonModalData as any).pluggyRaw.creditCardMetadata, null, 2)}
+                    </pre>
+                  </div>
+                )}
+
+                {/* Dados processados pelo sistema */}
+                <div className="p-4 bg-[#1a1a19] rounded-lg border border-[#373734]">
+                  <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-3">
+                    Dados Processados (Sistema)
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3 text-sm mb-3">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Parcela:</span>
+                      <span className="text-white font-mono">
+                        {(jsonModalData as any).installmentNumber || 1} / {(jsonModalData as any).totalInstallments || 1}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Tipo:</span>
+                      <span className={`font-medium ${jsonModalData.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {jsonModalData.type}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Categoria:</span>
+                      <span className="text-white">{jsonModalData.category}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Moeda:</span>
+                      <span className="text-white font-mono">{(jsonModalData as any).currencyCode || 'BRL'}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* JSON completo do pluggyRaw */}
+                <div className="p-4 bg-[#1a1a19] rounded-lg border border-[#373734]">
+                  <div className="flex items-center justify-between mb-3">
+                    <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                      JSON Completo (pluggyRaw)
+                    </h4>
+                    <button
+                      onClick={() => {
+                        const text = JSON.stringify((jsonModalData as any).pluggyRaw || jsonModalData, null, 2);
+                        navigator.clipboard.writeText(text);
+                        toast.success('JSON copiado!');
+                      }}
+                      className="flex items-center gap-1 px-2 py-1 text-xs text-gray-400 hover:text-white hover:bg-white/5 rounded transition-colors"
+                    >
+                      <Copy size={12} />
+                      Copiar
+                    </button>
+                  </div>
+                  <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-all bg-[#0d0d0c] p-3 rounded-lg overflow-auto max-h-80">
+                    {JSON.stringify((jsonModalData as any).pluggyRaw || jsonModalData, null, 2)}
+                  </pre>
+                </div>
+
+                {/* Botão fechar */}
+                <div className="flex justify-end pt-2">
+                  <Button variant="secondary" onClick={() => setJsonModalData(null)}>
+                    <X size={16} className="mr-2" />
+                    Fechar
+                  </Button>
+                </div>
+              </div>
+            )}
           </UniversalModal>
 
 

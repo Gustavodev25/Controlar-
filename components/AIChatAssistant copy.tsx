@@ -158,7 +158,7 @@ export const BlurredStagger = ({
         },
         show: {
             opacity: 1,
-            filter: "blur(0)",
+            filter: "blur(0px)",
         },
     };
 
@@ -897,7 +897,7 @@ export const AIChatAssistant: React.FC<AIChatAssistantProps> = ({
                             scaleY: 1,
                             scaleX: 1,
                             y: isHovered ? -48 : 8,
-                            filter: "blur(0)"
+                            filter: "blur(0px)"
                         }}
                         exit={{
                             opacity: 0,

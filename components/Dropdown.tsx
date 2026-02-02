@@ -154,7 +154,7 @@ export const DropdownContent = ({
       {isOpen && (
         <motion.div
           initial={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: yOffset, x: xOffset, scale: 1, filter: "blur(0)", opacity: 1 }}
+          animate={{ y: yOffset, x: xOffset, scale: 1, filter: "blur(0px)", opacity: 1 }}
           exit={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
           transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
           style={style}
@@ -170,13 +170,19 @@ export const DropdownContent = ({
           `}
         >
           <div className="p-1 flex flex-col gap-1">
-            {React.Children.map(children, (child, index) => {
-              if (React.isValidElement(child)) {
-                // @ts-ignore
-                return React.cloneElement(child, { index });
-              }
-              return child;
-            })}
+            {React.Children.toArray(children)
+              .flatMap((child) => {
+                if (React.isValidElement(child) && child.type === React.Fragment) {
+                  return React.Children.toArray(child.props.children);
+                }
+                return [child];
+              })
+              .map((child, index) => {
+                if (React.isValidElement(child)) {
+                  return React.cloneElement(child, { index, key: `dropdown-item-${index}` } as any);
+                }
+                return child;
+              })}
           </div>
         </motion.div>
       )}
@@ -232,7 +238,7 @@ export const DropdownItem = ({
       onClick={handleClick}
       disabled={disabled}
       initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
-      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0)" }}
+      animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
       exit={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
       transition={{
         duration: 0.3,

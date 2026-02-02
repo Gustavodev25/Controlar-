@@ -21,8 +21,8 @@ import {
   InstallmentForecast
 } from '../types';
 
-import { 
-  adjustClosingDate, 
+import {
+  adjustClosingDate,
   adjustDueDate,
   isBusinessDay
 } from '../utils/dateUtils';
@@ -83,6 +83,46 @@ export const extractInstallmentFromDesc = (desc: string): { current: number; tot
     }
   }
   return null;
+};
+
+/**
+ * Extrai dados de parcelamento de uma transação de qualquer fonte disponível.
+ * 
+ * FONTES DE DADOS (em ordem de prioridade):
+ * 1. tx.totalInstallments / tx.installmentNumber (campos diretos)
+ * 2. tx.pluggyRaw?.creditCardMetadata (dados brutos da API Pluggy)
+ * 3. Padrão X/Y na descrição (fallback)
+ */
+export const extractInstallmentInfo = (tx: Transaction): { totalInstallments: number; installmentNumber: number } => {
+  let totalInstallments = 1;
+  let installmentNumber = 1;
+
+  // PRIORIDADE 1: Campos diretos da transação
+  if (tx.totalInstallments && tx.totalInstallments > 1) {
+    totalInstallments = tx.totalInstallments;
+    installmentNumber = tx.installmentNumber || 1;
+    return { totalInstallments, installmentNumber };
+  }
+
+  // PRIORIDADE 2: pluggyRaw.creditCardMetadata (para transações antigas)
+  const pluggyRaw = (tx as any).pluggyRaw;
+  if (pluggyRaw?.creditCardMetadata) {
+    const ccMeta = pluggyRaw.creditCardMetadata;
+    if (ccMeta.totalInstallments && ccMeta.totalInstallments > 1) {
+      totalInstallments = ccMeta.totalInstallments;
+      installmentNumber = ccMeta.installmentNumber || 1;
+      return { totalInstallments, installmentNumber };
+    }
+  }
+
+  // PRIORIDADE 3: Padrão na descrição (ex: "COMPRA 3/10")
+  const descInstallment = extractInstallmentFromDesc(tx.description || '');
+  if (descInstallment && descInstallment.total > 1) {
+    totalInstallments = descInstallment.total;
+    installmentNumber = descInstallment.current;
+  }
+
+  return { totalInstallments, installmentNumber };
 };
 
 /**
@@ -174,7 +214,7 @@ export const calculateBillingDate = (
   const [year, month] = monthKey.split('-').map(Number);
   const lastDayOfMonth = new Date(year, month, 0).getDate();
   const safeDay = Math.min(billingDay, lastDayOfMonth);
-  
+
   const closingDate = new Date(year, month - 1, safeDay, 12, 0, 0);
   return toDateStr(adjustClosingDate(closingDate));
 };
@@ -307,7 +347,11 @@ export const generateInstallments = (
           const pDate = parseDate(purchase.purchaseDate);
           pDate.setMonth(pDate.getMonth() + (i - 1));
           return toDateStr(pDate);
-        })()
+        })(),
+      // Propagate refund info
+      _refundAmount: existingTx?._refundAmount,
+      isRefund: existingTx?.isRefund,
+      _manualRefund: existingTx?._manualRefund
     };
 
     installments.push(installment);
@@ -322,14 +366,25 @@ export const generateInstallments = (
 
 /**
  * Detecta se uma transação é parte de uma compra parcelada
+ * 
+ * FONTES DE DADOS (em ordem de prioridade):
+ * 1. tx.totalInstallments (campo no nível superior - após correção)
+ * 2. tx.pluggyRaw?.creditCardMetadata?.totalInstallments (dados brutos da API)
+ * 3. Padrão X/Y na descrição (fallback)
  */
 export const isInstallmentTransaction = (tx: Transaction): boolean => {
-  // Tem metadados de parcela
+  // PRIORIDADE 1: Campo no nível superior da transação
   if (tx.totalInstallments && tx.totalInstallments > 1) {
     return true;
   }
 
-  // Tem parcela na descrição
+  // PRIORIDADE 2: Verificar pluggyRaw.creditCardMetadata (para transações antigas)
+  const pluggyRaw = (tx as any).pluggyRaw;
+  if (pluggyRaw?.creditCardMetadata?.totalInstallments && pluggyRaw.creditCardMetadata.totalInstallments > 1) {
+    return true;
+  }
+
+  // PRIORIDADE 3: Padrão na descrição (ex: "COMPRA 3/10")
   const descInstallment = extractInstallmentFromDesc(tx.description || '');
   if (descInstallment && descInstallment.total > 1) {
     return true;
@@ -393,9 +448,8 @@ export const createPurchaseFromTransaction = (
     return null;
   }
 
-  const descInstallment = extractInstallmentFromDesc(tx.description || '');
-  const installmentNumber = tx.installmentNumber || descInstallment?.current || 1;
-  const totalInstallments = tx.totalInstallments || descInstallment?.total || 1;
+  // Usa helper centralizado que verifica todas as fontes de dados
+  const { totalInstallments, installmentNumber } = extractInstallmentInfo(tx);
 
   if (totalInstallments <= 1) {
     return null;
@@ -475,10 +529,8 @@ export const processTransactionsToInstallments = (
     }
     installmentTxCount++;
 
-    const descInstallment = extractInstallmentFromDesc(tx.description || '');
-    const apiTotal = tx.totalInstallments || 0;
-    const descTotal = descInstallment?.total || 0;
-    const totalInstallments = Math.max(apiTotal, descTotal, 1);
+    // Usa helper centralizado que verifica todas as fontes de dados
+    const { totalInstallments, installmentNumber } = extractInstallmentInfo(tx);
 
     if (totalInstallments <= 1) return;
 
@@ -494,7 +546,7 @@ export const processTransactionsToInstallments = (
     purchaseGroups.get(groupKey)!.push(tx);
   });
 
-  // DEBUG: Log para diagnóstico
+  // Log removed
   console.log('[installmentService] Análise de transações:', {
     totalInputTxs: transactions.length,
     installmentTxCount,
@@ -666,22 +718,31 @@ export const calculateFutureCommitment = (
  * Converte Installment para InvoiceItem (formato usado no invoiceBuilder).
  */
 export const installmentToInvoiceItem = (inst: Installment): any => {
+  const isRefund = (inst as any).isRefund === true || (inst as any)._manualRefund === true;
+  const fixedType: 'income' | 'expense' = isRefund ? 'income' : 'expense';
+  const amount = isRefund ? Math.abs(inst.amount) : -Math.abs(inst.amount);
+
   return {
     id: inst.id,
     transactionId: inst.transactionId,
     description: inst.description,
-    amount: -Math.abs(inst.amount),
+    amount,
     // CORREÇÃO: Usar a data real da transação (se existir) ou a data calculada da parcela
     // BillingDate joga tudo para o dia do fechamento, o que confunde o usuário
     date: inst.date || inst.billingDate,
     category: inst.category,
-    type: 'expense' as const,
+    accountId: inst.creditCardId, // Essential for grouping and saving
+    cardId: inst.creditCardId,    // Essential for grouping and saving
+    type: fixedType,
     installmentNumber: inst.installmentNumber,
     totalInstallments: inst.totalInstallments,
     originalDate: inst.purchaseDate,
     isProjected: inst.isProjected,
     isPayment: false,
-    isCharge: false
+    isCharge: false,
+    _refundAmount: (inst as any)._refundAmount,
+    isRefund: isRefund,
+    _manualRefund: (inst as any)._manualRefund
   };
 };
 

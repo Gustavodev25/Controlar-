@@ -3129,9 +3129,14 @@ const App: React.FC = () => {
       // Check if it's a credit card transaction and update the correct collection
       // IMPORTANT: Check if it exists in the SEPARATE collection first
       const isSeparateCCTx = separateCreditCardTxs.some(t => t.id === transaction.id);
+      const isProjectedInstallment = transaction.id.includes('_inst_');
 
       if (isSeparateCCTx) {
         await dbService.updateCreditCardTransaction(userId, transaction as any);
+      } else if (isProjectedInstallment) {
+        // Se for parcela projetada, materializa ela no banco para permitir edição/reembolso
+        // Remove a flag isProjected para torná-la "real"
+        await dbService.saveCreditCardTransaction(userId, { ...transaction, isProjected: false } as any);
       } else {
         await dbService.updateTransaction(userId, transaction);
       }
@@ -3822,6 +3827,7 @@ const App: React.FC = () => {
                       await dbService.updateConnectedAccount(userId, accountId, updates);
                     }}
                     onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+                    isAdmin={currentUser?.isAdmin} // Passa o status de admin para exibir debug JSON
                     onBulkUpdate={async (ids, updates) => {
                       if (!userId) return;
                       try {

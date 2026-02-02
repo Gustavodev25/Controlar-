@@ -471,9 +471,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           || tx.invoiceDate?.slice(0, 7)
           || tx.date?.slice(0, 7);
         if (!key) return;
-        // FIX: Only treat as payment/credit if it is explicitly Income OR Refund.
-        // Do NOT assume negative amount is a payment (expenses can be negative).
-        const isPayment = (tx.type === 'income') || (tx as any).isRefund || tx.category === 'Reembolso';
+        // FIX: Only treat as payment/credit if it is explicitly Income OR has isRefund flag.
+        // NÃO usa detecção automática por categoria 'Reembolso'.
+        const isPayment = (tx.type === 'income') || (tx as any).isRefund === true;
         const delta = Math.abs(tx.amount || 0) * (isPayment ? -1 : 1);
         cardMonthSums.set(key, (cardMonthSums.get(key) || 0) + delta);
       });

@@ -221,7 +221,7 @@ export const BlurredStagger = ({
         },
         show: {
             opacity: 1,
-            filter: "blur(0)",
+            filter: "blur(0px)",
         },
     };
 

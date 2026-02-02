@@ -194,8 +194,9 @@ export interface Transaction {
   manualInvoiceMonth?: string | null; // YYYY-MM overrides the automatic date-based calculation
 
   // Refund & Adjustment Flags
-  isRefund?: boolean;
-  _manualRefund?: boolean;
+  _syntheticRefund?: boolean;
+  refundOfId?: string;
+
 }
 
 
@@ -407,7 +408,7 @@ export interface InvoiceItem {
   // Flags
   isProjected?: boolean;         // True se for parcela projetada (futura)
   isPayment?: boolean;           // True se for pagamento de fatura (NÃO afeta o total)
-  isRefund?: boolean;            // True se for reembolso/estorno (REDUZ o total)
+
   isCharge?: boolean;            // True se for encargo (IOF, juros, multa)
   chargeType?: 'IOF' | 'INTEREST' | 'LATE_FEE' | 'OTHER';
 
@@ -532,6 +533,9 @@ export interface Installment {
   isFromAPI: boolean;            // True se veio da Pluggy
   transactionId?: string;        // ID da transação (se veio da API)
   date?: string;                 // Data real da transação (se disponível/calculada)
+
+  // Refund & Adjustment Flags
+
 }
 
 /**

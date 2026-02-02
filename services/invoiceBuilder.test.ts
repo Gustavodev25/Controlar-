@@ -2,7 +2,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildInvoices, validateClosingDay, toDateStr } from './invoiceBuilder';
 import { Transaction, ConnectedAccount } from '../types';
-import { toCents, fromCents } from '../utils/moneyUtils';
 
 describe('InvoiceBuilder - Precision and Date Rules', () => {
   const mockCard: Partial<ConnectedAccount> = {
@@ -80,7 +79,7 @@ describe('InvoiceBuilder - Precision and Date Rules', () => {
 
   it('should NOT classify purchases with "PGTO" prefix as payments', () => {
     const transactions: Partial<Transaction>[] = [
-      { id: '1', description: 'PGTO LOJA XYZ', amount: -100, date: '2026-01-05', type: 'expense', cardId: 'card_123' },
+      { id: '1', description: 'PGTO LOJA XYZ', amount: 100, date: '2026-01-05', type: 'expense', cardId: 'card_123' },
       { id: '2', description: 'PAGAMENTO DE FATURA', amount: 100, date: '2026-01-12', type: 'income', cardId: 'card_123' },
     ];
 
@@ -99,18 +98,18 @@ describe('InvoiceBuilder - Precision and Date Rules', () => {
     expect(payment?.isPayment).toBe(true);
   });
 
-  it('should NOT classify expenses with refund keywords as refunds', () => {
+  it('should reduce invoice total with income transactions (ex: estorno parcial)', () => {
     const transactions: Partial<Transaction>[] = [
-      { id: '1', description: 'ESTORNO DE TAXA ADM', amount: -50, date: '2026-01-05', type: 'expense', cardId: 'card_123' },
+      { id: '1', description: 'Compra Loja', amount: 100, date: '2026-01-05', type: 'expense', cardId: 'card_123' },
+      { id: '2', description: 'Estorno - Compra Loja', amount: 30, date: '2026-01-06', type: 'income', cardId: 'card_123' }
     ];
 
     const today = new Date(2026, 0, 15);
     const result = buildInvoices(mockCard as ConnectedAccount, transactions as Transaction[], 'card_123', 0, today);
     
-    // It's an expense, so it should be treated as a purchase (adding to total)
-    // even if it has the word 'ESTORNO'.
-    expect(result.closedInvoice.total).toBe(50);
-    const item = result.closedInvoice.items[0];
-    expect(item.isRefund).toBe(false);
+    expect(result.closedInvoice.total).toBe(70);
+    const refundItem = result.closedInvoice.items.find(i => i.id === '2');
+    expect(refundItem?.type).toBe('income');
+    expect(refundItem?.amount).toBe(30);
   });
 });

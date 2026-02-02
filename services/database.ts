@@ -1199,6 +1199,14 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
   await updateDoc(txRef, cleanData);
 };
 
+export const saveCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction) => {
+  if (!db) return;
+  const txRef = doc(db, "users", userId, "creditCardTransactions", transaction.id);
+  const { id, ...data } = transaction;
+  const cleanData = removeUndefined(data);
+  await setDoc(txRef, cleanData, { merge: true });
+};
+
 
 
 export const bulkUpdateCreditCardTransactions = async (
@@ -3168,17 +3176,11 @@ export const cancelUserSubscription = async (userId: string) => {
   }
 };
 
-export const refundUserPayment = async (userId: string, amount?: number) => {
-  if (!db) return;
-  // Placeholder for refund logic (e.g., call Asaas API in backend)
-  // For now, we just log it or maybe mark last payment as refunded in DB if we had that structure
-  console.log(`[REFUND] Processing refund for user ${userId} amount ${amount || 'full'}`);
-
-  // Optionally update subscription status to refunded if that's the desired flow
-  await updateUserSubscription(userId, {
-    status: 'refunded'
-  });
+export const refundUserPayment = async (_userId: string) => {
+  return;
 };
+
+
 
 // --- Changelog Services ---
 export const addChangelog = async (item: Omit<ChangelogItem, 'id'>) => {

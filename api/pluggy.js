@@ -542,6 +542,55 @@ const removeUndefined = (obj) => {
 };
 
 // ============================================================
+// HELPER: Extrair dados de parcelamento de uma transação Pluggy
+// FONTES DE DADOS (em ordem de prioridade):
+// 1. tx.creditCardMetadata.totalInstallments / installmentNumber (padrão Pluggy)
+// 2. tx.installments (pode ser número ou objeto { number, total })
+// 3. Padrão X/Y na descrição (fallback)
+// ============================================================
+const extractInstallmentData = (tx) => {
+    let totalInstallments = 1;
+    let installmentNumber = 1;
+
+    // PRIORIDADE 1: creditCardMetadata (usado pelo Santander, Nubank, etc.)
+    const ccMeta = tx.creditCardMetadata || {};
+    if (ccMeta.totalInstallments && ccMeta.totalInstallments > 1) {
+        totalInstallments = ccMeta.totalInstallments;
+        installmentNumber = ccMeta.installmentNumber || 1;
+    }
+    // PRIORIDADE 2: tx.installments (pode vir como número ou objeto)
+    else if (tx.installments) {
+        if (typeof tx.installments === 'object') {
+            totalInstallments = tx.installments.total || 1;
+            installmentNumber = tx.installments.number || 1;
+        } else if (typeof tx.installments === 'number') {
+            totalInstallments = tx.installments;
+        }
+    }
+
+    // PRIORIDADE 3: Fallback - Extrair da descrição (ex: "COMPRA 3/10")
+    if (totalInstallments <= 1) {
+        const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+        if (descMatch) {
+            const parsedCurrent = parseInt(descMatch[1]);
+            const parsedTotal = parseInt(descMatch[2]);
+            if (parsedTotal > 1 && parsedCurrent <= parsedTotal) {
+                installmentNumber = parsedCurrent || 1;
+                totalInstallments = parsedTotal;
+            }
+        }
+    } else if (installmentNumber <= 1 && totalInstallments > 1) {
+        // Temos totalInstallments mas não installmentNumber - tentar extrair da descrição
+        const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
+        if (descMatch) {
+            installmentNumber = parseInt(descMatch[1]) || 1;
+        }
+    }
+
+    return { totalInstallments, installmentNumber };
+};
+
+// ============================================================
 // HELPER: Enriquecer descrição de transações PIX/Transferências
 // Usa paymentData.payer/receiver para mostrar nomes detalhados
 // Também extrai nomes de descrições no formato C6: "PIX RECEBIDO   NOME"
@@ -1432,23 +1481,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                         }
 
-                        // Extrair informações de parcelas da API Pluggy
-                        // Pode vir como número ou objeto { number, total }
-                        let totalInstallments = 1;
-                        let installmentNumber = 1;
-                        if (tx.installments) {
-                            if (typeof tx.installments === 'object') {
-                                totalInstallments = tx.installments.total || 1;
-                                installmentNumber = tx.installments.number || 1;
-                            } else if (typeof tx.installments === 'number') {
-                                totalInstallments = tx.installments;
-                                // Tentar extrair número da parcela da descrição (ex: "COMPRA 3/10")
-                                const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-                                if (descMatch) {
-                                    installmentNumber = parseInt(descMatch[1]) || 1;
-                                }
-                            }
-                        }
+                        // Extrair informações de parcelas usando helper centralizado
+                        const { totalInstallments, installmentNumber } = extractInstallmentData(tx);
+
 
                         // Detectar se é transação de IOF (imposto sobre compra internacional)
                         const descLower = (tx.description || '').toLowerCase();
@@ -2302,21 +2337,10 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                     }
 
-                    // Extrair informações de parcelas da API Pluggy
-                    let totalInstallments = 1;
-                    let installmentNumber = 1;
-                    if (tx.installments) {
-                        if (typeof tx.installments === 'object') {
-                            totalInstallments = tx.installments.total || 1;
-                            installmentNumber = tx.installments.number || 1;
-                        } else if (typeof tx.installments === 'number') {
-                            totalInstallments = tx.installments;
-                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-                            if (descMatch) {
-                                installmentNumber = parseInt(descMatch[1]) || 1;
-                            }
-                        }
-                    }
+
+                    // Extrair informações de parcelas usando helper centralizado
+                    const { totalInstallments, installmentNumber } = extractInstallmentData(tx);
+
 
                     mappedTx = {
                         cardId: account.id,
@@ -2908,21 +2932,10 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                         invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                     }
 
-                    // Extrair informações de parcelas da API Pluggy
-                    let totalInstallments = 1;
-                    let installmentNumber = 1;
-                    if (tx.installments) {
-                        if (typeof tx.installments === 'object') {
-                            totalInstallments = tx.installments.total || 1;
-                            installmentNumber = tx.installments.number || 1;
-                        } else if (typeof tx.installments === 'number') {
-                            totalInstallments = tx.installments;
-                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-                            if (descMatch) {
-                                installmentNumber = parseInt(descMatch[1]) || 1;
-                            }
-                        }
-                    }
+
+                    // Extrair informações de parcelas usando helper centralizado
+                    const { totalInstallments, installmentNumber } = extractInstallmentData(tx);
+
 
                     mappedTx = {
                         cardId: account.id,
@@ -3236,20 +3249,10 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                         invoiceMonthKey = `${txDate.getFullYear()}-${String(txDate.getMonth() + 1).padStart(2, '0')}`;
                     }
 
-                    let totalInstallments = 1;
-                    let installmentNumber = 1;
-                    if (tx.installments) {
-                        if (typeof tx.installments === 'object') {
-                            totalInstallments = tx.installments.total || 1;
-                            installmentNumber = tx.installments.number || 1;
-                        } else if (typeof tx.installments === 'number') {
-                            totalInstallments = tx.installments;
-                            const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-                            if (descMatch) {
-                                installmentNumber = parseInt(descMatch[1]) || 1;
-                            }
-                        }
-                    }
+
+                    // Extrair informações de parcelas usando helper centralizado
+                    const { totalInstallments, installmentNumber } = extractInstallmentData(tx);
+
 
                     mappedTx = {
                         cardId: account.id,

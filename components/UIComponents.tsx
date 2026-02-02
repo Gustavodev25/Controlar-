@@ -345,7 +345,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
         <motion.div
           data-select-portal
           initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
           exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
           transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
           style={portal ? { position: 'fixed', top: coords.top, left: coords.left, width: coords.width, zIndex: 9999 } : undefined}
@@ -359,7 +359,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({ value, onChange, opt
               <motion.div
                 key={String(opt.value)}
                 initial={{ opacity: 0, x: 10, scale: 0.95, filter: "blur(10px)" }}
-                animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0)" }}
+                animate={{ opacity: 1, x: 0, scale: 1, filter: "blur(0px)" }}
                 transition={{
                   duration: 0.3,
                   delay: index * 0.03,
@@ -516,7 +516,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
         <motion.div
           data-monthpicker-portal
           initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
           exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
           transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
           style={portal ? { position: 'fixed', top: coords.top, left: coords.left, zIndex: 9999, width: 256 } : undefined}
@@ -562,7 +562,7 @@ export const CustomMonthPicker: React.FC<CustomMonthPickerProps> = ({ value, onC
                 <motion.button
                   key={m}
                   initial={{ opacity: 0, scale: 0.8, filter: "blur(5px)" }}
-                  animate={{ opacity: 1, scale: 1, filter: "blur(0)" }}
+                  animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
                   transition={{
                     delay: 0.05 + i * 0.02,
                     type: "spring",
@@ -851,7 +851,7 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
         <motion.div
           data-datepicker-portal
           initial={{ y: -5, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: 0, scale: 1, filter: "blur(0)", opacity: 1 }}
+          animate={{ y: 0, scale: 1, filter: "blur(0px)", opacity: 1 }}
           exit={{ y: -5, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
           transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
           style={dropdownMode === 'fixed'

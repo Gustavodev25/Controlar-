@@ -24,7 +24,7 @@ export function PixelPageViewTracker({ activeTab }: PixelPageViewTrackerProps) {
             if (typeof window !== 'undefined' && window.fbq) {
                 const eventID = generateEventId();
                 window.fbq('track', 'PageView', {}, { eventID });
-                console.log('Meta Pixel PageView:', activeTab, 'eventID:', eventID);
+                // console.log('Meta Pixel PageView:', activeTab, 'eventID:', eventID);
             }
             prevTab.current = activeTab;
         }
