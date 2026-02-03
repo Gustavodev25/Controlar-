@@ -70,6 +70,17 @@ export const normalizeDescription = (desc: string): string => {
     .trim();
 };
 
+// Merchants que NÃO devem ser tratados como parcelamento, mesmo com campos preenchidos
+const NON_INSTALLMENT_MERCHANTS = new Set([
+  'mpinnerai',
+  'manual saude bra'
+]);
+
+const shouldIgnoreInstallment = (tx: Transaction): boolean => {
+  const normalized = normalizeDescription(tx.description || '');
+  return NON_INSTALLMENT_MERCHANTS.has(normalized);
+};
+
 /**
  * Extrai número de parcela da descrição (ex: "COMPRA 3/10")
  */
@@ -89,23 +100,20 @@ export const extractInstallmentFromDesc = (desc: string): { current: number; tot
  * Extrai dados de parcelamento de uma transação de qualquer fonte disponível.
  * 
  * FONTES DE DADOS (em ordem de prioridade):
- * 1. tx.totalInstallments / tx.installmentNumber (campos diretos)
- * 2. tx.pluggyRaw?.creditCardMetadata (dados brutos da API Pluggy)
- * 3. Padrão X/Y na descrição (fallback)
+ * 1. tx.pluggyRaw?.creditCardMetadata (dados brutos da API Pluggy - fonte da verdade quando presente)
+ * 2. tx.totalInstallments / tx.installmentNumber (campos diretos, fallback para transações manuais/legadas)
  */
 export const extractInstallmentInfo = (tx: Transaction): { totalInstallments: number; installmentNumber: number } => {
   let totalInstallments = 1;
   let installmentNumber = 1;
 
-  // PRIORIDADE 1: Campos diretos da transação
-  if (tx.totalInstallments && tx.totalInstallments > 1) {
-    totalInstallments = tx.totalInstallments;
-    installmentNumber = tx.installmentNumber || 1;
+  if (shouldIgnoreInstallment(tx)) {
     return { totalInstallments, installmentNumber };
   }
 
-  // PRIORIDADE 2: pluggyRaw.creditCardMetadata (para transações antigas)
+  // PRIORIDADE 1: pluggyRaw.creditCardMetadata (quando presente, é a fonte da verdade)
   const pluggyRaw = (tx as any).pluggyRaw;
+  const isPluggy = (tx as any).importSource === 'pluggy';
   if (pluggyRaw?.creditCardMetadata) {
     const ccMeta = pluggyRaw.creditCardMetadata;
     if (ccMeta.totalInstallments && ccMeta.totalInstallments > 1) {
@@ -113,13 +121,21 @@ export const extractInstallmentInfo = (tx: Transaction): { totalInstallments: nu
       installmentNumber = ccMeta.installmentNumber || 1;
       return { totalInstallments, installmentNumber };
     }
+    // Se a Pluggy não indicar parcelamento, NÃO usar campos diretos
+    return { totalInstallments, installmentNumber };
   }
 
-  // PRIORIDADE 3: Padrão na descrição (ex: "COMPRA 3/10")
-  const descInstallment = extractInstallmentFromDesc(tx.description || '');
-  if (descInstallment && descInstallment.total > 1) {
-    totalInstallments = descInstallment.total;
-    installmentNumber = descInstallment.current;
+  // Se é transação Pluggy, mas não temos metadados brutos,
+  // NÃO confiar em campos diretos (evita falsos parcelamentos).
+  if (isPluggy) {
+    return { totalInstallments, installmentNumber };
+  }
+
+  // PRIORIDADE 2: Campos diretos da transação (fallback)
+  if (tx.totalInstallments && tx.totalInstallments > 1) {
+    totalInstallments = tx.totalInstallments;
+    installmentNumber = tx.installmentNumber || 1;
+    return { totalInstallments, installmentNumber };
   }
 
   return { totalInstallments, installmentNumber };
@@ -295,7 +311,7 @@ export const generateInstallments = (
   // Criar mapa de transações existentes por número de parcela
   const existingByNumber = new Map<number, Transaction>();
   existingTransactions.forEach(tx => {
-    const instNum = tx.installmentNumber || extractInstallmentFromDesc(tx.description || '')?.current || 1;
+    const instNum = tx.installmentNumber || 1;
     existingByNumber.set(instNum, tx);
   });
 
@@ -372,25 +388,28 @@ export const generateInstallments = (
  * Detecta se uma transação é parte de uma compra parcelada
  * 
  * FONTES DE DADOS (em ordem de prioridade):
- * 1. tx.totalInstallments (campo no nível superior - após correção)
- * 2. tx.pluggyRaw?.creditCardMetadata?.totalInstallments (dados brutos da API)
- * 3. Padrão X/Y na descrição (fallback)
+ * 1. tx.pluggyRaw?.creditCardMetadata?.totalInstallments (dados brutos da API - fonte da verdade quando presente)
+ * 2. tx.totalInstallments (campo no nível superior - fallback para transações manuais/legadas)
  */
 export const isInstallmentTransaction = (tx: Transaction): boolean => {
-  // PRIORIDADE 1: Campo no nível superior da transação
-  if (tx.totalInstallments && tx.totalInstallments > 1) {
-    return true;
+  if (shouldIgnoreInstallment(tx)) {
+    return false;
   }
 
-  // PRIORIDADE 2: Verificar pluggyRaw.creditCardMetadata (para transações antigas)
+  // PRIORIDADE 1: pluggyRaw.creditCardMetadata (quando presente, é a fonte da verdade)
   const pluggyRaw = (tx as any).pluggyRaw;
-  if (pluggyRaw?.creditCardMetadata?.totalInstallments && pluggyRaw.creditCardMetadata.totalInstallments > 1) {
-    return true;
+  const isPluggy = (tx as any).importSource === 'pluggy';
+  if (pluggyRaw?.creditCardMetadata) {
+    return !!(pluggyRaw.creditCardMetadata.totalInstallments && pluggyRaw.creditCardMetadata.totalInstallments > 1);
   }
 
-  // PRIORIDADE 3: Padrão na descrição (ex: "COMPRA 3/10")
-  const descInstallment = extractInstallmentFromDesc(tx.description || '');
-  if (descInstallment && descInstallment.total > 1) {
+  // Se é transação Pluggy sem metadados, não tratar como parcelada
+  if (isPluggy) {
+    return false;
+  }
+
+  // PRIORIDADE 2: Campo no nível superior da transação (fallback)
+  if (tx.totalInstallments && tx.totalInstallments > 1) {
     return true;
   }
 
@@ -560,7 +579,6 @@ export const processTransactionsToInstallments = (
     sample: transactions.slice(0, 3).map(tx => ({
       desc: tx.description?.slice(0, 40),
       totalInstallments: tx.totalInstallments,
-      hasPattern: extractInstallmentFromDesc(tx.description || '') !== null
     }))
   });
 
@@ -572,8 +590,7 @@ export const processTransactionsToInstallments = (
     let earliestInstNum = 999;
 
     txGroup.forEach(tx => {
-      const descInstallment = extractInstallmentFromDesc(tx.description || '');
-      const instNum = tx.installmentNumber || descInstallment?.current || 1;
+      const instNum = tx.installmentNumber || 1;
       if (instNum < earliestInstNum) {
         earliestInstNum = instNum;
         earliestTx = tx;

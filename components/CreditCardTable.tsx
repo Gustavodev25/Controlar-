@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Transaction, ConnectedAccount, FinanceCharges, InvoicePeriods, Invoice, InvoiceItem } from '../types';
 import {
   Trash2, Search, Calendar, getCategoryIcon, X, Edit2, Check,
-  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code, Calculator
+  ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, Filter, CreditCard, Copy, TrendingDown, TrendingUp, Settings, ChevronUp, ChevronDown, ChevronRight, ChevronLeft, Minus, HelpCircle, AlertTriangle, RotateCcw, Code, Calculator, Loader2
 } from './Icons';
 import { CustomAutocomplete, CustomDatePicker, CustomSelect, CurrencyInput } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -1664,57 +1664,37 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     setEditTransaction(null);
   };
 
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportCountdown, setExportCountdown] = useState(3);
+
   const handleExport = () => {
-    const dateStr = new Date().toISOString().split('T')[0];
-    exportToCSV(filteredTransactions, `fatura_cartao_${dateStr}.csv`);
+    if (isExporting) return;
+
+    setIsExporting(true);
+    setExportCountdown(3);
+
+    // Iniciar contagem regressiva
+    const timer = setInterval(() => {
+      setExportCountdown((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          // Executar o download após o countdown
+          const dateStr = new Date().toISOString().split('T')[0];
+          exportToCSV(filteredTransactions, `fatura_cartao_${dateStr}.csv`);
+
+          // Pequeno delay para resetar o botão
+          setTimeout(() => {
+            setIsExporting(false);
+            setExportCountdown(3);
+          }, 500);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
-  const handleExportJSON = () => {
-    let targetInvoice;
-    let label = 'atual';
 
-    // Determine which invoice to export based on selection
-    // Default to Current if 'all' is selected, otherwise respect selection
-    if (selectedInvoice === 'last') {
-      targetInvoice = invoiceSummary.lastInvoice;
-      label = 'anterior';
-    } else if (selectedInvoice === 'next') {
-      targetInvoice = invoiceSummary.nextInvoice;
-      label = 'proxima';
-    } else {
-      // Current or All -> Export Current Invoice (Total)
-      targetInvoice = invoiceSummary.currentInvoice;
-      label = 'atual';
-    }
-
-    const data = {
-      exportDate: new Date().toISOString(),
-      cardId: selectedCard?.id,
-      cardName: selectedCard?.name || selectedCard?.institution,
-      invoiceType: label,
-      invoicePeriod: {
-        start: label === 'atual' ? invoiceSummary.currentInvoiceStart : (label === 'anterior' ? invoiceSummary.lastInvoiceStart : invoiceSummary.nextInvoiceStart),
-        end: label === 'atual' ? invoiceSummary.currentInvoiceEnd : (label === 'anterior' ? invoiceSummary.lastInvoiceEnd : invoiceSummary.nextInvoiceEnd),
-        dueDate: label === 'atual' ? invoiceSummary.currentDueDate : (label === 'anterior' ? invoiceSummary.lastDueDate : invoiceSummary.nextDueDate),
-      },
-      summary: {
-        total: targetInvoice.total,
-        count: targetInvoice.transactions.length
-      },
-      transactions: targetInvoice.transactions
-    };
-
-    const jsonString = JSON.stringify(data, null, 2);
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `fatura_${label}_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-  };
 
   // Usar categorias do mapeamento Pluggy ao invés de hardcoded
   const CATEGORIES = useMemo(() => {
@@ -1759,31 +1739,56 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     <div className="flex flex-col h-full animate-fade-in w-full">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-2xl font-bold text-white">Fatura do Cartão</h2>
-          <p className="text-sm text-gray-400 mt-1">{filteredTransactions.length} lançamentos</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-2xl font-bold text-white">Fatura do Cartão</h2>
+
+              <div className="relative ml-2 hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-[#1c1917] border border-amber-500/20 text-[10px] sm:text-xs text-amber-500 leading-tight">
+                {/* Arrow Pointer */}
+                <div className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 rotate-45 border-l border-b border-amber-500/20 bg-[#1c1917]"></div>
+
+                <AlertCircle size={14} className="shrink-0 relative z-10" />
+                <span className="relative z-10">
+                  <strong>Sincronização Manual:</strong> As faturas não atualizam sozinhas. Vá em <strong className="text-amber-400">Gestão de Contas</strong> e clique em <strong className="text-amber-400">Sincronizar</strong> no card do banco.
+                </span>
+              </div>
+              {/* Mobile version (compact) */}
+              <div className="sm:hidden flex items-center gap-1.5 px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-[10px] font-medium text-amber-500">
+                <AlertCircle size={12} />
+                <span>Sincronização Manual</span>
+              </div>
+            </div>
+            <p className="text-sm text-gray-400 mt-1">{filteredTransactions.length} lançamentos</p>
+          </div>
         </div>
 
         <div className="flex items-center gap-3">
           <button
             id="export-btn"
-
             onClick={handleExport}
-            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
+            disabled={isExporting}
+            className={`flex items-center gap-2 px-3 py-2 text-sm font-medium transition-all rounded-lg
+              ${isExporting
+                ? 'bg-blue-500/10 text-blue-400 cursor-not-allowed'
+                : 'text-gray-400 hover:text-white hover:bg-white/5'
+              }`}
             title="Exportar para Excel"
           >
-            <FileText size={18} />
-            <span className="hidden sm:inline">Exportar</span>
+            {isExporting ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                <span className="hidden sm:inline">Baixando em {exportCountdown}...</span>
+              </>
+            ) : (
+              <>
+                <FileText size={18} />
+                <span className="hidden sm:inline">Exportar</span>
+              </>
+            )}
           </button>
 
-          <button
-            onClick={handleExportJSON}
-            className="flex items-center gap-2 px-2 py-2 text-gray-400 hover:text-white text-sm font-medium transition-colors"
-            title="Baixar JSON da Fatura"
-          >
-            <Code size={18} />
-            <span className="hidden sm:inline">JSON</span>
-          </button>
+
 
 
 
@@ -1814,18 +1819,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         </div>
       </div>
 
-      {/* Sync Warning Banner - Compact Version (Only if using connected accounts) */}
-      {!isManualMode && creditCardAccounts && creditCardAccounts.length > 0 && creditCardAccounts.some(acc => acc.connectionMode !== 'MANUAL') && (
-        <div className="mb-6 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center gap-3 shadow-sm">
-          <AlertCircle className="text-amber-500 shrink-0" size={18} />
-          <div className="text-xs text-amber-200/80">
-            <span className="text-amber-500 font-bold mr-1">Sincronização Manual:</span>
-            As faturas <strong className="text-amber-200">não atualizam sozinhas</strong>. Vá em
-            <span className="inline-flex items-center justify-center px-1.5 py-0.5 bg-zinc-800 rounded text-gray-300 mx-1 align-middle border border-zinc-700 font-medium whitespace-nowrap">Gestão de Contas</span>
-            e clique em <span className="inline-flex items-center justify-center px-1.5 py-0.5 bg-amber-500/20 rounded text-amber-500 mx-0.5 align-middle font-bold whitespace-nowrap"><RotateCcw size={10} className="mr-1" /> Sincronizar</span> no card do banco.
-          </div>
-        </div>
-      )}
+
 
       {/* Invoice Summary Cards */}
       {creditCardAccounts.length > 0 && (
@@ -2300,6 +2294,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                 {/* Table Card */}
                 <div className="bg-[#232322] border border-[#373734] rounded-xl flex flex-col flex-1 overflow-hidden relative">
+
+                  {/* Refund Hint Banner */}
+                  <div className="bg-blue-500/5 border-b border-blue-500/10 px-4 py-2 flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2 text-xs text-blue-300/80">
+                      <HelpCircle size={14} className="shrink-0 text-blue-400" />
+                      <span>
+                        <strong className="text-blue-400">Dica:</strong> Para estornar uma transação, clique no ícone <span className="inline-flex items-center justify-center w-4 h-4 bg-white/10 rounded mx-0.5"><RotateCcw size={10} /></span> na coluna de ações.
+                      </span>
+                    </div>
+                    {/* Optional: Add a close button here if needed, but keeping it persistent for visibility as requested */}
+                  </div>
                   <AnimatePresence>
                     {selectedIds.length > 0 && (
                       <motion.div
@@ -2536,6 +2541,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           const daysLate = (t as any).daysLate || 0;
                           const isAdjustment = (t as any).isAdjustment === true;
                           const isProjected = (t as any).isProjected === true;
+                          const canDelete = !isAdjustment && !isCharge && !isProjected && !isSyntheticRefund;
 
                           // Detecta se PODE ser reembolso (para sugerir ao usuário)
                           const mightBeRefund = false; // logic removed
@@ -2863,13 +2869,6 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                       >
                                         <Edit2 size={16} />
                                       </button>
-                                      <button
-                                        onClick={() => setDeleteId(t.id)}
-                                        className="p-2 rounded-xl text-gray-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                                        title="Excluir"
-                                      >
-                                        <Trash2 size={16} />
-                                      </button>
                                     </>
                                   )}
 
@@ -2885,12 +2884,12 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                       <Code size={16} />
                                     </button>
                                   )}
-                                  {/* Botão Excluir (Apenas Admin) */}
-                                  {isAdmin && !isAdjustment && !isCharge && (
+                                  {/* Botão Excluir (Usuários também) */}
+                                  {canDelete && (
                                     <button
                                       onClick={() => setDeleteId(t.id)}
-                                      className="p-2 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors opacity-50 hover:opacity-100"
-                                      title="Excluir transação (Admin)"
+                                      className={`p-2 rounded-xl transition-colors ${isAdmin ? 'text-gray-500 hover:text-red-400 hover:bg-red-500/10 opacity-50 hover:opacity-100' : 'text-gray-400 hover:text-red-400 hover:bg-red-500/10'}`}
+                                      title={isAdmin ? 'Excluir transação (Admin)' : 'Excluir'}
                                     >
                                       <Trash2 size={16} />
                                     </button>

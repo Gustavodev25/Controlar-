@@ -69,7 +69,7 @@ import * as familyService from './services/familyService';
 import { Subscription } from './types';
 import { detectSubscriptionService } from './utils/subscriptionDetector';
 import { translatePluggyCategory } from './services/openFinanceService';
-import { isTransactionRefund } from './services/invoiceBuilder';
+import { buildInvoices, isTransactionRefund } from './services/invoiceBuilder';
 import { toLocalISODate, toLocalISOString } from './utils/dateUtils';
 import { getInvoiceMonthKey } from './services/invoiceCalculator';
 import { UAParser } from 'ua-parser-js';
@@ -1760,6 +1760,7 @@ const App: React.FC = () => {
     now.setHours(0, 0, 0, 0);
 
     return filtered.filter(t => {
+      if (!t.date) return false;
       // Ensure transaction date handles local/UTC properly by appending time
       const tDate = new Date(t.date + 'T12:00:00');
 
@@ -1786,7 +1787,7 @@ const App: React.FC = () => {
 
       return true;
     });
-  }, [memberFilteredTransactions, dashboardDate, dashboardYear, filterMode, dashboardCategory]);
+  }, [mergedTransactions, dashboardDate, dashboardYear, filterMode, dashboardCategory]);
 
   // Apenas considera lancamentos que o usuario manteve (nao ignorados), incluindo pendentes para previsibilidade
   const reviewedDashboardTransactions = useMemo(() => {
@@ -2495,13 +2496,125 @@ const App: React.FC = () => {
           return true;
         });
 
-        activeSubscriptions.forEach(s => {
-          const alreadyPaid = filteredDashboardTransactions.some(t =>
-            (t.type === 'expense' &&
-              t.amount === s.amount &&
-              t.description.toLowerCase().includes(s.name.toLowerCase())) ||
-            (t.paidSubscriptionId === s.id)
+        const cardInvoiceItemsForMonth: { description?: string; amount: number; type?: string; isPayment?: boolean }[] = [];
+        if (dashboardDate && creditCardTransactions.length > 0) {
+          const creditAccounts = accountBalances?.credit?.accounts || [];
+          const uniqueAccountIds = new Set(
+            creditCardTransactions.map(t => t.accountId).filter(Boolean) as string[]
           );
+
+          const addFallbackTransactions = (transactions: Transaction[]) => {
+            transactions.forEach(tx => {
+              const key = tx.invoiceDueDate?.slice(0, 7)
+                || tx.dueDate?.slice(0, 7)
+                || tx.invoiceDate?.slice(0, 7)
+                || tx.date?.slice(0, 7);
+              if (key === dashboardDate) {
+                cardInvoiceItemsForMonth.push({
+                  description: tx.description,
+                  amount: tx.amount,
+                  type: tx.type
+                });
+              }
+            });
+          };
+
+          if (creditAccounts.length > 0) {
+            creditAccounts.forEach((card, cardIndex) => {
+              let cardTransactions = creditCardTransactions.filter(tx => tx.accountId === card.id);
+
+              if (cardTransactions.length === 0) {
+                if (uniqueAccountIds.size === creditAccounts.length && uniqueAccountIds.size > 0) {
+                  const sortedAccountIds = [...uniqueAccountIds].sort();
+                  const targetAccountId = sortedAccountIds[cardIndex];
+                  cardTransactions = creditCardTransactions.filter(tx => tx.accountId === targetAccountId);
+                }
+
+                if (cardTransactions.length === 0 && creditAccounts.length === 1) {
+                  cardTransactions = creditCardTransactions;
+                }
+              }
+
+              if (cardTransactions.length === 0) return;
+
+              try {
+                const invoiceResult = buildInvoices(card, cardTransactions, card.id);
+                const candidates = [
+                  invoiceResult.closedInvoice,
+                  invoiceResult.currentInvoice,
+                  ...invoiceResult.futureInvoices
+                ];
+                const matchedInvoice = candidates.find(inv => inv.referenceMonth === dashboardDate);
+                if (matchedInvoice?.items?.length) {
+                  cardInvoiceItemsForMonth.push(...matchedInvoice.items);
+                }
+              } catch (error) {
+                console.warn('[Subscriptions] buildInvoices failed, using fallback:', error);
+                addFallbackTransactions(cardTransactions);
+              }
+            });
+          } else {
+            addFallbackTransactions(creditCardTransactions);
+          }
+        }
+
+        activeSubscriptions.forEach(s => {
+          const normalizeText = (v: string) => (v || '')
+            .toLowerCase()
+            .normalize('NFD')
+            .replace(/[\u0300-\u036f]/g, '')
+            .replace(/[^a-z0-9\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+
+          const stripPrefixes = (v: string) => v
+            .replace(/^(pag\*|pagseguro\*|mp\*|mercadopago\*|paypal\*|stripe\*|pix\s)/i, '')
+            .replace(/^(pag|pagamento|pgto)\s+/i, '')
+            .trim();
+
+          const normalizeMerchant = (v: string) => stripPrefixes(normalizeText(v));
+
+          const nameMatches = (desc: string, name: string) => {
+            const d = normalizeMerchant(desc);
+            const n = normalizeMerchant(name);
+            if (!d || !n) return false;
+            return d.includes(n) || n.includes(d);
+          };
+
+          const amountMatches = (a: number, b: number) => {
+            const diff = Math.abs(Math.abs(a) - Math.abs(b));
+            const tolerance = Math.max(1, Math.abs(b) * 0.1); // até 10% ou R$1
+            return diff <= tolerance;
+          };
+          const getTxMonthKey = (t: Transaction) =>
+            (t.invoiceMonthKey ||
+              (t.invoiceDueDate || '').slice(0, 7) ||
+              (t.dueDate || '').slice(0, 7) ||
+              (t.invoiceDate || '').slice(0, 7) ||
+              (t.date || '').slice(0, 7));
+
+          const alreadyPaidInChecking = filteredDashboardTransactions.some(t =>
+            (t.paidSubscriptionId === s.id) ||
+            (t.type === 'expense' &&
+              nameMatches(t.description || '', s.name || '') &&
+              amountMatches(t.amount, s.amount))
+          );
+
+          const alreadyPaidInCard = cardInvoiceItemsForMonth.length > 0
+            ? cardInvoiceItemsForMonth.some(item =>
+              !item.isPayment &&
+              (item.type === 'expense' || item.amount < 0) &&
+              nameMatches(item.description || '', s.name || '') &&
+              amountMatches(item.amount, s.amount)
+            )
+            : creditCardTransactions.some(t =>
+              getTxMonthKey(t) === dashboardDate &&
+              (t.type === 'expense' || t.amount < 0) &&
+              nameMatches(t.description || '', s.name || '') &&
+              amountMatches(t.amount, s.amount)
+            );
+
+          const alreadyPaid = alreadyPaidInChecking || alreadyPaidInCard;
 
           if (!alreadyPaid) {
             projectedExpense += s.amount;

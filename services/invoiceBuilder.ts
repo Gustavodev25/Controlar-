@@ -31,7 +31,8 @@ import {
   installmentToInvoiceItem,
   generateInstallmentForecast as generateInstForecast,
   calculateFutureCommitment,
-  isInstallmentTransaction
+  isInstallmentTransaction,
+  extractInstallmentInfo
 } from './installmentService';
 
 import {
@@ -169,7 +170,23 @@ export const isCreditCardPayment = (tx: Transaction): boolean => {
 };
 
 export const isTransactionRefund = (tx: Transaction): boolean => {
-  return (tx as any)._syntheticRefund === true || !!(tx as any).refundOfId;
+  if ((tx as any)._syntheticRefund === true || !!(tx as any).refundOfId) {
+    return true;
+  }
+
+  const desc = (tx.description || '').toLowerCase();
+  const category = (tx.category || '').toLowerCase();
+  const refundKeywords = [
+    'estorno',
+    'reembolso',
+    'devolucao',
+    'devolução',
+    'chargeback',
+    'refund',
+    'cancelamento'
+  ];
+
+  return refundKeywords.some(kw => desc.includes(kw) || category.includes(kw));
 };
 
 
@@ -418,9 +435,8 @@ export const processInstallments = (
     const txCardId = tx.cardId || tx.accountId || '';
     if (cardId !== 'all' && txCardId !== cardId) return;
 
-    const descInstallment = extractInstallmentFromDesc(tx.description || '');
-    const installmentNumber = tx.installmentNumber || descInstallment?.current || 1;
-    const totalInstallments = tx.totalInstallments || (tx as any).installments || descInstallment?.total || 0;
+    const installmentNumber = tx.installmentNumber || 1;
+    const totalInstallments = tx.totalInstallments || 0;
 
     if (totalInstallments > 1) {
       const normalizedDesc = normalizeDescription(tx.description || '');
@@ -510,6 +526,9 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     amount = Math.abs(tx.amount);
   }
 
+  const { totalInstallments, installmentNumber } = extractInstallmentInfo(tx);
+  const hasInstallments = totalInstallments > 1;
+
   return {
     id: tx.id,
     transactionId: tx.id,
@@ -518,8 +537,8 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     date: tx.date,
     category: tx.category,
     type: fixedType,
-    installmentNumber: tx.installmentNumber,
-    totalInstallments: tx.totalInstallments,
+    installmentNumber: hasInstallments ? installmentNumber : undefined,
+    totalInstallments: hasInstallments ? totalInstallments : undefined,
     isProjected,
     isPayment, // Flag para identificar pagamentos (não devem afetar total)
     // isRefund removed

@@ -215,7 +215,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       if (txInvoiceMonth && txInvoiceMonth !== dashboardDate) return false;
 
       // FALLBACK: If no invoiceDate, use transaction date (for manual transactions)
-      if (!txInvoiceMonth && !tx.date.startsWith(dashboardDate)) return false;
+      if (!txInvoiceMonth && !(tx.date && tx.date.startsWith(dashboardDate))) return false;
 
       // Only count completed or pending transactions
       if (tx.status !== 'completed' && tx.status !== 'pending') return false;
@@ -611,9 +611,12 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           ? Math.max(0, invoiceResult.futureInvoices[0].total)
           : 0;
 
-        // Última Fatura = closedInvoice.total (já considera pagamentos se processado assim, mas aqui queremos o valor da fatura)
-        // O invoiceBuilder retorna total já fechado.
-        lastInvoiceValue = Math.max(0, invoiceResult.closedInvoice.total);
+        // Última Fatura = preferir valor da API (currentBill) quando disponível
+        // para ficar consistente com a tela de Faturas do Cartão.
+        lastInvoiceValue = Math.max(
+          0,
+          Math.abs((card.currentBill?.totalAmount || invoiceResult.closedInvoice.total || 0))
+        );
 
       } catch (e) {
         // Fallback para cálculo antigo se buildInvoices falhar
@@ -633,7 +636,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           ? nextAmount
           : (cardMonthSums.get(nextMonthKey || '') || 0));
 
-        lastInvoiceValue = 0; // Fallback
+        lastInvoiceValue = Math.max(0, Math.abs(card.currentBill?.totalAmount || 0)); // Fallback
       }
 
       // Calculate used limit correctly from Pluggy data:
@@ -920,16 +923,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Checking Account */}
           <div className={`relative p-4 rounded-xl shadow-sm border transition-all duration-200 h-[120px] flex flex-col justify-between ${toggles.includeChecking ? 'bg-[#30302E] border-gray-800' : 'bg-[#30302E]/50 border-gray-800/50'}`}>
-            {/* Overlay for past month filter - balance not available */}
-            {dashboardDate && dashboardDate !== currentMonthKey && (
-              <div className="absolute inset-0 z-20 bg-[#30302E]/90 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center">
-                <div className="p-3 bg-gray-700/30 rounded-xl mb-2">
-                  <Building size={24} className="text-gray-500" />
-                </div>
-                <p className="text-sm font-medium text-gray-400">Saldo não disponível</p>
-                <p className="text-xs text-gray-500 mt-1">Selecione o mês atual</p>
-              </div>
-            )}
+            {/* Past month overlay removed: balance stays visible for any month */}
             {/* Blur overlay for Manual Mode */}
             {!isProMode && userPlan === 'starter' && (
               <div
@@ -1298,7 +1292,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                     };
 
                                     const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-                                    const lastVal = cardInvoice?.lastInvoice ?? 0;
+                                    const lastVal = Math.abs((card.currentBill?.totalAmount || cardInvoice?.lastInvoice || 0));
                                     const usedVal = cardInvoice?.usedTotal ?? 0;
 
                                     return (
@@ -1333,65 +1327,52 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                         <div className={`transition-all duration-300 ${isEnabled ? 'opacity-100' : 'opacity-40 pointer-events-none grayscale'}`}>
                                           {/* Check if viewing a past month (not current) */}
                                           {(() => {
-                                            const isViewingPastMonth = dashboardDate && dashboardDate !== currentMonthKey;
-                                            const monthLabel = dashboardDate
-                                              ? (() => {
-                                                const [year, month] = dashboardDate.split('-').map(Number);
-                                                const monthNames = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-                                                return `${monthNames[month - 1]}/${year}`;
-                                              })()
-                                              : 'Atual';
-
                                             return (
-                                              <div className={`px-3 pb-3 pt-0 ${isViewingPastMonth ? '' : 'grid grid-cols-3 gap-2'}`}>
+                                              <div className="px-3 pb-3 pt-0 grid grid-cols-3 gap-2">
                                                 {/* Última Fatura */}
-                                                {!isViewingPastMonth && (
-                                                  <div
-                                                    onClick={(e) => { e.stopPropagation(); setMode('last'); }}
-                                                    className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'last'
-                                                      ? 'bg-purple-500/10 border-blue-500/30 shadow-inner'
-                                                      : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                  >
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'last' ? 'text-purple-400' : 'text-gray-500'}`}>
-                                                      Última
-                                                    </span>
-                                                    <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'last' ? 'text-white' : 'text-gray-400'}`}>
-                                                      {formatCurrency(lastVal)}
-                                                    </span>
-                                                  </div>
-                                                )}
+                                                <div
+                                                  onClick={(e) => { e.stopPropagation(); setMode('last'); }}
+                                                  className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'last'
+                                                    ? 'bg-purple-500/10 border-blue-500/30 shadow-inner'
+                                                    : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                                >
+                                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'last' ? 'text-purple-400' : 'text-gray-500'}`}>
+                                                    Última
+                                                  </span>
+                                                  <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'last' ? 'text-white' : 'text-gray-400'}`}>
+                                                    {formatCurrency(lastVal)}
+                                                  </span>
+                                                </div>
 
                                                 {/* Fatura Atual */}
                                                 <div
                                                   onClick={(e) => { e.stopPropagation(); setMode('current'); }}
-                                                  className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current' || isViewingPastMonth
+                                                  className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'current'
                                                     ? 'bg-[#D97757]/10 border-[#D97757]/30 shadow-inner'
                                                     : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
                                                 >
-                                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' || isViewingPastMonth ? 'text-[#D97757]' : 'text-gray-500'}`}>
+                                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'current' ? 'text-[#D97757]' : 'text-gray-500'}`}>
                                                     Atual
                                                   </span>
-                                                  <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'current' || isViewingPastMonth ? 'text-white' : 'text-gray-400'}`}>
+                                                  <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'current' ? 'text-white' : 'text-gray-400'}`}>
                                                     {formatCurrency(currentVal)}
                                                   </span>
                                                 </div>
 
                                                 {/* Total Usado */}
-                                                {!isViewingPastMonth && (
-                                                  <div
-                                                    onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
-                                                    className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
-                                                      ? 'bg-emerald-500/10 border-emerald-500/30 shadow-inner'
-                                                      : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
-                                                  >
-                                                    <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-emerald-400' : 'text-gray-500'}`}>
-                                                      Usado
-                                                    </span>
-                                                    <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
-                                                      {formatCurrency(usedVal)}
-                                                    </span>
-                                                  </div>
-                                                )}
+                                                <div
+                                                  onClick={(e) => { e.stopPropagation(); setMode('used_total'); }}
+                                                  className={`cursor-pointer rounded-lg p-2 border transition-all flex flex-col gap-1 ${selectedType === 'used_total'
+                                                    ? 'bg-emerald-500/10 border-emerald-500/30 shadow-inner'
+                                                    : 'bg-gray-900/30 border-gray-800 hover:border-gray-700'}`}
+                                                >
+                                                  <span className={`text-[10px] font-bold uppercase tracking-wide ${selectedType === 'used_total' ? 'text-emerald-400' : 'text-gray-500'}`}>
+                                                    Usado
+                                                  </span>
+                                                  <span className={`text-[11px] tracking-tight font-mono font-bold ${selectedType === 'used_total' ? 'text-white' : 'text-gray-400'}`}>
+                                                    {formatCurrency(usedVal)}
+                                                  </span>
+                                                </div>
                                               </div>
                                             );
                                           })()}

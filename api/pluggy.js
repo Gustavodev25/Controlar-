@@ -543,10 +543,7 @@ const removeUndefined = (obj) => {
 
 // ============================================================
 // HELPER: Extrair dados de parcelamento de uma transação Pluggy
-// FONTES DE DADOS (em ordem de prioridade):
-// 1. tx.creditCardMetadata.totalInstallments / installmentNumber (padrão Pluggy)
-// 2. tx.installments (pode ser número ou objeto { number, total })
-// 3. Padrão X/Y na descrição (fallback)
+// REGRA (opção 1): confiar somente no creditCardMetadata da API
 // ============================================================
 const extractInstallmentData = (tx) => {
     let totalInstallments = 1;
@@ -557,34 +554,6 @@ const extractInstallmentData = (tx) => {
     if (ccMeta.totalInstallments && ccMeta.totalInstallments > 1) {
         totalInstallments = ccMeta.totalInstallments;
         installmentNumber = ccMeta.installmentNumber || 1;
-    }
-    // PRIORIDADE 2: tx.installments (pode vir como número ou objeto)
-    else if (tx.installments) {
-        if (typeof tx.installments === 'object') {
-            totalInstallments = tx.installments.total || 1;
-            installmentNumber = tx.installments.number || 1;
-        } else if (typeof tx.installments === 'number') {
-            totalInstallments = tx.installments;
-        }
-    }
-
-    // PRIORIDADE 3: Fallback - Extrair da descrição (ex: "COMPRA 3/10")
-    if (totalInstallments <= 1) {
-        const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-        if (descMatch) {
-            const parsedCurrent = parseInt(descMatch[1]);
-            const parsedTotal = parseInt(descMatch[2]);
-            if (parsedTotal > 1 && parsedCurrent <= parsedTotal) {
-                installmentNumber = parsedCurrent || 1;
-                totalInstallments = parsedTotal;
-            }
-        }
-    } else if (installmentNumber <= 1 && totalInstallments > 1) {
-        // Temos totalInstallments mas não installmentNumber - tentar extrair da descrição
-        const descMatch = (tx.description || '').match(/(\d+)\s*\/\s*(\d+)/);
-        if (descMatch) {
-            installmentNumber = parseInt(descMatch[1]) || 1;
-        }
     }
 
     return { totalInstallments, installmentNumber };
@@ -1527,6 +1496,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             type: isIncome ? 'income' : 'expense',
                             category: tx.category || 'Uncategorized',
                             status: 'completed',
+                            importSource: 'pluggy',
                             totalInstallments,
                             installmentNumber,
                             invoiceMonthKey,
@@ -1561,6 +1531,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             accountId: tx.accountId,
                             category: tx.category || 'Uncategorized',
                             status: 'completed',
+                            importSource: 'pluggy',
                             updatedAt: syncTimestamp,
                             isInvestment: isSavings,
                             pluggyRaw: tx
@@ -2350,6 +2321,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         type: (tx.type === 'CREDIT' || tx.amount < 0) ? 'income' : 'expense',
                         category: (tx.category || 'Uncategorized'),
                         status: 'completed',
+                        importSource: 'pluggy',
                         totalInstallments,
                         installmentNumber,
                         invoiceMonthKey,
@@ -2366,6 +2338,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                         accountId: tx.accountId,
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
+                        importSource: 'pluggy',
                         updatedAt: syncTimestamp,
                         isInvestment: isSavings,
                         pluggyRaw: tx
@@ -2945,6 +2918,7 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
+                        importSource: 'pluggy',
                         totalInstallments,
                         installmentNumber,
                         invoiceMonthKey,
@@ -2960,6 +2934,7 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                         accountId: tx.accountId,
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
+                        importSource: 'pluggy',
                         updatedAt: syncTimestamp,
                         isInvestment: isSavings,
                         pluggyRaw: tx
@@ -3262,6 +3237,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                         type: tx.amount > 0 ? 'expense' : 'income',
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
+                        importSource: 'pluggy',
                         totalInstallments,
                         installmentNumber,
                         invoiceMonthKey,
@@ -3277,6 +3253,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                         accountId: tx.accountId,
                         category: tx.category || 'Uncategorized',
                         status: 'completed',
+                        importSource: 'pluggy',
                         updatedAt: syncTimestamp,
                         isInvestment: isSavings,
                         pluggyRaw: tx
