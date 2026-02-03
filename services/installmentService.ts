@@ -323,13 +323,16 @@ export const generateInstallments = (
       status = 'CLOSED';
     }
 
+    // override monthKey if manualInvoiceMonth is present on existing transaction
+    const finalMonthKey = existingTx?.manualInvoiceMonth || monthKey;
+
     const installment: Installment = {
       id: existingTx?.id || generateInstallmentId(purchase.id, i),
       purchaseId: purchase.id,
       installmentNumber: i,
       totalInstallments: purchase.totalInstallments,
       amount: purchase.installmentAmount,
-      referenceMonth: monthKey,
+      referenceMonth: finalMonthKey, // Use the final month key (manual or calculated)
       billingDate,
       dueDate: dueDateStr,
       status,
@@ -349,9 +352,10 @@ export const generateInstallments = (
           return toDateStr(pDate);
         })(),
       // Propagate refund info
-      _refundAmount: existingTx?._refundAmount,
-      isRefund: existingTx?.isRefund,
-      _manualRefund: existingTx?._manualRefund
+      _refundAmount: (existingTx as any)?._refundAmount,
+      isRefund: (existingTx as any)?.isRefund,
+      _manualRefund: (existingTx as any)?._manualRefund,
+      manualInvoiceMonth: existingTx?.manualInvoiceMonth
     };
 
     installments.push(installment);
@@ -742,7 +746,8 @@ export const installmentToInvoiceItem = (inst: Installment): any => {
     isCharge: false,
     _refundAmount: (inst as any)._refundAmount,
     isRefund: isRefund,
-    _manualRefund: (inst as any)._manualRefund
+    _manualRefund: (inst as any)._manualRefund,
+    manualInvoiceMonth: inst.manualInvoiceMonth
   };
 };
 

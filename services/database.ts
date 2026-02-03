@@ -1201,10 +1201,17 @@ export const updateCreditCardTransaction = async (userId: string, transaction: C
 
 export const saveCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction) => {
   if (!db) return;
+  console.log('[saveCreditCardTransaction] Salvando transação:', {
+    id: transaction.id,
+    description: (transaction as any).description,
+    manualInvoiceMonth: (transaction as any).manualInvoiceMonth,
+    isProjected: (transaction as any).isProjected
+  });
   const txRef = doc(db, "users", userId, "creditCardTransactions", transaction.id);
   const { id, ...data } = transaction;
   const cleanData = removeUndefined(data);
   await setDoc(txRef, cleanData, { merge: true });
+  console.log('[saveCreditCardTransaction] Transação salva com sucesso:', transaction.id);
 };
 
 

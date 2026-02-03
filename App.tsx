@@ -1987,8 +1987,12 @@ const App: React.FC = () => {
       pluggyBillId: (ccTx as any).pluggyBillId,
       invoiceSource: (ccTx as any).invoiceSource,
       isProjected: (ccTx as any).isProjected,
+      isEstimated: (ccTx as any).isEstimated,
+      installmentNumber: (ccTx as any).installmentNumber,
+      totalInstallments: (ccTx as any).totalInstallments,
       pluggyRaw: (ccTx as any).pluggyRaw,
       accountId: ccTx.cardId, // Map cardId to accountId
+      cardId: ccTx.cardId,
       accountType: 'CREDIT_CARD',
       // Manual invoice month override
       manualInvoiceMonth: (ccTx as any).manualInvoiceMonth,
@@ -3129,15 +3133,40 @@ const App: React.FC = () => {
       // Check if it's a credit card transaction and update the correct collection
       // IMPORTANT: Check if it exists in the SEPARATE collection first
       const isSeparateCCTx = separateCreditCardTxs.some(t => t.id === transaction.id);
-      const isProjectedInstallment = transaction.id.includes('_inst_');
+      const isMainTx = memberFilteredTransactions.some(t => t.id === transaction.id);
+      // Detectar parcela projetada: pelo ID (_inst_) OU pela flag isProjected
+      const isProjectedInstallment = transaction.id.includes('_inst_') || (transaction as any).isProjected === true;
+
+      console.log('[handleUpdateTransaction] Atualizando transação:', {
+        id: transaction.id,
+        description: transaction.description,
+        isProjected: (transaction as any).isProjected,
+        manualInvoiceMonth: (transaction as any).manualInvoiceMonth,
+        isSeparateCCTx,
+        isProjectedInstallment
+      });
 
       if (isSeparateCCTx) {
+        console.log('[handleUpdateTransaction] Atualizando como transação existente de CC');
         await dbService.updateCreditCardTransaction(userId, transaction as any);
       } else if (isProjectedInstallment) {
-        // Se for parcela projetada, materializa ela no banco para permitir edição/reembolso
-        // Remove a flag isProjected para torná-la "real"
-        await dbService.saveCreditCardTransaction(userId, { ...transaction, isProjected: false } as any);
+        // Se for parcela projetada, salva no banco para permitir edição/mover fatura
+        // Mantém a flag isProjected (não força para false)
+        if (isMainTx) {
+          console.log('[handleUpdateTransaction] Atualizando transação projetada na coleção principal');
+          await dbService.updateTransaction(userId, transaction);
+        } else {
+          console.log('[handleUpdateTransaction] Salvando transação projetada no banco');
+          const projectedTx: any = { ...transaction };
+          const fallbackCardId = (transaction as any).cardId || (transaction as any).accountId;
+          if (fallbackCardId) {
+            projectedTx.cardId = projectedTx.cardId || fallbackCardId;
+            projectedTx.accountId = projectedTx.accountId || fallbackCardId;
+          }
+          await dbService.saveCreditCardTransaction(userId, projectedTx as any);
+        }
       } else {
+        console.log('[handleUpdateTransaction] Atualizando como transação normal');
         await dbService.updateTransaction(userId, transaction);
       }
       toast.success("Lançamento atualizado com sucesso!");

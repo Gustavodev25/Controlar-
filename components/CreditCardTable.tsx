@@ -102,7 +102,13 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
       console.error('[InvoiceTag] Tentativa de mover para key vazio');
       return;
     }
-    // Log removed
+    console.log('[InvoiceTag] Movendo transação:', {
+      id: transaction.id,
+      description: transaction.description,
+      isProjected: (transaction as any).isProjected,
+      from: transaction.manualInvoiceMonth || 'auto',
+      to: targetKey
+    });
     onUpdate({ ...transaction, manualInvoiceMonth: targetKey });
   };
 

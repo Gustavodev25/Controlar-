@@ -535,7 +535,10 @@ export interface Installment {
   date?: string;                 // Data real da transação (se disponível/calculada)
 
   // Refund & Adjustment Flags
-
+  manualInvoiceMonth?: string | null;
+  _refundAmount?: number;
+  isRefund?: boolean;
+  _manualRefund?: boolean;
 }
 
 /**
