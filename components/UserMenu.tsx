@@ -7,6 +7,7 @@ import { getAvatarColors, getInitials } from '../utils/avatarUtils';
 
 interface UserMenuProps {
   user: UserType;
+  userPlan?: 'starter' | 'pro' | 'family';
   onLogout: () => void;
   onOpenSettings: () => void;
   isAdminMode: boolean;
@@ -17,22 +18,14 @@ interface UserMenuProps {
   showFamilyOption?: boolean;
 }
 
-export const UserMenu: React.FC<UserMenuProps> = ({ user, onLogout, onOpenSettings, isAdminMode, onToggleAdminMode, onFamilyView, onBackToProfile, isInFamilyView, showFamilyOption }) => {
-
-  // Debug log to see if user.isAdmin is being received
-  // useEffect(() => {
-  //   console.log('[UserMenu] User data:', {
-  //     name: user.name,
-  //     isAdmin: user.isAdmin,
-  //     hasIsAdminProp: 'isAdmin' in user,
-  //     userKeys: Object.keys(user)
-  //   });
-  // }, [user, user.isAdmin]);
+export const UserMenu: React.FC<UserMenuProps> = ({ user, userPlan, onLogout, onOpenSettings, isAdminMode, onToggleAdminMode, onFamilyView, onBackToProfile, isInFamilyView, showFamilyOption }) => {
 
   const getPlanDisplay = () => {
     if (user.familyRole === 'member') return 'Convidado Familiar';
 
-    const plan = user.subscription?.plan || 'starter';
+    // Prioritize passed userPlan (effective plan), fallback to user object
+    const plan = userPlan || user.subscription?.plan || 'starter';
+
     if (plan === 'starter') return 'Starter';
 
     const planName = plan === 'pro' ? 'Pro' : 'Family';

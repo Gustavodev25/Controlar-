@@ -96,7 +96,10 @@ interface HeaderProps {
   onSyncComplete?: () => void;
 
   // Feedback Handler (for Beta Banner)
+  // Feedback Handler (for Beta Banner)
   onOpenFeedback?: () => void;
+
+  userPlan?: 'starter' | 'pro' | 'family';
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -140,7 +143,8 @@ export const Header: React.FC<HeaderProps> = ({
   userId,
   hasConnectedAccounts,
   onSyncComplete,
-  onOpenFeedback
+  onOpenFeedback,
+  userPlan
 }) => {
   const getHeaderInfo = () => {
     const memberName = activeMemberId === 'FAMILY_OVERVIEW'
@@ -431,6 +435,7 @@ export const Header: React.FC<HeaderProps> = ({
             onBackToProfile={onBackToProfile}
             isInFamilyView={isInFamilyView}
             showFamilyOption={showFamilyOption}
+            userPlan={userPlan}
           />
         </div>
       </header>

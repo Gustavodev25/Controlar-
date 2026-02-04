@@ -43,7 +43,7 @@ import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { PostSignupModal } from './components/PostSignupModal';
-import { TrialExpiredPaywall } from './components/TrialExpiredPaywall';
+
 import { LandingCheckoutPage } from './components/LandingCheckoutPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
@@ -666,6 +666,23 @@ const App: React.FC = () => {
       }
     }
   }, [currentUser, effectivePlan, isProMode]);
+
+  // Notify user about trial expiration
+  useEffect(() => {
+    if (isTrialExpired && effectivePlan === 'starter') {
+      const hasSeenExpiryToast = sessionStorage.getItem('seen_expiry_toast');
+      if (!hasSeenExpiryToast) {
+        toast.message({
+          text: "Seu período de teste acabou.",
+          description: "Você agora está no plano Starter.",
+          preserve: true,
+          actionLabel: "Ver planos",
+          onAction: () => setActiveTab('subscription')
+        });
+        sessionStorage.setItem('seen_expiry_toast', 'true');
+      }
+    }
+  }, [isTrialExpired, effectivePlan]);
 
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
@@ -2587,11 +2604,11 @@ const App: React.FC = () => {
             return diff <= tolerance;
           };
           const getTxMonthKey = (t: Transaction) =>
-            (t.invoiceMonthKey ||
-              (t.invoiceDueDate || '').slice(0, 7) ||
-              (t.dueDate || '').slice(0, 7) ||
-              (t.invoiceDate || '').slice(0, 7) ||
-              (t.date || '').slice(0, 7));
+          (t.invoiceMonthKey ||
+            (t.invoiceDueDate || '').slice(0, 7) ||
+            (t.dueDate || '').slice(0, 7) ||
+            (t.invoiceDate || '').slice(0, 7) ||
+            (t.date || '').slice(0, 7));
 
           const alreadyPaidInChecking = filteredDashboardTransactions.some(t =>
             (t.paidSubscriptionId === s.id) ||
@@ -3707,16 +3724,7 @@ const App: React.FC = () => {
         isProcessing={isProcessingInvite}
       />
 
-      {/* Trial Expired Paywall - Blocks app when trial ends, OR if user is on starter plan (Plan Paywall) */}
-      {(isTrialExpired || effectivePlan === 'starter') && currentUser && activeTab !== 'subscription' && (
-        <TrialExpiredPaywall
-          userName={currentUser.name.split(' ')[0]}
-          onSubscribe={() => {
-            setSubscriptionInitialState({ planId: 'pro' });
-            setActiveTab('subscription');
-          }}
-        />
-      )}
+
 
       {/* Sidebar */}
 
@@ -3791,6 +3799,7 @@ const App: React.FC = () => {
             userId={userId}
             hasConnectedAccounts={connectedAccounts.length > 0}
             onOpenFeedback={() => setIsFeedbackModalOpen(true)}
+            userPlan={effectivePlan}
           />
         )}
 
