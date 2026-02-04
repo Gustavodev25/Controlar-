@@ -268,6 +268,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const [filterMonth, setFilterMonth] = useState(currentMonth);
   // State para filtro de tipo (A Pagar / A Receber)
   const [filterType, setFilterType] = useState<'all' | 'income' | 'expense'>('all');
+  const [isGroupedByCategory, setIsGroupedByCategory] = useState(true);
 
   // Animation state for bottom bar
   const [isBottomBarVisible, setIsBottomBarVisible] = useState(false);
@@ -540,6 +541,20 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   const totalIncome = useMemo(() => {
     return filteredByMonth.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredByMonth]);
+
+  const groupedReminders = useMemo(() => {
+    const groups: Record<string, Reminder[]> = {};
+    sortedReminders.forEach(reminder => {
+      const cat = reminder.category || 'Sem Categoria';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(reminder);
+    });
+    // Sort categories alphabetically
+    return Object.keys(groups).sort().reduce((acc, key) => {
+      acc[key] = groups[key];
+      return acc;
+    }, {} as typeof groups);
+  }, [sortedReminders]);
   const handleBulkApplyDates = async () => {
     if (selectedReminders.length === 0) return;
     if (bulkMode === 'single' && !bulkDate) return;
@@ -594,6 +609,12 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                   onClick={() => setSelectionMode(true)}
                 >
                   Alterar datas em massa
+                </DropdownItem>
+                <DropdownItem
+                  icon={isGroupedByCategory ? LayoutDashboard : Sparkles}
+                  onClick={() => setIsGroupedByCategory(!isGroupedByCategory)}
+                >
+                  {isGroupedByCategory ? 'Mostrar em lista' : 'Agrupar por categoria'}
                 </DropdownItem>
               </DropdownContent>
             </Dropdown>
@@ -729,18 +750,46 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
         />
       ) : (
         <div className="animate-fade-in space-y-3">
-          {sortedReminders.map(item => (
-            <ReminderCard
-              key={item.id}
-              item={item}
-              onPayReminder={onPayReminder}
-              onConfirmDelete={setDeleteId}
-              onEdit={handleEditClick}
-              selectionMode={selectionMode}
-              selected={selectedIds.includes(item.id)}
-              onToggleSelect={handleToggleSelect}
-            />
-          ))}
+          {isGroupedByCategory ? (
+            Object.entries(groupedReminders).map(([category, items]) => (
+              <div key={category} className="space-y-3 mb-8">
+                <div className="flex items-center gap-2 px-1 pt-2 pb-1">
+                  <div className="text-gray-400">
+                    {getCategoryIcon(category, 16)}
+                  </div>
+                  <h3 className="font-bold text-sm text-gray-300 uppercase tracking-wider">{category}</h3>
+                  <span className="text-[10px] bg-[#373734] px-1.5 py-0.5 rounded-md text-gray-400 font-mono border border-[#4a4a47]">
+                    {items.length}
+                  </span>
+                </div>
+                {items.map(item => (
+                  <ReminderCard
+                    key={item.id}
+                    item={item}
+                    onPayReminder={onPayReminder}
+                    onConfirmDelete={setDeleteId}
+                    onEdit={handleEditClick}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.includes(item.id)}
+                    onToggleSelect={handleToggleSelect}
+                  />
+                ))}
+              </div>
+            ))
+          ) : (
+            sortedReminders.map(item => (
+              <ReminderCard
+                key={item.id}
+                item={item}
+                onPayReminder={onPayReminder}
+                onConfirmDelete={setDeleteId}
+                onEdit={handleEditClick}
+                selectionMode={selectionMode}
+                selected={selectedIds.includes(item.id)}
+                onToggleSelect={handleToggleSelect}
+              />
+            ))
+          )}
         </div>
       )}
 

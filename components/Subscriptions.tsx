@@ -16,7 +16,9 @@ import {
   getCategoryIcon,
   Send,
   User,
-  Settings
+  Settings,
+  LayoutDashboard,
+  Sparkles
 } from './Icons';
 import { EmptyState } from './EmptyState';
 import { CustomAutocomplete, CustomSelect, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
@@ -246,6 +248,7 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
 
   // Mode state
   const [modalMode, setModalMode] = useState<'ai' | 'manual'>('manual');
+  const [isGroupedByCategory, setIsGroupedByCategory] = useState(true);
 
   // AI State - Chat System (igual Reminders)
   interface ChatMessage {
@@ -350,6 +353,21 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
   const selectedSubscriptions = useMemo(() => {
     return subscriptions.filter((s) => selectedIds.includes(s.id));
   }, [subscriptions, selectedIds]);
+
+  const groupedSubscriptions = useMemo(() => {
+    const groups: Record<string, Subscription[]> = {};
+    const listToUse = subscriptions; // Use filtered list if needed, but currently no list filtering besides the render loop
+    listToUse.forEach(sub => {
+      const cat = sub.category || 'Outros';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(sub);
+    });
+    // Sort categories alphabetically
+    return Object.keys(groups).sort().reduce((acc, key) => {
+      acc[key] = groups[key];
+      return acc;
+    }, {} as typeof groups);
+  }, [subscriptions]);
 
   const handleBulkApplyCycles = async () => {
     if (selectedSubscriptions.length === 0) return;
@@ -602,6 +620,12 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
               <DropdownItem icon={RefreshCw} onClick={() => setSelectionMode(true)}>
                 Gerenciar Ciclos
               </DropdownItem>
+              <DropdownItem
+                icon={isGroupedByCategory ? LayoutDashboard : Sparkles}
+                onClick={() => setIsGroupedByCategory(!isGroupedByCategory)}
+              >
+                {isGroupedByCategory ? 'Mostrar em lista' : 'Agrupar por categoria'}
+              </DropdownItem>
             </DropdownContent>
           </Dropdown>
 
@@ -699,21 +723,52 @@ export const Subscriptions: React.FC<SubscriptionsProps> = ({ subscriptions, tra
         <EmptyState title="Nenhuma assinatura" description="Adicione serviços como Netflix, Spotify, etc." />
       ) : (
         <div className="animate-fade-in space-y-3">
-          {subscriptions.map(sub => (
-            <SubscriptionCard
-              key={sub.id}
-              sub={sub}
-              onDelete={setDeleteId}
-              onEdit={handleEdit}
-              onTogglePaid={handleTogglePaid}
-              onConfirm={handleConfirmSubscription}
-              isPaidThisMonth={isSubscriptionPaidThisMonth(sub)}
-              filterMonth={filterMonth}
-              selectionMode={selectionMode}
-              selected={selectedIds.includes(sub.id)}
-              onToggleSelect={handleToggleSelect}
-            />
-          ))}
+          {isGroupedByCategory ? (
+            Object.entries(groupedSubscriptions).map(([category, items]) => (
+              <div key={category} className="space-y-3 mb-8">
+                <div className="flex items-center gap-2 px-1 pt-2 pb-1">
+                  <div className="text-gray-400">
+                    {getCategoryIcon(category, 16)}
+                  </div>
+                  <h3 className="font-bold text-sm text-gray-300 uppercase tracking-wider">{category}</h3>
+                  <span className="text-[10px] bg-[#373734] px-1.5 py-0.5 rounded-md text-gray-400 font-mono border border-[#4a4a47]">
+                    {items.length}
+                  </span>
+                </div>
+                {items.map(sub => (
+                  <SubscriptionCard
+                    key={sub.id}
+                    sub={sub}
+                    onDelete={setDeleteId}
+                    onEdit={handleEdit}
+                    onTogglePaid={handleTogglePaid}
+                    onConfirm={handleConfirmSubscription}
+                    isPaidThisMonth={isSubscriptionPaidThisMonth(sub)}
+                    filterMonth={filterMonth}
+                    selectionMode={selectionMode}
+                    selected={selectedIds.includes(sub.id)}
+                    onToggleSelect={handleToggleSelect}
+                  />
+                ))}
+              </div>
+            ))
+          ) : (
+            subscriptions.map(sub => (
+              <SubscriptionCard
+                key={sub.id}
+                sub={sub}
+                onDelete={setDeleteId}
+                onEdit={handleEdit}
+                onTogglePaid={handleTogglePaid}
+                onConfirm={handleConfirmSubscription}
+                isPaidThisMonth={isSubscriptionPaidThisMonth(sub)}
+                filterMonth={filterMonth}
+                selectionMode={selectionMode}
+                selected={selectedIds.includes(sub.id)}
+                onToggleSelect={handleToggleSelect}
+              />
+            ))
+          )}
         </div>
       )}
 

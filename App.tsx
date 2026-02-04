@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Ticket, ChevronRight } from './components/Icons';
 import { MessageCircle } from 'lucide-react';
-import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount, PromoPopup as PromoPopupType } from './types';
+import { Transaction, DashboardStats, User, Reminder, Member, FamilyGoal, Budget, ConnectedAccount, PromoPopup as PromoPopupType, CategoryMapping } from './types';
 import { PromoPopup, PromoPopupData } from './components/PromoPopup';
 import { StatsCards } from './components/StatsCards';
 import { ExcelTable } from './components/ExcelTable';
@@ -553,6 +553,9 @@ const App: React.FC = () => {
   }, []);
 
   const effectivePlan = useMemo(() => {
+    // Admins are always PRO
+    if (currentUser?.isAdmin) return 'pro';
+
     const sub = currentUser?.subscription;
 
     // Trial: verificar se ainda é válido
@@ -571,6 +574,9 @@ const App: React.FC = () => {
 
   // Helper: verificar se trial expirou
   const isTrialExpired = useMemo(() => {
+    // Admins never expire
+    if (currentUser?.isAdmin) return false;
+
     const sub = currentUser?.subscription;
     if (sub?.status !== 'trial' || !sub.trialEndsAt) return false;
     return new Date() > new Date(sub.trialEndsAt);
@@ -578,6 +584,9 @@ const App: React.FC = () => {
 
   // Helper: dias restantes do trial
   const trialDaysRemaining = useMemo(() => {
+    // Admins don't have trial days
+    if (currentUser?.isAdmin) return 0;
+
     const sub = currentUser?.subscription;
     if (sub?.status !== 'trial' || !sub.trialEndsAt) return 0;
     const daysLeft = Math.ceil((new Date(sub.trialEndsAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -598,12 +607,68 @@ const App: React.FC = () => {
   const [separateCreditCardTxs, setSeparateCreditCardTxs] = useState<dbService.CreditCardTransaction[]>([]);
   const [isSyncingCards, setIsSyncingCards] = useState(false);
   const [promoPopups, setPromoPopups] = useState<PromoPopupType[]>([]);
+  const [categoryMappings, setCategoryMappings] = useState<CategoryMapping[]>([]);
+
+
+
+
+
+
+
+
+
+  // --- Derived State ---
+
+
+
+
+
+  // --- Fetch Data ---
+
+
+
 
   // Refs for auto-sync to access latest values without re-creating interval
   const connectedAccountsRef = React.useRef(connectedAccounts);
   const isSyncingCardsRef = React.useRef(isSyncingCards);
   React.useEffect(() => { connectedAccountsRef.current = connectedAccounts; }, [connectedAccounts]);
   React.useEffect(() => { isSyncingCardsRef.current = isSyncingCards; }, [isSyncingCards]);
+
+  // --- Fetch Data ---
+  useEffect(() => {
+    if (!currentUser?.id) return;
+    const uid = currentUser.id;
+    setIsLoadingData(true);
+
+    // Initial load tracking
+    const unsubTransactions = dbService.listenToTransactions(uid, setTransactions);
+    const unsubReminders = dbService.listenToReminders(uid, setReminders);
+    const unsubInvestments = dbService.listenToInvestments(uid, setInvestments);
+    const unsubBudgets = dbService.listenToBudgets(uid, setBudgets);
+    const unsubSubscriptions = subscriptionService.listenToSubscriptions(uid, setSubscriptions);
+    const unsubFamilyGoals = dbService.listenToGoals(uid, setFamilyGoals);
+    const unsubAccounts = dbService.listenToConnectedAccounts(uid, setConnectedAccounts);
+    const unsubNotifications = dbService.listenToNotifications(uid, setNotifications);
+
+    // Also fetch one-off data or specialized listeners
+    const unsubMembers = dbService.listenToMembers(uid, setMembers);
+    const unsubMapping = dbService.listenToCategoryMappings(uid, setCategoryMappings);
+
+    setIsLoadingData(false);
+
+    return () => {
+      unsubTransactions();
+      unsubReminders();
+      unsubInvestments();
+      unsubBudgets();
+      unsubSubscriptions();
+      unsubFamilyGoals();
+      unsubAccounts();
+      unsubNotifications();
+      unsubMembers();
+      unsubMapping();
+    };
+  }, [currentUser?.id]);
 
   // Dashboard Filter State
   const [filterMode, setFilterMode] = useState<FilterMode>('month');
@@ -683,6 +748,8 @@ const App: React.FC = () => {
       }
     }
   }, [isTrialExpired, effectivePlan]);
+
+
 
   useEffect(() => {
     localStorage.setItem('finances_projection_settings', JSON.stringify(projectionSettings));
