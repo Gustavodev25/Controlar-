@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, createContext, useContext } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, createContext, useContext } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { LucideIcon } from 'lucide-react';
@@ -88,55 +88,58 @@ export const DropdownContent = ({
   portal?: boolean;
 }) => {
   const context = useContext(DropdownContext);
-  const [coords, setCoords] = useState<{ top: number; left: number }>({ top: 0, left: 0 });
+  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
   const [openUpward, setOpenUpward] = useState(false);
 
   if (!context) throw new Error("DropdownContent must be used within a Dropdown");
 
   const { isOpen, triggerRef } = context;
 
-  useEffect(() => {
-    if (isOpen && triggerRef.current) {
-      const updateCoords = () => {
-        const rect = triggerRef.current!.getBoundingClientRect();
+  useLayoutEffect(() => {
+    if (!isOpen || !triggerRef.current || !portal) return;
 
-        let left = rect.left;
+    const updateCoords = () => {
+      const rect = triggerRef.current!.getBoundingClientRect();
 
-        // Calculate absolute LEFT position based on alignment anchor points
-        // Adjustments (shifts) will be handled by Framer Motion's 'x' prop
-        if (align === 'right') {
-          left = rect.right;
-        } else if (align === 'center') {
-          left = rect.left + (rect.width / 2);
-        }
+      let left = rect.left;
 
-        // Check if dropdown would go off screen (estimate dropdown height ~250px)
-        const estimatedDropdownHeight = 250;
-        const spaceBelow = window.innerHeight - rect.bottom;
-        const shouldOpenUpward = spaceBelow < estimatedDropdownHeight && rect.top > estimatedDropdownHeight;
+      // Calculate absolute LEFT position based on alignment anchor points
+      // Adjustments (shifts) will be handled by Framer Motion's 'x' prop
+      if (align === 'right') {
+        left = rect.right;
+      } else if (align === 'center') {
+        left = rect.left + (rect.width / 2);
+      }
 
-        setOpenUpward(shouldOpenUpward);
+      // Check if dropdown would go off screen (estimate dropdown height ~250px)
+      const estimatedDropdownHeight = 250;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const shouldOpenUpward = spaceBelow < estimatedDropdownHeight && rect.top > estimatedDropdownHeight;
 
-        setCoords({
-          top: shouldOpenUpward ? rect.top - 8 : rect.bottom + 8,
-          left: left
-        });
-      };
+      setOpenUpward(shouldOpenUpward);
+      setCoords({
+        top: shouldOpenUpward ? rect.top - 8 : rect.bottom + 8,
+        left: left
+      });
+    };
 
-      updateCoords();
-      // Recalculate on scroll to stick to element
-      window.addEventListener('scroll', updateCoords, true);
-      return () => window.removeEventListener('scroll', updateCoords, true);
-    }
-  }, [isOpen, align, triggerRef]);
+    updateCoords();
+    // Recalculate on scroll/resize to stick to element
+    window.addEventListener('scroll', updateCoords, true);
+    window.addEventListener('resize', updateCoords);
+    return () => {
+      window.removeEventListener('scroll', updateCoords, true);
+      window.removeEventListener('resize', updateCoords);
+    };
+  }, [isOpen, align, portal, triggerRef]);
 
   // Determine X offset for alignment
   const xOffset = align === 'right' ? '-100%' : align === 'center' ? '-50%' : '0%';
-  // Y offset and transform origin based on direction
-  const yOffset = openUpward ? '-100%' : '0%';
   const transformOrigin = openUpward ? 'bottom' : 'top';
+  const yTarget = openUpward ? '-100%' : 0;
+  const yFrom = openUpward ? 'calc(-100% + 6px)' : -6;
 
-  const style: React.CSSProperties = portal
+  const style: React.CSSProperties = portal && coords
     ? {
       position: 'fixed',
       top: coords.top,
@@ -149,14 +152,15 @@ export const DropdownContent = ({
     } as React.CSSProperties
     : {};
 
+  const shouldRender = isOpen && (!portal || coords);
   const content = (
     <AnimatePresence>
-      {isOpen && (
+      {shouldRender && (
         <motion.div
-          initial={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, filter: "blur(10px)", opacity: 0 }}
-          animate={{ y: yOffset, x: xOffset, scale: 1, filter: "blur(0px)", opacity: 1 }}
-          exit={{ y: openUpward ? 5 : -5, x: xOffset, scale: 0.95, opacity: 0, filter: "blur(10px)" }}
-          transition={{ duration: 0.4, ease: "circInOut", type: "spring", stiffness: 200, damping: 20 }}
+          initial={{ y: yFrom, x: xOffset, scale: 0.98, opacity: 0 }}
+          animate={{ y: yTarget, x: xOffset, scale: 1, opacity: 1 }}
+          exit={{ y: yFrom, x: xOffset, scale: 0.98, opacity: 0 }}
+          transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
           style={style}
           data-dropdown-content
           onMouseDown={(e) => e.stopPropagation()}

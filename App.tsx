@@ -2024,6 +2024,9 @@ const App: React.FC = () => {
   }, [memberFilteredTransactions, accountMap]);
 
   const creditCardTransactions = useMemo(() => {
+    const singleCardId = accountBalances.credit.accounts.length === 1
+      ? accountBalances.credit.accounts[0].id
+      : null;
     // 1. Get credit card transactions from main transactions collection
     const fromMainCollection = memberFilteredTransactions.filter(t => {
       // Check linked account first
@@ -2093,11 +2096,37 @@ const App: React.FC = () => {
       }
     }
 
-    // Sort by date descending
-    allCCTransactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    // Normalize card/account IDs for consistent matching
+    const normalized = allCCTransactions.map(tx => {
+      const normalizedAccountId = tx.accountId || tx.cardId || undefined;
+      const normalizedCardId = tx.cardId || tx.accountId || undefined;
 
-    return allCCTransactions;
-  }, [memberFilteredTransactions, accountMap, separateCreditCardTxs]);
+      if (!normalizedAccountId && !normalizedCardId && singleCardId) {
+        return {
+          ...tx,
+          accountId: singleCardId,
+          cardId: singleCardId,
+          accountType: tx.accountType || 'CREDIT_CARD'
+        };
+      }
+
+      if (normalizedAccountId || normalizedCardId) {
+        return {
+          ...tx,
+          accountId: normalizedAccountId,
+          cardId: normalizedCardId,
+          accountType: tx.accountType || 'CREDIT_CARD'
+        };
+      }
+
+      return tx;
+    });
+
+    // Sort by date descending
+    normalized.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return normalized;
+  }, [memberFilteredTransactions, accountMap, separateCreditCardTxs, accountBalances.credit.accounts]);
 
 
   const savingsTransactions = useMemo(() => {
@@ -3033,41 +3062,7 @@ const App: React.FC = () => {
     }
   };
 
-  // Automatic Sync at 00:00 (Midnight)
-  useEffect(() => {
-    if (!userId) return;
-
-    const checkAndSync = async () => {
-      const now = new Date();
-      const todayStr = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
-      const lastSyncDate = localStorage.getItem('last_auto_sync_date');
-
-      // Check if already ran today
-      if (lastSyncDate === todayStr) return;
-
-      const hours = now.getHours();
-      const minutes = now.getMinutes();
-
-      // Sync window: 00:00 to 00:05
-      if (hours === 0 && minutes < 5) {
-        console.log('[Auto Sync] Executing midnight sync...');
-
-        // Mark as done for today immediately to prevent double trigger
-        localStorage.setItem('last_auto_sync_date', todayStr);
-
-        // Trigger the standard sync flow
-        handleSyncOpenFinance();
-      }
-    };
-
-    // Check every 30 seconds
-    const interval = setInterval(checkAndSync, 30 * 1000);
-
-    // Run check immediately on mount
-    checkAndSync();
-
-    return () => clearInterval(interval);
-  }, [userId, connectedAccounts]); // Re-run when accounts change to update closure in handleSyncOpenFinance
+  // Auto-sync removed per request.
 
   // DEBUG: Manual trigger for auto-sync (bypasses time check)
   const handleDebugSync = async () => {

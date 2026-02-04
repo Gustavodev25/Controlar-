@@ -410,7 +410,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
   // Calculate invoice per individual card - matches transactions to cards and filters by month
   const cardInvoices = useMemo(() => {
-    const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId).filter(Boolean))];
+    const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId || tx.cardId).filter(Boolean))];
 
     const resolveTxMonthKey = (tx: Transaction) => {
       if (tx.invoiceDueDate) return tx.invoiceDueDate.slice(0, 7);
@@ -437,7 +437,18 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     return creditAccounts.map((card, cardIndex) => {
       const isConnectedCard = card.connectionMode !== 'MANUAL';
 
-      let cardTransactions = creditCardTransactions.filter(tx => tx.accountId === card.id);
+      let cardTransactions = creditCardTransactions.filter(tx => {
+        const txAccountId = tx.accountId || tx.cardId;
+        return txAccountId === card.id;
+      });
+
+      // If we only have one card, include unassigned CC transactions as well
+      if (creditAccounts.length === 1) {
+        const unassigned = creditCardTransactions.filter(tx => !tx.accountId && !tx.cardId);
+        if (unassigned.length > 0) {
+          cardTransactions = cardTransactions.concat(unassigned);
+        }
+      }
 
       if (cardTransactions.length === 0) {
         if (uniqueAccountIds.length === creditAccounts.length && uniqueAccountIds.length > 0) {

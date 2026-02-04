@@ -21,6 +21,7 @@ import {
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping, KanbanColumn } from "../types";
 import { AppNotification } from "../types";
+import { toLocalISODate } from "../utils/dateUtils";
 
 
 // --- User Services ---
@@ -1957,7 +1958,7 @@ export const incrementDailyConnectionCredits = async (userId: string) => {
 
       const userData = userDoc.data();
       const credits = userData.dailyConnectionCredits || { date: '', count: 0 };
-      const today = new Date().toLocaleDateString('en-CA');
+      const today = toLocalISODate();
 
       let newCredits;
       if (credits.date !== today) {

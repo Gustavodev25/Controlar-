@@ -333,6 +333,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Bank/Card Filter
   const [selectedCardId, setSelectedCardId] = useState<string>('');
+  const singleVisibleCardId = useMemo(
+    () => (visibleCreditCardAccounts.length === 1 ? visibleCreditCardAccounts[0].id : null),
+    [visibleCreditCardAccounts]
+  );
 
   const isManualModeActive = React.useMemo(() => {
     if (isManualMode && selectedCardId !== 'all') return true;
@@ -728,6 +732,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           const txCardId = t.cardId ? String(t.cardId) : '';
           const txAccountId = t.accountId ? String(t.accountId) : '';
           matchesCard = txCardId === targetId || txAccountId === targetId;
+
+          // If there's only one visible card, include unassigned CC transactions
+          if (!matchesCard && !txCardId && !txAccountId && singleVisibleCardId && targetId === singleVisibleCardId) {
+            matchesCard = true;
+          }
         }
 
         return matchesYear && matchesSearch && matchesStartDate && matchesEndDate && matchesCard;
@@ -748,7 +757,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [transactions, searchTerm, sortField, sortDirection, selectedYear, startDate, endDate, selectedCardId]);
+  }, [transactions, searchTerm, sortField, sortDirection, selectedYear, startDate, endDate, selectedCardId, singleVisibleCardId]);
 
   // ALL card transactions (without year filter) - for "Histórico Completo" mode
   const allCardTransactions = useMemo(() => {
@@ -763,12 +772,17 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           const txCardId = t.cardId ? String(t.cardId) : '';
           const txAccountId = t.accountId ? String(t.accountId) : '';
           matchesCard = txCardId === targetId || txAccountId === targetId;
+
+          // If there's only one visible card, include unassigned CC transactions
+          if (!matchesCard && !txCardId && !txAccountId && singleVisibleCardId && targetId === singleVisibleCardId) {
+            matchesCard = true;
+          }
         }
 
         return matchesCard;
       })
       .sort((a, b) => b.date.localeCompare(a.date)); // Sort by date descending
-  }, [transactions, selectedCardId]);
+  }, [transactions, selectedCardId, singleVisibleCardId]);
 
   // Get selected card for invoice calculations
   const selectedCard = useMemo(() => {
@@ -3027,6 +3041,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                       <CustomDatePicker
                         value={editTransaction.date || ''}
                         onChange={(val) => setEditTransaction({ ...editTransaction, date: val })}
+                        useNativeOnMobile={true}
                       />
                     </div>
                   </div>
@@ -3197,6 +3212,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         onChange={(val) => setCardSettings({ ...cardSettings, manualBeforeLastClosingDate: val })}
                         placeholder="Data de fechamento"
                         dropdownMode="fixed"
+                        useNativeOnMobile={true}
                       />
                     </div>
 
@@ -3210,6 +3226,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           onChange={(val) => setCardSettings({ ...cardSettings, manualLastClosingDate: val })}
                           placeholder="Data de fechamento"
                           dropdownMode="fixed"
+                          useNativeOnMobile={true}
                         />
                       </div>
 
@@ -3222,6 +3239,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           onChange={(val) => setCardSettings({ ...cardSettings, manualCurrentClosingDate: val })}
                           placeholder="Data de fechamento"
                           dropdownMode="fixed"
+                          useNativeOnMobile={true}
                         />
                       </div>
                     </div>

@@ -9,6 +9,29 @@ loadEnv();
 
 const router = express.Router();
 
+// --- Daily Credits Helpers ---
+const getLocalDateKey = (date = new Date()) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`; // YYYY-MM-DD (local)
+};
+
+const incrementDailyConnectionCredits = async (db, userId) => {
+    const today = getLocalDateKey();
+    const userRef = db.doc(`users/${userId}`);
+
+    return db.runTransaction(async (transaction) => {
+        const userDoc = await transaction.get(userRef);
+        if (!userDoc.exists) return null;
+        const credits = userDoc.data().dailyConnectionCredits || { date: '', count: 0 };
+        const currentCount = credits.date === today ? credits.count : 0;
+        const newCredits = { date: today, count: currentCount + 1 };
+        transaction.update(userRef, { dailyConnectionCredits: newCredits });
+        return newCredits.count;
+    });
+};
+
 // Anthropic API Key for AI detection
 const getAnthropicApiKey = () => (process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY || "").trim();
 
@@ -867,7 +890,8 @@ const withPluggyAuth = async (req, res, next) => {
         if (!req.pluggyApiKey) throw new Error('No API Key');
         next();
     } catch (error) {
-        res.status(500).json({ error: 'Auth failed' });
+        const details = error?.response?.data?.message || error?.message || 'Unknown error';
+        res.status(500).json({ error: 'Auth failed', details });
     }
 };
 
@@ -910,8 +934,9 @@ router.post('/create-token', withPluggyAuth, async (req, res) => {
 
         res.json({ accessToken: response.data.accessToken });
     } catch (error) {
+        const details = error?.response?.data?.message || error?.message || 'Unknown error';
         console.error('Pluggy Create Token Error:', error.response?.data || error.message);
-        res.status(500).json({ error: 'Failed to create token' });
+        res.status(500).json({ error: 'Failed to create token', details });
     }
 });
 
@@ -1171,6 +1196,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
         type: 'MANUAL',
         createdAt: new Date().toISOString()
     });
+
+    // Consume 1 daily credit for sync (non-blocking)
+    incrementDailyConnectionCredits(db, userId).catch(() => { });
 
     res.json({ success: true, message: 'Sync triggered', syncJobId: jobDoc.id });
 
@@ -2167,17 +2195,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
     const ccTxCollection = db.collection('users').doc(userId).collection('creditCardTransactions');
 
     // Increment credits (don't block on this)
-    const today = new Date().toLocaleDateString('en-CA');
-    const userRef = db.doc(`users/${userId}`);
-    db.runTransaction(async (transaction) => {
-        const userDoc = await transaction.get(userRef);
-        if (!userDoc.exists) return;
-        const credits = userDoc.data().dailyConnectionCredits || { date: '', count: 0 };
-        const newCredits = credits.date !== today
-            ? { date: today, count: 1 }
-            : { ...credits, count: credits.count + 1 };
-        transaction.update(userRef, { dailyConnectionCredits: newCredits });
-    }).catch(() => { }); // Silent fail for credits
+    incrementDailyConnectionCredits(db, userId).catch(() => { });
 
     try {
         // Wait for Pluggy item

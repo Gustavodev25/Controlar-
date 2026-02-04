@@ -74,8 +74,44 @@ export const parseDate = (dateStr: string): Date => {
     const isoDate = new Date(dateStr);
     return new Date(isoDate.getFullYear(), isoDate.getMonth(), isoDate.getDate(), 12, 0, 0);
   }
-  const [y, m, d] = dateStr.split('-').map(Number);
-  return new Date(y, m - 1, d || 1, 12, 0, 0);
+  const rawParts = dateStr.split(/[-/]/);
+  if (rawParts.length >= 3) {
+    const [p0, p1, p2] = rawParts;
+    const n0 = Number(p0);
+    const n1 = Number(p1);
+    const n2 = Number(p2);
+
+    if (!Number.isNaN(n0) && !Number.isNaN(n1) && !Number.isNaN(n2)) {
+      let y: number;
+      let m: number;
+      let d: number;
+
+      if (p0.length === 4 || n0 > 31) {
+        // YYYY-MM-DD (ou YYYY/MM/DD)
+        y = n0;
+        m = n1;
+        d = n2;
+      } else if (p2.length === 4 || n2 > 31) {
+        // DD/MM/YYYY (ou DD-MM-YYYY)
+        d = n0;
+        m = n1;
+        y = n2;
+      } else {
+        // Fallback: assume YYYY-MM-DD
+        y = n0;
+        m = n1;
+        d = n2;
+      }
+
+      return new Date(y, m - 1, d || 1, 12, 0, 0);
+    }
+  }
+
+  const fallback = new Date(dateStr);
+  if (!isNaN(fallback.getTime())) {
+    return new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate(), 12, 0, 0);
+  }
+  return new Date();
 };
 
 /**
@@ -644,20 +680,35 @@ export const buildInvoices = (
   // ========================================
   let periods: InvoicePeriodDates;
 
-  if (card?.manualCurrentClosingDate) {
+  const hasManualCurrent = !!card?.manualCurrentClosingDate;
+  const hasManualLast = !!card?.manualLastClosingDate;
+
+  if (hasManualCurrent || hasManualLast) {
     // Parse das datas manuais (com fallbacks se faltarem)
-    let currentClosingDate = parseDate(card.manualCurrentClosingDate);
+    let currentClosingDate: Date;
     let lastClosingDate: Date;
 
-    if (card.manualLastClosingDate) {
-      lastClosingDate = parseDate(card.manualLastClosingDate);
+    if (hasManualCurrent) {
+      currentClosingDate = parseDate(card!.manualCurrentClosingDate!);
+      if (hasManualLast) {
+        lastClosingDate = parseDate(card!.manualLastClosingDate!);
+      } else {
+        lastClosingDate = new Date(currentClosingDate);
+        lastClosingDate.setMonth(lastClosingDate.getMonth() - 1);
+      }
     } else {
-      lastClosingDate = new Date(currentClosingDate);
-      lastClosingDate.setMonth(lastClosingDate.getMonth() - 1);
+      // Se só houver a última data manual, inferimos a atual a partir dela
+      lastClosingDate = parseDate(card!.manualLastClosingDate!);
+      const manualClosingDayFromLast = lastClosingDate.getDate();
+      currentClosingDate = new Date(lastClosingDate);
+      currentClosingDate.setMonth(currentClosingDate.getMonth() + 1);
+      const lastDayOfMonth = new Date(currentClosingDate.getFullYear(), currentClosingDate.getMonth() + 1, 0).getDate();
+      currentClosingDate.setDate(Math.min(manualClosingDayFromLast, lastDayOfMonth));
+      currentClosingDate = adjustClosingDate(currentClosingDate);
     }
 
     // IMPORTANTE: Extrair o dia de fechamento da data manual
-    const manualClosingDay = currentClosingDate.getDate();
+    const manualClosingDay = hasManualCurrent ? currentClosingDate.getDate() : lastClosingDate.getDate();
 
     // ========================================
     // CORREÇÃO: Avançar datas automaticamente se estiverem desatualizadas

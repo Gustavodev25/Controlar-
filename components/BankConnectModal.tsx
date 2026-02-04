@@ -7,6 +7,7 @@ import * as dbService from '../services/database';
 import type { CreditCardTransaction } from '../services/database';
 import { translatePluggyCategory } from '../services/openFinanceService';
 import { saveSyncProgress, clearSyncProgress } from '../utils/syncProgress';
+import { toLocalISODate } from '../utils/dateUtils';
 
 interface BankConnectModalProps {
     isOpen: boolean;
@@ -22,6 +23,18 @@ interface BankConnectModalProps {
 }
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
+const DEFAULT_PLUGGY_PRODUCTS = ['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS'];
+const parsePluggyProducts = (value?: string) => {
+    if (!value) return [];
+    return value
+        .split(',')
+        .map((item) => item.trim().toUpperCase())
+        .filter(Boolean);
+};
+const PLUGGY_PRODUCTS = (() => {
+    const fromEnv = parsePluggyProducts(import.meta.env.VITE_PLUGGY_PRODUCTS);
+    return fromEnv.length > 0 ? fromEnv : DEFAULT_PLUGGY_PRODUCTS;
+})();
 
 const pad2 = (val: number) => String(val).padStart(2, '0');
 
@@ -131,7 +144,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
     const [showPluggyWidget, setShowPluggyWidget] = useState(false);
 
     // Credit verification
-    const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const todayDateStr = toLocalISODate(); // YYYY-MM-DD
     const isNewConnection = !forceSyncItemId; // true = connecting new bank, false = syncing existing
 
     // NOTE: When dailyCredits is undefined, it means the user has NEVER used credits before
@@ -511,7 +524,11 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.error || 'Erro ao criar token');
+                throw new Error(data.details || data.error || 'Erro ao criar token');
+            }
+
+            if (!data.accessToken) {
+                throw new Error('Token invÃ¡lido recebido do servidor.');
             }
 
             setConnectToken(data.accessToken);
@@ -963,7 +980,7 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
                 <PluggyConnect
                     connectToken={connectToken}
                     includeSandbox={false}
-                    products={['ACCOUNTS', 'CREDIT_CARDS', 'TRANSACTIONS', 'IDENTITY', 'INVESTMENTS', 'PAYMENT_DATA']}
+                    products={PLUGGY_PRODUCTS}
                     updateItem={forceSyncItemId || undefined}
                     onSuccess={handleSuccess}
                     onError={handleError}

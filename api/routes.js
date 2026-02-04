@@ -1099,6 +1099,40 @@ router.post('/asaas/subscription', async (req, res) => {
       if (hasDiscount) {
         console.log(`>>> Coupon detected! Creating single payment of R$ ${value} + subscription starting next month`);
 
+        // =====================================================
+        // [FIX] STEP 0: Tokenize the credit card FIRST
+        // This ensures the token is available for both payment and subscription
+        // Without this, subscriptions with future nextDueDate don't have card associated
+        // =====================================================
+        let creditCardToken = null;
+        try {
+          console.log('>>> [TOKENIZATION] Tokenizing credit card before creating payment...');
+          const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+            customer: customerId,
+            creditCard: {
+              holderName: creditCard.holderName,
+              number: creditCard.number.replace(/\s/g, ''),
+              expiryMonth: creditCard.expiryMonth,
+              expiryYear: creditCard.expiryYear,
+              ccv: creditCard.ccv
+            },
+            creditCardHolderInfo: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+              addressNumber: creditCardHolderInfo.addressNumber,
+              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+            },
+            remoteIp: getClientIp(req)
+          });
+          creditCardToken = tokenResult.creditCardToken;
+          console.log(`>>> [TOKENIZATION] Success! Token: ${creditCardToken?.substring(0, 15)}...`);
+        } catch (tokenError) {
+          console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
+          // Continue without token - will use full card data as fallback
+        }
+
         // 1. Create single payment with discounted value
         const paymentData = {
           customer: customerId,
@@ -1106,24 +1140,30 @@ router.post('/asaas/subscription', async (req, res) => {
           value: Math.round(value * 100) / 100, // Discounted value from coupon
           dueDate: dueDateStr,
           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
-          creditCard: {
+          remoteIp: getClientIp(req),
+          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}`
+        };
+
+        // Use token if available, otherwise use full card data
+        if (creditCardToken) {
+          paymentData.creditCardToken = creditCardToken;
+        } else {
+          paymentData.creditCard = {
             holderName: creditCard.holderName,
             number: creditCard.number.replace(/\s/g, ''),
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
             ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
+          };
+          paymentData.creditCardHolderInfo = {
             name: creditCardHolderInfo.name,
             email: creditCardHolderInfo.email,
             cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
             postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
             addressNumber: creditCardHolderInfo.addressNumber,
             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          },
-          remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}` // [MODIFIED] Include userId
-        };
+          };
+        }
 
         const firstPayment = await asaasRequest('POST', '/payments', paymentData);
         console.log(`>>> First payment created: ${firstPayment.id}, status: ${firstPayment.status}`);
@@ -1143,6 +1183,7 @@ router.post('/asaas/subscription', async (req, res) => {
         }
 
         // 2. Create subscription starting next month with full value
+        // [FIX] Use the tokenized card to ensure subscription has valid payment method
         const subscriptionData = {
           customer: customerId,
           billingType: 'CREDIT_CARD',
@@ -1150,30 +1191,37 @@ router.post('/asaas/subscription', async (req, res) => {
           nextDueDate: getNextMonthDate(), // Starts next month
           cycle: cycle,
           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
-          creditCard: {
+          remoteIp: getClientIp(req),
+          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}`
+        };
+
+        // Use token if available, otherwise use full card data
+        if (creditCardToken) {
+          subscriptionData.creditCardToken = creditCardToken;
+          console.log('>>> [SUBSCRIPTION] Using tokenized card for subscription');
+        } else {
+          subscriptionData.creditCard = {
             holderName: creditCard.holderName,
             number: creditCard.number.replace(/\s/g, ''),
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
             ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
+          };
+          subscriptionData.creditCardHolderInfo = {
             name: creditCardHolderInfo.name,
             email: creditCardHolderInfo.email,
             cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
             postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
             addressNumber: creditCardHolderInfo.addressNumber,
             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          },
-          remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}` // [MODIFIED] Include userId
-        };
+          };
+        }
 
         // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.
         let subscription = null;
         try {
           subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
-          console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
+          console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}, hasToken: ${!!creditCardToken}`);
         } catch (subError) {
           console.error(`>>> WARNING: Payment succeeded but Subscription failed:`, subError.message);
           console.error('>>> The plan will be ACTIVATED to honor the payment. Admin must fix subscription manually.');
@@ -1462,6 +1510,24 @@ router.post('/asaas/webhook', async (req, res) => {
 
               if (!snapshot.empty) {
                 userId = snapshot.docs[0].id;
+                const userDoc = snapshot.docs[0];
+
+                // [FIX] Clear any payment failure flags when payment is confirmed
+                // This restores full access for users who had overdue payments
+                const userData = userDoc.data();
+                if (userData.subscription?.paymentFailedAt || userData.subscription?.graceUntil) {
+                  await userDoc.ref.update({
+                    'subscription.paymentFailedAt': null,
+                    'subscription.graceUntil': null,
+                    'subscription.paymentFailureReason': null,
+                    'subscription.status': 'active',
+                    'profile.subscription.paymentFailedAt': null,
+                    'profile.subscription.graceUntil': null,
+                    'profile.subscription.paymentFailureReason': null,
+                    'profile.subscription.status': 'active'
+                  });
+                  console.log(`>>> Cleared payment failure flags for user ${userId} - access restored!`);
+                }
               }
             }
 
@@ -1478,8 +1544,72 @@ router.post('/asaas/webhook', async (req, res) => {
         }
         break;
 
+      case 'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED':
+        // Card was refused - notify admin, mark user
+        console.log(`>>> Payment card refused: ${event.payment?.id}`);
+        if (event.payment?.customer && firebaseAdmin) {
+          try {
+            const db = firebaseAdmin.firestore();
+            const snapshot = await db.collection('users')
+              .where('subscription.asaasCustomerId', '==', event.payment.customer)
+              .limit(1)
+              .get();
+
+            if (!snapshot.empty) {
+              const userDoc = snapshot.docs[0];
+              const now = new Date().toISOString();
+              await userDoc.ref.update({
+                'subscription.paymentFailedAt': now,
+                'subscription.paymentFailureReason': 'CARD_REFUSED',
+                'profile.subscription.paymentFailedAt': now,
+                'profile.subscription.paymentFailureReason': 'CARD_REFUSED'
+              });
+              console.log(`>>> Marked user ${userDoc.id} with payment failure (CARD_REFUSED)`);
+            }
+          } catch (err) {
+            console.error('>>> Error marking payment failure:', err.message);
+          }
+        }
+        break;
+
       case 'PAYMENT_OVERDUE':
+        // Payment is overdue - mark user with grace period
         console.log(`>>> Payment overdue: ${event.payment?.id}`);
+        if (event.payment?.customer && firebaseAdmin) {
+          try {
+            const db = firebaseAdmin.firestore();
+            const snapshot = await db.collection('users')
+              .where('subscription.asaasCustomerId', '==', event.payment.customer)
+              .limit(1)
+              .get();
+
+            if (!snapshot.empty) {
+              const userDoc = snapshot.docs[0];
+              const userData = userDoc.data();
+
+              // Only set grace period if not already set
+              if (!userData.subscription?.paymentFailedAt) {
+                const now = new Date();
+                const graceUntil = new Date(now);
+                graceUntil.setDate(graceUntil.getDate() + 7); // 7 days grace period
+
+                await userDoc.ref.update({
+                  'subscription.paymentFailedAt': now.toISOString(),
+                  'subscription.graceUntil': graceUntil.toISOString(),
+                  'subscription.paymentFailureReason': 'OVERDUE',
+                  'profile.subscription.paymentFailedAt': now.toISOString(),
+                  'profile.subscription.graceUntil': graceUntil.toISOString(),
+                  'profile.subscription.paymentFailureReason': 'OVERDUE'
+                });
+                console.log(`>>> User ${userDoc.id} marked with OVERDUE, grace until: ${graceUntil.toISOString()}`);
+              } else {
+                console.log(`>>> User ${userDoc.id} already has paymentFailedAt set, skipping`);
+              }
+            }
+          } catch (err) {
+            console.error('>>> Error marking payment overdue:', err.message);
+          }
+        }
         break;
 
       case 'PAYMENT_REFUNDED':

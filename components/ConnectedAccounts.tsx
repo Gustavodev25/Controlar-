@@ -16,6 +16,7 @@ import { BankConnectModal } from "./BankConnectModal";
 import { ManageManualAccountModal } from "./ManageManualAccountModal";
 import Lottie from "lottie-react";
 import linkAnimation from "../assets/link.json";
+import { toLocalISODate } from "../utils/dateUtils";
 
 // API Base URL - uses Railway in production, local /api in development
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
@@ -123,7 +124,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   // --- DAILY CREDIT LOGIC ---
   const MAX_CREDITS_PER_DAY = (userPlan === 'starter') ? 0 : 3;
   // Use today's date to validate credits
-  const todayDateStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD local
+  const todayDateStr = toLocalISODate(); // YYYY-MM-DD local
 
   // Debug logic
   // useEffect(() => {
@@ -152,6 +153,8 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
 
   // For UI purposes - we consider credits "loaded" if we have a userId (user data is loaded)
   const isCreditsLoaded = !!userId;
+  const creditsRemaining = isAdmin ? Infinity : Math.max(0, MAX_CREDITS_PER_DAY - creditsUsedToday);
+  const showCreditAnimation = userPlan !== 'starter' && (isAdmin || creditsRemaining > 1);
 
   // Debug Helper
   const handleDebugIncrement = async () => {
@@ -174,14 +177,14 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     const m = Math.floor((nextAutoSyncMs % (1000 * 60 * 60)) / (1000 * 60));
     const s = Math.floor((nextAutoSyncMs % (1000 * 60)) / 1000);
 
-    const todayDate = now.toLocaleDateString('en-CA'); // YYYY-MM-DD
+    const todayDate = toLocalISODate(now); // YYYY-MM-DD
 
     // Check if account was connected today (first connection counts as "sync for today")
     let connectedToday = false;
     if (connectedAtStr) {
       const connectedAt = new Date(connectedAtStr);
       if (!isNaN(connectedAt.getTime())) {
-        const connectedDate = connectedAt.toLocaleDateString('en-CA');
+        const connectedDate = toLocalISODate(connectedAt);
         connectedToday = connectedDate === todayDate;
       }
     }
@@ -193,7 +196,7 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
       const lastSync = new Date(lastSyncedStr);
       if (!isNaN(lastSync.getTime())) {
         elapsed = now.getTime() - lastSync.getTime();
-        const lastSyncDate = lastSync.toLocaleDateString('en-CA');
+        const lastSyncDate = toLocalISODate(lastSync);
         syncedToday = lastSyncDate === todayDate;
       }
     }
@@ -822,7 +825,11 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
             <div className="flex items-center gap-1.5 mt-1 text-gray-400">
               {userPlan !== 'starter' && (
                 <div className="w-5 h-5 flex items-center justify-center -ml-1">
-                  <Lottie animationData={linkAnimation} loop={true} />
+                  {showCreditAnimation ? (
+                    <Lottie animationData={linkAnimation} loop={true} />
+                  ) : (
+                    <LinkIcon size={16} className="text-[#d97757]" />
+                  )}
                 </div>
               )}
               <p className="text-sm">

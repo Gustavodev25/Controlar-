@@ -54,7 +54,10 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
     if (!isVisible) return null;
 
     return createPortal(
-        <div className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}`}>
+        <div
+            className={`fixed inset-0 ${zIndex} flex items-center justify-center p-4 transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'backdrop-blur-md bg-black/60' : 'backdrop-blur-none bg-black/0'}`}
+            style={isAnimating ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } : undefined}
+        >
             <div
                 className={`bg-gray-950 rounded-3xl shadow-2xl w-full ${width} overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}
             >

@@ -647,9 +647,10 @@ interface CustomDatePickerProps {
   placeholder?: string;
   className?: string;
   dropdownMode?: 'absolute' | 'relative' | 'fixed';
+  useNativeOnMobile?: boolean;
 }
 
-export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "", dropdownMode = 'absolute' }) => {
+export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onChange, placeholder = "Data", className = "", dropdownMode = 'absolute', useNativeOnMobile = false }) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const [coords, setCoords] = useState({ top: 0, left: 0 });
@@ -844,6 +845,41 @@ export const CustomDatePicker: React.FC<CustomDatePickerProps> = ({ value, onCha
     window.addEventListener('resize', checkMobile);
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
+
+  const shouldUseNative = useNativeOnMobile && isMobile;
+
+  if (shouldUseNative) {
+    return (
+      <div className={`relative ${className}`} ref={containerRef}>
+        <div
+          className={`
+            w-full bg-[rgba(58,59,57,0.5)] border rounded-xl px-4 h-11 flex items-center gap-3 transition-all
+            border-[#4a4b49] hover:border-gray-500
+          `}
+        >
+          <Calendar size={16} className={value ? 'text-[#d97757]' : 'text-gray-500'} />
+          <input
+            type="date"
+            value={value}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder={placeholder}
+            className="bg-transparent border-none outline-none w-full text-[#faf9f5] placeholder-gray-500 text-sm font-medium"
+          />
+          {value && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onChange('');
+              }}
+              className="text-gray-500 hover:text-white p-1 rounded-full hover:bg-gray-700/50"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
 
   const dropdownContent = (
     <AnimatePresence>
