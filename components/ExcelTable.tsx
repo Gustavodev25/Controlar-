@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Transaction, ConnectedAccount } from '../types';
 import { ChevronsUpDown } from 'lucide-react';
-import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus, HelpCircle } from './Icons';
+import { Trash2, Search, Calendar, getCategoryIcon, X, Filter, Edit2, Check, ArrowUpCircle, ArrowDownCircle, AlertCircle, Plus, FileText, DollarSign, Tag, RefreshCw, TrendingUp, TrendingDown, Landmark, ChevronLeft, ChevronRight, Minus, HelpCircle, Code, Copy } from './Icons';
 import { motion, AnimatePresence } from 'framer-motion';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete } from './UIComponents';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
@@ -25,9 +25,10 @@ interface ExcelTableProps {
   accounts?: ConnectedAccount[];
   userId?: string;
   onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => void;
+  isAdmin?: boolean;
 }
 
-export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd, accounts = [], userId, onBulkUpdate }) => {
+export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, onUpdate, isManualMode, onAdd, accounts = [], userId, onBulkUpdate, isAdmin }) => {
   const [searchTerm, setSearchTerm] = React.useState('');
   const [sortField, setSortField] = React.useState<keyof Transaction>('date');
   const [sortDirection, setSortDirection] = React.useState<'asc' | 'desc'>('desc');
@@ -88,6 +89,9 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
 
   // Filter Modal State (Mobile)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+
+  // Modal para visualizar JSON bruto da transação (debug)
+  const [jsonModalData, setJsonModalData] = useState<Transaction | null>(null);
 
   // Walkthrough State
   const [isWalkthroughActive, setIsWalkthroughActive] = useState(false);
@@ -754,24 +758,35 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
                     </span>
                   </td>
                   <td className="px-6 py-4">
-                    {(!t.importSource && !t.providerId) && (
-                      <div className="flex items-center justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                    <div className="flex items-center justify-center gap-2 opacity-100 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity">
+                      {isAdmin && (
                         <button
-                          onClick={() => handleEditClick(t)}
-                          className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
-                          title="Editar"
+                          onClick={() => setJsonModalData(t)}
+                          className="p-2 text-gray-500 hover:text-cyan-400 hover:bg-cyan-500/10 rounded-xl transition-colors"
+                          title="Ver JSON"
                         >
-                          <Edit2 size={16} />
+                          <Code size={16} />
                         </button>
-                        <button
-                          onClick={() => setDeleteId(t.id)}
-                          className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
-                          title="Excluir"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    )}
+                      )}
+                      {(!t.importSource && !t.providerId) && (
+                        <>
+                          <button
+                            onClick={() => handleEditClick(t)}
+                            className="p-2 text-gray-400 hover:text-white hover:bg-[#373734] rounded-xl transition-colors"
+                            title="Editar"
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                          <button
+                            onClick={() => setDeleteId(t.id)}
+                            className="p-2 text-gray-400 hover:text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                            title="Excluir"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -1221,6 +1236,105 @@ export const ExcelTable: React.FC<ExcelTableProps> = ({ transactions, onDelete, 
             />
           </div>
         </div>
+      </UniversalModal>
+
+      {/* Modal de visualização do JSON bruto da transação */}
+      <UniversalModal
+        isOpen={!!jsonModalData}
+        onClose={() => setJsonModalData(null)}
+        title="Dados Brutos da Transação"
+        icon={<Code size={18} />}
+        themeColor="#06b6d4" // Cyan
+        width="max-w-3xl"
+        footer={
+          <Button
+            variant="dark"
+            size="lg"
+            className="w-full"
+            onClick={() => {
+              if (jsonModalData) {
+                const json = JSON.stringify(jsonModalData, null, 2);
+                navigator.clipboard.writeText(json);
+                toast.success("JSON copiado para a área de transferência!");
+              }
+            }}
+          >
+            <Copy size={18} strokeWidth={2.5} />
+            Copiar JSON
+          </Button>
+        }
+      >
+        {jsonModalData && (
+          <div className="space-y-4">
+            {/* Header Info */}
+            <div className="flex items-center gap-3 p-3 bg-[#1a1a19] rounded-lg border border-[#373734]">
+              <div className="p-2 rounded-lg bg-cyan-500/10 text-cyan-400">
+                <FileText size={20} />
+              </div>
+              <div>
+                <p className="font-medium text-white">{jsonModalData.description}</p>
+                <p className="text-xs text-gray-500">
+                  {jsonModalData.date} • {jsonModalData.id}
+                </p>
+              </div>
+            </div>
+
+            {/* Raw Data Section */}
+            {(jsonModalData as any).pluggyRaw && (
+              <div className="p-4 bg-[#1a1a19] rounded-lg border border-cyan-500/30">
+                <div className="flex items-center justify-between mb-3">
+                  <h4 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
+                    Dados Brutos (Pluggy)
+                  </h4>
+                </div>
+                <pre className="text-xs text-cyan-300 font-mono whitespace-pre-wrap break-all bg-[#0d0d0c] p-3 rounded-lg overflow-auto max-h-60 custom-scrollbar">
+                  {JSON.stringify((jsonModalData as any).pluggyRaw, null, 2)}
+                </pre>
+              </div>
+            )}
+
+            {/* System Data Section */}
+            <div className="p-4 bg-[#1a1a19] rounded-lg border border-[#373734]">
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+                  Objeto Completo (Sistema)
+                </h4>
+              </div>
+              <pre className="text-xs text-gray-300 font-mono whitespace-pre-wrap break-all bg-[#0d0d0c] p-3 rounded-lg overflow-auto max-h-60 custom-scrollbar">
+                {JSON.stringify(jsonModalData, null, 2)}
+              </pre>
+            </div>
+
+            {/* Processed Data Summary */}
+            <div className="p-4 bg-[#1a1a19] rounded-lg border border-[#373734]">
+              <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-3">
+                Resumo Processado
+              </h4>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div className="flex justify-between border-b border-[#373734] pb-2">
+                  <span className="text-gray-500">Tipo:</span>
+                  <span className={`font-medium ${jsonModalData.type === 'income' ? 'text-emerald-400' : 'text-red-400'}`}>
+                    {jsonModalData.type === 'income' ? 'Receita' : 'Despesa'}
+                  </span>
+                </div>
+                <div className="flex justify-between border-b border-[#373734] pb-2">
+                  <span className="text-gray-500">Valor:</span>
+                  <span className="text-white font-mono">{formatCurrency(jsonModalData.amount)}</span>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <span className="text-gray-500">Categoria:</span>
+                  <span className="text-white">{translateCategory(jsonModalData.category || 'Outros')}</span>
+                </div>
+                <div className="flex justify-between pt-1">
+                  <span className="text-gray-500">Status:</span>
+                  <span className={jsonModalData.status === 'completed' ? 'text-emerald-400' : 'text-amber-400'}>
+                    {jsonModalData.status === 'completed' ? 'Pago' : 'Pendente'}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </UniversalModal>
 
       <Walkthrough

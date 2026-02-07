@@ -31,4 +31,4 @@ config.ts
 
 # Ignored files
 nul
-server.current.err.txt
+server.current.err.txt.trae/

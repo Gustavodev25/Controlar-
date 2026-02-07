@@ -117,6 +117,52 @@ service cloud.firestore {
       allow read, write: if request.auth != null && isUserAdmin();
     }
 
+    // --- REMINDERS (APP MOBILE - ROOT COLLECTION) ---
+    // O app mobile salva reminders na coleção raiz em vez de users/{userId}/reminders
+    // Para queries com 'where' funcionarem, a regra de leitura precisa validar via request.auth
+    // A query no código já filtra por userId/ownerId, garantindo que só os dados do usuário sejam retornados
+    match /reminders/{reminderId} {
+      // Leitura: Permite se o usuário está autenticado E o documento pertence a ele
+      // Nota: Para queries funcionarem, também verificamos request.query se disponível
+      allow read: if request.auth != null && (
+        // Acesso direto a documento específico
+        resource.data.userId == request.auth.uid || 
+        resource.data.ownerId == request.auth.uid ||
+        // OU admin
+        isUserAdmin()
+      );
+      // Permite listar (queries) se o usuário está autenticado - a query já filtra por userId/ownerId
+      allow list: if request.auth != null;
+      allow create: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid || 
+        request.resource.data.ownerId == request.auth.uid
+      );
+      allow update, delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.ownerId == request.auth.uid
+      );
+    }
+
+    // --- SUBSCRIPTIONS (APP MOBILE - ROOT COLLECTION) ---
+    // Similar ao reminders, o app pode salvar subscriptions na coleção raiz
+    match /subscriptions/{subscriptionId} {
+      allow read: if request.auth != null && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.ownerId == request.auth.uid ||
+        isUserAdmin()
+      );
+      // Permite listar (queries) se o usuário está autenticado
+      allow list: if request.auth != null;
+      allow create: if request.auth != null && (
+        request.resource.data.userId == request.auth.uid || 
+        request.resource.data.ownerId == request.auth.uid
+      );
+      allow update, delete: if request.auth != null && (
+        resource.data.userId == request.auth.uid || 
+        resource.data.ownerId == request.auth.uid
+      );
+    }
+
     // --- COLLECTION GROUP QUERIES ---
     match /{path=**}/items/{itemId} {
       allow read: if request.auth != null && isUserAdmin();

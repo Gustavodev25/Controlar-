@@ -65,7 +65,29 @@ interface ReminderCardProps {
   onToggleSelect?: (id: string) => void;
 }
 const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete, onEdit, selectionMode = false, selected = false, onToggleSelect }) => {
-  const daysDiff = getDaysDiff(item.dueDate);
+  const daysDiff = getDaysDiff(item.dueDate || item.date || '');
+
+  // Normalização para exibição
+  const displayDescription = item.description || item.title || item.name || 'Sem descrição';
+  const displayAmount = item.amount ?? item.price ?? item.value ?? 0;
+
+  // Lógica de exibição da data corrigida visualmente
+  let displayDate = item.dueDate || item.date || '';
+  if (displayDate) {
+    const parts = displayDate.split('-');
+    if (parts.length === 3) {
+      const year = parts[0];
+      let month = parseInt(parts[1]);
+      let day = parseInt(parts[2]);
+      // Correção visual se mês > 12
+      if (month > 12 && day <= 12) {
+        displayDate = `${year}-${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}`;
+      }
+    }
+  }
+
+  const displayType = item.type || item.transactionType || 'expense';
+  const displayRecurring = item.isRecurring ?? item.isRecurrence ?? false;
 
   // Configuração visual baseada no status
   let statusConfig = {
@@ -77,7 +99,16 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
     amountColor: "text-white"
   };
 
-  if (daysDiff < 0) {
+  if (item.status === 'paid') {
+    statusConfig = {
+      accentColor: "bg-emerald-500",
+      badgeBg: "bg-emerald-500/10",
+      badgeText: "text-emerald-400",
+      statusText: "Pago",
+      statusIcon: <Check size={12} />,
+      amountColor: "text-emerald-400 line-through opacity-70"
+    };
+  } else if (daysDiff < 0) {
     statusConfig = {
       accentColor: "bg-red-500",
       badgeBg: "bg-red-500/10",
@@ -107,7 +138,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
   }
 
   // Override for Income
-  if (item.type === 'income') {
+  if (displayType === 'income') {
     statusConfig = {
       accentColor: "bg-emerald-500",
       badgeBg: "bg-emerald-500/10",
@@ -124,6 +155,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
         group relative bg-[#30302E] rounded-xl sm:rounded-2xl border border-[#373734] overflow-hidden transition-all duration-300
         hover:border-[#4a4a47] hover:bg-[#343432]
         ${selected ? 'ring-2 ring-[#d97757] border-[#d97757]' : ''}
+        ${item.status === 'paid' ? 'opacity-60' : ''}
         ${selectionMode ? 'cursor-pointer' : ''}
       `}
       onClick={selectionMode ? () => onToggleSelect && onToggleSelect(item.id) : undefined}
@@ -149,9 +181,9 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
         {/* Info Principal */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2 mb-0.5">
-            <h4 className="font-semibold text-white text-sm sm:text-[15px] truncate">{item.description}</h4>
+            <h4 className="font-semibold text-white text-sm sm:text-[15px] truncate">{displayDescription}</h4>
             {/* Badge de lembrete automático de cartão */}
-            {item.isRecurring && (
+            {displayRecurring && (
               <span className="hidden sm:flex items-center gap-1 text-[10px] text-gray-500 bg-[#272725] px-1.5 py-0.5 rounded-md border border-[#373734]">
                 <RefreshCw size={9} />
               </span>
@@ -164,14 +196,14 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
               <span className="hidden sm:inline">{item.category}</span>
             </span>
             <span className="text-gray-600 hidden sm:inline">•</span>
-            <span className="font-mono text-[10px] sm:text-[12px]">{formatDate(item.dueDate)}</span>
+            <span className="font-mono text-[10px] sm:text-[12px]">{formatDate(displayDate)}</span>
           </div>
         </div>
 
         {/* Valor e Status */}
         <div className="flex flex-col items-end gap-0.5 sm:gap-1 flex-shrink-0">
           <span className={`font-mono font-bold text-base sm:text-lg tracking-tight ${statusConfig.amountColor}`}>
-            <NumberFlow value={item.amount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
+            <NumberFlow value={displayAmount} format={{ style: 'currency', currency: 'BRL' }} locales="pt-BR" />
           </span>
           <span className={`flex items-center gap-1 text-[9px] sm:text-[10px] font-medium px-1.5 sm:px-2 py-0.5 rounded-full ${statusConfig.badgeBg} ${statusConfig.badgeText}`}>
             {statusConfig.statusIcon}
@@ -182,13 +214,15 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
         {/* Ações - aparecem no hover (desktop) ou parcialmente visíveis (mobile) */}
         <div className={`flex items-center gap-0.5 sm:gap-1 transition-all duration-300 ${selectionMode ? 'opacity-0 pointer-events-none w-0' : 'sm:opacity-0 sm:group-hover:opacity-100 sm:-mr-2 sm:group-hover:mr-0'}`}>
           {/* Botão de pagar - sempre visível */}
-          <button
-            onClick={(e) => { e.stopPropagation(); onPayReminder(item); }}
-            className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
-            title={item.type === 'income' ? "Confirmar Recebimento" : "Marcar como Pago"}
-          >
-            <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
-          </button>
+          {item.status !== 'paid' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onPayReminder(item); }}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-emerald-400 hover:bg-emerald-500/10 transition-all"
+              title={displayType === 'income' ? "Confirmar Recebimento" : "Marcar como Pago"}
+            >
+              <Check size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+            </button>
+          )}
 
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(item); }}
@@ -517,16 +551,66 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   // Filtrar lembretes pelo mês selecionado
   // Nota: Os lembretes automáticos de cartão já vêm incluídos no prop 'reminders' do App.tsx
   const filteredByMonth = useMemo(() => {
+    // Se não tiver filtro de mês, retorna tudo
     if (!filterMonth) return reminders;
-    return reminders.filter(r => r.dueDate.startsWith(filterMonth));
+
+    console.log("Filtering reminders for month:", filterMonth);
+    console.log("[DEBUG] All reminders received:", reminders.map(r => ({
+      id: r.id,
+      description: r.description,
+      dueDate: r.dueDate,
+      date: r.date,
+      amount: r.amount,
+      status: r.status
+    })));
+
+    return reminders.filter(r => {
+      // Compatibilidade: usar dueDate ou date
+      let dateToUse = r.dueDate || r.date || '';
+
+      // Tenta corrigir se a data vier no formato errado (ex: YYYY-20-09)
+      if (dateToUse) {
+        const parts = dateToUse.split('-');
+        if (parts.length === 3) {
+          const year = parts[0];
+          let month = parseInt(parts[1]);
+          let day = parseInt(parts[2]);
+
+          // Correção agressiva: Se mês > 12 e dia <= 12, inverte
+          if (month > 12 && day <= 12) {
+            dateToUse = `${year}-${String(day).padStart(2, '0')}-${String(month).padStart(2, '0')}`;
+          }
+          // Se mês > 12 e dia > 12, assume que o mês é o que o usuário quer ver
+          // Isso é um fallback para garantir que apareça em ALGUM lugar
+          else if (month > 12) {
+            // Hack: Se a data está zoada, vamos tentar ver se o mês que o usuário quer ver
+            // "bate" com o dia (caso tenha invertido e o dia seja o mês)
+            // Ex: User quer ver Mês 08. Data é 2026-20-08.
+            // O "08" ali no final pode ser o mês real.
+            const filterM = parseInt(filterMonth.split('-')[1]);
+            if (day === filterM) return true;
+          }
+        }
+      }
+
+      return dateToUse.startsWith(filterMonth);
+    });
   }, [reminders, filterMonth]);
 
   const sortedReminders = useMemo(() => {
     let result = [...filteredByMonth];
     if (filterType !== 'all') {
-      result = result.filter(r => (r.type || 'expense') === filterType);
+      result = result.filter(r => {
+        // Compatibilidade: usar type ou transactionType
+        const typeToUse = r.type || r.transactionType || 'expense';
+        return typeToUse === filterType;
+      });
     }
-    return result.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+    return result.sort((a, b) => {
+      const dateA = a.dueDate || a.date || '';
+      const dateB = b.dueDate || b.date || '';
+      return dateA.localeCompare(dateB);
+    });
   }, [filteredByMonth, filterType]);
   const selectedReminders = useMemo(() => {
     return reminders.filter((r) => selectedIds.includes(r.id));

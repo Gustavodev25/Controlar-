@@ -112,4 +112,46 @@ describe('InvoiceBuilder - Precision and Date Rules', () => {
     expect(refundItem?.type).toBe('income');
     expect(refundItem?.amount).toBe(30);
   });
+
+  it('should treat closingDay=1 periods as day-after previous closing and compute due date correctly', () => {
+    const card: Partial<ConnectedAccount> = {
+      id: 'card_1',
+      closingDay: 1,
+      dueDay: 7
+    };
+
+    const transactions: Partial<Transaction>[] = [
+      { id: 'x', description: 'Compra fora do período', amount: 100, date: '2025-10-31', type: 'expense', cardId: 'card_1' },
+      { id: 'b', description: 'Compra 2', amount: 150, date: '2025-11-01', type: 'expense', cardId: 'card_1' },
+      { id: 'c', description: 'Compra 3', amount: 46.44, date: '2025-12-30', type: 'expense', cardId: 'card_1' },
+      { id: 'p', description: 'PAGAMENTO DE FATURA', amount: 196.44, date: '2026-02-05', type: 'income', cardId: 'card_1' },
+    ];
+
+    const today = new Date(2026, 1, 5);
+    const result = buildInvoices(card as ConnectedAccount, transactions as Transaction[], 'card_1', 0, today);
+
+    expect(result.closedInvoice.dueDate).toBe('2026-01-07');
+    expect(result.closedInvoice.items.some(i => i.id === 'x')).toBe(false);
+    expect(result.closedInvoice.items.some(i => i.id === 'b')).toBe(true);
+    expect(result.closedInvoice.items.some(i => i.id === 'c')).toBe(true);
+    expect(result.closedInvoice.total).toBe(196.44);
+    expect(result.closedInvoice.status).toBe('PAID');
+  });
+
+  it('should keep manual closing dates active even when manual current closing date is in the past', () => {
+    const card: Partial<ConnectedAccount> = {
+      id: 'card_manual_1',
+      closingDay: 10,
+      dueDay: 7,
+      manualLastClosingDate: '2026-01-01',
+      manualCurrentClosingDate: '2026-02-01'
+    };
+
+    const today = new Date(2026, 1, 6); // 2026-02-06
+    const result = buildInvoices(card as ConnectedAccount, [], 'card_manual_1', 0, today);
+
+    // Must stay in manual mode (day 1), not fallback to automatic day 10.
+    expect(result.periods.closingDay).toBe(1);
+    expect(toDateStr(result.periods.lastClosingDate)).toBe('2026-02-01');
+  });
 });

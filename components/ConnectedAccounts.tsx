@@ -1140,7 +1140,12 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
                               {isUpdating
                                 ? "Sincronizando..."
                                 : timer?.syncedToday
-                                  ? `${timer.auto.h}h ${timer.auto.m} m`
+                                  ? (
+                                    <>
+                                      <RefreshCw size={14} className="mr-1" />
+                                      Atualizado
+                                    </>
+                                  )
                                   : 'Sincronizar'}
                             </span>
                           </button>

@@ -622,12 +622,17 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           ? Math.max(0, invoiceResult.futureInvoices[0].total)
           : 0;
 
-        // Última Fatura = preferir valor da API (currentBill) quando disponível
-        // para ficar consistente com a tela de Faturas do Cartão.
-        lastInvoiceValue = Math.max(
-          0,
-          Math.abs((card.currentBill?.totalAmount || invoiceResult.closedInvoice.total || 0))
-        );
+        const apiTotal = card.currentBill?.totalAmount ?? null;
+        const calculatedTotal = invoiceResult.closedInvoice.total || 0;
+        const totalTolerance = Math.max(1, calculatedTotal * 0.01);
+        const totalAligned = apiTotal !== null ? Math.abs(apiTotal - calculatedTotal) <= totalTolerance : false;
+        const apiDueTime = card.currentBill?.dueDate ? Date.parse(card.currentBill.dueDate) : NaN;
+        const expectedDueTime = invoiceResult.closedInvoice.dueDate ? Date.parse(invoiceResult.closedInvoice.dueDate) : NaN;
+        const dueAligned = Number.isFinite(apiDueTime) && Number.isFinite(expectedDueTime)
+          ? Math.abs(apiDueTime - expectedDueTime) <= 15 * 24 * 60 * 60 * 1000
+          : false;
+        const shouldPreferApi = apiTotal !== null && totalAligned && dueAligned;
+        lastInvoiceValue = Math.max(0, Math.abs((shouldPreferApi ? apiTotal : calculatedTotal) || 0));
 
       } catch (e) {
         // Fallback para cálculo antigo se buildInvoices falhar

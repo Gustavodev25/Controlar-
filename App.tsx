@@ -2178,15 +2178,30 @@ const App: React.FC = () => {
       sum += (income - expense);
     });
 
-
     return sum / monthlyTotals.size;
   }, [reviewedMemberTransactions]);
 
   // 3. Filter Reminders
+  // Lembretes do app mobile podem:
+  // a) Não ter memberId - tratamos como pertencentes ao admin
+  // b) Ter memberId igual ao userId (não ao ID do membro) - também tratamos como admin
+  const adminMemberId = members.find(m => m.role === 'admin')?.id;
   const filteredReminders = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return reminders;
-    return reminders.filter(t => t.memberId === activeMemberId);
-  }, [reminders, activeMemberId]);
+    return reminders.filter(t => {
+      // Se o lembrete tem memberId
+      if (t.memberId) {
+        // Se memberId bate com activeMemberId, mostra
+        if (t.memberId === activeMemberId) return true;
+        // Se memberId é igual ao userId (app mobile usa userId como memberId)
+        // E o membro ativo é o admin, mostra
+        if (t.memberId === userId && activeMemberId === adminMemberId) return true;
+        return false;
+      }
+      // Se não tem memberId (app mobile), mostra para o admin member
+      return activeMemberId === adminMemberId;
+    });
+  }, [reminders, activeMemberId, adminMemberId, userId]);
 
   const overdueRemindersCount = filteredReminders.filter(r => {
     const today = new Date();
@@ -3509,8 +3524,9 @@ const App: React.FC = () => {
   const handlePayReminder = async (reminder: Reminder) => {
     if (!userId) return;
 
-    // Só lança transação no modo Manual
-    // No modo Auto, as transações vêm automaticamente do banco
+    // Modificação: Não criar transação automaticamente ao pagar lembrete
+    // O usuário solicitou explicitamente que pagar lembrete/assinatura não gere transação
+    /*
     if (!isProMode) {
       const newTransaction: Omit<Transaction, 'id'> = {
         description: reminder.description,
@@ -3524,20 +3540,44 @@ const App: React.FC = () => {
 
       await dbService.addTransaction(userId, newTransaction);
     }
+    */
 
     if (reminder.isRecurring) {
+      // 1. Criar histórico do pagamento atual (Clone estático)
+      const historyReminder: any = {
+        ...reminder,
+        isRecurring: false, // O histórico não se repete
+        status: 'paid',
+        paidAt: toLocalISODate(),
+        // Mantém a dueDate original
+      };
+      delete historyReminder.id; // Garante novo ID
+
+      await dbService.addReminder(userId, historyReminder);
+
+      // 2. Agendar próximo vencimento
       const baseDate = (reminder.dueDate || toLocalISODate()) + "T00:00:00";
       const nextDate = new Date(baseDate);
       if (reminder.frequency === 'weekly') nextDate.setDate(nextDate.getDate() + 7);
       else if (reminder.frequency === 'yearly') nextDate.setFullYear(nextDate.getFullYear() + 1);
       else nextDate.setMonth(nextDate.getMonth() + 1);
 
-      const updatedReminder = { ...reminder, dueDate: toLocalISODate(nextDate) };
+      const updatedReminder = {
+        ...reminder,
+        dueDate: toLocalISODate(nextDate),
+        status: 'pending' as const
+      };
       await dbService.updateReminder(userId, updatedReminder);
       toast.success(reminder.type === 'income' ? "Recebimento confirmado! Próxima data agendada." : "Conta Paga! Vencimento atualizado.");
     } else {
-      await dbService.deleteReminder(userId, reminder.id);
-      toast.success(reminder.type === 'income' ? "Recebimento confirmado e removido." : "Conta paga e removida.");
+      // Não recorrente: Apenas marca como pago (não deleta mais)
+      const updatedReminder = {
+        ...reminder,
+        status: 'paid' as const,
+        paidAt: toLocalISODate()
+      };
+      await dbService.updateReminder(userId, updatedReminder);
+      toast.success(reminder.type === 'income' ? "Recebimento confirmado!" : "Conta paga!");
     }
   };
 
@@ -3616,44 +3656,7 @@ const App: React.FC = () => {
     toast.success("Assinatura atualizada!");
   };
 
-  const handlePaySubscription = async (sub: Subscription) => {
-    if (!userId) return;
 
-    const now = new Date();
-    const filterYear = parseInt(dashboardDate.split('-')[0]);
-    const filterMonth = parseInt(dashboardDate.split('-')[1]) - 1;
-    const paymentDate = new Date(filterYear, filterMonth, Math.min(now.getDate(), 28));
-    const dateStr = toLocalISODate(paymentDate);
-
-    const newTx: Omit<Transaction, 'id'> = {
-      description: sub.name,
-      amount: sub.amount,
-      date: dateStr,
-      category: sub.category,
-      type: 'expense',
-      status: 'completed',
-      paidSubscriptionId: sub.id,
-      accountId: '',
-      accountType: 'CHECKING_ACCOUNT'
-    };
-
-    try {
-      await dbService.addTransaction(userId, newTx);
-
-      const paidMonths = sub.paidMonths || [];
-      if (!paidMonths.includes(dashboardDate)) {
-        await subscriptionService.updateSubscription(userId, {
-          ...sub,
-          paidMonths: [...paidMonths, dashboardDate]
-        });
-      }
-
-      toast.success("Pagamento registrado!");
-    } catch (error) {
-      console.error("Error paying subscription:", error);
-      toast.error("Erro ao registrar pagamento.");
-    }
-  };
 
   const handleDeleteSubscription = async (id: string) => {
     if (!userId) return;
@@ -4019,6 +4022,7 @@ const App: React.FC = () => {
                     accounts={accountBalances.checkingAccounts}
                     userId={userId || undefined}
                     onBulkUpdate={handleRegularBulkUpdate}
+                    isAdmin={currentUser?.isAdmin}
                   />
                 </div>
               )}

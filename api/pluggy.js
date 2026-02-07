@@ -1881,14 +1881,19 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
             const billUpdatePromises = allBillResults
                 .filter(({ bills }) => bills.length > 0)
                 .map(({ account, bills }) => {
-                    const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
+                    const billState = (b) => b?.state || b?.status || b?.billState || 'UNKNOWN';
+                    const billDueTime = (b) => {
+                        const t = Date.parse(b?.dueDate);
+                        return Number.isFinite(t) ? t : -Infinity;
+                    };
+                    const sorted = [...bills].sort((a, b) => billDueTime(b) - billDueTime(a));
 
                     // Smart Selection: Prioritize OPEN, then first Future, then Most Recent
-                    let current = sorted.find(b => b.status === 'OPEN');
+                    const nowTime = Date.now();
+                    let current = sorted.find(b => billState(b) === 'OPEN');
                     if (!current) {
-                        const todayStr = new Date().toISOString().split('T')[0];
-                        const sortedAsc = [...sorted].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate));
-                        current = sortedAsc.find(b => b.dueDate >= todayStr);
+                        const sortedAsc = [...sorted].sort((a, b) => billDueTime(a) - billDueTime(b));
+                        current = sortedAsc.find(b => billDueTime(b) >= nowTime);
                     }
                     if (!current) current = sorted[0];
 
@@ -1940,7 +1945,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             // Datas de período: Usar dados do banco se houver, senão null (deixar frontend calcular)
                             periodStart: current.periodStart || null,
                             periodEnd: current.periodEnd || null,
-                            status: current.status || 'OPEN',
+                            status: billState(current),
                             // Valores
                             totalAmount: current.totalAmount || null,
                             totalAmountCurrencyCode: current.totalAmountCurrencyCode || 'BRL',
@@ -1971,7 +1976,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                                 closeDate: previous.closeDate || null,
                                 periodStart: new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                                 periodEnd: lastClosingDate.toISOString(),
-                                status: previous.status || 'CLOSED',
+                                status: billState(previous),
                                 totalAmount: previous.totalAmount || null,
                                 totalAmountCurrencyCode: previous.totalAmountCurrencyCode || 'BRL',
                                 minimumPaymentAmount: previous.minimumPaymentAmount || null,
@@ -1992,7 +1997,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                                 id: b.id,
                                 dueDate: b.dueDate,
                                 closeDate: b.closeDate || null,
-                                status: b.status || 'UNKNOWN',
+                                state: billState(b),
+                                status: billState(b),
                                 totalAmount: b.totalAmount || null,
                                 totalAmountCurrencyCode: b.totalAmountCurrencyCode || 'BRL',
                                 minimumPaymentAmount: b.minimumPaymentAmount || null,
@@ -2528,9 +2534,18 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
             const billUpdatePromises = allBillResults
                 .filter(({ bills }) => bills.length > 0)
                 .map(({ account, bills }) => {
-                    const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
-                    const current = sorted[0];
-                    const previous = sorted[1] || null;
+                    const billState = (b) => b?.state || b?.status || b?.billState || 'UNKNOWN';
+                    const billDueTime = (b) => {
+                        const t = Date.parse(b?.dueDate);
+                        return Number.isFinite(t) ? t : -Infinity;
+                    };
+                    const sorted = [...bills].sort((a, b) => billDueTime(b) - billDueTime(a));
+                    const nowTime = Date.now();
+                    const openBill = sorted.find(b => billState(b) === 'OPEN');
+                    const sortedAsc = [...sorted].sort((a, b) => billDueTime(a) - billDueTime(b));
+                    const futureBill = sortedAsc.find(b => billDueTime(b) >= nowTime);
+                    const current = openBill || futureBill || sorted[0];
+                    const previous = sorted.find(b => b.id !== current.id) || null;
 
                     // Extract finance charges from current bill
                     // Pluggy types: IOF, LATE_PAYMENT_FEE, LATE_PAYMENT_INTEREST, LATE_PAYMENT_REMUNERATIVE_INTEREST, OTHER
@@ -2580,7 +2595,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                             // Datas de período calculadas
                             periodStart: new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                             periodEnd: nextClosingDate.toISOString(),
-                            status: current.status || 'OPEN',
+                            status: billState(current),
                             // Valores
                             totalAmount: current.totalAmount || null,
                             totalAmountCurrencyCode: current.totalAmountCurrencyCode || 'BRL',
@@ -2611,7 +2626,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                                 closeDate: previous.closeDate || null,
                                 periodStart: new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                                 periodEnd: lastClosingDate.toISOString(),
-                                status: previous.status || 'CLOSED',
+                                status: billState(previous),
                                 totalAmount: previous.totalAmount || null,
                                 totalAmountCurrencyCode: previous.totalAmountCurrencyCode || 'BRL',
                                 minimumPaymentAmount: previous.minimumPaymentAmount || null,
@@ -2632,7 +2647,8 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                                 id: b.id,
                                 dueDate: b.dueDate,
                                 closeDate: b.closeDate || null,
-                                status: b.status || 'UNKNOWN',
+                                state: billState(b),
+                                status: billState(b),
                                 totalAmount: b.totalAmount || null,
                                 totalAmountCurrencyCode: b.totalAmountCurrencyCode || 'BRL',
                                 minimumPaymentAmount: b.minimumPaymentAmount || null,
@@ -3307,21 +3323,31 @@ async function processWebhookSync(db, userId, itemId, eventType) {
         const billUpdatePromises = allBillResults
             .filter(({ bills }) => bills.length > 0)
             .map(({ account, bills }) => {
-                const sorted = bills.sort((a, b) => new Date(b.dueDate) - new Date(a.dueDate));
-                const current = sorted[0];
+                const billState = (b) => b?.state || b?.status || b?.billState || 'UNKNOWN';
+                const billDueTime = (b) => {
+                    const t = Date.parse(b?.dueDate);
+                    return Number.isFinite(t) ? t : -Infinity;
+                };
+                const sorted = [...bills].sort((a, b) => billDueTime(b) - billDueTime(a));
+                const nowTime = Date.now();
+                const openBill = sorted.find(b => billState(b) === 'OPEN');
+                const sortedAsc = [...sorted].sort((a, b) => billDueTime(a) - billDueTime(b));
+                const futureBill = sortedAsc.find(b => billDueTime(b) >= nowTime);
+                const current = openBill || futureBill || sorted[0];
 
                 return accountsRef.doc(account.id).update({
                     currentBill: {
                         id: current.id,
                         dueDate: current.dueDate,
                         closeDate: current.closeDate || null,
-                        status: current.status || 'OPEN',
+                        status: billState(current),
                         totalAmount: current.totalAmount || null
                     },
                     bills: sorted.slice(0, 6).map(b => ({
                         id: b.id,
                         dueDate: b.dueDate,
-                        status: b.status || 'UNKNOWN',
+                        state: billState(b),
+                        status: billState(b),
                         totalAmount: b.totalAmount || null
                     })),
                     billsUpdatedAt: syncTimestamp

@@ -64,6 +64,59 @@ export const validateClosingDay = (day: number | null | undefined): number => {
 };
 
 /**
+ * Verifica se uma fatura está paga para fins de rotação
+ */
+const checkInvoicePaid = (
+  transactions: Transaction[],
+  periodStart: Date,
+  periodEnd: Date,
+  cardId: string
+): boolean => {
+  // Filtra transações do período
+  const periodTxs = transactions.filter(t => {
+    if (!t.date) return false;
+    const d = parseDate(t.date);
+
+    // Filtra por cartão
+    const txCardId = t.cardId || t.accountId || '';
+    if (cardId !== 'all' && txCardId !== cardId) return false;
+
+    // Use STRICT inequality for End Date to match the exclusive period logic
+    return d >= periodStart && d < periodEnd;
+  });
+
+  // Calcula total de despesas (ignora pagamentos)
+  const expenses = periodTxs.reduce((sum, t) => {
+    if (isCreditCardPayment(t)) return sum;
+    return sum + t.amount;
+  }, 0);
+
+  const totalToPay = Math.abs(expenses);
+  if (totalToPay === 0) return true; // Fatura vazia considera-se paga para rotação
+
+  // Busca pagamentos APÓS o fechamento
+  // Aceitamos pagamentos feitos a partir de 10 dias antes do fechamento (antecipação) até hoje
+  const searchPayStart = new Date(periodEnd);
+  searchPayStart.setDate(searchPayStart.getDate() - 10);
+
+  const payments = transactions.filter(t => {
+    if (!t.date || !isCreditCardPayment(t)) return false;
+    const d = parseDate(t.date);
+
+    // Filtra por cartão
+    const txCardId = t.cardId || t.accountId || '';
+    if (cardId !== 'all' && txCardId !== cardId) return false;
+
+    return d > searchPayStart;
+  });
+
+  const totalPaid = payments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
+
+  // Tolerância de 5% ou 10 reais
+  return totalPaid >= totalToPay * 0.95 || (totalToPay - totalPaid) < 1000; // 1000 cents = 10 reais
+};
+
+/**
  * Converte string YYYY-MM-DD ou ISO para Date
  * IMPORTANTE: Cria data ao meio-dia local para evitar problemas de timezone
  */
@@ -381,10 +434,23 @@ export const calculateInvoicePeriodDates = (
   const nextClosingYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
   const nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
 
-  // Datas de INÍCIO de cada período (dia após fechamento anterior)
-  const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000);
-  const currentInvoiceStart = new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000);
-  const nextInvoiceStart = new Date(currentClosingDate.getTime() + 24 * 60 * 60 * 1000);
+  // Datas de INÍCIO de cada período (dia do fechamento anterior, mas começando 00:00)
+  // Lógica: Melhor dia de compra é o dia do fechamento -> entra na próxima fatura
+  const adjustToStartOfDay = (d: Date) => {
+    const newD = new Date(d);
+    newD.setHours(0, 0, 0, 0);
+    return newD;
+  };
+
+  const dayAfter = (d: Date) => {
+    const newD = new Date(d);
+    newD.setDate(newD.getDate() + 1);
+    return newD;
+  };
+
+  const lastInvoiceStart = adjustToStartOfDay(dayAfter(beforeLastClosingDate));
+  const currentInvoiceStart = adjustToStartOfDay(dayAfter(lastClosingDate));
+  const nextInvoiceStart = adjustToStartOfDay(dayAfter(currentClosingDate));
 
   // Datas de VENCIMENTO
   const safeDueDay = dueDay; // Já validado/ajustado acima
@@ -392,10 +458,11 @@ export const calculateInvoicePeriodDates = (
   const calculateDueDate = (closingDate: Date): Date => {
     let targetMonth = closingDate.getMonth();
     let targetYear = closingDate.getFullYear();
+    const effectiveClosingDay = closingDate.getDate();
 
     // Se dueDay <= closingDay, o vencimento é no mês seguinte
     // Se dueDay > closingDay, o vencimento é no mesmo mês
-    if (safeDueDay <= closingDay) {
+    if (safeDueDay <= effectiveClosingDay) {
       targetMonth = targetMonth === 11 ? 0 : targetMonth + 1;
       targetYear = targetMonth === 0 ? targetYear + 1 : targetYear;
     }
@@ -677,13 +744,16 @@ export const buildInvoices = (
 
   // ========================================
   // PRIORIDADE 1: Datas manuais definidas pelo usuário
+  // Mesmo quando a data manual atual já passou, mantemos o modo manual e
+  // rotacionamos os períodos automaticamente (bloco abaixo).
   // ========================================
   let periods: InvoicePeriodDates;
 
   const hasManualCurrent = !!card?.manualCurrentClosingDate;
   const hasManualLast = !!card?.manualLastClosingDate;
+  const useManualDates = hasManualCurrent || hasManualLast;
 
-  if (hasManualCurrent || hasManualLast) {
+  if (useManualDates) {
     // Parse das datas manuais (com fallbacks se faltarem)
     let currentClosingDate: Date;
     let lastClosingDate: Date;
@@ -712,26 +782,20 @@ export const buildInvoices = (
 
     // ========================================
     // CORREÇÃO: Avançar datas automaticamente se estiverem desatualizadas
-    // Se a data de fechamento atual (currentClosingDate) já passou,
-    // precisamos avançar os períodos para refletir a realidade.
-    // Usamos o hoje ajustado pelo monthOffset para permitir navegação.
+    // Se a data de referência (hoje) for estritamente posterior ao fechamento atual,
+    // avançamos os períodos para refletir o mês atual (rotação automática).
+    // A carência de 7 dias fica apenas na rotação por pagamento (bloco abaixo).
     // ========================================
     const referenceDate = new Date(today);
     if (monthOffset !== 0) {
       referenceDate.setMonth(referenceDate.getMonth() + monthOffset);
     }
 
-    // Adicionamos uma carência de 7 dias para a rotação.
-    // Isso permite que uma fatura que fechou há poucos dias ainda seja vista como "Atual"
-    // (útil para conferência final e pagamentos).
-    const rotationThreshold = new Date(referenceDate);
-    rotationThreshold.setDate(rotationThreshold.getDate() - 7);
-
-    const rotationThresholdNum = rotationThreshold.getFullYear() * 10000 + (rotationThreshold.getMonth() + 1) * 100 + rotationThreshold.getDate();
+    const referenceDateNum = referenceDate.getFullYear() * 10000 + (referenceDate.getMonth() + 1) * 100 + referenceDate.getDate();
     let currentClosingNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
 
     let advancedMonths = 0;
-    while (rotationThresholdNum >= currentClosingNum && advancedMonths < 12) {
+    while (referenceDateNum > currentClosingNum && advancedMonths < 12) {
       // Avançar um mês
       lastClosingDate = new Date(currentClosingDate);
       currentClosingDate = new Date(currentClosingDate);
@@ -745,6 +809,45 @@ export const buildInvoices = (
 
       currentClosingNum = currentClosingDate.getFullYear() * 10000 + (currentClosingDate.getMonth() + 1) * 100 + currentClosingDate.getDate();
       advancedMonths++;
+    }
+
+    // ========================================
+    // LÓGICA DE ROTAÇÃO POR PAGAMENTO (Smart Rotation)
+    // Se a fatura fechou mas está no "período de carência" (grace period),
+    // verificamos se ela JÁ FOI PAGA. Se sim, rotacionamos imediatamente.
+    // ========================================
+    if (monthOffset === 0 && advancedMonths < 12) { // Apenas na visão atual
+      const timeDiff = referenceDate.getTime() - currentClosingDate.getTime();
+      const daysSinceClosing = timeDiff / (1000 * 3600 * 24);
+
+      // Se passou do fechamento mas ainda estamos mostrando (<= 7 dias)
+      if (daysSinceClosing > 0 && daysSinceClosing <= 7) {
+        // Estimar início desta fatura (fechamento anterior + 1)
+        const tempLast = new Date(currentClosingDate);
+        tempLast.setMonth(tempLast.getMonth() - 1);
+        // Ajuste simplificado dia, a lógica exata não precisa ser perfeita aqui, apenas aproximada para pegar as txs
+        const lastDayOfMonth = new Date(tempLast.getFullYear(), tempLast.getMonth() + 1, 0).getDate();
+        tempLast.setDate(Math.min(manualClosingDay, lastDayOfMonth));
+        const tempStart = new Date(tempLast);
+        tempStart.setDate(tempStart.getDate() + 1);
+
+        const isPaid = checkInvoicePaid(transactions, tempStart, currentClosingDate, cardId);
+
+        if (isPaid) {
+          // Avançar mais um mês forçadamente
+          // Log removed
+          lastClosingDate = new Date(currentClosingDate);
+          currentClosingDate = new Date(currentClosingDate);
+          currentClosingDate.setMonth(currentClosingDate.getMonth() + 1);
+
+          const lastDayOfNext = new Date(currentClosingDate.getFullYear(), currentClosingDate.getMonth() + 1, 0).getDate();
+          const safeNextDay = Math.min(manualClosingDay, lastDayOfNext);
+          currentClosingDate.setDate(safeNextDay);
+          currentClosingDate = adjustClosingDate(currentClosingDate);
+
+          advancedMonths++; // Marca que avançou
+        }
+      }
     }
 
     if (advancedMonths > 0) {
@@ -785,10 +888,20 @@ export const buildInvoices = (
 
     // Calcular datas de vencimento
     const calculateDueDateManual = (closingDate: Date): Date => {
-      const dueDateCalc = new Date(closingDate);
-      dueDateCalc.setMonth(dueDateCalc.getMonth() + 1);
-      dueDateCalc.setDate(Math.min(dueDay, 28));
-      return adjustDueDate(dueDateCalc);
+      let targetMonth = closingDate.getMonth();
+      let targetYear = closingDate.getFullYear();
+      const effectiveClosingDay = closingDate.getDate();
+
+      // Se dueDay <= closingDay, o vencimento é no mês seguinte
+      // Se dueDay > closingDay, o vencimento é no mesmo mês
+      if (dueDay <= effectiveClosingDay) {
+        targetMonth = targetMonth === 11 ? 0 : targetMonth + 1;
+        targetYear = targetMonth === 0 ? targetYear + 1 : targetYear;
+      }
+
+      const lastDayOfTargetMonth = new Date(targetYear, targetMonth + 1, 0).getDate();
+      const dueDate = new Date(targetYear, targetMonth, Math.min(dueDay, lastDayOfTargetMonth));
+      return adjustDueDate(dueDate);
     };
 
     periods = {
@@ -816,6 +929,29 @@ export const buildInvoices = (
     // ========================================
     // Log removed
     periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset, card || null);
+
+    // ========================================
+    // LÓGICA DE ROTAÇÃO POR PAGAMENTO (Auto Mode)
+    // ========================================
+    if (monthOffset === 0) {
+      const { currentClosingDate, currentInvoiceStart } = periods;
+      const refDate = new Date(today);
+      if (refDate > currentClosingDate) {
+        // Verifica carência
+        const bufferDate = new Date(currentClosingDate);
+        bufferDate.setDate(bufferDate.getDate() + 7);
+
+        if (refDate <= bufferDate) {
+          // Estamos no buffer (mostrando Closed como Current)
+          // Verifica se pagou
+          const isPaid = checkInvoicePaid(transactions, currentInvoiceStart, currentClosingDate, cardId);
+          if (isPaid) {
+            // Força avanço de mês recalculando com offset + 1
+            periods = calculateInvoicePeriodDates(closingDay, dueDay, today, monthOffset + 1, card || null);
+          }
+        }
+      }
+    }
   }
 
   // Filtra transações do cartão
@@ -958,13 +1094,13 @@ export const buildInvoices = (
       return; // PULA a lógica de data automática
     }
 
-    if (txDateNum >= lastStartNum && txDateNum <= lastEndNum) {
+    if (txDateNum >= lastStartNum && txDateNum < lastEndNum) {
       closedItems.push(item);
       closedTotalCents += amtCents;
-    } else if (txDateNum >= currentStartNum && txDateNum <= currentEndNum) {
+    } else if (txDateNum >= currentStartNum && txDateNum < currentEndNum) {
       currentItems.push(item);
       currentTotalCents += amtCents;
-    } else if (txDateNum > currentEndNum) {
+    } else if (txDateNum >= currentEndNum) { // >= because currentEndNum starts the NEXT period (future)
       const monthKey = toMonthKey(txDate);
       if (!futureItemsByMonth[monthKey]) {
         futureItemsByMonth[monthKey] = [];
@@ -1031,7 +1167,8 @@ export const buildInvoices = (
     const txDate = parseDate(tx.date);
     const txDateNum = dateToNumber(txDate);
     // Pagamento feito no período ATUAL quita a fatura FECHADA
-    return txDateNum >= currentStartNum && txDateNum <= currentEndNum;
+    // NOTE: currentStartNum is now Inclusive (because closing day is start of new period)
+    return txDateNum >= currentStartNum && txDateNum < currentEndNum;
   });
 
   // Se não encontrou pagamento no período atual, busca pagamento
@@ -1042,10 +1179,26 @@ export const buildInvoices = (
     const txDateNum = dateToNumber(txDate);
     const lastDueDateNum = dateToNumber(periods.lastDueDate);
     // Pagamento feito após fechamento e até o vencimento da fatura FECHADA
+    // Use strict > for lastEndNum (closing date)
     return txDateNum > lastEndNum && txDateNum <= lastDueDateNum;
   }) : null;
 
-  const effectivePaymentForClosed = paymentForClosedInvoice || paymentForClosedInvoiceAlt;
+  // Janela 3: pagamento após o vencimento da fatura FECHADA até o próximo fechamento
+  // (ex.: pagamento em 05/02 quita fatura que venceu 07/01; período atual já é fev)
+  const lastDueDateNum = dateToNumber(periods.lastDueDate);
+  const lastDuePlus60 = new Date(periods.lastDueDate);
+  lastDuePlus60.setDate(lastDuePlus60.getDate() + 60);
+  const lastDuePlus60Num = dateToNumber(lastDuePlus60);
+  const paymentWindowEndNum = Math.min(currentEndNum, lastDuePlus60Num);
+
+  const paymentForClosedInvoiceAfterDue = !paymentForClosedInvoice && !paymentForClosedInvoiceAlt ? paymentTxs.find(tx => {
+    if (!tx.date) return false;
+    const txDate = parseDate(tx.date);
+    const txDateNum = dateToNumber(txDate);
+    return txDateNum > lastDueDateNum && txDateNum < paymentWindowEndNum;
+  }) : null;
+
+  const effectivePaymentForClosed = paymentForClosedInvoice || paymentForClosedInvoiceAlt || paymentForClosedInvoiceAfterDue;
 
   if (effectivePaymentForClosed) {
     const item: InvoiceItem = {
@@ -1061,7 +1214,11 @@ export const buildInvoices = (
   // Pega valor da última fatura da API se disponível
   const billTotalFromAPI = card?.currentBill?.totalAmount;
   const billStatus = card?.currentBill?.status;
-  const paidAmount = card?.currentBill?.paidAmount || 0;
+
+  // Combine API paidAmount with manually detected payment
+  const apiPaid = card?.currentBill?.paidAmount || 0;
+  const manualPaid = effectivePaymentForClosed ? Math.abs(effectivePaymentForClosed.amount) : 0;
+  const totalPaidAmount = apiPaid > 0 ? apiPaid : manualPaid; // Prefer API if available, else manual
 
   // ============================================================
   // DEFINIÇÃO DOS TOTAIS
@@ -1075,7 +1232,8 @@ export const buildInvoices = (
   // Log removed
 
   // Constrói Invoice da fatura fechada
-  const closedInvoiceStatus = determineInvoiceStatus(true, periods.lastDueDate, paidAmount, billTotalFromAPI || fromCents(closedTotalCents), billStatus);
+  const closedInvoiceStatus = determineInvoiceStatus(true, periods.lastDueDate, totalPaidAmount, billTotalFromAPI || fromCents(closedTotalCents), billStatus);
+
 
   let closedTotalFinalCents = closedTotalCents;
   let financeCharges: FinanceCharges | undefined = card?.currentBill?.financeCharges;
@@ -1109,6 +1267,13 @@ export const buildInvoices = (
     }
   }
 
+  // FIX: User request: If there is a "Payment Received" found for this closed invoice,
+  // we assume that payment amount IS the invoice total (User Truth).
+  // This solves discrepancies where the sum might differ slightly or API is weird.
+  const finalClosedTotal = (effectivePaymentForClosed)
+    ? Math.abs(effectivePaymentForClosed.amount)
+    : Math.max(0, -fromCents(closedTotalFinalCents));
+
   const closedInvoice: Invoice = {
     id: `${cardId}_${periods.lastMonthKey}`,
     creditCardId: cardId,
@@ -1118,11 +1283,11 @@ export const buildInvoices = (
     dueDate: toDateStr(periods.lastDueDate),
     periodStart: toDateStr(periods.lastInvoiceStart),
     periodEnd: toDateStr(periods.lastClosingDate),
-    total: Math.max(0, -fromCents(closedTotalFinalCents)), // TOTAL LÍQUIDO - inverte sinal pois despesas agora são negativas
+    total: finalClosedTotal, // USAR VALOR DA API SE DISPONÍVEL
     totalExpenses: fromCents(closedItems.filter(i => i.type === 'expense').reduce((s, i) => s + toCents(i.amount), 0)),
     totalIncomes: fromCents(closedItems.filter(i => i.type === 'income').reduce((s, i) => s + toCents(i.amount), 0)),
     minimumPayment: card?.currentBill?.minimumPaymentAmount,
-    paidAmount,
+    paidAmount: totalPaidAmount,
     financeCharges,
     items: closedItems.sort((a, b) => {
       const dateCmp = b.date.localeCompare(a.date);

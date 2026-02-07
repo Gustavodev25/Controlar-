@@ -1347,15 +1347,71 @@ export const addReminder = async (userId: string, reminder: Omit<Reminder, 'id'>
 
 export const deleteReminder = async (userId: string, reminderId: string) => {
   if (!db) return;
-  const remRef = doc(db, "users", userId, "reminders", reminderId);
-  await deleteDoc(remRef);
+
+  // Tenta primeiro deletar da subcoleção (web pattern)
+  const subRef = doc(db, "users", userId, "reminders", reminderId);
+  try {
+    const subDoc = await getDoc(subRef);
+    if (subDoc.exists()) {
+      await deleteDoc(subRef);
+      console.log("[deleteReminder] Deleted from subcollection:", reminderId);
+      return;
+    }
+  } catch (e) {
+    console.warn("[deleteReminder] Error checking subcollection:", e);
+  }
+
+  // Se não existir na subcoleção, tenta deletar da coleção raiz (app pattern)
+  const rootRef = doc(db, "reminders", reminderId);
+  try {
+    const rootDoc = await getDoc(rootRef);
+    if (rootDoc.exists()) {
+      await deleteDoc(rootRef);
+      console.log("[deleteReminder] Deleted from root collection:", reminderId);
+      return;
+    }
+  } catch (e) {
+    console.warn("[deleteReminder] Error checking root collection:", e);
+  }
+
+  console.warn("[deleteReminder] Reminder not found in any collection:", reminderId);
 };
 
 export const updateReminder = async (userId: string, reminder: Reminder) => {
   if (!db) return;
-  const remRef = doc(db, "users", userId, "reminders", reminder.id);
+
   const { id, ...data } = reminder;
-  await updateDoc(remRef, data);
+
+  // Tenta primeiro atualizar na subcoleção (web pattern)
+  const subRef = doc(db, "users", userId, "reminders", id);
+  try {
+    const subDoc = await getDoc(subRef);
+    if (subDoc.exists()) {
+      await updateDoc(subRef, data);
+      console.log("[updateReminder] Updated in subcollection:", id);
+      return;
+    }
+  } catch (e) {
+    console.warn("[updateReminder] Error checking subcollection:", e);
+  }
+
+  // Se não existir na subcoleção, tenta atualizar na coleção raiz (app pattern)
+  const rootRef = doc(db, "reminders", id);
+  try {
+    const rootDoc = await getDoc(rootRef);
+    if (rootDoc.exists()) {
+      await updateDoc(rootRef, data);
+      console.log("[updateReminder] Updated in root collection:", id);
+      return;
+    }
+  } catch (e) {
+    console.warn("[updateReminder] Error checking root collection:", e);
+  }
+
+  // Se não encontrou em nenhuma coleção, cria na subcoleção
+  console.log("[updateReminder] Reminder not found, creating in subcollection:", id);
+  const newRef = doc(db, "users", userId, "reminders", id);
+  await setDoc(newRef, data);
 };
 
 // Helper to convert Firebase Timestamp to ISO date string (YYYY-MM-DD)
@@ -1378,22 +1434,150 @@ const convertTimestampToDateString = (value: any): string => {
 
 export const listenToReminders = (userId: string, callback: (reminders: Reminder[]) => void) => {
   if (!db) return () => { };
+
+  // 1. Listen to Subcollection (Standard Web Pattern)
   const remRef = collection(db, "users", userId, "reminders");
 
-  return onSnapshot(remRef, (snapshot) => {
-    const reminders: Reminder[] = [];
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      // Convert dueDate if it's a Timestamp
-      const reminder: Reminder = {
-        id: doc.id,
-        ...data,
-        dueDate: convertTimestampToDateString(data.dueDate),
-      } as Reminder;
-      reminders.push(reminder);
+  // 2. Listen to Root Collection (App Pattern - userId)
+  const rootRemRef = query(collection(db, "reminders"), where("userId", "==", userId));
+
+  // 3. Listen to Root Collection (App Pattern - ownerId)
+  // Some app versions might save with ownerId instead of userId
+  const rootRemOwnerRef = query(collection(db, "reminders"), where("ownerId", "==", userId));
+
+  let subReminders: Reminder[] = [];
+  let rootReminders: Reminder[] = [];
+  let rootOwnerReminders: Reminder[] = [];
+
+  const emit = () => {
+    // Merge and deduplicate by ID
+    const all = [...subReminders, ...rootReminders, ...rootOwnerReminders];
+    const uniqueMap = new Map();
+    all.forEach(item => uniqueMap.set(item.id, item));
+    const result = Array.from(uniqueMap.values());
+
+    // Debug logs
+    console.log("[listenToReminders] Sources:", {
+      subcollection: subReminders.length,
+      rootByUserId: rootReminders.length,
+      rootByOwnerId: rootOwnerReminders.length,
+      total: result.length,
+      userId: userId
     });
-    callback(reminders);
+    if (rootReminders.length > 0 || rootOwnerReminders.length > 0) {
+      console.log("[listenToReminders] Root reminders found:", [...rootReminders, ...rootOwnerReminders].map(r => ({ id: r.id, description: r.description, dueDate: r.dueDate })));
+    }
+
+    callback(result);
+  };
+
+  const mapDoc = (doc: any): Reminder => {
+    const data = doc.data();
+
+    // Normalização agressiva de data
+    let rawDate = data.dueDate || data.date;
+    if (rawDate && typeof rawDate === 'object' && rawDate.seconds) {
+      // Se for Timestamp do Firestore
+      rawDate = convertTimestampToDateString(rawDate);
+    } else if (typeof rawDate === 'string') {
+      // Tenta corrigir datas mal formatadas como "2026-20-09" (Mês 20 não existe)
+      // Assumindo formato YYYY-MM-DD. Se MM > 12, pode estar invertido ou errado.
+      const parts = rawDate.split('-');
+      if (parts.length === 3) {
+        const year = parts[0];
+        let month = parseInt(parts[1]);
+        let day = parseInt(parts[2]);
+
+        // Se mês > 12 e dia <= 12, inverte (caso de DD/MM salvo errado como MM/DD)
+        if (month > 12 && day <= 12) {
+          const temp = month;
+          month = day;
+          day = temp;
+          rawDate = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        }
+        // Se mês > 12 mas dia > 12, ou é erro grave ou formato desconhecido. 
+        // Mantemos como está para não esconder o dado, mas o filtro do frontend pode falhar.
+      }
+    }
+
+    // Normalização de descrição (prioridade: description > title > name)
+    const normalizedDescription = data.description || data.title || data.name || '';
+
+    // Normalização de valor (prioridade: amount > price > value)
+    const normalizedAmount = Number(data.amount ?? data.price ?? data.value ?? 0);
+
+    // Normalização de recorrência (prioridade: isRecurring > isRecurrence)
+    const normalizedIsRecurring = data.isRecurring ?? data.isRecurrence ?? false;
+
+    // Normalização de frequência (prioridade: frequency > recurrence)
+    const normalizedFrequency = data.frequency || data.recurrence || 'monthly';
+
+    // Normalização de tipo (prioridade: transactionType > type, mas ignorando type='reminder' que é tipo de documento)
+    // O app pode enviar type='reminder' para indicar que é um lembrete, não o tipo de transação
+    let normalizedType = data.transactionType || data.type || 'expense';
+    if (normalizedType === 'reminder') {
+      normalizedType = data.transactionType || 'expense';
+    }
+
+    // Normalização de categoria (fallback para "Outros" se vazio)
+    const normalizedCategory = data.category || 'Outros';
+
+    // Normalização de status (pode vir como status ou precisar ser inferido)
+    const normalizedStatus = data.status || 'pending';
+
+    return {
+      id: doc.id,
+      ...data,
+      // Field Normalization for App Compatibility - Sempre sobrescreve com os valores normalizados
+      dueDate: rawDate || '',
+      description: normalizedDescription,
+      amount: normalizedAmount,
+      isRecurring: normalizedIsRecurring,
+      frequency: normalizedFrequency,
+      type: normalizedType,
+      category: normalizedCategory,
+      status: normalizedStatus,
+      // Campos extras do App que precisam ser preservados
+      title: data.title || normalizedDescription,
+      name: data.name || normalizedDescription,
+      price: data.price ?? normalizedAmount,
+      value: data.value ?? normalizedAmount,
+      date: data.date || rawDate,
+      isRecurrence: data.isRecurrence ?? normalizedIsRecurring,
+      recurrence: data.recurrence || normalizedFrequency,
+      transactionType: data.transactionType || normalizedType,
+    } as Reminder;
+  };
+
+  const unsubSub = onSnapshot(remRef, (snapshot) => {
+    subReminders = snapshot.docs.map(mapDoc);
+    console.log("[listenToReminders] Subcollection snapshot:", snapshot.docs.length, "docs");
+    emit();
+  }, (error) => {
+    console.error("[listenToReminders] Subcollection error:", error);
   });
+
+  const unsubRoot = onSnapshot(rootRemRef, (snapshot) => {
+    rootReminders = snapshot.docs.map(mapDoc);
+    console.log("[listenToReminders] Root (userId) snapshot:", snapshot.docs.length, "docs");
+    emit();
+  }, (error) => {
+    console.error("[listenToReminders] Root (userId) error:", error);
+  });
+
+  const unsubRootOwner = onSnapshot(rootRemOwnerRef, (snapshot) => {
+    rootOwnerReminders = snapshot.docs.map(mapDoc);
+    console.log("[listenToReminders] Root (ownerId) snapshot:", snapshot.docs.length, "docs");
+    emit();
+  }, (error) => {
+    console.error("[listenToReminders] Root (ownerId) error:", error);
+  });
+
+  return () => {
+    unsubSub();
+    unsubRoot();
+    unsubRootOwner();
+  };
 };
 
 // --- Investments Services ---

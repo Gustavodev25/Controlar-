@@ -210,6 +210,17 @@ export interface Reminder {
   type?: TransactionType;
   isRecurring: boolean;
   frequency?: 'monthly' | 'weekly' | 'yearly';
+  status?: 'pending' | 'paid';
+  paidAt?: string;
+  // Campos de compatibilidade com o App Mobile
+  title?: string;
+  name?: string;
+  price?: number;
+  value?: number;
+  date?: string;
+  isRecurrence?: boolean;
+  recurrence?: 'monthly' | 'weekly' | 'yearly';
+  transactionType?: 'income' | 'expense';
 }
 
 export interface Investment {

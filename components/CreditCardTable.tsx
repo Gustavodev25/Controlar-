@@ -900,7 +900,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       lastMonthKey: '',
       currentMonthKey: '',
       nextMonthKey: '',
-      allFutureTotal: 0
+      allFutureTotal: 0,
+      isLastInvoicePaid: false
     };
   }, [invoiceBuilderData, selectedCard, transactions, selectedCardId]);
 
@@ -998,22 +999,41 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
     return chargeLines;
   }, [selectedInvoice, selectedCard, invoiceSummary]);
 
-  // Calcular status da fatura baseado na API Pluggy
+  // Calcular status da fatura baseado na API Pluggy e no builder (status local PAID)
   const invoicePaymentInfo = useMemo(() => {
     // Status da API Pluggy: OPEN = aguardando pagamento, CLOSED = paga
     const billStatus = selectedCard?.currentBill?.status;
 
-    // Última fatura: usa o status da API Pluggy (currentBill é a última fatura fechada)
-    // CLOSED = paga, qualquer outro valor (OPEN, undefined) = não paga
-    const isLastInvoicePaid = billStatus === 'CLOSED';
+    // Última fatura: paga se API diz CLOSED ou se o builder marcou PAID (pagamento detectado nas transações)
+    const isLastInvoicePaid = billStatus === 'CLOSED' || invoiceSummary.isLastInvoicePaid;
 
-    // Buscar transações de pagamento para mostrar valores pagos (se houver pagamento parcial)
+    const parseDateSafe = (value?: string | null) => {
+      if (!value) return null;
+      const d = new Date(value);
+      return Number.isFinite(d.getTime()) ? d : null;
+    };
+
+    const daysDiff = (a: Date, b: Date) => Math.abs(a.getTime() - b.getTime()) / (1000 * 60 * 60 * 24);
+
+    const apiDueDate = parseDateSafe(selectedCard?.currentBill?.dueDate || null);
+    const expectedDueDate = invoiceSummary.lastDueDate;
+    const dueDateAligned = apiDueDate ? daysDiff(apiDueDate, expectedDueDate) <= 15 : false;
+
+    // Buscar transações de pagamento para mostrar valores pagos (inclui "Pagamento recebido" associado à fatura)
     const lastInvoicePayments = invoiceSummary.lastInvoice.transactions.filter(t => isCreditCardPayment(t));
     const lastInvoicePaidAmount = lastInvoicePayments.reduce((sum, t) => sum + Math.abs(t.amount), 0);
-    const lastInvoiceTotal = selectedCard?.currentBill?.totalAmount || invoiceSummary.lastInvoice.total;
-    const lastInvoiceDivergence = selectedCard?.currentBill?.totalAmount
-      ? Math.abs(selectedCard.currentBill.totalAmount - invoiceSummary.lastInvoice.total) > 0.01
+    const apiLastInvoiceTotal = selectedCard?.currentBill?.totalAmount ?? null;
+    const calculatedLastInvoiceTotal = invoiceSummary.lastInvoice.total;
+    const totalTolerance = Math.max(1, calculatedLastInvoiceTotal * 0.01);
+    const totalAligned = apiLastInvoiceTotal !== null
+      ? Math.abs(apiLastInvoiceTotal - calculatedLastInvoiceTotal) <= totalTolerance
       : false;
+    const shouldPreferApiTotal = apiLastInvoiceTotal !== null && dueDateAligned && totalAligned;
+    const lastInvoiceTotal = shouldPreferApiTotal ? apiLastInvoiceTotal : calculatedLastInvoiceTotal;
+    const lastInvoiceDivergence = apiLastInvoiceTotal !== null
+      ? Math.abs(apiLastInvoiceTotal - calculatedLastInvoiceTotal) > 0.01
+      : false;
+    const lastInvoiceDueDateToShow = dueDateAligned && apiDueDate ? apiDueDate : expectedDueDate;
 
     // Verificar se há pagamento na fatura atual
     const currentInvoicePayments = invoiceSummary.currentInvoice.transactions.filter(t => isCreditCardPayment(t));
@@ -1028,6 +1048,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         total: lastInvoiceTotal,
         calculatedTotal: invoiceSummary.lastInvoice.total,
         hasDivergence: lastInvoiceDivergence,
+        dueDateToShow: lastInvoiceDueDateToShow,
         payments: lastInvoicePayments,
         status: billStatus // Adiciona o status original para debug/display
       },
@@ -1953,13 +1974,15 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                           <h3 className="text-lg font-bold text-white max-w-[150px] truncate sm:max-w-none">
                             {selectedCard.name || selectedCard.institution || 'Cartão'}
                           </h3>
-                          <button
-                            onClick={() => setShowInvoiceCards(!showInvoiceCards)}
-                            className="p-1 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-                            title={showInvoiceCards ? "Recolher cartões" : "Expandir cartões"}
-                          >
-                            {showInvoiceCards ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                          </button>
+                          {isAdmin && (
+                            <button
+                              onClick={() => setShowInvoiceCards(!showInvoiceCards)}
+                              className="p-1 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
+                              title={showInvoiceCards ? "Recolher cartões" : "Expandir cartões"}
+                            >
+                              {showInvoiceCards ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                            </button>
+                          )}
                         </div>
                         <p className="text-xs text-gray-500">
                           Fecha dia {invoiceSummary.closingDay} • Vence dia {invoiceSummary.dueDay}
@@ -1994,7 +2017,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                   {/* Invoice Cards Grid - with Animation */}
                   <AnimatePresence>
-                    {showInvoiceCards && (
+                    {showInvoiceCards && isAdmin && (
                       <motion.div
                         initial={{ height: 0, opacity: 0 }}
                         animate={{ height: "auto", opacity: 1 }}
@@ -2077,9 +2100,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                 {invoiceSummary.lastInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.lastInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
                               </span>
                               <span className="text-[9px] text-gray-600">
-                                Venceu {selectedCard.currentBill?.dueDate
-                                  ? new Date(selectedCard.currentBill.dueDate).toLocaleDateString('pt-BR')
-                                  : invoiceSummary.lastDueDate.toLocaleDateString('pt-BR')} • {invoiceSummary.lastInvoice.transactions.length} lançamentos
+                                Venceu {invoicePaymentInfo.last.dueDateToShow.toLocaleDateString('pt-BR')} • {invoiceSummary.lastInvoice.transactions.length} lançamentos
                               </span>
                               {/* Encargos Financeiros (IOF, Juros, Multa, Outros) - exibido quando disponível via API Pluggy */}
                               {selectedCard.currentBill?.financeCharges && (
