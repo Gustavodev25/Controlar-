@@ -2604,6 +2604,7 @@ const App: React.FC = () => {
       // Reminders
       if (projectionSettings.reminders) {
         const projectedReminders = filteredReminders.filter(r => {
+          if (r.status === 'paid') return false;
           if (!r.dueDate.startsWith(dashboardDate)) return false;
           if (dashboardCategory && r.category !== dashboardCategory) return false;
           return true;
