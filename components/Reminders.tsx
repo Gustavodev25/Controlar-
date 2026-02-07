@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Reminder } from '../types';
-import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2, Send, User, Clock, ChevronLeft, ChevronRight } from './Icons';
+import { CalendarClock, Check, Trash2, AlertCircle, DollarSign, Tag, Calendar, getCategoryIcon, X, LayoutDashboard, Table2, FileText, Sparkles, Plus, Bot, ArrowRight, TrendingUp, TrendingDown, RefreshCw, AlertTriangle, Edit2, Send, User, Clock, ChevronLeft, ChevronRight, RotateCcw } from './Icons';
 import { CustomSelect, CustomDatePicker, CustomAutocomplete, TextShimmer, CustomMonthPicker, Tooltip } from './UIComponents';
 import { ConfirmationBar } from './ConfirmationBar';
 import { UniversalModal } from './UniversalModal';
@@ -21,6 +21,7 @@ interface RemindersProps {
   onAddReminder: (reminder: Omit<Reminder, 'id'>) => void;
   onDeleteReminder: (id: string) => void;
   onPayReminder: (reminder: Reminder) => void;
+  onUndoPayment?: (reminder: Reminder) => void;
   onUpdateReminder: (reminder: Reminder) => void;
   onOpenAIModal?: (context?: 'transaction' | 'reminder') => void;
 
@@ -58,13 +59,14 @@ const formatDate = (dateStr: string) => {
 interface ReminderCardProps {
   item: Reminder;
   onPayReminder: (reminder: Reminder) => void;
+  onUndoPayment?: (reminder: Reminder) => void;
   onConfirmDelete: (id: string) => void;
   onEdit: (reminder: Reminder) => void;
   selectionMode?: boolean;
   selected?: boolean;
   onToggleSelect?: (id: string) => void;
 }
-const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConfirmDelete, onEdit, selectionMode = false, selected = false, onToggleSelect }) => {
+const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onUndoPayment, onConfirmDelete, onEdit, selectionMode = false, selected = false, onToggleSelect }) => {
   const daysDiff = getDaysDiff(item.dueDate || item.date || '');
 
   // Normalização para exibição
@@ -224,6 +226,16 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
             </button>
           )}
 
+          {item.status === 'paid' && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onUndoPayment && onUndoPayment(item); }}
+              className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-amber-400 hover:bg-amber-500/10 transition-all"
+              title="Desfazer Pagamento"
+            >
+              <RotateCcw size={14} className="sm:w-4 sm:h-4" strokeWidth={2.5} />
+            </button>
+          )}
+
           <button
             onClick={(e) => { e.stopPropagation(); onEdit(item); }}
             className="w-7 h-7 sm:w-8 sm:h-8 flex items-center justify-center rounded-lg text-gray-500 hover:text-white hover:bg-white/10 transition-all"
@@ -245,7 +257,7 @@ const ReminderCard: React.FC<ReminderCardProps> = ({ item, onPayReminder, onConf
 };
 
 
-export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUpdateReminder, onOpenAIModal, userPlan = 'starter', onUpgrade, userId }) => {
+export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, onDeleteReminder, onPayReminder, onUndoPayment, onUpdateReminder, onOpenAIModal, userPlan = 'starter', onUpgrade, userId }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
 
@@ -617,13 +629,17 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
   }, [reminders, selectedIds]);
 
 
-  // Totais baseados no filtro de mês
+  // Totais baseados no filtro de mês (Excluindo pagos)
   const totalExpenses = useMemo(() => {
-    return filteredByMonth.filter(r => (!r.type || r.type === 'expense')).reduce((acc, curr) => acc + curr.amount, 0);
+    return filteredByMonth
+      .filter(r => (!r.type || r.type === 'expense') && r.status !== 'paid')
+      .reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredByMonth]);
 
   const totalIncome = useMemo(() => {
-    return filteredByMonth.filter(r => r.type === 'income').reduce((acc, curr) => acc + curr.amount, 0);
+    return filteredByMonth
+      .filter(r => r.type === 'income' && r.status !== 'paid')
+      .reduce((acc, curr) => acc + curr.amount, 0);
   }, [filteredByMonth]);
 
   const groupedReminders = useMemo(() => {
@@ -851,6 +867,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                     key={item.id}
                     item={item}
                     onPayReminder={onPayReminder}
+                    onUndoPayment={onUndoPayment}
                     onConfirmDelete={setDeleteId}
                     onEdit={handleEditClick}
                     selectionMode={selectionMode}
@@ -866,6 +883,7 @@ export const Reminders: React.FC<RemindersProps> = ({ reminders, onAddReminder, 
                 key={item.id}
                 item={item}
                 onPayReminder={onPayReminder}
+                onUndoPayment={onUndoPayment}
                 onConfirmDelete={setDeleteId}
                 onEdit={handleEditClick}
                 selectionMode={selectionMode}

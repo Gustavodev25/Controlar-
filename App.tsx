@@ -1770,8 +1770,15 @@ const App: React.FC = () => {
 
   const memberInvestments = useMemo(() => {
     if (activeMemberId === 'FAMILY_OVERVIEW') return investments;
-    return investments.filter(inv => inv.memberId === activeMemberId);
-  }, [investments, activeMemberId]);
+
+    // Check if active member is admin to show legacy/mobile investments (without memberId)
+    const isActiveMemberAdmin = members.find(m => m.id === activeMemberId)?.role === 'admin';
+
+    return investments.filter(inv => 
+      inv.memberId === activeMemberId || 
+      (isActiveMemberAdmin && !inv.memberId)
+    );
+  }, [investments, activeMemberId, members]);
 
   const totalMemberInvestments = useMemo(() => {
     return memberInvestments.reduce((sum, inv) => sum + inv.currentAmount, 0);
@@ -3581,6 +3588,19 @@ const App: React.FC = () => {
     }
   };
 
+  const handleUndoPayment = async (reminder: Reminder) => {
+    if (!userId) return;
+
+    const updatedReminder = {
+      ...reminder,
+      status: 'pending' as const,
+      paidAt: '' // Clear paid date
+    };
+    
+    await dbService.updateReminder(userId, updatedReminder);
+    toast.success("Pagamento desfeito.");
+  };
+
   const handleAddGoal = async (goal: Omit<FamilyGoal, 'id'>) => {
     const familyGroupId = currentUser?.familyGroupId;
     if (familyGroupId) {
@@ -4083,6 +4103,7 @@ const App: React.FC = () => {
                   onAddReminder={handleAddReminder}
                   onDeleteReminder={handleDeleteReminder}
                   onPayReminder={handlePayReminder}
+                  onUndoPayment={handleUndoPayment}
                   onUpdateReminder={handleUpdateReminder}
 
                   userPlan={effectivePlan}
