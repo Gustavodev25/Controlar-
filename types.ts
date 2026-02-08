@@ -34,6 +34,10 @@ export interface User {
     firstMonthOverridePrice?: number; // Override price for month 1 (manual fix)
     couponStartMonth?: string; // Mês de início do cupom (YYYY-MM)
     autoRenew?: boolean;
+    paymentFailureReason?: string;
+    paymentFailedAt?: string;
+    creditCardToken?: string;
+    creditCardLast4?: string;
   };
   paymentMethodDetails?: {
     last4: string;

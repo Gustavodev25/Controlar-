@@ -7,6 +7,7 @@
     "dev": "vite",
     "server": "node server.js",
     "sync:manual": "node scripts/manual_trigger.js",
+    "test": "vitest run",
     "build": "vite build",
     "preview": "vite preview"
   },

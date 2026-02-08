@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import {
    X, User, Mail, Check, Save, Sparkles, Shield, CreditCard,
@@ -1306,22 +1306,74 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
    };
 
    const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvc: string }) => {
+      const { subscription } = formData;
+      const subscriptionId = subscription?.asaasSubscriptionId;
+      const customerId = subscription?.asaasCustomerId;
+
+      // Ensure we have necessary info for the API
+      if (subscriptionId && customerId) {
+         try {
+            const [expMonth, expYearShort] = cardData.expiry.split('/');
+            const expYear = `20${expYearShort}`;
+
+            // Real API Call to update Asaas
+            const response = await fetch('/api/asaas/subscription/update-card', {
+               method: 'POST',
+               headers: { 'Content-Type': 'application/json' },
+               body: JSON.stringify({
+                  userId,
+                  subscriptionId,
+                  customerId,
+                  creditCard: {
+                     holderName: cardData.holder,
+                     number: cardData.number,
+                     expiryMonth: expMonth,
+                     expiryYear: expYear,
+                     ccv: cardData.cvc
+                  },
+                  creditCardHolderInfo: {
+                     name: formData.name,
+                     email: formData.email,
+                     cpfCnpj: formData.cpf || '',
+                     postalCode: formData.address?.cep || '',
+                     addressNumber: formData.address?.number || '0',
+                     phone: formData.phone
+                  }
+               })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+               throw new Error(data.error || 'Falha ao validar cartão na operadora.');
+            }
+
+            toast.success("Cartão validado e atualizado na assinatura!");
+
+         } catch (error: any) {
+            console.error('Erro ao atualizar cartão:', error);
+            toast.error(error.message || "Erro ao atualizar cartão. Tente novamente.");
+            // Re-throw to prevent modal from closing if CreditCardModal handles catch
+            throw error;
+         }
+      } else {
+         // Fallback for non-subscribers (just updating profile)
+         toast.success("Cartão vinculado ao perfil!");
+      }
+
+      // Update Local State (UI)
       const updatedUser: UserType = {
          ...formData,
          paymentMethodDetails: {
             last4: cardData.number.slice(-4),
             holder: cardData.holder,
             expiry: cardData.expiry,
-            brand: 'mastercard' // Em um app real, detectaríamos a bandeira
+            brand: 'mastercard' // Dynamically set if possible, but static for now
          }
       };
 
       setFormData(updatedUser);
       await persistUser(updatedUser);
-      toast.success("Novo cartão validado e vinculado com sucesso!");
-      setFormData(updatedUser);
-      await persistUser(updatedUser);
-      toast.success("Novo cartão validado e vinculado com sucesso!");
       setIsCardModalOpen(false);
    };
 

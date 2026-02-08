@@ -9,6 +9,7 @@ import nodemailer from 'nodemailer';
 import pluggyRouter from './pluggy.js';
 import cronSyncRouter from './cron-sync.js';
 import { firebaseAdmin, firebaseAuth } from './firebaseAdmin.js';
+import { requireFirebaseAuth, getRequesterIsAdmin } from './authMiddleware.js';
 import { loadEnv } from './env.js';
 import { sendSaleToUtmify, sendRefundToUtmify } from './utmifyService.js';
 
@@ -995,6 +996,56 @@ router.post('/asaas/subscription', async (req, res) => {
       // For annual installments, we charge the DISCOUNTED price ('value') splitted.
       const valueToCharge = value;
 
+      let creditCardToken = null;
+      try {
+        console.log('>>> [TOKENIZATION] Tokenizing credit card (Annual Installments)...');
+        const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+          customer: customerId,
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: creditCard.number.replace(/\s/g, ''),
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          },
+          remoteIp: getClientIp(req)
+        });
+        creditCardToken = tokenResult.creditCardToken;
+        console.log('>>> [TOKENIZATION] Success! Token created.');
+      } catch (tokenError) {
+        console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
+        return res.status(400).json({
+          success: false,
+          error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados ou use outro cartão.'
+        });
+      }
+
+      if (!creditCardToken) {
+        return res.status(400).json({ success: false, error: 'Não foi possível tokenizar o cartão. Tente novamente.' });
+      }
+
+      if (userId && firebaseAdmin) {
+        try {
+          const db = firebaseAdmin.firestore();
+          const cardNumber = creditCard.number.replace(/\s/g, '');
+          await db.collection('users').doc(userId).update({
+            'subscription.creditCardToken': creditCardToken,
+            'subscription.creditCardLast4': cardNumber.slice(-4),
+            'profile.subscription.creditCardToken': creditCardToken
+          });
+        } catch (dbError) {
+          console.error('>>> [DB] Failed to save token:', dbError);
+        }
+      }
+
       const paymentData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
@@ -1003,21 +1054,7 @@ router.post('/asaas/subscription', async (req, res) => {
         description: `Plano ${planId} - Anual (${installmentCount}x)`,
         installmentCount: installmentCount,
         installmentValue: Math.round((valueToCharge / installmentCount) * 100) / 100,
-        creditCard: {
-          holderName: creditCard.holderName,
-          number: creditCard.number.replace(/\s/g, ''),
-          expiryMonth: creditCard.expiryMonth,
-          expiryYear: creditCard.expiryYear,
-          ccv: creditCard.ccv
-        },
-        creditCardHolderInfo: {
-          name: creditCardHolderInfo.name,
-          email: creditCardHolderInfo.email,
-          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-          addressNumber: creditCardHolderInfo.addressNumber,
-          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-        },
+        creditCardToken: creditCardToken,
         remoteIp: getClientIp(req),
         externalReference: `${userId || 'anon'}:${planId}_annual_${Date.now()}` // [MODIFIED] Include userId
       };
@@ -1100,9 +1137,7 @@ router.post('/asaas/subscription', async (req, res) => {
         console.log(`>>> Coupon detected! Creating single payment of R$ ${value} + subscription starting next month`);
 
         // =====================================================
-        // [FIX] STEP 0: Tokenize the credit card FIRST
-        // This ensures the token is available for both payment and subscription
-        // Without this, subscriptions with future nextDueDate don't have card associated
+        // [FIX] STEP 0: Tokenize the credit card FIRST (STRICT MODE)
         // =====================================================
         let creditCardToken = null;
         try {
@@ -1127,10 +1162,32 @@ router.post('/asaas/subscription', async (req, res) => {
             remoteIp: getClientIp(req)
           });
           creditCardToken = tokenResult.creditCardToken;
-          console.log(`>>> [TOKENIZATION] Success! Token: ${creditCardToken?.substring(0, 15)}...`);
+          console.log('>>> [TOKENIZATION] Success! Token created.');
         } catch (tokenError) {
           console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
-          // Continue without token - will use full card data as fallback
+          return res.status(400).json({
+            success: false,
+            error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados ou use outro cartão.'
+          });
+        }
+
+        if (!creditCardToken) {
+          return res.status(400).json({ success: false, error: 'Não foi possível tokenizar o cartão. Tente novamente.' });
+        }
+
+        // SAVE TOKEN TO FIRESTORE
+        if (userId && firebaseAdmin) {
+          try {
+            const db = firebaseAdmin.firestore();
+            const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
+            await db.collection('users').doc(userId).update({
+              'subscription.creditCardToken': creditCardToken,
+              'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
+              'profile.subscription.creditCardToken': creditCardToken
+            });
+          } catch (dbError) {
+            console.error('>>> [DB] Failed to save token:', dbError);
+          }
         }
 
         // 1. Create single payment with discounted value
@@ -1141,29 +1198,9 @@ router.post('/asaas/subscription', async (req, res) => {
           dueDate: dueDateStr,
           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
           remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}`
+          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}`,
+          creditCardToken: creditCardToken // ALWAYS USE TOKEN
         };
-
-        // Use token if available, otherwise use full card data
-        if (creditCardToken) {
-          paymentData.creditCardToken = creditCardToken;
-        } else {
-          paymentData.creditCard = {
-            holderName: creditCard.holderName,
-            number: creditCard.number.replace(/\s/g, ''),
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          };
-          paymentData.creditCardHolderInfo = {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          };
-        }
 
         const firstPayment = await asaasRequest('POST', '/payments', paymentData);
         console.log(`>>> First payment created: ${firstPayment.id}, status: ${firstPayment.status}`);
@@ -1192,30 +1229,9 @@ router.post('/asaas/subscription', async (req, res) => {
           cycle: cycle,
           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
           remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}`
+          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}`,
+          creditCardToken: creditCardToken // ALWAYS USE TOKEN
         };
-
-        // Use token if available, otherwise use full card data
-        if (creditCardToken) {
-          subscriptionData.creditCardToken = creditCardToken;
-          console.log('>>> [SUBSCRIPTION] Using tokenized card for subscription');
-        } else {
-          subscriptionData.creditCard = {
-            holderName: creditCard.holderName,
-            number: creditCard.number.replace(/\s/g, ''),
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          };
-          subscriptionData.creditCardHolderInfo = {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          };
-        }
 
         // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.
         let subscription = null;
@@ -1267,6 +1283,61 @@ router.post('/asaas/subscription', async (req, res) => {
       }
 
       // No coupon: Create normal subscription starting today
+
+      // =====================================================
+      // [FIX] STEP 0: Tokenize the credit card FIRST (STRICT MODE)
+      // =====================================================
+      let creditCardToken = null;
+      try {
+        console.log('>>> [TOKENIZATION] Tokenizing credit card (No Coupon Flow)...');
+        const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+          customer: customerId,
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: creditCard.number.replace(/\s/g, ''),
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          },
+          remoteIp: getClientIp(req)
+        });
+        creditCardToken = tokenResult.creditCardToken;
+        console.log('>>> [TOKENIZATION] Success! Token created.');
+      } catch (tokenError) {
+        console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
+        return res.status(400).json({
+          success: false,
+          error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados.'
+        });
+      }
+
+      if (!creditCardToken) {
+        return res.status(400).json({ success: false, error: 'Não foi possível processar o cartão.' });
+      }
+
+      // SAVE TOKEN TO FIRESTORE
+      if (userId && firebaseAdmin) {
+        try {
+          const db = firebaseAdmin.firestore();
+          const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
+          await db.collection('users').doc(userId).update({
+            'subscription.creditCardToken': creditCardToken,
+            'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
+            'profile.subscription.creditCardToken': creditCardToken
+          });
+        } catch (dbError) {
+          console.error('>>> [DB] Failed to save token:', dbError);
+        }
+      }
+
       const subscriptionData = {
         customer: customerId,
         billingType: 'CREDIT_CARD',
@@ -1274,13 +1345,8 @@ router.post('/asaas/subscription', async (req, res) => {
         nextDueDate: dueDateStr,
         cycle: cycle,
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
-        creditCard: {
-          holderName: creditCard.holderName,
-          number: creditCard.number.replace(/\s/g, ''),
-          expiryMonth: creditCard.expiryMonth,
-          expiryYear: creditCard.expiryYear,
-          ccv: creditCard.ccv
-        },
+        creditCardToken: creditCardToken, // USE TOKEN
+        // creditCard object removed - relying on token strictly
         creditCardHolderInfo: {
           name: creditCardHolderInfo.name,
           email: creditCardHolderInfo.email,
@@ -1388,6 +1454,215 @@ router.post('/asaas/subscription', async (req, res) => {
       error: errorMessage,
       details: error.response?.data
     });
+  }
+});
+
+
+// ===============================
+// [NEW] Update Credit Card for Subscription
+// ===============================
+router.post('/asaas/subscription/update-card', async (req, res) => {
+  const { subscriptionId, customerId, creditCard, creditCardHolderInfo, userId } = req.body;
+
+  if (!subscriptionId || !customerId || !creditCard || !creditCardHolderInfo) {
+    return res.status(400).json({ error: 'Dados incompletos para atualização do cartão.' });
+  }
+
+  try {
+    console.log(`>>> Updating card for subscription: ${subscriptionId}`);
+
+    // 1. Tokenize the new card
+    let creditCardToken = null;
+    try {
+      const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+        customer: customerId,
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: creditCard.number.replace(/\s/g, ''),
+          expiryMonth: creditCard.expiryMonth,
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          email: creditCardHolderInfo.email,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          addressNumber: creditCardHolderInfo.addressNumber,
+          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+        },
+        remoteIp: getClientIp(req)
+      });
+      creditCardToken = tokenResult.creditCardToken;
+      console.log('>>> [UPDATE CARD] Tokenization success.');
+    } catch (tokenError) {
+      console.error('>>> [UPDATE CARD] Tokenization failed:', tokenError.message);
+      return res.status(400).json({ error: 'Falha ao validar o cartão com a operadora.' });
+    }
+
+    if (!creditCardToken) {
+      return res.status(400).json({ error: 'Não foi possível tokenizar o cartão. Verifique os dados.' });
+    }
+
+    // 2. Update Subscription with new Token
+    // Asaas API v3: PUT /subscriptions/{id}
+    const updatedSub = await asaasRequest('POST', `/subscriptions/${subscriptionId}`, {
+      creditCardToken: creditCardToken,
+      remoteIp: getClientIp(req)
+    });
+
+    console.log(`>>> [UPDATE CARD] Subscription ${subscriptionId} updated with new card token.`);
+
+    if (userId && firebaseAdmin) {
+      try {
+        const db = firebaseAdmin.firestore();
+        const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
+        const nowIso = new Date().toISOString();
+        const last4 = sanitizedCardNumber.slice(-4);
+
+        await db.collection('users').doc(userId).update({
+          'subscription.creditCardToken': creditCardToken,
+          'subscription.creditCardLast4': last4,
+          'subscription.updatedAt': nowIso,
+          'profile.subscription.creditCardToken': creditCardToken,
+          'profile.subscription.creditCardLast4': last4,
+          'profile.subscription.updatedAt': nowIso,
+          'profile.paymentMethodDetails.last4': last4
+        });
+      } catch (dbError) {
+        console.error('>>> [DB] Failed to save updated card token:', dbError);
+      }
+    }
+
+    return res.json({
+      success: true,
+      subscription: updatedSub,
+      message: 'Cartão atualizado com sucesso!'
+    });
+
+  } catch (error) {
+    console.error('>>> Update Card Error:', error.response?.data || error.message);
+
+    const asaasErrors = error.response?.data?.errors;
+    let errorMessage = 'Erro ao atualizar o cartão de crédito.';
+
+    if (asaasErrors && asaasErrors.length > 0) {
+      errorMessage = asaasErrors.map((e) => e.description).join('. ');
+    }
+
+    res.status(500).json({
+      error: errorMessage,
+      details: error.response?.data
+    });
+  }
+});
+
+router.post('/asaas/subscription/sync-card-info', requireFirebaseAuth, async (req, res) => {
+  const { subscriptionId, userId } = req.body;
+
+  if (!subscriptionId || !userId) {
+    return res.status(400).json({ error: 'Subscription ID and User ID are required.' });
+  }
+
+  try {
+    const isAdmin = await getRequesterIsAdmin(req);
+    if (!isAdmin) return res.status(403).json({ error: 'Acesso negado.' });
+
+    console.log(`>>> [SYNC] Syncing card info for subscription: ${subscriptionId} (User: ${userId})`);
+
+    // 1. Fetch Subscription from Asaas
+    const subscription = await asaasRequest('GET', `/subscriptions/${subscriptionId}`);
+
+    if (!subscription) {
+      return res.status(404).json({ success: false, message: 'Assinatura não encontrada.' });
+    }
+
+    let foundToken = null;
+    let cardInfo = subscription.creditCard || {}; // Might be present with partial info
+
+    // 2. Try to find a REAL token from previous payments
+    // Asaas API v3: GET /payments?subscription=...
+    try {
+      // Fetch recent payments (up to 5)
+      const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subscriptionId}&limit=5`);
+
+      if (paymentsRes.data && paymentsRes.data.length > 0) {
+        // Find the most recent payment that has credit card info
+        const ccPayment = paymentsRes.data
+          .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated)) // Newest first
+          .find(p => p.billingType === 'CREDIT_CARD' || p.creditCard);
+
+        if (ccPayment) {
+          console.log(`>>> [SYNC] Found potential card payment: ${ccPayment.id}`);
+
+          // Fetch FULL details to get the token (often hidden in list view)
+          const fullPayment = await asaasRequest('GET', `/payments/${ccPayment.id}`);
+
+          if (fullPayment.creditCardToken || fullPayment.creditCard?.creditCardToken) {
+            foundToken = fullPayment.creditCardToken || fullPayment.creditCard.creditCardToken;
+            console.log(`>>> [SYNC] Successfully extracted token from payment: ${foundToken}`);
+
+            // Enrich card info if missing
+            if (!cardInfo.creditCardNumber && fullPayment.creditCard) {
+              cardInfo = fullPayment.creditCard;
+            }
+          }
+        }
+      }
+    } catch (paymentError) {
+      console.warn(`>>> [SYNC] Failed to fetch payments for token extraction:`, paymentError.message);
+    }
+
+    // 3. Fallback: If no payment found (new sub) or no token returned, use placeholder
+    if (!foundToken && (cardInfo.creditCardNumber || cardInfo.creditCardBrand)) {
+      foundToken = 'MANAGED_BY_ASAAS_DIRECTLY';
+      console.log(`>>> [SYNC] No previous payment token found. Using managed placeholder.`);
+    }
+
+    if (!foundToken) {
+      return res.json({
+        success: false,
+        message: 'Nenhum cartão ou token identificado nesta assinatura.'
+      });
+    }
+
+    const cardLast4 = cardInfo.creditCardNumber?.slice(-4) || '****';
+    const cardBrand = cardInfo.creditCardBrand || 'CREDIT_CARD';
+
+    // 4. Update User in Firestore
+    if (firebaseAdmin) {
+      const db = firebaseAdmin.firestore();
+
+      const updateData = {
+        'subscription.creditCardLast4': cardLast4,
+        'subscription.creditCardBrand': cardBrand,
+        'subscription.creditCardToken': foundToken,
+        'subscription.paymentMethod': 'CREDIT_CARD', // Ensure method is set
+
+        // Sync profile
+        'profile.paymentMethodDetails.last4': cardLast4,
+        'profile.paymentMethodDetails.brand': cardBrand,
+
+        // Clear failure flags as we are re-syncing valid card info
+        'subscription.paymentFailureReason': firebaseAdmin.firestore.FieldValue.delete(),
+        'subscription.paymentFailedAt': firebaseAdmin.firestore.FieldValue.delete(),
+        'profile.subscription.paymentFailureReason': firebaseAdmin.firestore.FieldValue.delete(),
+        'profile.subscription.paymentFailedAt': firebaseAdmin.firestore.FieldValue.delete()
+      };
+
+      await db.collection('users').doc(userId).update(updateData);
+      console.log(`>>> [SYNC] User ${userId} updated with card ending in ${cardLast4} (Token: ${foundToken === 'MANAGED_BY_ASAAS_DIRECTLY' ? 'Managed' : 'Real'})`);
+    }
+
+    return res.json({
+      success: true,
+      message: 'Informações do cartão sincronizadas com sucesso!',
+      card: { last4: cardLast4, brand: cardBrand, hasToken: !!foundToken }
+    });
+
+  } catch (error) {
+    console.error('>>> [SYNC] Error:', error.response?.data || error.message);
+    res.status(500).json({ error: 'Erro ao sincronizar informações.' });
   }
 });
 
@@ -1558,13 +1833,18 @@ router.post('/asaas/webhook', async (req, res) => {
             if (!snapshot.empty) {
               const userDoc = snapshot.docs[0];
               const now = new Date().toISOString();
+
+              // Try to get specific reason from Asaas payload if available
+              // It's often in creditCard.acquirerReturnCode or simply "CARD_REFUSED"
+              const specificReason = event.payment?.creditCard?.acquirerReturnCode || 'CARD_REFUSED';
+
               await userDoc.ref.update({
                 'subscription.paymentFailedAt': now,
-                'subscription.paymentFailureReason': 'CARD_REFUSED',
+                'subscription.paymentFailureReason': specificReason,
                 'profile.subscription.paymentFailedAt': now,
-                'profile.subscription.paymentFailureReason': 'CARD_REFUSED'
+                'profile.subscription.paymentFailureReason': specificReason
               });
-              console.log(`>>> Marked user ${userDoc.id} with payment failure (CARD_REFUSED)`);
+              console.log(`>>> Marked user ${userDoc.id} with payment failure (${specificReason})`);
             }
           } catch (err) {
             console.error('>>> Error marking payment failure:', err.message);
@@ -1727,7 +2007,7 @@ router.delete('/asaas/subscription/:subscriptionId', async (req, res) => {
 
 router.get('/asaas/payments', async (req, res) => {
   try {
-    const { customer, subscription, status, limit, offset } = req.query;
+    const { customer, subscription, status, limit, offset, 'dueDate[ge]': dueDateGe, 'dueDate[le]': dueDateLe } = req.query;
 
     // Build query string
     const params = new URLSearchParams();
@@ -1736,6 +2016,8 @@ router.get('/asaas/payments', async (req, res) => {
     if (status) params.append('status', status);
     if (limit) params.append('limit', limit);
     if (offset) params.append('offset', offset);
+    if (dueDateGe) params.append('dueDate[ge]', dueDateGe);
+    if (dueDateLe) params.append('dueDate[le]', dueDateLe);
 
     const queryString = params.toString() ? `?${params.toString()}` : '';
 
@@ -1761,6 +2043,115 @@ router.get('/asaas/payment/:paymentId', async (req, res) => {
   } catch (error) {
     res.status(500).json({
       error: 'Erro ao buscar pagamento.',
+      details: error.response?.data
+    });
+  }
+});
+
+router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth, async (req, res) => {
+  const { paymentId } = req.params;
+
+  if (!firebaseAdmin) {
+    return res.status(500).json({ error: 'Firestore não inicializado no servidor.' });
+  }
+
+  const targetUserId = req.body?.userId || req.auth?.uid;
+  if (!targetUserId) {
+    return res.status(400).json({ error: 'userId é obrigatório.' });
+  }
+
+  try {
+    if (targetUserId !== req.auth?.uid) {
+      const isAdmin = await getRequesterIsAdmin(req);
+      if (!isAdmin) return res.status(403).json({ error: 'Acesso negado.' });
+    }
+
+    const db = firebaseAdmin.firestore();
+    const userSnap = await db.collection('users').doc(targetUserId).get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: 'Usuário não encontrado.' });
+    }
+
+    const userData = userSnap.data() || {};
+    const subscription = userData.subscription || userData.profile?.subscription || {};
+    const asaasCustomerId = subscription.asaasCustomerId;
+    const asaasSubscriptionId = subscription.asaasSubscriptionId;
+
+    const payment = await asaasRequest('GET', `/payments/${paymentId}`);
+
+    if (payment?.status && ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(payment.status)) {
+      return res.status(409).json({ error: 'Este pagamento já está quitado.' });
+    }
+
+    if (payment?.billingType && payment.billingType !== 'CREDIT_CARD') {
+      return res.status(409).json({ error: 'Este pagamento não é de cartão de crédito.' });
+    }
+
+    if (asaasCustomerId && payment?.customer && payment.customer !== asaasCustomerId) {
+      const isAdmin = await getRequesterIsAdmin(req);
+      if (!isAdmin) return res.status(403).json({ error: 'Pagamento não pertence ao cliente do usuário.' });
+    }
+
+    let creditCardToken = subscription.creditCardToken;
+    if (creditCardToken === 'MANAGED_BY_ASAAS_DIRECTLY') creditCardToken = null;
+
+    if (!creditCardToken && (payment?.creditCardToken || payment?.creditCard?.creditCardToken)) {
+      creditCardToken = payment.creditCardToken || payment.creditCard.creditCardToken;
+    }
+
+    if (!creditCardToken && asaasSubscriptionId) {
+      try {
+        const paymentsRes = await asaasRequest('GET', `/payments?subscription=${asaasSubscriptionId}&limit=5`);
+        const list = paymentsRes?.data || [];
+        const ccPayment = list
+          .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated))
+          .find(p => p.billingType === 'CREDIT_CARD' || p.creditCard);
+
+        if (ccPayment) {
+          const fullPayment = await asaasRequest('GET', `/payments/${ccPayment.id}`);
+          if (fullPayment?.creditCardToken || fullPayment?.creditCard?.creditCardToken) {
+            creditCardToken = fullPayment.creditCardToken || fullPayment.creditCard.creditCardToken;
+          }
+        }
+      } catch (error) {
+        creditCardToken = null;
+      }
+    }
+
+    if (!creditCardToken) {
+      return res.status(409).json({
+        error: 'Não foi possível reutilizar o cartão automaticamente.',
+        message: 'O Asaas não retornou um creditCardToken válido. Necessário atualizar o cartão para gerar novo token.',
+        invoiceUrl: payment?.invoiceUrl || null,
+        paymentId,
+        asaasSubscriptionId: payment?.subscription || asaasSubscriptionId || null,
+        asaasCustomerId: payment?.customer || asaasCustomerId || null
+      });
+    }
+
+    if (creditCardToken !== subscription.creditCardToken) {
+      const updateData = {
+        'subscription.creditCardToken': creditCardToken,
+        'profile.subscription.creditCardToken': creditCardToken
+      };
+      await db.collection('users').doc(targetUserId).set(updateData, { merge: true });
+    }
+
+    const result = await asaasRequest('POST', `/payments/${paymentId}/payWithCreditCard`, {
+      creditCardToken,
+      remoteIp: getClientIp(req)
+    });
+
+    res.json({ success: true, result });
+  } catch (error) {
+    const asaasErrors = error.response?.data?.errors;
+    const errorMessage = asaasErrors?.length
+      ? asaasErrors.map((e) => e.description).join('. ')
+      : (error.response?.data?.message || error.message || 'Erro ao cobrar no cartão.');
+
+    res.status(500).json({
+      error: errorMessage,
       details: error.response?.data
     });
   }
