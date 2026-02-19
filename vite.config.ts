@@ -21,7 +21,7 @@ const expressPlugin = () => {
       app.use(express.json({ limit: '50mb' }));
       app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-      const apiRoutes = (await import('./api/routes.js')).default;
+      const apiRoutes = (await import('./api/_lib/routes.js')).default;
       app.use('/api', apiRoutes);
 
       server.middlewares.use(app);
