@@ -150,6 +150,15 @@ export const saveDashboardPreferences = async (userId: string, preferences: {
   });
 };
 
+// Save user's invoice view mode preference
+export const saveInvoiceViewMode = async (userId: string, mode: 'all' | 'last' | 'current' | 'next') => {
+  if (!db) return;
+  const userRef = doc(db, "users", userId);
+  await updateDoc(userRef, {
+    "dashboardPreferences.invoiceViewMode": mode
+  });
+};
+
 export const getUserProfile = async (userId: string): Promise<Partial<User> | null> => {
   if (!db) return null;
   try {

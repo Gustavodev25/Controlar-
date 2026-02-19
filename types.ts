@@ -71,6 +71,7 @@ export interface User {
   dashboardPreferences?: {
     includeOpenFinanceInStats?: boolean;
     cardInvoiceTypes?: Record<string, 'current' | 'next' | 'used_total'>;
+    invoiceViewMode?: 'all' | 'last' | 'current' | 'next';
   };
 }
 

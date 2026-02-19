@@ -209,19 +209,25 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     // Filter transactions that belong to the selected month's INVOICE
     // Only count expenses (positive amounts or expense type transactions)
     const monthTransactions = creditCardTransactions.filter(tx => {
+      // Check for manual override first
+      const manualMonth = (tx as any).manualInvoiceMonth;
+      if (manualMonth) {
+        return manualMonth === dashboardDate;
+      }
+
+      // Check for invoiceMonthKey (synced with manual override)
+      const invoiceKey = (tx as any).invoiceMonthKey;
+      if (invoiceKey) {
+        return invoiceKey === dashboardDate;
+      }
+
       // PRIMARY: Check if invoiceDate matches the dashboard month (YYYY-MM)
       // invoiceDate format is YYYY-MM-01, so we compare the first 7 chars
       const txInvoiceMonth = (tx as any).invoiceDate?.slice(0, 7);
-      if (txInvoiceMonth && txInvoiceMonth !== dashboardDate) return false;
+      if (txInvoiceMonth) return txInvoiceMonth === dashboardDate;
 
       // FALLBACK: If no invoiceDate, use transaction date (for manual transactions)
-      if (!txInvoiceMonth && !(tx.date && tx.date.startsWith(dashboardDate))) return false;
-
-      // Only count completed or pending transactions
-      if (tx.status !== 'completed' && tx.status !== 'pending') return false;
-      // Only count non-ignored transactions
-      if ((tx as any).ignored) return false;
-      return true;
+      return tx.date && tx.date.startsWith(dashboardDate);
     });
 
     // Sum up the amounts
@@ -413,6 +419,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId || tx.cardId).filter(Boolean))];
 
     const resolveTxMonthKey = (tx: Transaction) => {
+      if ((tx as any).manualInvoiceMonth) return (tx as any).manualInvoiceMonth;
+      if ((tx as any).invoiceMonthKey) return (tx as any).invoiceMonthKey;
+
       if (tx.invoiceDueDate) return tx.invoiceDueDate.slice(0, 7);
       if (tx.dueDate) return tx.dueDate.slice(0, 7);
       if (tx.invoiceDate) return tx.invoiceDate.slice(0, 7);
@@ -465,7 +474,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       let filteredTransactions = cardTransactions;
       if (dashboardDate) {
         filteredTransactions = cardTransactions.filter(tx => {
-          const key = tx.invoiceDueDate?.slice(0, 7)
+          const key = (tx as any).manualInvoiceMonth
+            || (tx as any).invoiceMonthKey
+            || tx.invoiceDueDate?.slice(0, 7)
             || tx.dueDate?.slice(0, 7)
             || tx.invoiceDate?.slice(0, 7)
             || tx.date?.slice(0, 7);
@@ -477,10 +488,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       const cardMonthSums = new Map<string, number>();
       cardTransactions.forEach((tx) => {
         if ((tx as any).ignored) return;
-        const key = tx.invoiceDueDate?.slice(0, 7)
+
+        const key = (tx as any).manualInvoiceMonth
+          || (tx as any).invoiceMonthKey
+          || tx.invoiceDueDate?.slice(0, 7)
           || tx.dueDate?.slice(0, 7)
           || tx.invoiceDate?.slice(0, 7)
           || tx.date?.slice(0, 7);
+
         if (!key) return;
         // FIX: Only treat as payment/credit if it is explicitly Income OR has isRefund flag.
         // NÃO usa detecção automática por categoria 'Reembolso'.
@@ -514,54 +529,24 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       // Calculate invoice value based on context (filtered month vs current)
       let invoiceValue = 0;
 
-      // When a specific month is selected (dashboardDate), prioritize that month's bill/transactions
-      if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
-        // Use the bill amount for the selected month from API
-        invoiceValue = selectedMonthAmount;
-      } else if (dashboardDate) {
-        // No bill found for the selected month, calculate from transactions
-        // First try to get from cardMonthSums (based on invoiceDueDate/dueDate/invoiceDate/date)
-        const monthSum = cardMonthSums.get(dashboardDate) || 0;
+      // When a specific month is selected (dashboardDate):
+      // 1. Calculate from transactions (respecting manual overrides)
+      // 2. Fallback to API bill amount only if needed
+      if (dashboardDate) {
+        // Calculate from filteredTransactions which handles manualInvoiceMonth logic correctly
+        const txSum = filteredTransactions.reduce((sum, tx) => {
+          if ((tx as any).ignored) return sum;
+          if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
+          if (tx.type === 'expense') return sum + Math.abs(tx.amount);
+          if (tx.type === 'income') return sum - Math.abs(tx.amount);
+          return sum;
+        }, 0);
 
-        if (monthSum > 0) {
-          invoiceValue = monthSum;
-        } else {
-          // Also try to filter by transaction date (some old transactions may only have date)
-          const dateFilteredTx = cardTransactions.filter(tx => {
-            if ((tx as any).ignored) return false;
-            // Check multiple date fields
-            const txDate = tx.date?.slice(0, 7);
-            const txInvoiceDate = tx.invoiceDate?.slice(0, 7);
-            const txDueDate = tx.dueDate?.slice(0, 7);
-            const txInvoiceDueDate = tx.invoiceDueDate?.slice(0, 7);
+        invoiceValue = Math.max(0, txSum);
 
-            return txDate === dashboardDate ||
-              txInvoiceDate === dashboardDate ||
-              txDueDate === dashboardDate ||
-              txInvoiceDueDate === dashboardDate;
-          });
-
-          // Sum up all expenses from filtered transactions
-          const txSum = dateFilteredTx.reduce((sum, tx) => {
-            if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
-            if (tx.type === 'expense') return sum + Math.abs(tx.amount);
-            if (tx.type === 'income') return sum - Math.abs(tx.amount);
-            return sum;
-          }, 0);
-
-          invoiceValue = Math.max(0, txSum);
-
-          // If still zero but we have filteredTransactions, use that
-          if (invoiceValue === 0 && filteredTransactions.length > 0) {
-            const fallbackSum = filteredTransactions.reduce((sum, tx) => {
-              if ((tx as any).ignored) return sum;
-              if (isCreditCardPayment(tx.description || '', tx.category)) return sum;
-              if (tx.type === 'expense') return sum + Math.abs(tx.amount);
-              if (tx.type === 'income') return sum - Math.abs(tx.amount);
-              return sum;
-            }, 0);
-            invoiceValue = Math.max(0, fallbackSum);
-          }
+        // Fallback: Use API bill amount if transaction sum is 0 but we have a bill
+        if (invoiceValue === 0 && selectedMonthAmount !== null && selectedMonthAmount > 0) {
+          invoiceValue = selectedMonthAmount;
         }
       } else if (currentAmount !== null || nextAmount !== null) {
         // No specific month filter, use current/next bill logic
@@ -614,8 +599,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         // Chama buildInvoices para obter valores precisos
         const invoiceResult = buildInvoices(card, cardTransactions, card.id);
 
-        // Fatura Atual = currentInvoice.total do invoiceBuilder
-        currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
+        if (dashboardDate) {
+          // When dashboardDate is active, we rely on the calculated invoiceValue 
+          // (which respects manual moves for that month)
+          currentInvoiceValue = invoiceValue;
+        } else {
+          // Fatura Atual = currentInvoice.total do invoiceBuilder
+          currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
+        }
 
         // Próxima Fatura = primeira fatura futura ou 0
         nextInvoiceValue = invoiceResult.futureInvoices.length > 0

@@ -2097,230 +2097,206 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* --- TAB: FINANCE --- */}
                   {activeTab === 'finance' && (
-                     <div className="space-y-10 animate-fade-in max-w-2xl">
-                        <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Financeiro</h3>
-                           <p className="text-gray-400">Configurações de renda e datas.</p>
+                     <div className="space-y-6 animate-fade-in max-w-lg mx-auto pb-10">
+                        <div className="text-center mb-6">
+                           <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[#d97757]/10 mb-3 text-[#d97757]">
+                              <Coins size={24} />
+                           </div>
+                           <h3 className="text-2xl font-bold text-white">Configurar Renda</h3>
+                           <p className="text-sm text-gray-400">Defina seu salário base e adiantamentos.</p>
                         </div>
 
-                        <div className="space-y-6">
-                           <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
-                              <h4 className="text-lg font-bold text-white mb-4 flex items-center gap-2">
-                                 <Coins size={20} className="text-[#d97757]" /> Renda Mensal
-                              </h4>
+                        <div className="space-y-5">
+                           {/* Salário Base */}
+                           <div className="space-y-1.5">
+                              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Salário Base (R$)</label>
+                              <div className="relative">
+                                 <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 font-bold">R$</span>
+                                 <CurrencyInput
+                                    value={formData.baseSalary || 0}
+                                    onValueChange={(val) => setFormData({ ...formData, baseSalary: val })}
+                                    className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-bold"
+                                    placeholder="0,00"
+                                 />
+                              </div>
+                           </div>
 
-                              <div className="space-y-4">
-                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-400 ml-1">Salário Base</label>
-                                    <div className="relative">
-                                       <span className="absolute left-3 top-3 text-gray-500 font-bold text-lg">R$</span>
-                                       <CurrencyInput
-                                          value={formData.baseSalary || 0}
-                                          onValueChange={(val) => setFormData({ ...formData, baseSalary: val })}
-                                          className="input-primary pl-10 text-lg font-bold"
-                                          placeholder="0,00"
-                                       />
-                                    </div>
-                                    <p className="text-xs text-gray-500 ml-1">Valor usado para cálculo de horas extras.</p>
+                           {/* Dia do Pagamento */}
+                           <div className="space-y-1.5">
+                              <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Dia do Pagamento</label>
+                              <div className="relative">
+                                 <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
+                                 <CustomSelect
+                                    value={formData.salaryPaymentDay || ''}
+                                    onChange={(val) => {
+                                       const numVal = parseInt(val);
+                                       if (!isNaN(numVal) && numVal >= 1 && numVal <= 31) {
+                                          setFormData({ ...formData, salaryPaymentDay: numVal });
+                                       } else {
+                                          setFormData({ ...formData, salaryPaymentDay: val });
+                                       }
+                                    }}
+                                    options={[
+                                       { value: 'business_day_5', label: '5º Dia Útil' },
+                                       { value: 'business_day_last', label: 'Último Dia Útil' },
+                                       { value: 'last_day', label: 'Último Dia do Mês' },
+                                       ...Array.from({ length: 31 }, (_, i) => ({
+                                          value: i + 1,
+                                          label: `Dia ${i + 1}`
+                                       }))
+                                    ]}
+                                    placeholder="Selecione o dia"
+                                    portal={true}
+                                 />
+                              </div>
+                           </div>
+
+                           {/* Isenção de Impostos */}
+                           <div className="bg-gray-900/40 rounded-xl p-3 border border-gray-800/60 flex items-center justify-between">
+                              <div>
+                                 <span className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                                    <Sparkles size={14} className="text-yellow-500" /> Isento de Descontos
+                                 </span>
+                                 <span className="text-[10px] text-gray-500 block mt-0.5">INSS/IRRF zerados no salário principal.</span>
+                              </div>
+                              <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                                 <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, salaryExemptFromDiscounts: false })}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!formData.salaryExemptFromDiscounts ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                 >
+                                    Não
+                                 </button>
+                                 <button
+                                    type="button"
+                                    onClick={() => setFormData({ ...formData, salaryExemptFromDiscounts: true })}
+                                    className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${formData.salaryExemptFromDiscounts ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                 >
+                                    Sim
+                                 </button>
+                              </div>
+                           </div>
+
+                           {/* Configuração de Vale */}
+                           <div className="pt-2 border-t border-gray-800/50 space-y-4">
+                              <div className="flex items-center justify-between">
+                                 <span className="text-xs font-medium text-gray-400 flex items-center gap-2">
+                                    <Wallet size={14} /> Recebe Adiantamento (Vale)?
+                                 </span>
+                                 <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                                    <button
+                                       type="button"
+                                       onClick={() => {
+                                          setHasVale(false);
+                                          setFormData({
+                                             ...formData,
+                                             salaryAdvancePercent: 0,
+                                             salaryAdvanceValue: 0,
+                                             salaryAdvanceDay: 0
+                                          });
+                                       }}
+                                       className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!hasVale ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                       Não
+                                    </button>
+                                    <button
+                                       type="button"
+                                       onClick={() => {
+                                          setHasVale(true);
+                                          // Set defaults if needed
+                                          if (!formData.salaryAdvancePercent) {
+                                             const base = formData.baseSalary || 0;
+                                             const percent = 40;
+                                             const value = parseFloat((base * (percent / 100)).toFixed(2));
+                                             setFormData({
+                                                ...formData,
+                                                salaryAdvancePercent: percent,
+                                                salaryAdvanceValue: value,
+                                                salaryAdvanceDay: 15
+                                             });
+                                          }
+                                       }}
+                                       className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${hasVale ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                                    >
+                                       Sim
+                                    </button>
                                  </div>
+                              </div>
 
-                                 <div className="space-y-2">
-                                    <label className="text-xs font-medium text-gray-400 ml-1">Dia do Pagamento</label>
-                                    <div className="w-full">
-
-                                       <div className="relative z-20">
-                                          <CustomSelect
-                                             value={formData.salaryPaymentDay || ''}
-                                             onChange={(val) => {
-                                                const numVal = parseInt(val);
-                                                // If it's a valid number 1-31, store as number
-                                                if (!isNaN(numVal) && numVal >= 1 && numVal <= 31) {
-                                                   setFormData({ ...formData, salaryPaymentDay: numVal });
-                                                } else {
-                                                   // Otherwise store as string (variable date code)
-                                                   setFormData({ ...formData, salaryPaymentDay: val });
-                                                }
-                                             }}
-                                             options={[
-                                                { value: 'business_day_5', label: '5º Dia Útil' },
-                                                { value: 'business_day_last', label: 'Último Dia Útil' },
-                                                { value: 'last_day', label: 'Último Dia do Mês' },
-                                                ...Array.from({ length: 31 }, (_, i) => ({
-                                                   value: i + 1,
-                                                   label: `Dia ${i + 1}`
-                                                }))
-                                             ]}
-                                             placeholder="Selecione o dia"
-                                             portal={true}
-                                             icon={<span className="text-gray-500"><Calendar size={14} /></span>}
-                                          />
+                              {hasVale && (
+                                 <div className="animate-fade-in space-y-4 bg-gray-900/20 p-4 rounded-xl border border-gray-800/40">
+                                    <div className="grid grid-cols-2 gap-4">
+                                       <div className="space-y-1.5">
+                                          <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Porcentagem (%)</label>
+                                          <div className="relative">
+                                             <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                                             <input
+                                                type="number"
+                                                min="1"
+                                                max="80"
+                                                value={formData.salaryAdvancePercent || ''}
+                                                onChange={(e) => {
+                                                   const percent = parseFloat(e.target.value);
+                                                   const base = formData.baseSalary || 0;
+                                                   const newVal = base * (percent / 100);
+                                                   setFormData({
+                                                      ...formData,
+                                                      salaryAdvancePercent: percent,
+                                                      salaryAdvanceValue: parseFloat(newVal.toFixed(2))
+                                                   });
+                                                }}
+                                                className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center font-bold"
+                                             />
+                                          </div>
                                        </div>
-                                    </div>
-                                    <p className="text-xs text-gray-500 ml-1">Dia usual de recebimento do salário.</p>
-                                 </div>
-                              </div>
-
-                              {/* Salary Tax Exemption Option */}
-                              <div
-                                 className="flex items-center gap-2 mt-4 pt-4 border-t border-gray-800 cursor-pointer group"
-                                 onClick={() => setFormData({ ...formData, salaryExemptFromDiscounts: !formData.salaryExemptFromDiscounts })}
-                              >
-                                 <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.salaryExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                    <Check size={12} strokeWidth={4} />
-                                 </div>
-                                 <div className="flex-1 min-w-0">
-                                    <span className="text-sm font-medium text-gray-300 select-none group-hover:text-white transition-colors">
-                                       Isento de descontos (INSS/IRRF zerados)
-                                    </span>
-                                    <p className="text-xs text-gray-500">Para salários que não sofrem desconto de impostos.</p>
-                                 </div>
-                              </div>
-                           </div>
-
-                           <div
-                              className={`bg-gray-900/30 border rounded-2xl p-5 cursor-pointer group transition-colors ${hasVale ? 'border-[#d97757]/30 hover:border-[#d97757]/50' : 'border-gray-800 hover:border-gray-700'}`}
-                              onClick={() => {
-                                 if (hasVale) {
-                                    setHasVale(false);
-                                    setFormData({
-                                       ...formData,
-                                       salaryAdvancePercent: 0,
-                                       salaryAdvanceValue: 0,
-                                       salaryAdvanceDay: 0
-                                    });
-                                    return;
-                                 }
-
-                                 const base = formData.baseSalary || 0;
-                                 const percent = formData.salaryAdvancePercent && formData.salaryAdvancePercent > 0
-                                    ? formData.salaryAdvancePercent
-                                    : 40;
-                                 const value = formData.salaryAdvanceValue && formData.salaryAdvanceValue > 0
-                                    ? formData.salaryAdvanceValue
-                                    : parseFloat((base * (percent / 100)).toFixed(2));
-                                 const day = formData.salaryAdvanceDay && formData.salaryAdvanceDay > 0
-                                    ? formData.salaryAdvanceDay
-                                    : 15;
-
-                                 setHasVale(true);
-                                 setFormData({
-                                    ...formData,
-                                    salaryAdvancePercent: percent,
-                                    salaryAdvanceValue: value,
-                                    salaryAdvanceDay: day
-                                 });
-                              }}
-                           >
-                              <div className="flex items-center gap-3">
-                                 <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${hasVale ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                    <Check size={12} strokeWidth={4} />
-                                 </div>
-                                 <div className="flex-1 min-w-0">
-                                    <p className="text-sm font-bold text-white">Recebo Adiantamento (Vale)</p>
-                                    <p className="text-xs text-gray-500">Ative para configurar o simulador do vale.</p>
-                                 </div>
-                              </div>
-                           </div>
-
-                           {/* Vale (Adiantamento) Configuration */}
-                           {hasVale && (
-                              <div className="bg-gray-900/30 border border-gray-800 rounded-2xl p-6">
-                                 <div className="flex items-center justify-between mb-4">
-                                    <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                                       <Wallet size={20} className="text-[#d97757]" /> Adiantamento Salarial (Vale)
-                                    </h4>
-                                    <div className="bg-[#d97757]/10 text-[#d97757] text-xs px-2 py-1 rounded-lg border border-[#d97757]/20 font-medium">
-                                       Simulador Ativo
-                                    </div>
-                                 </div>
-
-                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                       <div className="grid grid-cols-3 gap-4">
-                                          <div className="space-y-2">
-                                             <label className="text-xs font-medium text-gray-400 ml-1">% do Vale</label>
-                                             <div className="relative">
-                                                <input
-                                                   type="number"
-                                                   value={formData.salaryAdvancePercent || ''}
-                                                   onChange={(e) => {
-                                                      const percent = parseFloat(e.target.value);
-                                                      const base = formData.baseSalary || 0;
-                                                      const newVal = base * (percent / 100);
-                                                      setFormData({
-                                                         ...formData,
-                                                         salaryAdvancePercent: percent,
-                                                         salaryAdvanceValue: parseFloat(newVal.toFixed(2))
-                                                      });
-                                                   }}
-                                                   placeholder="40"
-                                                   className="input-primary pr-8 font-bold"
-                                                />
-                                                <span className="absolute right-3 top-3.5 text-gray-500 font-bold">%</span>
-                                             </div>
-                                          </div>
-                                          <div className="space-y-2">
-                                             <label className="text-xs font-medium text-gray-400 ml-1">Valor Fixo (R$)</label>
-                                             <div className="relative">
-                                                <span className="absolute left-2 top-3.5 text-gray-500 font-bold text-xs">R$</span>
-                                                <CurrencyInput
-                                                   value={formData.salaryAdvanceValue || 0}
-                                                   onValueChange={(val) => {
-                                                      const base = formData.baseSalary || 0;
-                                                      const newPercent = base > 0 ? (val / base) * 100 : 0;
-                                                      setFormData({
-                                                         ...formData,
-                                                         salaryAdvanceValue: val,
-                                                         salaryAdvancePercent: parseFloat(newPercent.toFixed(1))
-                                                      });
-                                                   }}
-                                                   placeholder="0,00"
-                                                   className="input-primary pl-7 font-bold"
-                                                />
-                                             </div>
-                                          </div>
-                                          <div className="space-y-2">
-                                             <label className="text-xs font-medium text-gray-400 ml-1">Dia do Vale</label>
+                                       <div className="space-y-1.5">
+                                          <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Dia do Vale</label>
+                                          <div className="relative">
+                                             <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
                                              <input
                                                 type="number"
                                                 min="1"
                                                 max="31"
                                                 value={formData.salaryAdvanceDay || ''}
                                                 onChange={(e) => setFormData({ ...formData, salaryAdvanceDay: parseInt(e.target.value) })}
-                                                placeholder="15"
-                                                className="input-primary font-bold"
+                                                className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center font-bold"
                                              />
                                           </div>
                                        </div>
+                                    </div>
 
-                                       <div className="space-y-2 border-t border-gray-800 pt-4">
-                                          <div className="flex justify-between items-center">
-                                             <label className="text-xs font-medium text-gray-400">Outros Descontos (Simulação)</label>
-                                             <button
-                                                onClick={() => setFormData({
-                                                   ...formData,
-                                                   valeDeductions: [...(formData.valeDeductions || []), { id: Date.now().toString(), name: '', value: '', type: 'R$' }]
-                                                })}
-                                                className="text-[10px] bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-gray-300 transition-colors flex items-center gap-1"
-                                             >
-                                                <Plus size={12} /> Adicionar
-                                             </button>
-                                          </div>
+                                    {/* Preview Value */}
+                                    <div className="flex gap-2 text-xs pt-2">
+                                       <div className="flex-1 bg-gray-900/50 p-2 rounded-xl border border-gray-800 flex flex-col items-center">
+                                          <p className="text-gray-500 mb-0.5">Valor do Vale</p>
+                                          <p className="text-[#eab3a3] font-mono font-bold">
+                                             {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(formData.salaryAdvanceValue || 0)}
+                                          </p>
+                                       </div>
+                                    </div>
 
-                                          <div
-                                             className="flex items-center gap-2 mb-3 cursor-pointer group"
-                                             onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
+                                    {/* Divider */}
+                                    <div className="w-full h-px bg-gray-800/50 my-2"></div>
+
+                                    {/* Outros Descontos Section */}
+                                    <div className="space-y-3">
+                                       <div className="flex items-center justify-between">
+                                          <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Outros Descontos no Vale</label>
+                                          <button
+                                             type="button"
+                                             onClick={() => setFormData({
+                                                ...formData,
+                                                valeDeductions: [...(formData.valeDeductions || []), { id: Date.now().toString(), name: '', value: '', type: 'R$' }]
+                                             })}
+                                             className="text-[10px] bg-gray-800 hover:bg-gray-700 px-2 py-1 rounded text-gray-300 transition-colors flex items-center gap-1"
                                           >
-                                             <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white shadow-lg shadow-[#d97757]/20' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
-                                                <Check size={12} strokeWidth={4} />
-                                             </div>
-                                             <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors font-medium">
-                                                Isento de descontos (INSS/IRRF zerados)
-                                             </span>
-                                          </div>
+                                             <Plus size={12} /> Adicionar
+                                          </button>
+                                       </div>
 
+                                       <div className="space-y-2">
                                           {(formData.valeDeductions || []).map((deduction, index) => (
-                                             <div key={deduction.id} className="flex gap-2 animate-fade-in">
+                                             <div key={deduction.id} className="flex gap-2 animate-fade-in group">
                                                 <input
                                                    type="text"
                                                    placeholder="Nome"
@@ -2330,9 +2306,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                       newArr[index].name = e.target.value;
                                                       setFormData({ ...formData, valeDeductions: newArr });
                                                    }}
-                                                   className="input-primary text-xs py-1.5 flex-1 min-w-0"
+                                                   className="input-primary text-xs py-1.5 px-3 flex-1 min-w-0 bg-gray-950/50 border-gray-800"
                                                 />
-                                                <div className="flex gap-1 w-24 shrink-0">
+                                                <div className="relative w-24 shrink-0">
                                                    {deduction.type === 'R$' ? (
                                                       <CurrencyInput
                                                          value={parseFloat(deduction.value.replace(',', '.') || '0')}
@@ -2341,7 +2317,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                             newArr[index].value = val.toString();
                                                             setFormData({ ...formData, valeDeductions: newArr });
                                                          }}
-                                                         className="input-primary text-xs py-1.5 w-full text-right"
+                                                         className="input-primary text-xs py-1.5 px-2 w-full text-right bg-gray-950/50 border-gray-800"
                                                          placeholder="0,00"
                                                       />
                                                    ) : (
@@ -2354,141 +2330,175 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                                             newArr[index].value = e.target.value;
                                                             setFormData({ ...formData, valeDeductions: newArr });
                                                          }}
-                                                         className="input-primary text-xs py-1.5 w-full text-right"
+                                                         className="input-primary text-xs py-1.5 px-2 w-full text-right bg-gray-950/50 border-gray-800"
                                                       />
                                                    )}
+                                                   <button
+                                                      onClick={() => {
+                                                         const newArr = [...(formData.valeDeductions || [])];
+                                                         newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
+                                                         setFormData({ ...formData, valeDeductions: newArr });
+                                                      }}
+                                                      className="absolute left-1 top-1/2 -translate-y-1/2 text-[9px] text-gray-500 hover:text-white font-mono px-1 z-10"
+                                                   >
+                                                      {deduction.type}
+                                                   </button>
                                                 </div>
-                                                <button
-                                                   onClick={() => {
-                                                      const newArr = [...(formData.valeDeductions || [])];
-                                                      newArr[index].type = newArr[index].type === 'R$' ? '%' : 'R$';
-                                                      setFormData({ ...formData, valeDeductions: newArr });
-                                                   }}
-                                                   className="bg-gray-800 text-gray-400 text-[10px] px-1.5 rounded border border-gray-700 shrink-0 w-8"
-                                                >
-                                                   {deduction.type}
-                                                </button>
                                                 <button
                                                    onClick={() => setFormData({
                                                       ...formData,
                                                       valeDeductions: (formData.valeDeductions || []).filter(d => d.id !== deduction.id)
                                                    })}
-                                                   className="text-red-400 hover:bg-red-900/20 p-1.5 rounded transition-colors"
+                                                   className="text-gray-600 hover:text-red-400 p-1.5 rounded transition-colors opacity-0 group-hover:opacity-100"
                                                 >
                                                    <Trash2 size={14} />
                                                 </button>
                                              </div>
                                           ))}
                                           {(formData.valeDeductions || []).length === 0 && (
-                                             <p className="text-[10px] text-gray-600 italic">Nenhum desconto extra cadastrado.</p>
+                                             <p className="text-[10px] text-gray-600 italic text-center py-2 border border-dashed border-gray-800 rounded-lg">Nenhum desconto extra.</p>
                                           )}
                                        </div>
-                                    </div>
 
-                                    {/* Preview Card */}
-                                    <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
-                                       <div>
-                                          <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2 mb-3">Previsão de Fechamento</h5>
-                                          {(() => {
-                                             const base = formData.baseSalary || 0;
-                                             const dependents = 0; // Could add input for this later or fetch from profile
-                                             const isExempt = formData.valeExemptFromDiscounts || false;
-
-                                             // CLT Logic (Same as SalaryManager)
-                                             let inss = 0;
-                                             if (!isExempt) {
-                                                if (base <= 1518.00) inss = base * 0.075;
-                                                else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
-                                                else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
-                                                else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
-                                                else inss = 951.63;
-                                             }
-
-                                             const deductibleDependents = dependents * 189.59;
-                                             const baseA = base - inss - deductibleDependents;
-                                             const simplifiedDiscount = 607.20;
-                                             const baseB = base - simplifiedDiscount;
-                                             const finalBase = Math.min(baseA, baseB);
-
-                                             const calcTax = (b: number) => {
-                                                if (b <= 2428.80) return 0;
-                                                if (b <= 2826.65) return (b * 0.075) - 182.16;
-                                                if (b <= 3751.05) return (b * 0.15) - 394.16;
-                                                if (b <= 4664.68) return (b * 0.225) - 675.49;
-                                                return (b * 0.275) - 908.73;
-                                             };
-
-                                             // Correct IRRF calculation logic
-                                             let irrf = 0;
-                                             if (!isExempt) {
-                                                const taxA = Math.max(0, calcTax(baseA));
-                                                const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
-                                                irrf = Math.min(taxA, taxB);
-                                             }
-
-                                             const valePercent = formData.salaryAdvancePercent || 40;
-                                             const valeAmount = base * (valePercent / 100);
-
-                                             const totalCustom = (formData.valeDeductions || []).reduce((acc, curr) => {
-                                                const val = parseFloat(curr.value.replace(',', '.'));
-                                                if (isNaN(val)) return acc;
-                                                if (curr.type === '%') return acc + (base * (val / 100));
-                                                return acc + val;
-                                             }, 0);
-
-                                             const net = base - inss - irrf - valeAmount - totalCustom;
-
-                                             const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-                                             return (
-                                                <div className="space-y-2 text-xs">
-                                                   <div className="flex justify-between">
-                                                      <span className="text-gray-400">Salário Bruto</span>
-                                                      <span className="text-gray-300 font-medium">{format(base)}</span>
-                                                   </div>
-                                                   <div className="flex justify-between">
-                                                      <span className="text-gray-400">INSS (Estimado)</span>
-                                                      <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(inss)}</span>
-                                                   </div>
-                                                   <div className="flex justify-between">
-                                                      <span className="text-gray-400">IRRF (Estimado)</span>
-                                                      <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(irrf)}</span>
-                                                   </div>
-                                                   <div className="flex justify-between py-1 border-y border-gray-800/50 my-1">
-                                                      <span className="text-[#d97757]">Vale ({valePercent}%)</span>
-                                                      <span className="text-[#d97757] font-bold">- {format(valeAmount)}</span>
-                                                   </div>
-                                                   {totalCustom > 0 && (
-                                                      <div className="flex justify-between">
-                                                         <span className="text-gray-400">Outros</span>
-                                                         <span className="text-red-400">- {format(totalCustom)}</span>
-                                                      </div>
-                                                   )}
-                                                   <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
-                                                      <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
-                                                      <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
-                                                         <NumberFlow
-                                                            value={net}
-                                                            format={{ style: 'currency', currency: 'BRL' }}
-                                                            locales="pt-BR"
-                                                         />
-                                                      </span>
-                                                   </div>
-                                                </div>
-                                             );
-                                          })()}
+                                       <div
+                                          className="flex items-center gap-2 mt-3 cursor-pointer group"
+                                          onClick={() => setFormData({ ...formData, valeExemptFromDiscounts: !formData.valeExemptFromDiscounts })}
+                                       >
+                                          <div className={`w-4 h-4 rounded flex items-center justify-center transition-all border ${formData.valeExemptFromDiscounts ? 'bg-[#d97757] border-[#d97757] text-white' : 'bg-gray-800 border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                                             <Check size={10} strokeWidth={4} />
+                                          </div>
+                                          <span className="text-[10px] text-gray-400 select-none group-hover:text-gray-300 transition-colors">
+                                             Isento de descontos no vale (INSS/IRRF)
+                                          </span>
                                        </div>
                                     </div>
                                  </div>
-                              </div>
-                           )}
+                              )}
+                           </div>
 
-                           <button
-                              onClick={handleSave}
-                              className="px-6 py-2.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center gap-2 text-sm"
-                           >
-                              <Save size={16} /> Salvar Alterações
-                           </button>
+                           <div className="pt-4">
+                              <button
+                                 onClick={handleSave}
+                                 className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
+                              >
+                                 <Save size={18} />
+                                 Salvar Alterações
+                              </button>
+                           </div>
+                        </div>
+
+                        {/* Preview Card */}
+                        <div className="bg-gray-950 rounded-xl p-4 border border-gray-800 flex flex-col justify-between">
+                           <div>
+                              <h5 className="text-gray-500 text-[10px] font-bold uppercase tracking-wider border-b border-gray-800 pb-2 mb-3">Previsão de Fechamento</h5>
+                              {(() => {
+                                 const base = formData.baseSalary || 0;
+                                 const dependents = 0; // Could add input for this later or fetch from profile
+                                 const isExempt = formData.salaryExemptFromDiscounts || false;
+                                 const isValeExempt = formData.valeExemptFromDiscounts || false;
+
+                                 // CLT Logic (Same as SalaryManager)
+                                 let inss = 0;
+                                 if (!isExempt) {
+                                    if (base <= 1518.00) inss = base * 0.075;
+                                    else if (base <= 2793.88) inss = (base * 0.09) - 22.77;
+                                    else if (base <= 4190.83) inss = (base * 0.12) - 106.59;
+                                    else if (base <= 8157.41) inss = (base * 0.14) - 190.40;
+                                    else inss = 951.63;
+                                 }
+
+                                 const deductibleDependents = dependents * 189.59;
+                                 const baseA = base - inss - deductibleDependents;
+                                 const simplifiedDiscount = 607.20;
+                                 const baseB = base - simplifiedDiscount;
+                                 const finalBase = Math.min(baseA, baseB);
+
+                                 const calcTax = (b: number) => {
+                                    if (b <= 2428.80) return 0;
+                                    if (b <= 2826.65) return (b * 0.075) - 182.16;
+                                    if (b <= 3751.05) return (b * 0.15) - 394.16;
+                                    if (b <= 4664.68) return (b * 0.225) - 675.49;
+                                    return (b * 0.275) - 908.73;
+                                 };
+
+                                 // Correct IRRF calculation logic
+                                 let irrf = 0;
+                                 if (!isExempt) {
+                                    const taxA = Math.max(0, calcTax(baseA));
+                                    const taxB = Math.max(0, calcTax(baseB)); // baseB is gross - simplified
+                                    irrf = Math.min(taxA, taxB);
+                                 }
+
+                                 const valePercent = formData.salaryAdvancePercent || 0;
+                                 const valeAmount = base * (valePercent / 100);
+
+                                 let totalCustomDeductions = 0;
+                                 if (hasVale) { // Only apply custom deductions if vale is enabled
+                                    totalCustomDeductions = (formData.valeDeductions || []).reduce((acc, curr) => {
+                                       const val = parseFloat(curr.value.replace(',', '.'));
+                                       if (isNaN(val)) return acc;
+                                       if (curr.type === '%') return acc + (base * (val / 100));
+                                       return acc + val;
+                                    }, 0);
+                                 }
+
+                                 // Calculate INSS/IRRF for vale if not exempt
+                                 let valeInss = 0;
+                                 let valeIrrf = 0;
+                                 if (hasVale && !isValeExempt) {
+                                    // For simplicity, assuming vale is part of the gross for calculation,
+                                    // but typically INSS/IRRF are calculated on the full salary.
+                                    // This is a simplified model. For accurate calculation, need to know how vale affects gross.
+                                    // For now, let's assume it's a deduction from the net.
+                                    // If vale is considered part of the gross for tax purposes, the above INSS/IRRF would change.
+                                    // For this preview, we'll treat it as a post-tax deduction for simplicity.
+                                 }
+
+
+                                 const net = base - inss - irrf - valeAmount - totalCustomDeductions;
+
+                                 const format = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+
+                                 return (
+                                    <div className="space-y-2 text-xs">
+                                       <div className="flex justify-between">
+                                          <span className="text-gray-400">Salário Bruto</span>
+                                          <span className="text-gray-300 font-medium">{format(base)}</span>
+                                       </div>
+                                       <div className="flex justify-between">
+                                          <span className="text-gray-400">INSS (Estimado)</span>
+                                          <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(inss)}</span>
+                                       </div>
+                                       <div className="flex justify-between">
+                                          <span className="text-gray-400">IRRF (Estimado)</span>
+                                          <span className={`text-red-400 ${isExempt ? 'line-through opacity-50' : ''}`}>- {format(irrf)}</span>
+                                       </div>
+                                       {hasVale && (
+                                          <div className="flex justify-between py-1 border-y border-gray-800/50 my-1">
+                                             <span className="text-[#d97757]">Vale ({valePercent}%)</span>
+                                             <span className="text-[#d97757] font-bold">- {format(valeAmount)}</span>
+                                          </div>
+                                       )}
+                                       {totalCustomDeductions > 0 && (
+                                          <div className="flex justify-between">
+                                             <span className="text-gray-400">Outros Descontos</span>
+                                             <span className="text-red-400">- {format(totalCustomDeductions)}</span>
+                                          </div>
+                                       )}
+                                       <div className="pt-2 mt-2 border-t border-gray-800 flex justify-between items-center">
+                                          <span className="text-gray-300 font-bold uppercase text-[10px]">Líquido Restante</span>
+                                          <span className={`text-xl font-bold ${net > 0 ? 'text-green-400' : 'text-gray-500'}`}>
+                                             <NumberFlow
+                                                value={net}
+                                                format={{ style: 'currency', currency: 'BRL' }}
+                                                locales="pt-BR"
+                                             />
+                                          </span>
+                                       </div>
+                                    </div>
+                                 );
+                              })()}
+                           </div>
                         </div>
                      </div>
                   )}
@@ -2588,278 +2598,284 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                   {/* --- TAB: PLANS (REDESIGNED) --- */}
                   {/* --- TAB: PLANS (REDESIGNED) --- */}
-                  {activeTab === 'plan' && (
-                     <div className="space-y-8 animate-fade-in max-w-3xl mx-auto">
-                        <div>
-                           <h3 className="text-3xl font-bold text-white mb-2">Assinatura & Cobrança</h3>
-                           <p className="text-gray-400">Gerencie seu plano e método de pagamento.</p>
-                        </div>
 
-                        {formData.familyRole === 'member' ? (
-                           // MEMBER VIEW
-                           <div className="bg-gray-900/50 border border-[#373734] rounded-3xl p-8 text-center space-y-6">
-                              <div className="w-20 h-20 mx-auto bg-[#d97757]/10 rounded-full flex items-center justify-center ring-1 ring-[#d97757]/20">
-                                 <img src={familiaImg} alt="Family" className="w-10 h-10 object-contain" />
-                              </div>
-                              <div>
-                                 <h2 className="text-2xl font-bold text-white mb-2">Plano Familiar</h2>
-                                 <p className="text-gray-400 max-w-md mx-auto">
-                                    Você faz parte de um plano familiar. A assinatura e o pagamento são gerenciados pelo administrador da família.
-                                 </p>
-                              </div>
-                              <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-full border border-gray-700 text-sm text-gray-300">
-                                 <CheckCircle size={16} className="text-green-500" />
-                                 Benefícios Premium Ativos
-                              </div>
+
+                  {/* --- TAB: PLANS (REDESIGNED) --- */}
+                  {/* --- TAB: PLANS (REDESIGNED) --- */}
+                  {
+                     activeTab === 'plan' && (
+                        <div className="space-y-8 animate-fade-in max-w-3xl mx-auto">
+                           <div>
+                              <h3 className="text-3xl font-bold text-white mb-2">Assinatura & Cobrança</h3>
+                              <p className="text-gray-400">Gerencie seu plano e método de pagamento.</p>
                            </div>
-                        ) : (
-                           // OWNER / INDIVIDUAL VIEW
-                           <div className="space-y-6">
-                              {/* 1. Plan Status Card */}
-                              <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
-                                 <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
-                                    <div className="space-y-4">
-                                       <div className="flex items-center gap-3">
-                                          <div className={`p-3 rounded-xl bg-gray-950/50 border border-white/5 ${planStyle.text} shadow-lg`}>
-                                             {planStyle.icon}
-                                          </div>
-                                          <div>
-                                             <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
-                                             <h2 className="text-3xl font-bold text-white flex items-center gap-3">
-                                                {status === 'trial' ? 'Teste Grátis' : planStyle.label}
-                                                {status === 'trial' && <span className="text-xs bg-[#d97757] text-white px-2 py-0.5 rounded-full">PRO</span>}
-                                             </h2>
-                                          </div>
-                                       </div>
 
-                                       <div className="flex gap-6 text-sm">
-                                          <div className="flex items-center gap-2 text-gray-300">
-                                             <Calendar size={16} className="text-gray-500" />
-                                             {status === 'trial' ? (
-                                                <span>Expira em: <b className="text-white">{formData.subscription?.trialEndsAt ? new Date(formData.subscription.trialEndsAt).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
-                                             ) : (
-                                                <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
-                                             )}
-                                          </div>
-                                          {plan !== 'starter' && (
-                                             <div className="flex items-center gap-2 text-gray-300">
-                                                <Coins size={16} className="text-gray-500" />
-                                                <span>
-                                                   Próxima fatura: <b className="text-white">R$ {plan === 'pro' ? (cycle === 'annual' ? '399,90' : '35,90') : (cycle === 'annual' ? '749,00' : '69,90')}</b>
-                                                </span>
-                                             </div>
-                                          )}
-                                          <div className="flex items-center gap-2 text-gray-300">
-                                             <Coins size={16} className="text-gray-500" />
-                                             <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
-                                          </div>
-                                       </div>
-                                    </div>
-
-                                    <div className="flex flex-col justify-center gap-3 min-w-[200px]">
-                                       <button
-                                          onClick={onNavigateToSubscription}
-                                          className="w-full py-2.5 rounded-xl hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
-                                       >
-                                          {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
-                                       </button>
-                                    </div>
+                           {formData.familyRole === 'member' ? (
+                              // MEMBER VIEW
+                              <div className="bg-gray-900/50 border border-[#373734] rounded-3xl p-8 text-center space-y-6">
+                                 <div className="w-20 h-20 mx-auto bg-[#d97757]/10 rounded-full flex items-center justify-center ring-1 ring-[#d97757]/20">
+                                    <img src={familiaImg} alt="Family" className="w-10 h-10 object-contain" />
                                  </div>
-
-                                 {/* Background Decor */}
-                                 <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
+                                 <div>
+                                    <h2 className="text-2xl font-bold text-white mb-2">Plano Familiar</h2>
+                                    <p className="text-gray-400 max-w-md mx-auto">
+                                       Você faz parte de um plano familiar. A assinatura e o pagamento são gerenciados pelo administrador da família.
+                                    </p>
+                                 </div>
+                                 <div className="inline-flex items-center gap-2 px-4 py-2 bg-gray-800 rounded-full border border-gray-700 text-sm text-gray-300">
+                                    <CheckCircle size={16} className="text-green-500" />
+                                    Benefícios Premium Ativos
+                                 </div>
                               </div>
-
-                              {/* Warning for Missing Payment Method on Paid Plans */}
-                              {plan !== 'starter' && !formData.paymentMethodDetails && status === 'active' && (
-                                 <div className="mb-6 animate-fade-in">
-                                    <div className="flex items-start gap-3">
-                                       <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
-                                       <div className="text-sm">
-                                          <p className="text-gray-300 leading-relaxed">
-                                             <span className="text-red-400 font-bold">Atenção: Cartão Necessário.</span> Você está no plano <strong>{planStyle.label}</strong> sem um cartão para a próxima renovação ({nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'breve'}).
-                                             O plano será cancelado automaticamente se não for regularizado.
-                                          </p>
-                                          <button
-                                             onClick={() => setIsCardModalOpen(true)}
-                                             className="mt-2 px-3 py-1.5 -ml-3 rounded-xl hover:bg-red-500/10 text-red-500 hover:text-red-400 text-xs font-bold transition-colors flex items-center gap-2"
-                                          >
-                                             <Plus size={12} /> Adicionar Cartão Agora
-                                          </button>
-                                       </div>
-                                    </div>
-                                 </div>
-                              )}
-
-                              {/* 2. Payment & Billing Details */}
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-
-                                 {/* Payment Method Card - Simplified */}
-                                 <div className="flex flex-col justify-between h-full p-2">
-                                    <div className="flex justify-between items-start mb-6">
-                                       <h4 className="font-bold text-white flex items-center gap-2">
-                                          <CreditCard size={18} className="text-gray-400" /> Método de Pagamento <span className="ml-2 hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-500 uppercase tracking-wider"><ShieldCheck size={12} /> Ambiente Seguro</span>
-                                       </h4>
-                                       <button
-                                          onClick={() => setIsCardModalOpen(true)}
-                                          className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
-                                       >
-                                          {formData.paymentMethodDetails ? 'Alterar' : 'Adicionar'}
-                                       </button>
-                                    </div>
-
-                                    {formData.paymentMethodDetails ? (
-                                       <>
-                                          {/* Visual Card Mockup - Active */}
-                                          <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700/50 relative overflow-hidden mb-4 shadow-lg">
-                                             <div className="relative z-10">
-                                                <div className="flex justify-between items-center mb-8">
-                                                   <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center backdrop-blur-md">
-                                                      <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
-                                                      <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
-                                                   </div>
-                                                   <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
-                                                      {formData.paymentMethodDetails.brand || 'Card'}
-                                                   </span>
-                                                </div>
-                                                <div className="space-y-4">
-                                                   <div>
-                                                      <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Número</p>
-                                                      <p className="text-sm font-mono text-gray-200 tracking-widest flex items-center gap-2">
-                                                         <span className="text-gray-600">•••• •••• ••••</span>
-                                                         {formData.paymentMethodDetails.last4}
-                                                      </p>
-                                                   </div>
-                                                   <div className="flex justify-between items-end">
-                                                      <div>
-                                                         <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Titular</p>
-                                                         <p className="text-xs font-medium text-gray-200 uppercase tracking-wide truncate max-w-[120px]">
-                                                            {formData.paymentMethodDetails.holder}
-                                                         </p>
-                                                      </div>
-                                                      <div className="text-right">
-                                                         <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Validade</p>
-                                                         <p className="text-xs font-mono text-gray-200">{formData.paymentMethodDetails.expiry}</p>
-                                                      </div>
-                                                   </div>
-                                                </div>
-                                             </div>
-                                             {/* Shine effect */}
-                                             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
-                                          </div>
-
-                                          <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2.5 rounded-xl border border-green-500/10">
-                                             <ShieldCheck size={14} /> Pagamento seguro via Asaas
-                                          </div>
-                                       </>
-                                    ) : (
-                                       <>
-                                          {/* Empty State */}
-                                          <div className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center transition-colors ${plan !== 'starter' ? 'border-red-500/30 bg-red-500/5 hover:border-red-500/50' : 'border-[#373734] bg-gray-900/20 hover:border-gray-700'}`}>
-                                             <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${plan !== 'starter' ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-600'}`}>
-                                                {plan !== 'starter' ? <AlertTriangle size={24} /> : <CreditCard size={20} />}
-                                             </div>
-                                             <p className={`text-sm font-bold mb-1 ${plan !== 'starter' ? 'text-red-400' : 'text-gray-400'}`}>
-                                                {plan !== 'starter' ? 'Cartão Necessário' : 'Nenhum cartão vinculado'}
-                                             </p>
-                                             <p className="text-xs text-gray-500 max-w-[180px]">
-                                                {plan !== 'starter'
-                                                   ? 'Sua assinatura será cancelada se não houver um cartão para a próxima cobrança.'
-                                                   : 'Adicione um método de pagamento para ativar a renovação.'}
-                                             </p>
-                                          </div>
-                                          <button
-                                             onClick={() => setIsCardModalOpen(true)}
-                                             className="w-full py-3 bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-dashed border-gray-700 hover:border-gray-500"
-                                          >
-                                             Adicionar Cartão
-                                          </button>
-                                       </>
-                                    )}
-                                 </div>
-
-
-                              </div>
-
-                              {/* Billing History List - Full Width Below */}
-                              <div className="mt-6 border-t border-[#373734]/50 pt-6">
-                                 <h4 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
-                                    <Clock size={16} className="text-gray-400" /> Histórico de Cobranças
-                                 </h4>
-                                 <div className="space-y-2">
-                                    {billingHistory.map((item) => (
-                                       <div
-                                          key={item.id}
-                                          onClick={() => openReceipt(item)}
-                                          className="flex items-center justify-between p-3 rounded-xl bg-gray-900/30 hover:bg-gray-800/50 border border-[#373734]/50 cursor-pointer transition-colors group"
-                                       >
+                           ) : (
+                              // OWNER / INDIVIDUAL VIEW
+                              <div className="space-y-6">
+                                 {/* 1. Plan Status Card */}
+                                 <div className={`relative overflow-hidden rounded-3xl border p-8 ${planStyle.gradient}`}>
+                                    <div className="relative z-10 flex flex-col md:flex-row justify-between gap-6">
+                                       <div className="space-y-4">
                                           <div className="flex items-center gap-3">
-                                             <div className="w-8 h-8 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center">
-                                                <Check size={14} />
+                                             <div className={`p-3 rounded-xl bg-gray-950/50 border border-white/5 ${planStyle.text} shadow-lg`}>
+                                                {planStyle.icon}
                                              </div>
                                              <div>
-                                                <p className="text-white font-bold text-sm">{item.amount}</p>
-                                                <p className="text-[10px] text-gray-500">{item.date}</p>
+                                                <p className="text-xs font-bold text-gray-400 uppercase tracking-wider">Plano Atual</p>
+                                                <h2 className="text-3xl font-bold text-white flex items-center gap-3">
+                                                   {status === 'trial' ? 'Teste Grátis' : planStyle.label}
+                                                   {status === 'trial' && <span className="text-xs bg-[#d97757] text-white px-2 py-0.5 rounded-full">PRO</span>}
+                                                </h2>
                                              </div>
                                           </div>
-                                          <div className="text-right">
-                                             <span className="text-[10px] font-bold text-green-400 bg-green-500/5 px-2 py-1 rounded-md border border-green-500/10 group-hover:bg-green-500/10 transition-colors">
-                                                {item.status}
-                                             </span>
-                                          </div>
-                                       </div>
-                                    ))}
-                                 </div>
-                              </div>
 
-                              <div className="flex flex-col items-center gap-4 pt-8 border-t border-[#373734]/50 mt-6">
-                                 {/* Free Coupon Notice */}
-                                 {isFreeCouponSubscription && isRefundEligible && (
-                                    <div className="text-center bg-[#d97757]/10 border border-[#d97757]/20 rounded-xl p-4 max-w-sm">
-                                       <div className="flex items-center justify-center gap-2 text-[#d97757] mb-2">
-                                          <Sparkles size={16} />
-                                          <span className="font-bold text-sm">Plano Promocional</span>
-                                       </div>
-                                       <p className="text-xs text-gray-400 leading-relaxed">
-                                          Seu plano foi ativado com cupom de <strong className="text-[#d97757]">100% de desconto</strong>.
-                                          Não há valor a ser estornado pois não houve cobrança.
-                                       </p>
-                                       {usedCoupon && (
-                                          <div className="mt-2 inline-flex items-center gap-1.5 bg-[#d97757]/20 text-[#d97757] text-[10px] px-2 py-1 rounded-md">
-                                             <span>Cupom:</span>
-                                             <code className="font-mono font-bold">{usedCoupon.code}</code>
+                                          <div className="flex gap-6 text-sm">
+                                             <div className="flex items-center gap-2 text-gray-300">
+                                                <Calendar size={16} className="text-gray-500" />
+                                                {status === 'trial' ? (
+                                                   <span>Expira em: <b className="text-white">{formData.subscription?.trialEndsAt ? new Date(formData.subscription.trialEndsAt).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                                ) : (
+                                                   <span>Renova em: <b className="text-white">{nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'N/A'}</b></span>
+                                                )}
+                                             </div>
+                                             {plan !== 'starter' && (
+                                                <div className="flex items-center gap-2 text-gray-300">
+                                                   <Coins size={16} className="text-gray-500" />
+                                                   <span>
+                                                      Próxima fatura: <b className="text-white">R$ {plan === 'pro' ? (cycle === 'annual' ? '399,90' : '35,90') : (cycle === 'annual' ? '749,00' : '69,90')}</b>
+                                                   </span>
+                                                </div>
+                                             )}
+                                             <div className="flex items-center gap-2 text-gray-300">
+                                                <Coins size={16} className="text-gray-500" />
+                                                <span>Ciclo: <b className="text-white capitalize">{cycle === 'annual' ? 'Anual' : 'Mensal'}</b></span>
+                                             </div>
                                           </div>
-                                       )}
+                                       </div>
+
+                                       <div className="flex flex-col justify-center gap-3 min-w-[200px]">
+                                          <button
+                                             onClick={onNavigateToSubscription}
+                                             className="w-full py-2.5 rounded-xl hover:bg-white/10 text-gray-300 hover:text-white text-xs font-bold transition-colors flex items-center justify-center gap-2"
+                                          >
+                                             {plan === 'starter' ? 'Fazer Upgrade' : 'Gerenciar Plano'}
+                                          </button>
+                                       </div>
+                                    </div>
+
+                                    {/* Background Decor */}
+                                    <div className={`absolute -right-10 -top-10 w-64 h-64 rounded-full blur-3xl opacity-10 ${planStyle.text.replace('text-', 'bg-')}`}></div>
+                                 </div>
+
+                                 {/* Warning for Missing Payment Method on Paid Plans */}
+                                 {plan !== 'starter' && !formData.paymentMethodDetails && status === 'active' && (
+                                    <div className="mb-6 animate-fade-in">
+                                       <div className="flex items-start gap-3">
+                                          <AlertTriangle size={18} className="text-red-500 shrink-0 mt-0.5" />
+                                          <div className="text-sm">
+                                             <p className="text-gray-300 leading-relaxed">
+                                                <span className="text-red-400 font-bold">Atenção: Cartão Necessário.</span> Você está no plano <strong>{planStyle.label}</strong> sem um cartão para a próxima renovação ({nextDate ? new Date(nextDate).toLocaleDateString('pt-BR') : 'breve'}).
+                                                O plano será cancelado automaticamente se não for regularizado.
+                                             </p>
+                                             <button
+                                                onClick={() => setIsCardModalOpen(true)}
+                                                className="mt-2 px-3 py-1.5 -ml-3 rounded-xl hover:bg-red-500/10 text-red-500 hover:text-red-400 text-xs font-bold transition-colors flex items-center gap-2"
+                                             >
+                                                <Plus size={12} /> Adicionar Cartão Agora
+                                             </button>
+                                          </div>
+                                       </div>
                                     </div>
                                  )}
 
-                                 {/* Refund Button - Only visible in first 7 days AND has real payment */}
+                                 {/* 2. Payment & Billing Details */}
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                                    {/* Payment Method Card - Simplified */}
+                                    <div className="flex flex-col justify-between h-full p-2">
+                                       <div className="flex justify-between items-start mb-6">
+                                          <h4 className="font-bold text-white flex items-center gap-2">
+                                             <CreditCard size={18} className="text-gray-400" /> Método de Pagamento <span className="ml-2 hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-[10px] font-bold text-emerald-500 uppercase tracking-wider"><ShieldCheck size={12} /> Ambiente Seguro</span>
+                                          </h4>
+                                          <button
+                                             onClick={() => setIsCardModalOpen(true)}
+                                             className="text-xs font-bold text-[#d97757] hover:text-[#c56a4d] transition-colors"
+                                          >
+                                             {formData.paymentMethodDetails ? 'Alterar' : 'Adicionar'}
+                                          </button>
+                                       </div>
+
+                                       {formData.paymentMethodDetails ? (
+                                          <>
+                                             {/* Visual Card Mockup - Active */}
+                                             <div className="bg-gradient-to-br from-gray-800 to-gray-900 rounded-xl p-5 border border-gray-700/50 relative overflow-hidden mb-4 shadow-lg">
+                                                <div className="relative z-10">
+                                                   <div className="flex justify-between items-center mb-8">
+                                                      <div className="w-8 h-5 bg-white/10 rounded flex items-center justify-center backdrop-blur-md">
+                                                         <div className="w-4 h-4 rounded-full bg-red-500/80 -mr-2"></div>
+                                                         <div className="w-4 h-4 rounded-full bg-yellow-500/80"></div>
+                                                      </div>
+                                                      <span className="text-[10px] font-mono text-gray-400 uppercase tracking-widest">
+                                                         {formData.paymentMethodDetails.brand || 'Card'}
+                                                      </span>
+                                                   </div>
+                                                   <div className="space-y-4">
+                                                      <div>
+                                                         <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Número</p>
+                                                         <p className="text-sm font-mono text-gray-200 tracking-widest flex items-center gap-2">
+                                                            <span className="text-gray-600">•••• •••• ••••</span>
+                                                            {formData.paymentMethodDetails.last4}
+                                                         </p>
+                                                      </div>
+                                                      <div className="flex justify-between items-end">
+                                                         <div>
+                                                            <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Titular</p>
+                                                            <p className="text-xs font-medium text-gray-200 uppercase tracking-wide truncate max-w-[120px]">
+                                                               {formData.paymentMethodDetails.holder}
+                                                            </p>
+                                                         </div>
+                                                         <div className="text-right">
+                                                            <p className="text-[10px] text-gray-500 mb-0.5 uppercase tracking-wider">Validade</p>
+                                                            <p className="text-xs font-mono text-gray-200">{formData.paymentMethodDetails.expiry}</p>
+                                                         </div>
+                                                      </div>
+                                                   </div>
+                                                </div>
+                                                {/* Shine effect */}
+                                                <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none"></div>
+                                             </div>
+
+                                             <div className="flex items-center gap-2 text-xs text-green-400 bg-green-500/5 p-2.5 rounded-xl border border-green-500/10">
+                                                <ShieldCheck size={14} /> Pagamento seguro via Asaas
+                                             </div>
+                                          </>
+                                       ) : (
+                                          <>
+                                             {/* Empty State */}
+                                             <div className={`flex-1 border-2 border-dashed rounded-xl flex flex-col items-center justify-center p-6 mb-4 text-center transition-colors ${plan !== 'starter' ? 'border-red-500/30 bg-red-500/5 hover:border-red-500/50' : 'border-[#373734] bg-gray-900/20 hover:border-gray-700'}`}>
+                                                <div className={`w-12 h-12 rounded-full flex items-center justify-center mb-3 ${plan !== 'starter' ? 'bg-red-500/20 text-red-500' : 'bg-gray-800 text-gray-600'}`}>
+                                                   {plan !== 'starter' ? <AlertTriangle size={24} /> : <CreditCard size={20} />}
+                                                </div>
+                                                <p className={`text-sm font-bold mb-1 ${plan !== 'starter' ? 'text-red-400' : 'text-gray-400'}`}>
+                                                   {plan !== 'starter' ? 'Cartão Necessário' : 'Nenhum cartão vinculado'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 max-w-[180px]">
+                                                   {plan !== 'starter'
+                                                      ? 'Sua assinatura será cancelada se não houver um cartão para a próxima cobrança.'
+                                                      : 'Adicione um método de pagamento para ativar a renovação.'}
+                                                </p>
+                                             </div>
+                                             <button
+                                                onClick={() => setIsCardModalOpen(true)}
+                                                className="w-full py-3 bg-transparent hover:bg-gray-800 text-gray-400 hover:text-white rounded-xl text-xs font-bold transition-all border border-dashed border-gray-700 hover:border-gray-500"
+                                             >
+                                                Adicionar Cartão
+                                             </button>
+                                          </>
+                                       )}
+                                    </div>
 
 
-                                 {/* Expired Refund Notice - Show if past 7 days but user might want to know */}
-                                 {!isRefundEligible && hasRealPayment && plan !== 'starter' && status === 'active' && (
-                                    <p className="text-[10px] text-gray-600 text-center max-w-xs">
-                                       O prazo de 7 dias para solicitar estorno expirou.
-                                       Para dúvidas, entre em contato com o suporte.
-                                    </p>
-                                 )}
+                                 </div>
 
-                                 {/* Cancel Subscription Button */}
-                                 <button
-                                    onClick={() => setShowCancellationModal(true)}
-                                    className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
-                                 >
-                                    Cancelar assinatura
-                                 </button>
+                                 {/* Billing History List - Full Width Below */}
+                                 <div className="mt-6 border-t border-[#373734]/50 pt-6">
+                                    <h4 className="font-bold text-white text-sm mb-3 flex items-center gap-2">
+                                       <Clock size={16} className="text-gray-400" /> Histórico de Cobranças
+                                    </h4>
+                                    <div className="space-y-2">
+                                       {billingHistory.map((item) => (
+                                          <div
+                                             key={item.id}
+                                             onClick={() => openReceipt(item)}
+                                             className="flex items-center justify-between p-3 rounded-xl bg-gray-900/30 hover:bg-gray-800/50 border border-[#373734]/50 cursor-pointer transition-colors group"
+                                          >
+                                             <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-green-500/10 text-green-500 flex items-center justify-center">
+                                                   <Check size={14} />
+                                                </div>
+                                                <div>
+                                                   <p className="text-white font-bold text-sm">{item.amount}</p>
+                                                   <p className="text-[10px] text-gray-500">{item.date}</p>
+                                                </div>
+                                             </div>
+                                             <div className="text-right">
+                                                <span className="text-[10px] font-bold text-green-400 bg-green-500/5 px-2 py-1 rounded-md border border-green-500/10 group-hover:bg-green-500/10 transition-colors">
+                                                   {item.status}
+                                                </span>
+                                             </div>
+                                          </div>
+                                       ))}
+                                    </div>
+                                 </div>
+
+                                 <div className="flex flex-col items-center gap-4 pt-8 border-t border-[#373734]/50 mt-6">
+                                    {/* Free Coupon Notice */}
+                                    {isFreeCouponSubscription && isRefundEligible && (
+                                       <div className="text-center bg-[#d97757]/10 border border-[#d97757]/20 rounded-xl p-4 max-w-sm">
+                                          <div className="flex items-center justify-center gap-2 text-[#d97757] mb-2">
+                                             <Sparkles size={16} />
+                                             <span className="font-bold text-sm">Plano Promocional</span>
+                                          </div>
+                                          <p className="text-xs text-gray-400 leading-relaxed">
+                                             Seu plano foi ativado com cupom de <strong className="text-[#d97757]">100% de desconto</strong>.
+                                             Não há valor a ser estornado pois não houve cobrança.
+                                          </p>
+                                          {usedCoupon && (
+                                             <div className="mt-2 inline-flex items-center gap-1.5 bg-[#d97757]/20 text-[#d97757] text-[10px] px-2 py-1 rounded-md">
+                                                <span>Cupom:</span>
+                                                <code className="font-mono font-bold">{usedCoupon.code}</code>
+                                             </div>
+                                          )}
+                                       </div>
+                                    )}
+
+                                    {/* Refund Button - Only visible in first 7 days AND has real payment */}
+
+
+                                    {/* Expired Refund Notice - Show if past 7 days but user might want to know */}
+                                    {!isRefundEligible && hasRealPayment && plan !== 'starter' && status === 'active' && (
+                                       <p className="text-[10px] text-gray-600 text-center max-w-xs">
+                                          O prazo de 7 dias para solicitar estorno expirou.
+                                          Para dúvidas, entre em contato com o suporte.
+                                       </p>
+                                    )}
+
+                                    {/* Cancel Subscription Button */}
+                                    <button
+                                       onClick={() => setShowCancellationModal(true)}
+                                       className="text-xs text-gray-500 hover:text-red-400 transition-colors flex items-center gap-1"
+                                    >
+                                       Cancelar assinatura
+                                    </button>
+                                 </div>
                               </div>
-                           </div>
-                        )}
-                     </div>
-                  )}
+                           )}
+                        </div>
+                     )
+                  }
 
-               </div>
-            </div>
-         </div>
+               </div >
+            </div >
+         </div >
 
          {/* Externalized 2FA Modal */}
          < TwoFactorModal
@@ -2889,7 +2905,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
 
          {/* Cancel Subscription Confirmation */}
-         <ConfirmationBar
+         < ConfirmationBar
             isOpen={showCancelSubscriptionConfirmation}
             onCancel={() => setShowCancelSubscriptionConfirmation(false)}
             onConfirm={handleCancelSubscription}
@@ -2901,7 +2917,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          />
 
          {/* Refund Confirmation */}
-         <ConfirmationBar
+         < ConfirmationBar
             isOpen={showRefundConfirmation}
             onCancel={() => setShowRefundConfirmation(false)}
             onConfirm={handleRefund}
@@ -2913,16 +2929,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
          />
 
          {/* Receipt Modal */}
-         <ReceiptModal />
+         < ReceiptModal />
          {/* Cancel Subscription Modal Flow */}
-         <CancellationModalNew
+         < CancellationModalNew
             isOpen={showCancellationModal}
             onClose={() => setShowCancellationModal(false)}
             onConfirm={handleCancellationRequest}
             isLoading={isProcessingCancellation}
          />
 
-      </div>,
+      </div >,
       document.body
    );
 };

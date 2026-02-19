@@ -1774,8 +1774,8 @@ const App: React.FC = () => {
     // Check if active member is admin to show legacy/mobile investments (without memberId)
     const isActiveMemberAdmin = members.find(m => m.id === activeMemberId)?.role === 'admin';
 
-    return investments.filter(inv => 
-      inv.memberId === activeMemberId || 
+    return investments.filter(inv =>
+      inv.memberId === activeMemberId ||
       (isActiveMemberAdmin && !inv.memberId)
     );
   }, [investments, activeMemberId, members]);
@@ -2625,6 +2625,10 @@ const App: React.FC = () => {
           if (s.status !== 'active') return false;
           if (s.billingCycle !== 'monthly') return false;
           if (dashboardCategory && s.category !== dashboardCategory) return false;
+
+          // Exclui especificamente itens marcados com "Detectada" e não confirmados
+          const isDetectada = s.source === 'auto_detected' && !s.confirmed;
+          if (isDetectada) return false;
 
           // Se a assinatura foi marcada como paga no mês do dashboard, não inclui nas projeções
           if ((s.paidMonths || []).includes(dashboardDate)) return false;
@@ -3597,7 +3601,7 @@ const App: React.FC = () => {
       status: 'pending' as const,
       paidAt: '' // Clear paid date
     };
-    
+
     await dbService.updateReminder(userId, updatedReminder);
     toast.success("Pagamento desfeito.");
   };
@@ -4066,6 +4070,7 @@ const App: React.FC = () => {
                     }}
                     onOpenFeedback={() => setIsFeedbackModalOpen(true)}
                     isAdmin={currentUser?.isAdmin} // Passa o status de admin para exibir debug JSON
+                    onMonthChange={setDashboardDate}
                     onBulkUpdate={async (ids, updates) => {
                       if (!userId) return;
                       try {

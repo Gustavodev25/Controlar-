@@ -12,7 +12,8 @@ import { ConfirmationBar } from './ConfirmationBar';
 import { useToasts } from './Toast';
 import { UniversalModal } from './UniversalModal';
 import { Button } from './Button';
-
+import { listenToUserProfile, saveInvoiceViewMode } from '../services/database';
+import { User } from '../types';
 
 import { EmptyState } from './EmptyState';
 import { getInvoiceMonthKey } from '../services/invoiceCalculator';
@@ -109,7 +110,12 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
       from: transaction.manualInvoiceMonth || 'auto',
       to: targetKey
     });
-    onUpdate({ ...transaction, manualInvoiceMonth: targetKey });
+    // Update both manualInvoiceMonth and invoiceMonthKey for compatibility
+    onUpdate({
+      ...transaction,
+      manualInvoiceMonth: targetKey,
+      invoiceMonthKey: targetKey
+    });
   };
 
   return (
@@ -146,7 +152,11 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
             <>
               <div className="h-px bg-[#373734] my-1" />
               <DropdownItem
-                onClick={() => onUpdate({ ...transaction, manualInvoiceMonth: null })}
+                onClick={() => onUpdate({
+                  ...transaction,
+                  manualInvoiceMonth: null,
+                  invoiceMonthKey: null
+                })}
                 className="text-red-400 hover:text-red-300"
                 icon={X}
               >
@@ -184,6 +194,7 @@ interface CreditCardTableProps {
   onOpenFeedback?: () => void;
   onBulkUpdate?: (ids: string[], updates: Partial<Transaction>) => void;
   isAdmin?: boolean; // Controla visibilidade de recursos de debug (ex: Ver JSON)
+  onMonthChange?: (monthKey: string) => void;
 }
 
 
@@ -314,7 +325,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
   onUpdateAccount,
   onOpenFeedback,
   onBulkUpdate,
-  isAdmin = false
+  isAdmin = false,
+  onMonthChange
 }) => {
   // Filter hidden accounts
   const visibleCreditCardAccounts = React.useMemo(() =>
@@ -375,6 +387,31 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Invoice Filter (Todas, Última, Atual, Próxima)
   const [selectedInvoice, setSelectedInvoice] = useState<'all' | 'last' | 'current' | 'next'>('current');
+
+  // Sync with user profile preference
+  React.useEffect(() => {
+    if (!userId) return;
+
+    const unsubscribe = listenToUserProfile(userId, (profile) => {
+      if (profile.dashboardPreferences?.invoiceViewMode) {
+        setSelectedInvoice(prev => {
+          if (prev !== profile.dashboardPreferences!.invoiceViewMode) {
+            return profile.dashboardPreferences!.invoiceViewMode!;
+          }
+          return prev;
+        });
+      }
+    });
+
+    return () => unsubscribe();
+  }, [userId]);
+
+  const changeInvoiceView = (mode: 'all' | 'last' | 'current' | 'next') => {
+    setSelectedInvoice(mode);
+    if (userId) {
+      saveInvoiceViewMode(userId, mode);
+    }
+  };
 
   // Month Offset para navegação rotativa entre faturas
   // 0 = mês base (hoje), -1 = um mês para trás, +1 = um mês para frente, etc.
@@ -904,6 +941,13 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       isLastInvoicePaid: false
     };
   }, [invoiceBuilderData, selectedCard, transactions, selectedCardId]);
+
+  // Sincronizar data global (dashboardDate) com a fatura visualizada na tabela
+  React.useEffect(() => {
+    if (onMonthChange && invoiceSummary && invoiceSummary.currentMonthKey) {
+      onMonthChange(invoiceSummary.currentMonthKey);
+    }
+  }, [invoiceSummary.currentMonthKey, onMonthChange]);
 
   // Get transactions from selected invoice
   const invoiceTransactions = useMemo(() => {
@@ -2028,7 +2072,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-6">
                           {/* HISTÓRICO (TODAS) */}
                           <button
-                            onClick={() => setSelectedInvoice('all')}
+                            onClick={() => changeInvoiceView('all')}
                             className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'all'
                               ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
                               : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
@@ -2056,7 +2100,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                           {/* ÚLTIMA FATURA (FECHADA) */}
                           <button
-                            onClick={() => setSelectedInvoice('last')}
+                            onClick={() => changeInvoiceView('last')}
                             className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'last'
                               ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
                               : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
@@ -2147,7 +2191,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                           {/* FATURA ATUAL (ABERTA) */}
                           <button
-                            onClick={() => setSelectedInvoice('current')}
+                            onClick={() => changeInvoiceView('current')}
                             className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'current'
                               ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
                               : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
@@ -2177,7 +2221,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
                           {/* PRÓXIMA FATURA (FUTURA) */}
                           <button
-                            onClick={() => setSelectedInvoice('next')}
+                            onClick={() => changeInvoiceView('next')}
                             className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'next'
                               ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
                               : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'

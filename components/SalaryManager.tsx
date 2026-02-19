@@ -567,11 +567,81 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
           </div>
 
           <div className="mt-3 relative group min-h-[48px] flex flex-col justify-center">
-            {isEditing ? (
-              <div className="space-y-4 animate-fade-in relative z-20 w-full">
-                <div className="flex items-center gap-3 w-full">
-                  <div className="flex-1 flex items-center gap-2">
-                    <span className="text-gray-400 text-xl font-medium">R$</span>
+            {/* Modo Display (Sempre visível, clique abre o modal) */}
+            <div
+              onClick={() => {
+                if (onEditClick) {
+                  onEditClick();
+                } else {
+                  setTempSalary(baseSalary.toString().replace('.', ','));
+                  setTempPaymentDay(paymentDay?.toString() || '5');
+                  setIsEditing(true);
+                  setSalaryError(null);
+                }
+              }}
+              className="flex items-baseline gap-2 cursor-pointer hover:bg-gray-800/50 p-2 -ml-2 rounded-lg transition-all group w-full"
+              title="Clique para editar seu salário base"
+            >
+              {baseSalary > 0 ? (
+                <>
+                  <div className="flex flex-col w-full">
+                    <div className="flex items-baseline gap-1">
+                      <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
+                        {formatCurrency(baseSalary)}
+                      </span>
+                      <span className="text-sm text-gray-500 font-medium">/mês</span>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border border-gray-700/50">
+                        <Clock size={10} />
+                        {typeof paymentDay === 'string'
+                          ? (paymentDay === 'business_day_5' ? '5º Dia Útil' : paymentDay === 'business_day_last' ? 'Último Dia Útil' : 'Último Dia')
+                          : `Recebe dia ${paymentDay || 5}`}
+                      </span>
+
+                      {(!!advancePercent || (!!advanceValue && advanceValue > 0)) && (
+                        <span className="text-xs text-[#eab3a3] flex items-center gap-1 bg-[#d97757]/10 px-2 py-1 rounded border border-[#d97757]/20">
+                          <PieChart size={10} />
+                          Vale {advancePercent}% (Dia {advanceDay || 20})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xl font-medium text-gray-300 group-hover:text-white transition-colors flex items-center gap-2">
+                    <AlertCircle size={20} className="text-amber-400" />
+                    Definir Renda Mensal
+                  </span>
+                  <span className="text-xs text-gray-500 group-hover:text-amber-400/80 transition-colors ml-7">
+                    Clique para configurar salário e data
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Modal de Configuração de Salário */}
+            <UniversalModal
+              isOpen={isEditing}
+              onClose={() => {
+                setIsEditing(false);
+                setSalaryError(null);
+              }}
+              title="Configurar Renda"
+              subtitle="Defina seu salário base e adiantamentos"
+              icon={<Coins size={18} />}
+              themeColor="#d97757"
+              width="max-w-lg"
+            >
+              <div className="space-y-5 animate-fade-in">
+
+                {/* Salário Base */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Salário Base (R$)</label>
+                  <div className="relative">
+                    <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600 font-bold">R$</span>
                     <input
                       type="text"
                       inputMode="decimal"
@@ -581,19 +651,22 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                         if (salaryError) setSalaryError(null);
                       }}
                       onKeyDown={handleKeyDown}
-                      className={`bg-gray-800 text-white text-2xl font-bold w-full rounded-lg px-3 py-1 border outline-none transition-all shadow-inner ${salaryError ? 'border-red-500 focus:ring-2 focus:ring-red-500/50' : 'border-gray-700 focus:border-[#d97757] focus:ring-2 focus:ring-[#d97757]/50'}`}
-                      autoFocus
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 font-bold"
                       placeholder="0,00"
+                      autoFocus
                     />
                   </div>
+                </div>
 
-                  <div className="w-32">
-                    <label className="text-[10px] text-gray-400 block mb-0.5">Dia Pagto.</label>
+                {/* Dia do Pagamento */}
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Dia do Pagamento</label>
+                  <div className="relative">
+                    <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={16} />
                     <select
                       value={tempPaymentDay}
                       onChange={(e) => setTempPaymentDay(e.target.value)}
-                      onKeyDown={handleKeyDown}
-                      className="bg-gray-800 text-white text-xs font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none appearance-none cursor-pointer"
+                      className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all appearance-none cursor-pointer"
                     >
                       <option value="" disabled>Selecione</option>
                       <optgroup label="Datas Variáveis">
@@ -610,104 +683,111 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Opção de Isenção de Impostos (Apenas para o Salário Principal) */}
-                <div className="bg-gray-800/50 rounded-xl p-3 border border-gray-700/50 mb-3 flex items-center justify-between">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-medium text-gray-300">Isento de descontos</span>
-                    <span className="text-[10px] text-gray-500">INSS/IRRF zerados no salário principal.</span>
+                {/* Isenção de Impostos */}
+                <div className="bg-gray-900/40 rounded-xl p-3 border border-gray-800/60 flex items-center justify-between">
+                  <div>
+                    <span className="text-sm font-medium text-gray-300 flex items-center gap-2">
+                      <Sparkles size={14} className="text-yellow-500" /> Isento de Descontos
+                    </span>
+                    <span className="text-[10px] text-gray-500 block mt-0.5">INSS/IRRF zerados no salário principal.</span>
                   </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={tempSalaryTaxExempt}
-                      onChange={(e) => setTempSalaryTaxExempt(e.target.checked)}
-                      className="sr-only peer"
-                    />
-                    <div className="w-9 h-5 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#d97757]"></div>
-                  </label>
+                  <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                    <button
+                      type="button"
+                      onClick={() => setTempSalaryTaxExempt(false)}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!tempSalaryTaxExempt ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTempSalaryTaxExempt(true)}
+                      className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${tempSalaryTaxExempt ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                    >
+                      Sim
+                    </button>
+                  </div>
                 </div>
 
-                {/* Divisão de Salário / Vale */}
-                <div className="bg-gray-800/50 rounded-xl p-3 border border-gray-700/50">
-                  <div className="flex items-center gap-2 mb-3">
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={hasAdvance}
-                        onChange={(e) => setHasAdvance(e.target.checked)}
-                        className="sr-only peer"
-                      />
-                      <div className="w-8 h-4 bg-gray-700 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-[#d97757]/20 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-[#d97757]"></div>
-                    </label>
-                    <span className="text-xs font-medium text-gray-300">Recebo Adiantamento (Vale)</span>
+                {/* Configuração de Vale */}
+                <div className="pt-2 border-t border-gray-800/50 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-gray-400 flex items-center gap-2">
+                      <PieChart size={14} /> Recebe Adiantamento (Vale)?
+                    </span>
+                    <div className="flex bg-gray-900 rounded-lg p-0.5 border border-gray-700">
+                      <button
+                        type="button"
+                        onClick={() => setHasAdvance(false)}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${!hasAdvance ? 'bg-gray-700 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Não
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHasAdvance(true)}
+                        className={`px-3 py-1.5 text-[10px] font-bold rounded-md transition-all ${hasAdvance ? 'bg-[#d97757] text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'}`}
+                      >
+                        Sim
+                      </button>
+                    </div>
                   </div>
 
                   {hasAdvance && (
-                    <div className="space-y-3 animate-fade-in">
-                      <div className="flex items-center gap-4">
-                        <div className="flex-1">
-                          <label className="text-[10px] text-gray-400 block mb-1 flex justify-between">
-                            <span>Porcentagem do Vale</span>
-                            <span className="text-white font-bold">{tempAdvancePercent}%</span>
-                          </label>
-                          <input
-                            type="range"
-                            min="10"
-                            max="80"
-                            step="5"
-                            value={tempAdvancePercent}
-                            onChange={(e) => setTempAdvancePercent(e.target.value)}
-                            className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer accent-[#d97757]"
-                          />
+                    <div className="animate-fade-in space-y-4 bg-gray-900/20 p-4 rounded-xl border border-gray-800/40">
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Porcentagem (%)</label>
+                          <div className="relative">
+                            <Percent className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                            <input
+                              type="number"
+                              min="1"
+                              max="80"
+                              value={tempAdvancePercent}
+                              onChange={(e) => setTempAdvancePercent(e.target.value)}
+                              className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center font-bold"
+                            />
+                          </div>
                         </div>
-                        <div className="w-20">
-                          <label className="text-[10px] text-gray-400 block mb-0.5">Dia Vale</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="31"
-                            value={tempAdvanceDay}
-                            onChange={(e) => setTempAdvanceDay(e.target.value)}
-                            className="bg-[#30302E] text-white text-xs font-bold w-full rounded-lg px-2 py-1.5 border border-gray-700 focus:border-[#d97757] outline-none text-center"
-                          />
+                        <div className="space-y-1.5">
+                          <label className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">Dia do Vale</label>
+                          <div className="relative">
+                            <Calendar className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={14} />
+                            <input
+                              type="number"
+                              min="1"
+                              max="31"
+                              value={tempAdvanceDay}
+                              onChange={(e) => setTempAdvanceDay(e.target.value)}
+                              className="w-full bg-gray-900/40 border border-gray-800/60 rounded-xl text-white pl-10 pr-4 py-3 text-sm focus:border-gray-700 focus:bg-gray-900/60 outline-none transition-all placeholder-gray-600 text-center font-bold"
+                            />
+                          </div>
                         </div>
                       </div>
 
                       {/* Preview Calculation */}
                       {(() => {
                         const sal = parseInput(tempSalary);
-                        const perc = parseInput(tempAdvancePercent); // This might be unused if we use value directly or percent logic
-
-                        // Calculate Vale Amount 
-                        // Logic mirrors App.tsx: preference to Value if set, else Percent
-                        // Here `tempAdvancePercent` is the driver for the slider.
-                        // But wait, if user inputs values manually?
-                        // The UI above has a slider for percent. 
-
                         let vale = 0;
                         if (hasAdvance) {
                           vale = sal * (parseInput(tempAdvancePercent) / 100);
                         }
-
-                        // Calculate Taxes for Resto
                         let totalTax = 0;
                         if (!tempSalaryTaxExempt) {
-                          // Use 0 dependents for simple preview or try to use cltDependents default?
-                          // Since the user might not have configured CLT tab, 0 is safer/standard for quick preview.
                           const { inss, irrf } = calculateCLT(sal, 0);
                           totalTax = inss + irrf;
                         }
-
                         const resto = Math.max(0, sal - vale - totalTax);
 
                         return (
-                          <div className="flex gap-2 text-[10px]">
-                            <div className="flex-1 bg-[#30302E]/50 p-2 rounded border border-gray-700/50">
-                              <p className="text-gray-500 mb-0.5">Vale ({tempAdvancePercent}%)</p>
+                          <div className="flex gap-3 text-xs pt-2">
+                            <div className="flex-1 bg-gray-900/50 p-3 rounded-xl border border-gray-800 flex flex-col items-center">
+                              <p className="text-gray-500 mb-1">Vale ({tempAdvancePercent}%)</p>
                               <p className="text-[#eab3a3] font-mono font-bold">{formatCurrency(vale)}</p>
                             </div>
-                            <div className="flex-1 bg-[#30302E]/50 p-2 rounded border border-gray-700/50">
-                              <p className="text-gray-500 mb-0.5">Líquido Restante</p>
+                            <div className="flex-1 bg-gray-900/50 p-3 rounded-xl border border-gray-800 flex flex-col items-center">
+                              <p className="text-gray-500 mb-1">Líquido Restante</p>
                               <p className="text-white font-mono font-bold">{formatCurrency(resto)}</p>
                             </div>
                           </div>
@@ -717,92 +797,28 @@ export const SalaryManager: React.FC<SalaryManagerProps> = ({
                   )}
                 </div>
 
-                <div className="flex justify-end gap-2">
-                  <button
-                    onClick={() => {
-                      setIsEditing(false);
-                      setSalaryError(null);
-                    }}
-                    className="px-3 py-1.5 text-xs text-gray-400 hover:text-white transition-colors"
-                  >
-                    Cancelar
-                  </button>
+                {salaryError && (
+                  <div className="p-3 bg-red-900/20 border border-red-500/30 rounded-xl flex items-center gap-2 text-red-400 text-xs animate-shake">
+                    <AlertCircle size={16} />
+                    {salaryError}
+                  </div>
+                )}
+
+                <div className="pt-2">
                   <button
                     onClick={handleSaveSalary}
-                    className="px-4 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors shadow-lg shadow-green-900/20 flex items-center gap-2 text-xs font-bold"
+                    className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/30 flex items-center justify-center gap-2"
                   >
-                    <Check size={14} />
+                    <Check size={18} />
                     Salvar Configuração
                   </button>
                 </div>
 
-                {salaryError && (
-                  <p className="text-red-400 text-xs flex items-center gap-1 animate-shake">
-                    <AlertCircle size={12} /> {salaryError}
-                  </p>
-                )}
               </div>
-
-            ) : (
-              // Modo Manual: Editável por clique
-              <div
-                onClick={() => {
-                  if (onEditClick) {
-                    onEditClick();
-                  } else {
-                    setTempSalary(baseSalary.toString().replace('.', ','));
-                    setTempPaymentDay(paymentDay?.toString() || '5');
-                    setIsEditing(true);
-                    setSalaryError(null);
-                  }
-                }}
-                className="flex items-baseline gap-2 cursor-pointer hover:bg-gray-800/50 p-2 -ml-2 rounded-lg transition-all group w-full"
-                title="Clique para editar seu salário base"
-              >
-                {baseSalary > 0 ? (
-                  <>
-                    <div className="flex flex-col w-full">
-                      <div className="flex items-baseline gap-1">
-                        <span className="text-4xl font-bold text-white group-hover:text-[#eab3a3] transition-colors">
-                          {formatCurrency(baseSalary)}
-                        </span>
-                        <span className="text-sm text-gray-500 font-medium">/mês</span>
-                      </div>
-
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        <span className="text-xs text-gray-500 flex items-center gap-1 bg-gray-800/50 px-2 py-1 rounded border border-gray-700/50">
-                          <Clock size={10} />
-                          {typeof paymentDay === 'string'
-                            ? (paymentDay === 'business_day_5' ? '5º Dia Útil' : paymentDay === 'business_day_last' ? 'Último Dia Útil' : 'Último Dia')
-                            : `Recebe dia ${paymentDay || 5}`}
-                        </span>
-
-                        {(!!advancePercent || (!!advanceValue && advanceValue > 0)) && (
-                          <span className="text-xs text-[#eab3a3] flex items-center gap-1 bg-[#d97757]/10 px-2 py-1 rounded border border-[#d97757]/20">
-                            <PieChart size={10} />
-                            Vale {advancePercent}% (Dia {advanceDay || 20})
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xl font-medium text-gray-300 group-hover:text-white transition-colors flex items-center gap-2">
-                      <AlertCircle size={20} className="text-amber-400" />
-                      Definir Renda Mensal
-                    </span>
-                    <span className="text-xs text-gray-500 group-hover:text-amber-400/80 transition-colors ml-7">
-                      Clique para configurar salário e data
-                    </span>
-                  </div>
-                )}
-
-                <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-gray-300 text-[10px] px-2 py-1 rounded ml-auto self-start mt-2">
-                  Editar
-                </div>
-              </div>
-            )}
+            </UniversalModal>
+            <div className="opacity-0 group-hover:opacity-100 transition-opacity bg-gray-800 text-gray-300 text-[10px] px-2 py-1 rounded ml-auto self-start mt-2">
+              Editar
+            </div>
           </div>
 
           {/* Salary Insights Grid */}
