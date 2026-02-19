@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import routes from './routes.js';
-import { loadEnv } from './env.js';
+import routes from './_lib/routes.js';
+import { loadEnv } from './_lib/env.js';
 
 loadEnv();
 

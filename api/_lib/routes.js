@@ -3308,5 +3308,9 @@ router.post('/admin/send-email', async (req, res) => {
   }
 });
 
+// Mount separate routers
+router.use('/pluggy', pluggyRouter);
+router.use('/cron-sync', cronSyncRouter);
+
 export default router;
 

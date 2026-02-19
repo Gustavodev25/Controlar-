@@ -2,9 +2,6 @@
   "functions": {
     "api/index.js": {
       "maxDuration": 60
-    },
-    "api/cron-sync.js": {
-      "maxDuration": 60
     }
   },
   "rewrites": [
