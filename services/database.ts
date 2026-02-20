@@ -260,6 +260,7 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
 
       // Construct a user object
       return {
+        ...profile,
         id: doc.id,
         name: profile.name || data.name || 'Usuário',
         email: profile.email || data.email || '',
@@ -271,8 +272,7 @@ export const getAllUsers = async (): Promise<(User & { id: string })[]> => {
         createdAt: createdAt, // Include creation date (or fallback)
         phone: profile.phone || data.phone,
         cpf: profile.cpf || data.cpf,
-        address: profile.address || data.address,
-        ...profile
+        address: profile.address || data.address
       } as User & { id: string };
     });
 

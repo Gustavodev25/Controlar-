@@ -13,6 +13,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { WordPullUp } from './WordPullUp';
 import { usePixelEvent } from '../hooks/usePixelEvent';
 import { getCompleteUtmData } from '../services/utmService';
+import { auth } from '../services/firebase';
 
 interface SubscriptionPageProps {
     user: User;
@@ -192,9 +193,13 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
             // NORMAL FLOW: Value >= R$ 5, proceed with Asaas payment
             // 1. Create or update customer in Asaas
             console.log('>>> Creating customer in Asaas...');
+            const token = await auth.currentUser?.getIdToken();
             const customerResponse = await fetch(API_ENDPOINTS.asaas.customer, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     name: holderInfo.name || cardData.holderName,
                     email: user.email,
@@ -224,7 +229,10 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
             console.log('>>> Creating subscription in Asaas...');
             const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     customerId: customerData.customer.id,
                     planId: planToBuy,

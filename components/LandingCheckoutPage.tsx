@@ -153,9 +153,13 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             // 4. Criar cliente no Asaas
             console.log('>>> Criando cliente no Asaas...');
+            const token = await firebaseUser.getIdToken();
             const customerResponse = await fetch(API_ENDPOINTS.asaas.customer, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     name: holderInfo.name || cardData.holderName,
                     email: registrationData.email,
@@ -183,7 +187,10 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             console.log('>>> Criando assinatura no Asaas...');
             const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
                 body: JSON.stringify({
                     customerId: customerData.customer.id,
                     planId: planId,

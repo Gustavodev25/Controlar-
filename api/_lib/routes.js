@@ -449,7 +449,7 @@ smtpTransporter.verify(function (error, success) {
   }
 });
 
-router.post('/admin/send-email', async (req, res) => {
+router.post('/admin/send-email', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {
   const {
     recipients,
     subject,
@@ -827,7 +827,12 @@ router.post('/asaas/validate-card', async (req, res) => {
   }
 });
 
-router.post('/asaas/customer', async (req, res) => {
+router.post('/asaas/customer', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
+
   const { name, email, cpfCnpj, phone, postalCode, addressNumber } = req.body;
 
   if (!name || !email || !cpfCnpj) {
@@ -908,14 +913,17 @@ router.get('/asaas/customer', async (req, res) => {
   }
 });
 
-router.post('/asaas/subscription', async (req, res) => {
+router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
+
   const {
-    userId, // [NEW] User ID for server-side activation
+    // userId, We securely use authUserId instead
     customerId,
     planId,
     billingCycle,
-    value,
-    baseValue,
     creditCard,
     creditCardHolderInfo,
     installmentCount,
@@ -923,7 +931,7 @@ router.post('/asaas/subscription', async (req, res) => {
     utmData   // [NEW] UTM tracking data for Utmify
   } = req.body;
 
-  if (!customerId || !value || !creditCard || !creditCardHolderInfo) {
+  if (!customerId || !creditCard || !creditCardHolderInfo) {
     return res.status(400).json({ error: 'Dados incompletos para criar assinatura.' });
   }
 
@@ -976,7 +984,63 @@ router.post('/asaas/subscription', async (req, res) => {
   };
 
   try {
+    // SERVER-SIDE PRICING VALIDATION
+    const PLANS = {
+      starter: { monthly: 0, annual: 0 },
+      pro: { monthly: 35.90, annual: 399.00 },
+      family: { monthly: 59.90, annual: 599.00 } // Safety defaults
+    };
+
+    const selectedPlanConfig = PLANS[planId];
+    if (!selectedPlanConfig) {
+      return res.status(400).json({ error: 'Plano inválido selecionado.' });
+    }
+
     const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';
+
+    // Define recurring value as the absolute source of truth
+    const recurringValue = cycle === 'YEARLY' ? selectedPlanConfig.annual : selectedPlanConfig.monthly;
+    let valueToCharge = recurringValue;
+
+    // Coupon Calculation Logic on Server
+    if (couponId && firebaseAdmin) {
+      try {
+        const db = firebaseAdmin.firestore();
+        const couponDoc = await db.collection('coupons').doc(couponId).get();
+        if (couponDoc.exists) {
+          const couponData = couponDoc.data();
+          const maxUses = couponData.maxUses || Infinity;
+          const currentUses = couponData.currentUses || 0;
+
+          if (couponData.isActive && currentUses < maxUses) {
+            console.log(`>>> [PRICING] Coupon ${couponId} loaded for server-side evaluation.`);
+
+            if (couponData.type === 'percentage') {
+              valueToCharge = recurringValue * (1 - (couponData.value / 100));
+            } else if (couponData.type === 'fixed') {
+              valueToCharge = recurringValue - couponData.value;
+            } else if (couponData.type === 'progressive') {
+              const firstDiscount = couponData.progressiveDiscounts?.find((d) => d.month === 1);
+              if (firstDiscount) {
+                if (firstDiscount.discountType === 'fixed') {
+                  valueToCharge = recurringValue - firstDiscount.discount;
+                } else {
+                  valueToCharge = recurringValue * (1 - (firstDiscount.discount / 100));
+                }
+              }
+            }
+            console.log(`>>> [PRICING] Final valid price with coupon applied: R$ ${valueToCharge.toFixed(2)}`);
+          } else {
+            console.warn('>>> [PRICING] Coupon invalid or expired uses. Defaulting to full real price.');
+          }
+        }
+      } catch (err) {
+        console.error('>>> [PRICING] Error parsing coupon:', err);
+      }
+    }
+
+    // Assign final values
+    const value = Math.max(0, valueToCharge);
 
     // Use current date for immediate charge attempt (robust format YYYY-MM-DD)
     const now = new Date();
@@ -984,9 +1048,6 @@ router.post('/asaas/subscription', async (req, res) => {
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
     const dueDateStr = `${year}-${month}-${day}`;
-
-    // Determine recurring value (use baseValue if provided, otherwise value)
-    const recurringValue = baseValue !== undefined ? baseValue : value;
 
     // CASE 1: Annual Plan with Installments (One-off payment splitted)
     if (billingCycle === 'annual' && installmentCount && installmentCount > 1) {
@@ -999,7 +1060,7 @@ router.post('/asaas/subscription', async (req, res) => {
       let creditCardToken = null;
       try {
         console.log('>>> [TOKENIZATION] Tokenizing credit card (Annual Installments)...');
-        const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+        const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
           customer: customerId,
           creditCard: {
             holderName: creditCard.holderName,
@@ -1021,24 +1082,16 @@ router.post('/asaas/subscription', async (req, res) => {
         creditCardToken = tokenResult.creditCardToken;
         console.log('>>> [TOKENIZATION] Success! Token created.');
       } catch (tokenError) {
-        console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
-        return res.status(400).json({
-          success: false,
-          error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados ou use outro cartão.'
-        });
+        console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with fallback:', tokenError.message);
       }
 
-      if (!creditCardToken) {
-        return res.status(400).json({ success: false, error: 'Não foi possível tokenizar o cartão. Tente novamente.' });
-      }
-
-      if (userId && firebaseAdmin) {
+      const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
+      if (creditCardToken && authUserId && firebaseAdmin) {
         try {
           const db = firebaseAdmin.firestore();
-          const cardNumber = creditCard.number.replace(/\s/g, '');
-          await db.collection('users').doc(userId).update({
+          await db.collection('users').doc(authUserId).update({
             'subscription.creditCardToken': creditCardToken,
-            'subscription.creditCardLast4': cardNumber.slice(-4),
+            'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
             'profile.subscription.creditCardToken': creditCardToken
           });
         } catch (dbError) {
@@ -1054,9 +1107,25 @@ router.post('/asaas/subscription', async (req, res) => {
         description: `Plano ${planId} - Anual (${installmentCount}x)`,
         installmentCount: installmentCount,
         installmentValue: Math.round((valueToCharge / installmentCount) * 100) / 100,
-        creditCardToken: creditCardToken,
+        ...(creditCardToken ? { creditCardToken } : {
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: sanitizedCardNumber,
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          }
+        }),
         remoteIp: getClientIp(req),
-        externalReference: `${userId || 'anon'}:${planId}_annual_${Date.now()}` // [MODIFIED] Include userId
+        externalReference: `${authUserId}:${planId}_annual_${Date.now()}` // [MODIFIED] Include authUserId
       };
 
       const payment = await asaasRequest('POST', '/payments', paymentData);
@@ -1142,7 +1211,7 @@ router.post('/asaas/subscription', async (req, res) => {
         let creditCardToken = null;
         try {
           console.log('>>> [TOKENIZATION] Tokenizing credit card before creating payment...');
-          const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+          const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
             customer: customerId,
             creditCard: {
               holderName: creditCard.holderName,
@@ -1164,23 +1233,16 @@ router.post('/asaas/subscription', async (req, res) => {
           creditCardToken = tokenResult.creditCardToken;
           console.log('>>> [TOKENIZATION] Success! Token created.');
         } catch (tokenError) {
-          console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
-          return res.status(400).json({
-            success: false,
-            error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados ou use outro cartão.'
-          });
+          console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with direct charge fallback:', tokenError.message);
         }
 
-        if (!creditCardToken) {
-          return res.status(400).json({ success: false, error: 'Não foi possível tokenizar o cartão. Tente novamente.' });
-        }
-
+        const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
         // SAVE TOKEN TO FIRESTORE
-        if (userId && firebaseAdmin) {
+        if (authUserId && firebaseAdmin) {
           try {
             const db = firebaseAdmin.firestore();
             const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
-            await db.collection('users').doc(userId).update({
+            await db.collection('users').doc(authUserId).update({
               'subscription.creditCardToken': creditCardToken,
               'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
               'profile.subscription.creditCardToken': creditCardToken
@@ -1198,8 +1260,24 @@ router.post('/asaas/subscription', async (req, res) => {
           dueDate: dueDateStr,
           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
           remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_first_${Date.now()}`,
-          creditCardToken: creditCardToken // ALWAYS USE TOKEN
+          externalReference: `${authUserId}:${planId}_first_${Date.now()}`,
+          ...(creditCardToken ? { creditCardToken } : {
+            creditCard: {
+              holderName: creditCard.holderName,
+              number: sanitizedCardNumber,
+              expiryMonth: creditCard.expiryMonth,
+              expiryYear: creditCard.expiryYear,
+              ccv: creditCard.ccv
+            },
+            creditCardHolderInfo: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+              addressNumber: creditCardHolderInfo.addressNumber,
+              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+            }
+          })
         };
 
         const firstPayment = await asaasRequest('POST', '/payments', paymentData);
@@ -1229,8 +1307,24 @@ router.post('/asaas/subscription', async (req, res) => {
           cycle: cycle,
           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
           remoteIp: getClientIp(req),
-          externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}`,
-          creditCardToken: creditCardToken // ALWAYS USE TOKEN
+          externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`,
+          ...(creditCardToken ? { creditCardToken } : {
+            creditCard: {
+              holderName: creditCard.holderName,
+              number: sanitizedCardNumber,
+              expiryMonth: creditCard.expiryMonth,
+              expiryYear: creditCard.expiryYear,
+              ccv: creditCard.ccv
+            },
+            creditCardHolderInfo: {
+              name: creditCardHolderInfo.name,
+              email: creditCardHolderInfo.email,
+              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+              addressNumber: creditCardHolderInfo.addressNumber,
+              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+            }
+          })
         };
 
         // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.
@@ -1247,7 +1341,7 @@ router.post('/asaas/subscription', async (req, res) => {
         }
 
         // [NEW] Activate on Server (Even if subscription failed, because Payment was CONFIRMED)
-        await activatePlanOnServer(userId, planId, cycle, firstPayment.id, subscription?.id);
+        await activatePlanOnServer(authUserId, planId, cycle, firstPayment.id, subscription?.id);
 
         // [NEW] Send sale to Utmify for tracking
         try {
@@ -1290,7 +1384,7 @@ router.post('/asaas/subscription', async (req, res) => {
       let creditCardToken = null;
       try {
         console.log('>>> [TOKENIZATION] Tokenizing credit card (No Coupon Flow)...');
-        const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+        const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
           customer: customerId,
           creditCard: {
             holderName: creditCard.holderName,
@@ -1312,23 +1406,15 @@ router.post('/asaas/subscription', async (req, res) => {
         creditCardToken = tokenResult.creditCardToken;
         console.log('>>> [TOKENIZATION] Success! Token created.');
       } catch (tokenError) {
-        console.error('>>> [TOKENIZATION] Failed to tokenize card:', tokenError.message);
-        return res.status(400).json({
-          success: false,
-          error: 'Falha ao validar o cartão com a operadora. Por favor, verifique os dados.'
-        });
+        console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with direct fallback:', tokenError.message);
       }
 
-      if (!creditCardToken) {
-        return res.status(400).json({ success: false, error: 'Não foi possível processar o cartão.' });
-      }
-
+      const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
       // SAVE TOKEN TO FIRESTORE
-      if (userId && firebaseAdmin) {
+      if (creditCardToken && authUserId && firebaseAdmin) {
         try {
           const db = firebaseAdmin.firestore();
-          const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
-          await db.collection('users').doc(userId).update({
+          await db.collection('users').doc(authUserId).update({
             'subscription.creditCardToken': creditCardToken,
             'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
             'profile.subscription.creditCardToken': creditCardToken
@@ -1345,18 +1431,25 @@ router.post('/asaas/subscription', async (req, res) => {
         nextDueDate: dueDateStr,
         cycle: cycle,
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
-        creditCardToken: creditCardToken, // USE TOKEN
-        // creditCard object removed - relying on token strictly
-        creditCardHolderInfo: {
-          name: creditCardHolderInfo.name,
-          email: creditCardHolderInfo.email,
-          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-          addressNumber: creditCardHolderInfo.addressNumber,
-          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-        },
         remoteIp: getClientIp(req),
-        externalReference: `${userId || 'anon'}:${planId}_${cycle.toLowerCase()}_${Date.now()}` // [MODIFIED] Include userId
+        externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`, // [MODIFIED] Include authUserId
+        ...(creditCardToken ? { creditCardToken } : {
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: sanitizedCardNumber,
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          }
+        })
       };
 
       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
@@ -1374,7 +1467,7 @@ router.post('/asaas/subscription', async (req, res) => {
         }
 
         // [NEW] Activate on Server
-        await activatePlanOnServer(userId, planId, cycle, firstPayment?.id, subscription.id);
+        await activatePlanOnServer(authUserId, planId, cycle, firstPayment?.id, subscription.id);
 
         // [NEW] Send sale to Utmify for tracking
         try {
@@ -1461,8 +1554,13 @@ router.post('/asaas/subscription', async (req, res) => {
 // ===============================
 // [NEW] Update Credit Card for Subscription
 // ===============================
-router.post('/asaas/subscription/update-card', async (req, res) => {
-  const { subscriptionId, customerId, creditCard, creditCardHolderInfo, userId } = req.body;
+router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
+
+  const { subscriptionId, customerId, creditCard, creditCardHolderInfo } = req.body;
 
   if (!subscriptionId || !customerId || !creditCard || !creditCardHolderInfo) {
     return res.status(400).json({ error: 'Dados incompletos para atualização do cartão.' });
@@ -1474,7 +1572,7 @@ router.post('/asaas/subscription/update-card', async (req, res) => {
     // 1. Tokenize the new card
     let creditCardToken = null;
     try {
-      const tokenResult = await asaasRequest('POST', '/creditCard/tokenizeCreditCard', {
+      const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
         customer: customerId,
         creditCard: {
           holderName: creditCard.holderName,
@@ -1513,14 +1611,14 @@ router.post('/asaas/subscription/update-card', async (req, res) => {
 
     console.log(`>>> [UPDATE CARD] Subscription ${subscriptionId} updated with new card token.`);
 
-    if (userId && firebaseAdmin) {
+    if (authUserId && firebaseAdmin) {
       try {
         const db = firebaseAdmin.firestore();
         const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
         const nowIso = new Date().toISOString();
         const last4 = sanitizedCardNumber.slice(-4);
 
-        await db.collection('users').doc(userId).update({
+        await db.collection('users').doc(authUserId).update({
           'subscription.creditCardToken': creditCardToken,
           'subscription.creditCardLast4': last4,
           'subscription.updatedAt': nowIso,
@@ -1898,8 +1996,31 @@ router.post('/asaas/webhook', async (req, res) => {
       case 'PAYMENT_CHARGEBACK_DISPUTE':
         // Revoke plan when payment is refunded or chargeback occurs
         console.log(`>>> Payment refunded/chargeback: ${event.payment?.id}`);
+        if (event.payment?.id) {
+          try {
+            await sendRefundToUtmify(event.payment.id);
+          } catch (e) {
+            console.error('>>> [UTMIFY] Error sending refund:', e);
+          }
+        }
         if (event.payment?.customer) {
-          const revoked = await revokeUserPlanByCustomerId(event.payment.customer, 'refunded');
+          const revoked = await revokeUserPlanByCustomerId(event.payment.customer, 'canceled');
+          if (revoked && firebaseAdmin) {
+            try {
+              const db = firebaseAdmin.firestore();
+              const snap = await db.collection('users').where('subscription.asaasCustomerId', '==', event.payment.customer).get();
+              snap.forEach(doc => {
+                doc.ref.update({
+                  'subscription.revokedReason': 'Refund/Estorno (Webhook)',
+                  'subscription.revokedAt': new Date().toISOString(),
+                  'profile.subscription.revokedReason': 'Refund/Estorno (Webhook)',
+                  'profile.subscription.revokedAt': new Date().toISOString()
+                });
+              });
+            } catch (err) {
+              console.error('>>> Error updating refund reason:', err);
+            }
+          }
           console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);
         }
         break;
@@ -2157,7 +2278,11 @@ router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth
   }
 });
 
-router.post('/asaas/payment/:paymentId/refund', async (req, res) => {
+router.post('/asaas/payment/:paymentId/refund', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
   const { paymentId } = req.params;
   const { value, description } = req.body;
 
@@ -2227,7 +2352,11 @@ router.get('/asaas/invoice/:invoiceId', async (req, res) => {
 });
 
 // Create invoice (NFSe) for a payment - Manual trigger
-router.post('/asaas/invoice/create', async (req, res) => {
+router.post('/asaas/invoice/create', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
   const { paymentId, userId } = req.body;
 
   if (!paymentId) {
@@ -2259,7 +2388,7 @@ router.post('/asaas/invoice/create', async (req, res) => {
 });
 
 // Endpoint to apply coupon to users (and update Asaas if needed)
-router.post('/admin/apply-coupons', async (req, res) => {
+router.post('/admin/apply-coupons', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {
   const { userIds, couponId, month } = req.body; // month: YYYY-MM
 
   if (!userIds || !Array.isArray(userIds) || !couponId) {
@@ -2367,7 +2496,11 @@ router.post('/admin/apply-coupons', async (req, res) => {
 // CANCEL PLAN (GRACEFUL) - Cancel subscription but maintain access until next billing date
 // User keeps PRO access until nextBillingDate, then gets revoked automatically
 // ========================================
-router.post('/admin/cancel-plan', async (req, res) => {
+router.post('/admin/cancel-plan', requireFirebaseAuth, async (req, res) => {
+  const authUserId = req?.user?.uid;
+  if (!authUserId) {
+    return res.status(401).json({ error: 'Usuário não autenticado.' });
+  }
   const { userId, subscriptionId } = req.body;
 
   if (!userId) {
@@ -2450,7 +2583,7 @@ router.post('/admin/cancel-plan', async (req, res) => {
 });
 
 // Endpoint to revoke user plan (admin action)
-router.post('/admin/revoke-plan', async (req, res) => {
+router.post('/admin/revoke-plan', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {
   const { userId, reason } = req.body;
 
   if (!userId) {
@@ -2508,7 +2641,7 @@ router.post('/admin/revoke-plan', async (req, res) => {
 });
 
 // Endpoint to revoke plan by customer ID (for webhook fallback or admin use)
-router.post('/admin/revoke-plan-by-customer', async (req, res) => {
+router.post('/admin/revoke-plan-by-customer', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {
   const { customerId, reason } = req.body;
 
   if (!customerId) {
@@ -3131,80 +3264,12 @@ router.get('/asaas/admin/stats', async (req, res) => {
   }
 });
 
-// ========================================
-// ASAAS WEBHOOK
-// ========================================
-router.post('/asaas/webhook', async (req, res) => {
-  try {
-    const { event, payment } = req.body;
 
-    // Log apenas eventos relevantes para não poluir
-    if (event === 'PAYMENT_REFUNDED' || event === 'PAYMENT_CHARGEBACK') {
-      console.log(`>>> [WEBHOOK] Event received: ${event}`);
-
-      if (payment && payment.id) {
-        console.log(`>>> [WEBHOOK] Processing refund for payment ${payment.id}`);
-        // Send to Utmify
-        await sendRefundToUtmify(payment.id);
-
-        // Update Firestore
-        try {
-          const db = firebaseAdmin.firestore();
-          const usersRef = db.collection('users');
-          const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', payment.customer).get();
-
-          if (!snapshot.empty) {
-            const batch = db.batch();
-            const now = new Date().toISOString();
-
-            snapshot.forEach(doc => {
-              const userData = doc.data();
-              const sub = userData.subscription || {};
-
-              // Only update if not already refunded/canceled to avoid overwriting existing reason if different
-              // But for refund, we probably want to force it.
-
-              const updatePayload = {
-                'subscription.status': 'canceled', // Use canceled as the base status for system compatibility
-                'subscription.revokedReason': 'Refund/Estorno (Webhook)', // Mark as refund for UI
-                'subscription.revokedAt': now,
-                'subscription.canceledAt': now,
-                'subscription.autoRenew': false,
-
-                'profile.subscription.status': 'canceled',
-                'profile.subscription.revokedReason': 'Refund/Estorno (Webhook)',
-                'profile.subscription.revokedAt': now,
-                'profile.subscription.canceledAt': now,
-                'profile.subscription.autoRenew': false
-              };
-
-              batch.update(doc.ref, updatePayload);
-            });
-
-            await batch.commit();
-            console.log(`>>> [WEBHOOK] Updated ${snapshot.size} user(s) to REFUNDED state for customer ${payment.customer}`);
-          } else {
-            console.warn(`>>> [WEBHOOK] No user found for customer ${payment.customer} to apply refund.`);
-          }
-        } catch (dbError) {
-          console.error('>>> [WEBHOOK] Error updating Firestore for refund:', dbError);
-        }
-      }
-    }
-
-    // Sempre responder 200 OK para o Asaas não reenviar
-    res.status(200).json({ received: true });
-  } catch (error) {
-    console.error('>>> [WEBHOOK] Error processing event:', error);
-    // Ainda retornamos 200 para não travar a fila do Asaas se for erro nosso interno de logica nao critica
-    res.status(200).json({ received: true, error: error.message });
-  }
-});
 
 // ========================================
 // SEND EMAIL (GENERIC) - For Admin Notifications
 // ========================================
-router.post('/admin/send-email', async (req, res) => {
+router.post('/admin/send-email', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {
   const { recipients, subject, title, body, buttonText, buttonLink, headerAlign, titleAlign, bodyAlign } = req.body;
 
   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {

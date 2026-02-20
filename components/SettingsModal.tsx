@@ -6,7 +6,7 @@ import {
    CheckCircle, Copy, FileText, ChevronRight, ArrowLeft, Coins,
    PiggyBank, ShieldCheck, Lock, Cloud, Trophy, Crown, Users,
    Zap, Activity, Search, Bot, BrainCircuit, Link, Wifi, Wand2, Award, Calendar, CreditCard as CardIcon, Star,
-   Puzzle, Rocket, Wallet, Plus, AlertTriangle, Monitor, Globe, ExternalLink, Clock
+   Puzzle, Rocket, Wallet, Plus, AlertTriangle, Monitor, Globe, ExternalLink, Clock, Percent
 } from 'lucide-react';
 import { CustomSettingsIcon } from './CustomIcons';
 import { UniversalModal, ModalSection, ModalDivider } from './UniversalModal';
@@ -1317,9 +1317,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             const expYear = `20${expYearShort}`;
 
             // Real API Call to update Asaas
+            const token = await auth.currentUser?.getIdToken();
             const response = await fetch('/api/asaas/subscription/update-card', {
                method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
+               headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+               },
                body: JSON.stringify({
                   userId,
                   subscriptionId,
@@ -1383,8 +1387,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       try {
          // 1. If there's an Asaas Subscription ID, cancel it on the server
          if (subscriptionId) {
+            const token = await auth.currentUser?.getIdToken();
             const response = await fetch(`/api/asaas/subscription/${subscriptionId}`, {
-               method: 'DELETE'
+               method: 'DELETE',
+               headers: {
+                  'Authorization': `Bearer ${token}`
+               }
             });
 
             const data = await response.json();
@@ -1434,9 +1442,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       try {
          // Helper function to process refund once we have paymentId
          const processRefund = async (paymentId: string) => {
+            const token = await auth.currentUser?.getIdToken();
             const refundRes = await fetch(`/api/asaas/payment/${paymentId}/refund`, {
                method: 'POST',
-               headers: { 'Content-Type': 'application/json' },
+               headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}`
+               },
                body: JSON.stringify({ description: 'Estorno solicitado pelo cliente (garantia 7 dias)' })
             });
 
