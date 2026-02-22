@@ -98,6 +98,63 @@ describe('InvoiceBuilder - Precision and Date Rules', () => {
     expect(payment?.isPayment).toBe(true);
   });
 
+  it('should keep imported purchase as negative expense even when legacy type is income', () => {
+    const transactions: Partial<Transaction>[] = [
+      {
+        id: 'legacy_purchase',
+        description: 'COMPRA MERCADO',
+        amount: 120,
+        date: '2026-01-12',
+        type: 'income',
+        cardId: 'card_123',
+        importSource: 'pluggy',
+        providerId: 'tx_legacy_1'
+      }
+    ];
+
+    const today = new Date(2026, 0, 15);
+    const result = buildInvoices(mockCard as ConnectedAccount, transactions as Transaction[], 'card_123', 0, today);
+
+    expect(result.currentInvoice.total).toBe(120);
+    const purchase = result.currentInvoice.items.find(i => i.id === 'legacy_purchase');
+    expect(purchase?.type).toBe('expense');
+    expect(purchase?.amount).toBe(-120);
+  });
+
+  it('should classify invoice payment as positive and ignore it in total even when type is expense', () => {
+    const transactions: Partial<Transaction>[] = [
+      {
+        id: 'purchase_current',
+        description: 'Compra Loja',
+        amount: 200,
+        date: '2026-01-12',
+        type: 'expense',
+        cardId: 'card_123',
+        importSource: 'pluggy',
+        providerId: 'tx_purchase_1'
+      },
+      {
+        id: 'payment_current',
+        description: 'PAGAMENTO DE FATURA',
+        amount: 200,
+        date: '2026-01-13',
+        type: 'expense',
+        cardId: 'card_123',
+        importSource: 'pluggy',
+        providerId: 'tx_payment_1'
+      }
+    ];
+
+    const today = new Date(2026, 0, 15);
+    const result = buildInvoices(mockCard as ConnectedAccount, transactions as Transaction[], 'card_123', 0, today);
+
+    expect(result.currentInvoice.total).toBe(200);
+    const payment = result.closedInvoice.items.find(i => i.id === 'payment_current');
+    expect(payment?.isPayment).toBe(true);
+    expect(payment?.type).toBe('income');
+    expect(payment?.amount).toBe(200);
+  });
+
   it('should reduce invoice total with income transactions (ex: estorno parcial)', () => {
     const transactions: Partial<Transaction>[] = [
       { id: '1', description: 'Compra Loja', amount: 100, date: '2026-01-05', type: 'expense', cardId: 'card_123' },

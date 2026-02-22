@@ -20,7 +20,7 @@ import { getInvoiceMonthKey } from '../services/invoiceCalculator';
 import {
   calculateFutureLimitImpact,
   getTransactionInvoiceMonthKey,
-  isCreditCardPayment,
+  isCreditCardPayment as isCreditCardPaymentFromBuilder,
 
   buildInvoices,
   generateInvoiceForecast,
@@ -708,41 +708,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
    * IMPORTANTE: Prioridade sobre Reembolso se a descrição for explícita.
    */
   const isCreditCardPayment = (tx: Transaction): boolean => {
-    const d = (tx.description || '').toLowerCase();
-    const c = (tx.category || '').toLowerCase();
-
-    // 1. Verifica keywords de PAGAMENTO primeiro
-    const paymentKeywords = [
-      'pagamento de fatura',
-      'pagamento fatura',
-      'pagamento recebido',
-      'credit card payment',
-      'pag fatura',
-      'pgto fatura',
-      'pgto'
-    ];
-
-    // Verifica se é explicitamente um pagamento
-    const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw) || d === 'pgto');
-
-    if (isExplicitPayment) {
-      // Se a descrição diz explicitamente que é pagamento, É PAGAMENTO.
-      // Mesmo que tenha 'estorno' no meio (raro) ou categoria 'Reembolso'.
-      // Exceção: "Estorno de pagamento"
-      if (d.includes('estorno') || d.includes('cancelamento')) {
-        return false; // É um estorno de pagamento
-      }
-      return true;
-    }
-
-    // 2. Se não é explicitamente pagamento, verifica se é estorno/reembolso
-    // Se for reembolso, não é pagamento
-    const refundKeywords = ['estorno', 'reembolso', 'devolução', 'cancelamento', 'refund', 'chargeback', 'cashback'];
-    if (refundKeywords.some(kw => d.includes(kw) || c.includes(kw))) {
-      return false;
-    }
-
-    return false;
+    if ((tx as any).isPayment === true) return true;
+    return isCreditCardPaymentFromBuilder(tx);
   };
 
   // Basic filtered transactions (used when no card is selected/configured)
@@ -2874,7 +2841,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
                                       : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
                                         : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
                                     }`}>
-                                    {(t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
+                                    {(isPayment || t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
                                   </span>
                                   {/* Sinalizador de moeda estrangeira (USD, EUR, etc.) */}
                                   {isInternational && (

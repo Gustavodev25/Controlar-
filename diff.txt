@@ -1,0 +1,385 @@
+﻿diff --git a/App.tsx b/App.tsx
+index 805ebbf..bf78a43 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -3194,13 +3194,22 @@ const App: React.FC = () => {
+               const amount = Math.abs(meta.totalInstallments && meta.totalAmount
+                 ? (meta.totalAmount / meta.totalInstallments)
+                 : rawAmount);
++              const providerType = String(tx?.type || '').toUpperCase();
++              const normalizedCardType: 'income' | 'expense' =
++                providerType === 'CREDIT'
++                  ? 'income'
++                  : providerType === 'DEBIT'
++                    ? 'expense'
++                    : rawAmount > 0
++                      ? 'income'
++                      : 'expense';
+ 
+               const txData: Omit<dbService.CreditCardTransaction, 'id'> = {
+                 date: txDate,
+                 description: tx?.description || 'Lan├ºamento Cart├úo',
+                 amount,
+                 category: translatePluggyCategory(tx?.category),
+-                type: (tx?.type === 'CREDIT' || rawAmount < 0) ? 'income' : 'expense',
++                type: normalizedCardType,
+                 status: 'completed',
+                 cardId: account.id,
+                 cardName: account.name || 'Cart├úo',
+@@ -4421,3 +4430,4 @@ const App: React.FC = () => {
+ };
+ 
+ export default App;
++
+diff --git a/components/CreditCardTable.tsx b/components/CreditCardTable.tsx
+index fa9d233..7280646 100644
+--- a/components/CreditCardTable.tsx
++++ b/components/CreditCardTable.tsx
+@@ -20,7 +20,7 @@ import { getInvoiceMonthKey } from '../services/invoiceCalculator';
+ import {
+   calculateFutureLimitImpact,
+   getTransactionInvoiceMonthKey,
+-  isCreditCardPayment,
++  isCreditCardPayment as isCreditCardPaymentFromBuilder,
+ 
+   buildInvoices,
+   generateInvoiceForecast,
+@@ -708,41 +708,8 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
+    * IMPORTANTE: Prioridade sobre Reembolso se a descri├º├úo for expl├¡cita.
+    */
+   const isCreditCardPayment = (tx: Transaction): boolean => {
+-    const d = (tx.description || '').toLowerCase();
+-    const c = (tx.category || '').toLowerCase();
+-
+-    // 1. Verifica keywords de PAGAMENTO primeiro
+-    const paymentKeywords = [
+-      'pagamento de fatura',
+-      'pagamento fatura',
+-      'pagamento recebido',
+-      'credit card payment',
+-      'pag fatura',
+-      'pgto fatura',
+-      'pgto'
+-    ];
+-
+-    // Verifica se ├® explicitamente um pagamento
+-    const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw) || d === 'pgto');
+-
+-    if (isExplicitPayment) {
+-      // Se a descri├º├úo diz explicitamente que ├® pagamento, ├ë PAGAMENTO.
+-      // Mesmo que tenha 'estorno' no meio (raro) ou categoria 'Reembolso'.
+-      // Exce├º├úo: "Estorno de pagamento"
+-      if (d.includes('estorno') || d.includes('cancelamento')) {
+-        return false; // ├ë um estorno de pagamento
+-      }
+-      return true;
+-    }
+-
+-    // 2. Se n├úo ├® explicitamente pagamento, verifica se ├® estorno/reembolso
+-    // Se for reembolso, n├úo ├® pagamento
+-    const refundKeywords = ['estorno', 'reembolso', 'devolu├º├úo', 'cancelamento', 'refund', 'chargeback', 'cashback'];
+-    if (refundKeywords.some(kw => d.includes(kw) || c.includes(kw))) {
+-      return false;
+-    }
+-
+-    return false;
++    if ((tx as any).isPayment === true) return true;
++    return isCreditCardPaymentFromBuilder(tx);
+   };
+ 
+   // Basic filtered transactions (used when no card is selected/configured)
+@@ -2874,7 +2841,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
+                                       : isPayment ? (isLate ? 'text-amber-400' : 'text-emerald-400')
+                                         : t.type === 'income' ? 'text-emerald-400' : 'text-gray-200'
+                                     }`}>
+-                                    {(t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
++                                    {(isPayment || t.type === 'income' ? '+' : '-')} {formatCurrency(displayAmount)}
+                                   </span>
+                                   {/* Sinalizador de moeda estrangeira (USD, EUR, etc.) */}
+                                   {isInternational && (
+diff --git a/components/StatsCards.tsx b/components/StatsCards.tsx
+index 75371e8..5686e1a 100644
+--- a/components/StatsCards.tsx
++++ b/components/StatsCards.tsx
+@@ -600,9 +600,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
+         const invoiceResult = buildInvoices(card, cardTransactions, card.id);
+ 
+         if (dashboardDate) {
+-          // When dashboardDate is active, we rely on the calculated invoiceValue 
+-          // (which respects manual moves for that month)
+-          currentInvoiceValue = invoiceValue;
++          // When dashboardDate is active, use invoiceBuilder result
++          // because it correctly handles manualInvoiceMonth logic
++          currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
+         } else {
+           // Fatura Atual = currentInvoice.total do invoiceBuilder
+           currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
+@@ -1138,6 +1138,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
+                   const zIndex = sortedCards.length - offset;
+ 
+                   const selectedType = cardInvoiceType[card.id] || 'current';
++                  
+                   const displayValue = selectedType === 'used_total'
+                     ? (cardInvoice?.usedTotal ?? 0)
+                     : selectedType === 'next'
+diff --git a/services/invoiceBuilder.test.ts b/services/invoiceBuilder.test.ts
+index 3be06ce..57a1ca0 100644
+--- a/services/invoiceBuilder.test.ts
++++ b/services/invoiceBuilder.test.ts
+@@ -98,6 +98,63 @@ describe('InvoiceBuilder - Precision and Date Rules', () => {
+     expect(payment?.isPayment).toBe(true);
+   });
+ 
++  it('should keep imported purchase as negative expense even when legacy type is income', () => {
++    const transactions: Partial<Transaction>[] = [
++      {
++        id: 'legacy_purchase',
++        description: 'COMPRA MERCADO',
++        amount: 120,
++        date: '2026-01-12',
++        type: 'income',
++        cardId: 'card_123',
++        importSource: 'pluggy',
++        providerId: 'tx_legacy_1'
++      }
++    ];
++
++    const today = new Date(2026, 0, 15);
++    const result = buildInvoices(mockCard as ConnectedAccount, transactions as Transaction[], 'card_123', 0, today);
++
++    expect(result.currentInvoice.total).toBe(120);
++    const purchase = result.currentInvoice.items.find(i => i.id === 'legacy_purchase');
++    expect(purchase?.type).toBe('expense');
++    expect(purchase?.amount).toBe(-120);
++  });
++
++  it('should classify invoice payment as positive and ignore it in total even when type is expense', () => {
++    const transactions: Partial<Transaction>[] = [
++      {
++        id: 'purchase_current',
++        description: 'Compra Loja',
++        amount: 200,
++        date: '2026-01-12',
++        type: 'expense',
++        cardId: 'card_123',
++        importSource: 'pluggy',
++        providerId: 'tx_purchase_1'
++      },
++      {
++        id: 'payment_current',
++        description: 'PAGAMENTO DE FATURA',
++        amount: 200,
++        date: '2026-01-13',
++        type: 'expense',
++        cardId: 'card_123',
++        importSource: 'pluggy',
++        providerId: 'tx_payment_1'
++      }
++    ];
++
++    const today = new Date(2026, 0, 15);
++    const result = buildInvoices(mockCard as ConnectedAccount, transactions as Transaction[], 'card_123', 0, today);
++
++    expect(result.currentInvoice.total).toBe(200);
++    const payment = result.closedInvoice.items.find(i => i.id === 'payment_current');
++    expect(payment?.isPayment).toBe(true);
++    expect(payment?.type).toBe('income');
++    expect(payment?.amount).toBe(200);
++  });
++
+   it('should reduce invoice total with income transactions (ex: estorno parcial)', () => {
+     const transactions: Partial<Transaction>[] = [
+       { id: '1', description: 'Compra Loja', amount: 100, date: '2026-01-05', type: 'expense', cardId: 'card_123' },
+diff --git a/services/invoiceBuilder.ts b/services/invoiceBuilder.ts
+index 3d3c9f4..97e20d0 100644
+--- a/services/invoiceBuilder.ts
++++ b/services/invoiceBuilder.ts
+@@ -221,58 +221,69 @@ const extractInstallmentFromDesc = (desc: string): { current: number; total: num
+   return null;
+ };
+ 
+-/**
+- * Verifica se uma transa├º├úo ├® pagamento de fatura
+- * 
+- * REGRA CR├ìTICA:
+- * 1. Um pagamento de fatura ├® SEMPRE um cr├®dito (income) para o cart├úo.
+- * 2. Se a transa├º├úo for uma despesa (expense/valor negativo), NUNCA ├® pagamento.
+- * 3. Muitos bancos usam "PGTO" como prefixo de compras (ex: "PGTO LOJA").
+- */
++const normalizeForMatching = (value: string = ''): string => {
++  return (value || '')
++    .toLowerCase()
++    .normalize('NFD')
++    .replace(/[\u0300-\u036f]/g, '')
++    .replace(/\s+/g, ' ')
++    .trim();
++};
+ export const isCreditCardPayment = (tx: Transaction): boolean => {
+-  // 1. Se for despesa (valor negativo na API ou tipo expense), n├úo ├® pagamento de fatura
+-  const isExpense = tx.type === 'expense' || (tx.amount < 0 && !tx.type);
+-  if (isExpense) return false;
++  if ((tx as any).isPayment === true) return true;
+ 
+-  const d = (tx.description || '').toLowerCase();
+-  const c = (tx.category || '').toLowerCase();
++  const d = normalizeForMatching(tx.description || '');
++  const c = normalizeForMatching(tx.category || '');
++  const text = `${d} ${c}`.trim();
+ 
+-  // 2. Keywords espec├¡ficas que indicam pagamento de fatura (cr├®dito na conta)
+   const paymentKeywords = [
+     'pagamento de fatura',
+     'pagamento fatura',
++    'pag fatura',
++    'pgto fatura',
++    'pagto fatura',
+     'pagamento recebido',
+-    'credit card payment',
+     'pagamento efetuado',
+     'pagamento enviado',
++    'credit card payment',
++    'payment received',
+     'recebemos seu pagamento'
+   ];
+ 
+-  const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw));
++  if (paymentKeywords.some(kw => text.includes(kw))) {
++    return true;
++  }
++
++  const hasInvoiceContext =
++    text.includes('fatura') ||
++    text.includes('cartao') ||
++    text.includes('credit card');
++
++  const hasPaymentVerb = /\b(pagamento|pagto|pgto|payment)\b/.test(text);
++  if (hasInvoiceContext && hasPaymentVerb) {
++    return true;
++  }
+ 
+-  // 3. Casos curtos como "PGTO" ou "PAGTO" s├│ s├úo pagamentos se forem a descri├º├úo exata
+-  // ou se a categoria for explicitamente de pagamento.
+   const isShortPayment = (d === 'pgto' || d === 'pagto' || d === 'pagamento');
+   const isPaymentCategory = c.includes('credit card payment') || c === 'pagamento de fatura';
+ 
+-  return isExplicitPayment || isShortPayment || isPaymentCategory;
++  return isShortPayment || isPaymentCategory;
+ };
+-
+ export const isTransactionRefund = (tx: Transaction): boolean => {
+   if ((tx as any)._syntheticRefund === true || !!(tx as any).refundOfId) {
+     return true;
+   }
+ 
+-  const desc = (tx.description || '').toLowerCase();
+-  const category = (tx.category || '').toLowerCase();
++  const desc = normalizeForMatching(tx.description || '');
++  const category = normalizeForMatching(tx.category || '');
+   const refundKeywords = [
+     'estorno',
+     'reembolso',
+     'devolucao',
+-    'devolu├º├úo',
+     'chargeback',
+     'refund',
+-    'cancelamento'
++    'cancelamento',
++    'cashback'
+   ];
+ 
+   return refundKeywords.some(kw => desc.includes(kw) || category.includes(kw));
+@@ -280,7 +291,6 @@ export const isTransactionRefund = (tx: Transaction): boolean => {
+ 
+ 
+ 
+-
+ // ============================================================
+ // C├üLCULO DE PER├ìODOS
+ // ============================================================
+@@ -613,22 +623,33 @@ export const processInstallments = (
+  */
+ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
+   const isPayment = isCreditCardPayment(tx);
+-  // FIX: rely only on explicit flags or helper detection, not just negative amount
+-  // FIX: rely only on explicit flags or logic related to invoices, not refunds
+-  // const isRefund = removed;
+-
+-  // Determina tipo e sinal baseado na natureza da transa├º├úo
+-  // Pagamentos: marcados como income, mas com flag especial
+-  // Despesas: expense normal
+-  let fixedType: 'income' | 'expense' = tx.type === 'income' ? 'income' : 'expense';
+-  let amount = fixedType === 'income' ? Math.abs(tx.amount) : -Math.abs(tx.amount);
+-
+-  if (isPayment) {
+-    // Pagamento de fatura: positivo mas N├âO conta no total
++  const isRefund = isTransactionRefund(tx);
++  const normalizedText = normalizeForMatching(`${tx.description || ''} ${tx.category || ''}`);
++  const isKnownCreditEvent =
++    normalizedText.includes('cashback') ||
++    normalizedText.includes('bonificacao') ||
++    normalizedText.includes('bonus') ||
++    normalizedText.includes('recompensa') ||
++    normalizedText.includes('reward');
++  const isImportedTx = !!(tx.importSource || tx.providerId || tx.pluggyRaw);
++  const shouldFixLegacyInvertedType =
++    isImportedTx &&
++    tx.type === 'income' &&
++    !isPayment &&
++    !isRefund &&
++    !isKnownCreditEvent;
++
++  let fixedType: 'income' | 'expense';
++  if (isPayment || isRefund || isKnownCreditEvent) {
+     fixedType = 'income';
+-    amount = Math.abs(tx.amount);
++  } else if (shouldFixLegacyInvertedType) {
++    fixedType = 'expense';
++  } else {
++    fixedType = tx.type === 'income' ? 'income' : 'expense';
+   }
+ 
++  const amount = fixedType === 'income' ? Math.abs(tx.amount) : -Math.abs(tx.amount);
++
+   const { totalInstallments, installmentNumber } = extractInstallmentInfo(tx);
+   const hasInstallments = totalInstallments > 1;
+ 
+@@ -643,9 +664,7 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false):
+     installmentNumber: hasInstallments ? installmentNumber : undefined,
+     totalInstallments: hasInstallments ? totalInstallments : undefined,
+     isProjected,
+-    isPayment, // Flag para identificar pagamentos (n├úo devem afetar total)
+-    // isRefund removed
+-    // Dados de moeda para transa├º├Áes internacionais
++    isPayment,
+     currencyCode: tx.currencyCode,
+     amountOriginal: tx.amountOriginal,
+     amountInAccountCurrency: tx.amountInAccountCurrency,
+@@ -653,10 +672,6 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false):
+     manualInvoiceMonth: tx.manualInvoiceMonth
+   };
+ };
+-
+-/**
+- * Cria um InvoiceItem projetado para parcela futura
+- */
+ export const createProjectedInstallment = (
+   baseTx: Transaction,
+   installmentNumber: number,
+@@ -1476,3 +1491,4 @@ export const formatDate = (dateStr: string): string => {
+   const [y, m, d] = dateStr.split('-');
+   return `${d}/${m}/${y}`;
+ };
++
+diff --git a/vite.config.ts b/vite.config.ts
+index 06cc909..dd1b8b2 100644
+--- a/vite.config.ts
++++ b/vite.config.ts
+@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
+     server: {
+       port: 3000,
+       host: '0.0.0.0',
+-      allowedHosts: ['damageable-josephine-nonvexatiously.ngrok-free.dev'],
++      allowedHosts: ['angelina-unsalvageable-inconceivably.ngrok-free.dev'],
+     },
+     plugins: [react(), expressPlugin()],
+     resolve: {

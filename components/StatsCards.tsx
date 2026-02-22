@@ -600,9 +600,9 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         const invoiceResult = buildInvoices(card, cardTransactions, card.id);
 
         if (dashboardDate) {
-          // When dashboardDate is active, we rely on the calculated invoiceValue 
-          // (which respects manual moves for that month)
-          currentInvoiceValue = invoiceValue;
+          // When dashboardDate is active, use invoiceBuilder result
+          // because it correctly handles manualInvoiceMonth logic
+          currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
         } else {
           // Fatura Atual = currentInvoice.total do invoiceBuilder
           currentInvoiceValue = Math.max(0, invoiceResult.currentInvoice.total);
@@ -1138,6 +1138,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                   const zIndex = sortedCards.length - offset;
 
                   const selectedType = cardInvoiceType[card.id] || 'current';
+
                   const displayValue = selectedType === 'used_total'
                     ? (cardInvoice?.usedTotal ?? 0)
                     : selectedType === 'next'

@@ -221,63 +221,73 @@ const extractInstallmentFromDesc = (desc: string): { current: number; total: num
   return null;
 };
 
-/**
- * Verifica se uma transação é pagamento de fatura
- * 
- * REGRA CRÍTICA:
- * 1. Um pagamento de fatura é SEMPRE um crédito (income) para o cartão.
- * 2. Se a transação for uma despesa (expense/valor negativo), NUNCA é pagamento.
- * 3. Muitos bancos usam "PGTO" como prefixo de compras (ex: "PGTO LOJA").
- */
+const normalizeForMatching = (value: string = ''): string => {
+  return (value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+};
 export const isCreditCardPayment = (tx: Transaction): boolean => {
-  // 1. Se for despesa (valor negativo na API ou tipo expense), não é pagamento de fatura
-  const isExpense = tx.type === 'expense' || (tx.amount < 0 && !tx.type);
-  if (isExpense) return false;
+  if ((tx as any).isPayment === true) return true;
 
-  const d = (tx.description || '').toLowerCase();
-  const c = (tx.category || '').toLowerCase();
+  const d = normalizeForMatching(tx.description || '');
+  const c = normalizeForMatching(tx.category || '');
+  const text = `${d} ${c}`.trim();
 
-  // 2. Keywords específicas que indicam pagamento de fatura (crédito na conta)
   const paymentKeywords = [
     'pagamento de fatura',
     'pagamento fatura',
+    'pag fatura',
+    'pgto fatura',
+    'pagto fatura',
     'pagamento recebido',
-    'credit card payment',
     'pagamento efetuado',
     'pagamento enviado',
+    'credit card payment',
+    'payment received',
     'recebemos seu pagamento'
   ];
 
-  const isExplicitPayment = paymentKeywords.some(kw => d.includes(kw) || c.includes(kw));
+  if (paymentKeywords.some(kw => text.includes(kw))) {
+    return true;
+  }
 
-  // 3. Casos curtos como "PGTO" ou "PAGTO" só são pagamentos se forem a descrição exata
-  // ou se a categoria for explicitamente de pagamento.
+  const hasInvoiceContext =
+    text.includes('fatura') ||
+    text.includes('cartao') ||
+    text.includes('credit card');
+
+  const hasPaymentVerb = /\b(pagamento|pagto|pgto|payment)\b/.test(text);
+  if (hasInvoiceContext && hasPaymentVerb) {
+    return true;
+  }
+
   const isShortPayment = (d === 'pgto' || d === 'pagto' || d === 'pagamento');
   const isPaymentCategory = c.includes('credit card payment') || c === 'pagamento de fatura';
 
-  return isExplicitPayment || isShortPayment || isPaymentCategory;
+  return isShortPayment || isPaymentCategory;
 };
-
 export const isTransactionRefund = (tx: Transaction): boolean => {
   if ((tx as any)._syntheticRefund === true || !!(tx as any).refundOfId) {
     return true;
   }
 
-  const desc = (tx.description || '').toLowerCase();
-  const category = (tx.category || '').toLowerCase();
+  const desc = normalizeForMatching(tx.description || '');
+  const category = normalizeForMatching(tx.category || '');
   const refundKeywords = [
     'estorno',
     'reembolso',
     'devolucao',
-    'devolução',
     'chargeback',
     'refund',
-    'cancelamento'
+    'cancelamento',
+    'cashback'
   ];
 
   return refundKeywords.some(kw => desc.includes(kw) || category.includes(kw));
 };
-
 
 
 
@@ -613,21 +623,32 @@ export const processInstallments = (
  */
 export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): InvoiceItem => {
   const isPayment = isCreditCardPayment(tx);
-  // FIX: rely only on explicit flags or helper detection, not just negative amount
-  // FIX: rely only on explicit flags or logic related to invoices, not refunds
-  // const isRefund = removed;
+  const isRefund = isTransactionRefund(tx);
+  const normalizedText = normalizeForMatching(`${tx.description || ''} ${tx.category || ''}`);
+  const isKnownCreditEvent =
+    normalizedText.includes('cashback') ||
+    normalizedText.includes('bonificacao') ||
+    normalizedText.includes('bonus') ||
+    normalizedText.includes('recompensa') ||
+    normalizedText.includes('reward');
+  const isImportedTx = !!(tx.importSource || tx.providerId || tx.pluggyRaw);
+  const shouldFixLegacyInvertedType =
+    isImportedTx &&
+    tx.type === 'income' &&
+    !isPayment &&
+    !isRefund &&
+    !isKnownCreditEvent;
 
-  // Determina tipo e sinal baseado na natureza da transação
-  // Pagamentos: marcados como income, mas com flag especial
-  // Despesas: expense normal
-  let fixedType: 'income' | 'expense' = tx.type === 'income' ? 'income' : 'expense';
-  let amount = fixedType === 'income' ? Math.abs(tx.amount) : -Math.abs(tx.amount);
-
-  if (isPayment) {
-    // Pagamento de fatura: positivo mas NÃO conta no total
+  let fixedType: 'income' | 'expense';
+  if (isPayment || isRefund || isKnownCreditEvent) {
     fixedType = 'income';
-    amount = Math.abs(tx.amount);
+  } else if (shouldFixLegacyInvertedType) {
+    fixedType = 'expense';
+  } else {
+    fixedType = tx.type === 'income' ? 'income' : 'expense';
   }
+
+  const amount = fixedType === 'income' ? Math.abs(tx.amount) : -Math.abs(tx.amount);
 
   const { totalInstallments, installmentNumber } = extractInstallmentInfo(tx);
   const hasInstallments = totalInstallments > 1;
@@ -643,9 +664,7 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     installmentNumber: hasInstallments ? installmentNumber : undefined,
     totalInstallments: hasInstallments ? totalInstallments : undefined,
     isProjected,
-    isPayment, // Flag para identificar pagamentos (não devem afetar total)
-    // isRefund removed
-    // Dados de moeda para transações internacionais
+    isPayment,
     currencyCode: tx.currencyCode,
     amountOriginal: tx.amountOriginal,
     amountInAccountCurrency: tx.amountInAccountCurrency,
@@ -653,10 +672,6 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     manualInvoiceMonth: tx.manualInvoiceMonth
   };
 };
-
-/**
- * Cria um InvoiceItem projetado para parcela futura
- */
 export const createProjectedInstallment = (
   baseTx: Transaction,
   installmentNumber: number,
@@ -1476,3 +1491,4 @@ export const formatDate = (dateStr: string): string => {
   const [y, m, d] = dateStr.split('-');
   return `${d}/${m}/${y}`;
 };
+

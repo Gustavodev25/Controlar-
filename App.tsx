@@ -3194,13 +3194,22 @@ const App: React.FC = () => {
               const amount = Math.abs(meta.totalInstallments && meta.totalAmount
                 ? (meta.totalAmount / meta.totalInstallments)
                 : rawAmount);
+              const providerType = String(tx?.type || '').toUpperCase();
+              const normalizedCardType: 'income' | 'expense' =
+                providerType === 'CREDIT'
+                  ? 'income'
+                  : providerType === 'DEBIT'
+                    ? 'expense'
+                    : rawAmount > 0
+                      ? 'income'
+                      : 'expense';
 
               const txData: Omit<dbService.CreditCardTransaction, 'id'> = {
                 date: txDate,
                 description: tx?.description || 'Lançamento Cartão',
                 amount,
                 category: translatePluggyCategory(tx?.category),
-                type: (tx?.type === 'CREDIT' || rawAmount < 0) ? 'income' : 'expense',
+                type: normalizedCardType,
                 status: 'completed',
                 cardId: account.id,
                 cardName: account.name || 'Cartão',
@@ -4421,3 +4430,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

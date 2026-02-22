@@ -35,7 +35,7 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 3000,
       host: '0.0.0.0',
-      allowedHosts: ['damageable-josephine-nonvexatiously.ngrok-free.dev'],
+      allowedHosts: ['angelina-unsalvageable-inconceivably.ngrok-free.dev'],
     },
     plugins: [react(), expressPlugin()],
     resolve: {
