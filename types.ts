@@ -197,6 +197,7 @@ export interface Transaction {
 
   // Invoice Manual Override
   manualInvoiceMonth?: string | null; // YYYY-MM overrides the automatic date-based calculation
+  invoiceMonthKeyManual?: boolean; // Flag identifying manual override (sync compatibility)
 
   // Refund & Adjustment Flags
   _syntheticRefund?: boolean;
@@ -438,6 +439,7 @@ export interface InvoiceItem {
 
   // Manual Override (propagated from Transaction)
   manualInvoiceMonth?: string | null;
+  invoiceMonthKeyManual?: boolean;
 }
 
 /**

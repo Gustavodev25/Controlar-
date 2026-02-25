@@ -1,4 +1,0 @@
-﻿patch.cjs(7,31): error TS1136: Property assignment expected.
-patch.cjs(7,39): error TS1005: ';' expected.
-patch.cjs(11,16): error TS1128: Declaration or statement expected.
-patch.cjs(12,13): error TS1161: Unterminated regular expression literal.

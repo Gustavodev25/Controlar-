@@ -10,6 +10,7 @@ import { EmptyState } from './EmptyState';
 import NumberFlow from '@number-flow/react';
 import { toLocalISODate, toLocalISOString } from '../utils/dateUtils';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem } from './Dropdown';
+import * as dbService from '../services/database';
 
 export interface Investment {
   id: string;
@@ -38,6 +39,7 @@ interface InvestmentsProps {
   userPlan?: 'starter' | 'pro' | 'family';
   title?: string;
   subtitle?: string;
+  userId?: string; // Para usar addInvestmentTransaction
 }
 
 const TEMPLATES = [
@@ -277,7 +279,8 @@ export const Investments: React.FC<InvestmentsProps> = ({
   onAddTransaction,
   userPlan = 'starter',
   title = 'Caixinhas',
-  subtitle = 'Organize seus sonhos e metas'
+  subtitle = 'Organize seus sonhos e metas',
+  userId
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
@@ -474,7 +477,7 @@ export const Investments: React.FC<InvestmentsProps> = ({
     setDepositModalOpen(true);
   };
 
-  const handleDeposit = () => {
+  const handleDeposit = async () => {
     if (!depositInvestment) return;
     const amount = parseFloat(depositAmount.replace(',', '.'));
     if (isNaN(amount) || amount <= 0) {
@@ -483,29 +486,51 @@ export const Investments: React.FC<InvestmentsProps> = ({
     }
 
     const newAmount = depositInvestment.currentAmount + amount;
+    
+    // Atualizar saldo da caixinha
     onUpdate({
       ...depositInvestment,
       currentAmount: Math.min(newAmount, depositInvestment.targetAmount)
     });
 
-    onAddTransaction({
-      date: toLocalISODate(),
-      description: `Depósito em ${depositInvestment.name}`,
-      amount: amount,
-      category: `Caixinha - ${depositInvestment.name}`,
-      type: 'expense',
-      status: 'completed',
-      memberId: depositInvestment.memberId,
-      isInvestment: true
-    });
+    // ✅ Usar addInvestmentTransaction para criar em ambos os lugares
+    if (userId) {
+      try {
+        await dbService.addInvestmentTransaction(userId, depositInvestment.id, {
+          amount: amount,
+          type: 'deposit',
+          date: toLocalISODate(),
+          memberId: depositInvestment.memberId
+        });
+        toast.success(`R$ ${amount.toFixed(2)} depositado!`);
+      } catch (error) {
+        console.error('[handleDeposit] Erro ao criar transação:', error);
+        toast.error("Erro ao registrar transação: " + (error as Error).message);
+      }
+    } else {
+      console.warn('[handleDeposit] userId not available, using fallback');
+      // Fallback: usar método antigo se userId não estiver disponível
+      onAddTransaction({
+        date: toLocalISODate(),
+        description: `Depósito em ${depositInvestment.name}`,
+        amount: amount,
+        category: `Caixinha - ${depositInvestment.name}`,
+        type: 'expense',
+        status: 'completed',
+        memberId: depositInvestment.memberId,
+        isInvestment: true,
+        accountId: depositInvestment.id,
+        accountType: 'SAVINGS_ACCOUNT'
+      });
+      toast.success(`R$ ${amount.toFixed(2)} depositado!`);
+    }
 
-    toast.success(`R$ ${amount.toFixed(2)} depositado!`);
     setDepositModalOpen(false);
     setDepositInvestment(null);
     setDepositAmount('');
   };
 
-  const handleWithdraw = () => {
+  const handleWithdraw = async () => {
     if (!depositInvestment) return;
     const amount = parseFloat(depositAmount.replace(',', '.'));
     if (isNaN(amount) || amount <= 0) {
@@ -519,23 +544,43 @@ export const Investments: React.FC<InvestmentsProps> = ({
       return;
     }
 
+    // Atualizar saldo da caixinha
     onUpdate({
       ...depositInvestment,
       currentAmount: newAmount
     });
 
-    onAddTransaction({
-      date: toLocalISODate(),
-      description: `Retirada de ${depositInvestment.name}`,
-      amount: amount,
-      category: `Caixinha - ${depositInvestment.name}`,
-      type: 'income',
-      status: 'completed',
-      memberId: depositInvestment.memberId,
-      isInvestment: true
-    });
+    // ✅ Usar addInvestmentTransaction para criar em ambos os lugares
+    if (userId) {
+      try {
+        await dbService.addInvestmentTransaction(userId, depositInvestment.id, {
+          amount: amount,
+          type: 'withdraw',
+          date: toLocalISODate(),
+          memberId: depositInvestment.memberId
+        });
+        toast.success(`R$ ${amount.toFixed(2)} retirado!`);
+      } catch (error) {
+        console.error('Erro ao criar transação:', error);
+        toast.error("Erro ao registrar transação.");
+      }
+    } else {
+      // Fallback: usar método antigo se userId não estiver disponível
+      onAddTransaction({
+        date: toLocalISODate(),
+        description: `Retirada de ${depositInvestment.name}`,
+        amount: amount,
+        category: `Caixinha - ${depositInvestment.name}`,
+        type: 'income',
+        status: 'completed',
+        memberId: depositInvestment.memberId,
+        isInvestment: true,
+        accountId: depositInvestment.id,
+        accountType: 'SAVINGS_ACCOUNT'
+      });
+      toast.success(`R$ ${amount.toFixed(2)} retirado!`);
+    }
 
-    toast.success(`R$ ${amount.toFixed(2)} retirado!`);
     setDepositModalOpen(false);
     setDepositInvestment(null);
     setDepositAmount('');
@@ -555,15 +600,17 @@ export const Investments: React.FC<InvestmentsProps> = ({
     if (!selectedInvestment) return [];
 
     let filtered = transactions.filter(t => {
-      // Case 1: Connected Account
-      if (selectedInvestment.isConnected) {
-        return t.accountId === selectedInvestment.id;
+      // Prioridade 1: Match exato pelo ID da Caixinha (Ambos App e Web usam accountId na nova lógica)
+      if (t.accountId === selectedInvestment.id) {
+        return true;
       }
 
-      // Case 2: Manual Caixinha
-      if (t.category === `Caixinha - ${selectedInvestment.name}`) return true;
+      // Case 2: Manual Caixinha (Fallback Legado por NOME da caixinha)
+      if (t.category === `Caixinha - ${selectedInvestment.name}`) {
+        return true;
+      }
 
-      // Fallback
+      // Fallback extra (Descrição)
       return t.isInvestment && t.description.includes(selectedInvestment.name);
     });
 

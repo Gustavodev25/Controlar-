@@ -50,6 +50,7 @@ import {
 import { auditLogger } from '../utils/auditLogger';
 
 import { calculateLateCharges } from './financeService';
+import { getEffectiveInvoiceMonth } from '../utils/transactionUtils';
 
 // ============================================================
 // HELPERS - Funções utilitárias
@@ -669,7 +670,8 @@ export const transactionToInvoiceItem = (tx: Transaction, isProjected = false): 
     amountOriginal: tx.amountOriginal,
     amountInAccountCurrency: tx.amountInAccountCurrency,
     pluggyRaw: tx.pluggyRaw,
-    manualInvoiceMonth: tx.manualInvoiceMonth
+    manualInvoiceMonth: getEffectiveInvoiceMonth(tx),
+    invoiceMonthKeyManual: tx.invoiceMonthKeyManual
   };
 };
 export const createProjectedInstallment = (
@@ -1084,12 +1086,10 @@ export const buildInvoices = (
     // ========================================
     // LÓGICA DE OVERRIDE MANUAL
     // ========================================
-    if (tx.manualInvoiceMonth) {
-      const manualKey = tx.manualInvoiceMonth;
-
+    const manualKey = getEffectiveInvoiceMonth(tx);
+    if (manualKey) {
       // Lógica de alocação baseada no manualKey:
       if (manualKey > periods.currentMonthKey) {
-        // Vai para fatura futura
         // Vai para fatura futura
         if (!futureItemsByMonth[manualKey]) {
           futureItemsByMonth[manualKey] = [];

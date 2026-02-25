@@ -16,7 +16,9 @@ import {
   writeBatch,
   runTransaction,
   collectionGroup,
-  increment
+  increment,
+  serverTimestamp,
+  deleteField
 } from "firebase/firestore";
 import { database as db } from "./firebase";
 import { Transaction, Reminder, User, Member, FamilyGoal, Investment, Budget, WaitlistEntry, ConnectedAccount, Coupon, PromoPopup, ChangelogItem, CategoryMapping, KanbanColumn } from "../types";
@@ -1201,12 +1203,22 @@ export const cleanupDuplicateCreditCardTransactions = async (userId: string) => 
   }
 };
 
-export const updateCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction) => {
+export const updateCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction | Transaction) => {
   if (!db) return;
   const txRef = doc(db, "users", userId, "creditCardTransactions", transaction.id);
   const { id, ...data } = transaction;
-  const cleanData = removeUndefined(data);
-  await updateDoc(txRef, cleanData);
+
+  const updates: any = removeUndefined(data);
+
+  // Handle removal of manual invoice overrides according to sync requirements
+  if (updates.manualInvoiceMonth === null) updates.manualInvoiceMonth = deleteField();
+  if (updates.invoiceMonthKey === null) updates.invoiceMonthKey = deleteField();
+  if (updates.invoiceMonthKeyManual === null) updates.invoiceMonthKeyManual = deleteField();
+
+  // Always add updatedAt for sync tracking
+  updates.updatedAt = serverTimestamp();
+
+  await updateDoc(txRef, updates);
 };
 
 export const saveCreditCardTransaction = async (userId: string, transaction: CreditCardTransaction) => {
@@ -1237,6 +1249,16 @@ export const bulkUpdateCreditCardTransactions = async (
   let successCount = 0;
   let failedCount = 0;
 
+  const finalUpdates: any = { ...updates };
+
+  // Handle removal of manual invoice overrides
+  if (finalUpdates.manualInvoiceMonth === null) finalUpdates.manualInvoiceMonth = deleteField();
+  if (finalUpdates.invoiceMonthKey === null) finalUpdates.invoiceMonthKey = deleteField();
+  if (finalUpdates.invoiceMonthKeyManual === null) finalUpdates.invoiceMonthKeyManual = deleteField();
+
+  // Add updatedAt for sync tracking
+  finalUpdates.updatedAt = serverTimestamp();
+
   // Criar um mapa de transações para busca rápida
   const txMap = new Map<string, CreditCardTransaction>();
   if (allTransactions) {
@@ -1249,7 +1271,7 @@ export const bulkUpdateCreditCardTransactions = async (
 
       // Tenta primeiro fazer update (mais eficiente se já existe)
       try {
-        await updateDoc(docRef, updates);
+        await updateDoc(docRef, finalUpdates);
         successCount++;
       } catch (updateError: any) {
         // Se o documento não existe, tenta criar com os dados originais + updates
@@ -1608,6 +1630,71 @@ export const deleteInvestment = async (userId: string, investmentId: string) => 
   if (!db) return;
   const invRef = doc(db, "users", userId, "investments", investmentId);
   await deleteDoc(invRef);
+};
+
+// Add investment transaction (creates in both history subcollection and main transactions)
+// This function replicates the App behavior for Web/App sync
+export const addInvestmentTransaction = async (
+  userId: string,
+  investmentId: string,
+  transactionData: {
+    amount: number;
+    type: 'deposit' | 'withdraw';
+    date: string;
+    memberId?: string;
+  }
+) => {
+  if (!db) {
+    throw new Error("Database not initialized");
+  }
+
+  try {
+    // 1. Get investment name for category
+    const investmentRef = doc(db, "users", userId, "investments", investmentId);
+    const investmentSnap = await getDoc(investmentRef);
+
+    if (!investmentSnap.exists()) {
+      throw new Error("Investment not found");
+    }
+
+    const investmentName = investmentSnap.data().name;
+    const category = `Caixinha - ${investmentName}`;
+
+    // 2. Save to history subcollection
+    const historyRef = collection(db, "users", userId, "investments", investmentId, "history");
+    await addDoc(historyRef, {
+      amount: transactionData.amount,
+      type: transactionData.type,
+      date: transactionData.date,
+      accountId: investmentId,
+      accountType: 'SAVINGS_ACCOUNT',
+      category: category,
+      createdAt: serverTimestamp()
+    });
+
+    // 3. Save to main transactions collection (for Web/App sync)
+    const transactionsRef = collection(db, "users", userId, "transactions");
+    const transactionDoc = await addDoc(transactionsRef, {
+      amount: transactionData.amount,
+      date: transactionData.date,
+      description: transactionData.type === 'deposit'
+        ? `Depósito em ${investmentName}`
+        : `Retirada de ${investmentName}`,
+      accountId: investmentId,
+      accountType: 'SAVINGS_ACCOUNT',
+      isInvestment: true,
+      category: category,
+      type: transactionData.type === 'deposit' ? 'expense' : 'income',
+      status: 'completed',
+      memberId: transactionData.memberId,
+      createdAt: serverTimestamp()
+    });
+
+    return transactionDoc.id;
+  } catch (error) {
+    console.error('[addInvestmentTransaction] Error:', error);
+    throw error;
+  }
 };
 
 // Delete investments with invalid currentAmount (NaN, null, undefined, or empty name)

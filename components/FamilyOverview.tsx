@@ -22,6 +22,7 @@ interface FamilyOverviewProps {
   onUpdateGoal: (goal: FamilyGoal) => void;
   onDeleteGoal: (id: string) => void;
   onAddTransaction: (t: Omit<Transaction, 'id'>) => void;
+  userId?: string;
 }
 
 export const FamilyOverview: React.FC<FamilyOverviewProps> = ({
@@ -30,7 +31,8 @@ export const FamilyOverview: React.FC<FamilyOverviewProps> = ({
   onAddGoal,
   onUpdateGoal,
   onDeleteGoal,
-  onAddTransaction
+  onAddTransaction,
+  userId
 }) => {
 
   // Map FamilyGoal to Investment for the Investments component
@@ -81,6 +83,7 @@ export const FamilyOverview: React.FC<FamilyOverviewProps> = ({
           userPlan={userPlan}
           title="Caixinhas da Família"
           subtitle="Planejem seus sonhos juntos"
+          userId={userId}
         />
     </div>
   );

@@ -32,6 +32,7 @@ import {
   fromCents,
   sumMoney
 } from '../utils/moneyUtils';
+import { getEffectiveInvoiceMonth } from '../utils/transactionUtils';
 
 // ============================================================
 // HELPERS
@@ -339,8 +340,8 @@ export const generateInstallments = (
       status = 'CLOSED';
     }
 
-    // override monthKey if manualInvoiceMonth is present on existing transaction
-    const finalMonthKey = existingTx?.manualInvoiceMonth || monthKey;
+    // override monthKey if manualInvoiceMonth (or other override) is present on existing transaction
+    const finalMonthKey = getEffectiveInvoiceMonth(existingTx || {}) || monthKey;
 
     const installment: Installment = {
       id: existingTx?.id || generateInstallmentId(purchase.id, i),
@@ -483,10 +484,11 @@ export const createPurchaseFromTransaction = (
 
   let firstBillingMonth: string;
 
-  if (tx.manualInvoiceMonth) {
+  const manualKey = getEffectiveInvoiceMonth(tx);
+  if (manualKey) {
     // Se o usuário forçou um mês específico para esta parcela,
     // calculamos o mês de início (parcela 1) com engenharia reversa.
-    const [mY, mM] = tx.manualInvoiceMonth.split('-').map(Number);
+    const [mY, mM] = manualKey.split('-').map(Number);
     // Parcela 1 = Mês Manual - (N - 1) meses
     const startD = new Date(mY, mM - 1 - (installmentNumber - 1), 1);
     firstBillingMonth = `${startD.getFullYear()}-${String(startD.getMonth() + 1).padStart(2, '0')}`;

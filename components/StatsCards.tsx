@@ -3,6 +3,7 @@ import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock, Ticket } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
 import { buildInvoices } from '../services/invoiceBuilder';
+import { getEffectiveInvoiceMonth } from '../utils/transactionUtils';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
 import { Tooltip } from './UIComponents';
@@ -209,16 +210,10 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     // Filter transactions that belong to the selected month's INVOICE
     // Only count expenses (positive amounts or expense type transactions)
     const monthTransactions = creditCardTransactions.filter(tx => {
-      // Check for manual override first
-      const manualMonth = (tx as any).manualInvoiceMonth;
-      if (manualMonth) {
-        return manualMonth === dashboardDate;
-      }
-
-      // Check for invoiceMonthKey (synced with manual override)
-      const invoiceKey = (tx as any).invoiceMonthKey;
-      if (invoiceKey) {
-        return invoiceKey === dashboardDate;
+      // Use helper for override detection and priority logic (manualInvoiceMonth > invoiceMonthKey)
+      const effectiveKey = getEffectiveInvoiceMonth(tx);
+      if (effectiveKey) {
+        return effectiveKey === dashboardDate;
       }
 
       // PRIMARY: Check if invoiceDate matches the dashboard month (YYYY-MM)
@@ -419,8 +414,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
     const uniqueAccountIds = [...new Set(creditCardTransactions.map(tx => tx.accountId || tx.cardId).filter(Boolean))];
 
     const resolveTxMonthKey = (tx: Transaction) => {
-      if ((tx as any).manualInvoiceMonth) return (tx as any).manualInvoiceMonth;
-      if ((tx as any).invoiceMonthKey) return (tx as any).invoiceMonthKey;
+      const effectiveMonth = getEffectiveInvoiceMonth(tx);
+      if (effectiveMonth) return effectiveMonth;
 
       if (tx.invoiceDueDate) return tx.invoiceDueDate.slice(0, 7);
       if (tx.dueDate) return tx.dueDate.slice(0, 7);
@@ -474,8 +469,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       let filteredTransactions = cardTransactions;
       if (dashboardDate) {
         filteredTransactions = cardTransactions.filter(tx => {
-          const key = (tx as any).manualInvoiceMonth
-            || (tx as any).invoiceMonthKey
+          const key = getEffectiveInvoiceMonth(tx)
             || tx.invoiceDueDate?.slice(0, 7)
             || tx.dueDate?.slice(0, 7)
             || tx.invoiceDate?.slice(0, 7)
@@ -489,8 +483,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       cardTransactions.forEach((tx) => {
         if ((tx as any).ignored) return;
 
-        const key = (tx as any).manualInvoiceMonth
-          || (tx as any).invoiceMonthKey
+        const key = getEffectiveInvoiceMonth(tx)
           || tx.invoiceDueDate?.slice(0, 7)
           || tx.dueDate?.slice(0, 7)
           || tx.invoiceDate?.slice(0, 7)
@@ -613,17 +606,14 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
           ? Math.max(0, invoiceResult.futureInvoices[0].total)
           : 0;
 
-        const apiTotal = card.currentBill?.totalAmount ?? null;
-        const calculatedTotal = invoiceResult.closedInvoice.total || 0;
-        const totalTolerance = Math.max(1, calculatedTotal * 0.01);
-        const totalAligned = apiTotal !== null ? Math.abs(apiTotal - calculatedTotal) <= totalTolerance : false;
-        const apiDueTime = card.currentBill?.dueDate ? Date.parse(card.currentBill.dueDate) : NaN;
-        const expectedDueTime = invoiceResult.closedInvoice.dueDate ? Date.parse(invoiceResult.closedInvoice.dueDate) : NaN;
-        const dueAligned = Number.isFinite(apiDueTime) && Number.isFinite(expectedDueTime)
-          ? Math.abs(apiDueTime - expectedDueTime) <= 15 * 24 * 60 * 60 * 1000
-          : false;
-        const shouldPreferApi = apiTotal !== null && totalAligned && dueAligned;
-        lastInvoiceValue = Math.max(0, Math.abs((shouldPreferApi ? apiTotal : calculatedTotal) || 0));
+        const sortedBills = [...(card.bills || [])].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
+        const lastClosedBill = sortedBills.reverse().find(b => b.state === 'CLOSED');
+        
+        if (lastClosedBill && lastClosedBill.totalAmount !== undefined && lastClosedBill.totalAmount !== null) {
+          lastInvoiceValue = Math.max(0, Math.abs(lastClosedBill.totalAmount));
+        } else {
+          lastInvoiceValue = Math.max(0, Math.abs(invoiceResult.closedInvoice.total || 0));
+        }
 
       } catch (e) {
         // Fallback para cálculo antigo se buildInvoices falhar
@@ -1300,7 +1290,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
                                     };
 
                                     const currentVal = cardInvoice?.currentInvoice ?? cardInvoice?.payable ?? cardInvoice?.invoice ?? 0;
-                                    const lastVal = Math.abs((card.currentBill?.totalAmount || cardInvoice?.lastInvoice || 0));
+                                    const lastVal = cardInvoice?.lastInvoice ?? 0;
                                     const usedVal = cardInvoice?.usedTotal ?? 0;
 
                                     return (

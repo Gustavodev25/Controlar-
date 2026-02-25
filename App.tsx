@@ -2006,22 +2006,25 @@ const App: React.FC = () => {
 
           const isSavings = type.includes('SAVINGS') || subtype.includes('SAVINGS');
 
+          // ✅ MUDANÇA: Não excluir mais transações de caixinhas (isInvestment)
+          // Apenas excluir contas de crédito e poupança conectadas
           if (isCredit || isSavings) return false;
-          // Also exclude investments if needed, but checking usually includes investments as "transfers" unless specified
-          if (t.isInvestment) return false;
           return true;
         }
         // CORREÇÃO: Se transação tem accountId mas conta não está no map,
         // verificar pelo accountType da transação ou incluir por padrão
         const txType = (t.accountType || '').toUpperCase();
-        if (txType.includes('CREDIT') || txType.includes('SAVINGS')) return false;
-        // Incluir a transação se não é credit/savings (mais seguro que excluir)
-        return !t.isInvestment;
+        if (txType.includes('CREDIT')) return false;
+        // ✅ MUDANÇA: Incluir transações de caixinhas (SAVINGS_ACCOUNT com isInvestment)
+        // Apenas excluir contas poupança CONECTADAS (não caixinhas manuais)
+        if (txType.includes('SAVINGS') && !t.isInvestment) return false;
+        return true;
       }
 
       // Transação sem accountId (manual)
       const type = (t.accountType || '').toUpperCase();
-      return !type.includes('CREDIT') && !type.includes('SAVINGS') && !t.isInvestment;
+      // ✅ MUDANÇA: Incluir transações de caixinhas no histórico
+      return !type.includes('CREDIT');
     });
 
     console.log('[DEBUG-CHECK] memberFilteredTransactions:', memberFilteredTransactions.length);
@@ -4154,6 +4157,7 @@ const App: React.FC = () => {
                     onDelete={handleDeleteInvestment}
                     onAddTransaction={handleAddTransaction}
                     userPlan={effectivePlan}
+                    userId={userId}
                   />
                 </div>
               )}

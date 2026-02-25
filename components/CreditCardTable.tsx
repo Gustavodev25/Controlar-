@@ -32,6 +32,7 @@ import {
 import { exportToCSV } from '../utils/export';
 import { useCategoryTranslation } from '../hooks/useCategoryTranslation';
 import { getExchangeRateSync, fetchExchangeRates } from '../services/currencyService';
+import { getEffectiveInvoiceMonth } from '../utils/transactionUtils';
 
 
 // Mapeamento de meses
@@ -52,7 +53,8 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
   // Safe validation
   if (!summary || !closingDay) return null;
 
-  const effectiveMonthKey = transaction.manualInvoiceMonth || getTransactionInvoiceMonthKey(transaction.date, closingDay);
+  const manualMonthKey = getEffectiveInvoiceMonth(transaction);
+  const effectiveMonthKey = manualMonthKey || getTransactionInvoiceMonthKey(transaction.date, closingDay);
 
   const monthKeyToLabel = (k?: string) => {
     if (!k) return '?';
@@ -73,7 +75,7 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
   };
 
   const currentLabel = monthKeyToLabel(effectiveMonthKey);
-  const isManual = !!transaction.manualInvoiceMonth;
+  const isManual = !!manualMonthKey;
 
   // Garantir que nextMonthKey tenha um valor válido
   // Se não existir, calcula a partir do currentMonthKey
@@ -107,14 +109,16 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
       id: transaction.id,
       description: transaction.description,
       isProjected: (transaction as any).isProjected,
-      from: transaction.manualInvoiceMonth || 'auto',
+      from: manualMonthKey || 'auto',
       to: targetKey
     });
-    // Update both manualInvoiceMonth and invoiceMonthKey for compatibility
+    // Update all 3 fields for sync compatibility:
+    // manualInvoiceMonth (web), invoiceMonthKey (app), invoiceMonthKeyManual (flag)
     onUpdate({
       ...transaction,
       manualInvoiceMonth: targetKey,
-      invoiceMonthKey: targetKey
+      invoiceMonthKey: targetKey,
+      invoiceMonthKeyManual: true
     });
   };
 
@@ -155,7 +159,8 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
                 onClick={() => onUpdate({
                   ...transaction,
                   manualInvoiceMonth: null,
-                  invoiceMonthKey: null
+                  invoiceMonthKey: null,
+                  invoiceMonthKeyManual: null
                 })}
                 className="text-red-400 hover:text-red-300"
                 icon={X}
