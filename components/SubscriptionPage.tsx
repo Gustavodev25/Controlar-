@@ -245,7 +245,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                         number: cardData.number,
                         expiryMonth: cardData.expiryMonth,
                         expiryYear: cardData.expiryYear,
-                        ccv: cardData.ccv,
+                        cvv: cardData.cvv,
                     },
                     creditCardHolderInfo: {
                         name: holderInfo.name || cardData.holderName,

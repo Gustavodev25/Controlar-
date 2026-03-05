@@ -72,8 +72,85 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
         setIsLoading(true);
 
         try {
-            // 1. Criar conta no Firebase
-            console.log('>>> Criando conta no Firebase...');
+            // ⭐ FIXED: Process payment FIRST, then create account only if payment succeeds
+            // This prevents orphaned accounts without confirmed payment
+            console.log('>>> Starting checkout: validation before payment...');
+
+            // 1. Calcular preço final
+            const originalPrice = price;
+            const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
+
+            // 2. SPECIAL CASE: Se o preço final for < R$ 5 (Asaas mínimo), criar conta direto
+            if (finalValue < 5) {
+                console.log('>>> 100% coupon detected! Creating account directly...');
+
+                // Create the actual account
+                const userCredential = await createUserWithEmailAndPassword(
+                    auth,
+                    registrationData.email,
+                    registrationData.password
+                );
+
+                const firebaseUser = userCredential.user;
+
+                // Update displayName
+                await updateProfile(firebaseUser, {
+                    displayName: registrationData.name
+                });
+
+                // Save complete profile
+                const nextBillingDate = new Date();
+                if (billingCycle === 'annual') {
+                    nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
+                } else {
+                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+                }
+
+                await updateUserProfile(firebaseUser.uid, {
+                    name: registrationData.name,
+                    email: registrationData.email,
+                    phone: registrationData.phone,
+                    baseSalary: 0,
+                    isAdmin: false,
+                    cpf: registrationData.cpf,
+                    birthDate: registrationData.birthDate,
+                    address: {
+                        cep: registrationData.cep,
+                        street: registrationData.street,
+                        number: registrationData.number,
+                        complement: registrationData.complement,
+                        neighborhood: registrationData.neighborhood,
+                        city: registrationData.city,
+                        state: registrationData.state
+                    },
+                    subscription: {
+                        plan: planId,
+                        status: 'active',
+                        billingCycle: billingCycle,
+                        installments: 1,
+                        nextBillingDate: toLocalISODate(nextBillingDate),
+                        couponUsed: couponId,
+                        startDate: toLocalISODate(new Date()),
+                    },
+                    paymentMethodDetails: {
+                        last4: cardData.number.replace(/\s/g, '').slice(-4),
+                        holder: cardData.holderName || registrationData.name,
+                        expiry: `${cardData.expiryMonth}/${cardData.expiryYear.slice(-2)}`,
+                        brand: 'credit_card'
+                    },
+                    createdAt: new Date().toISOString()
+                });
+
+                localStorage.setItem('show_pro_tutorial', 'true');
+                sessionStorage.removeItem('pro_tutorial_session_seen');
+
+                toast.success('🎉 Conta criada e cupom 100% aplicado com sucesso!');
+                onSuccess();
+                return;
+            }
+
+            // 3. Create account FIRST, then process payment
+            console.log('>>> Creating account...');
             const userCredential = await createUserWithEmailAndPassword(
                 auth,
                 registrationData.email,
@@ -82,12 +159,12 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             const firebaseUser = userCredential.user;
 
-            // Atualizar displayName
+            // Update displayName
             await updateProfile(firebaseUser, {
                 displayName: registrationData.name
             });
 
-            // Salvar perfil completo no Firestore
+            // Save complete profile (without subscription yet)
             await updateUserProfile(firebaseUser.uid, {
                 name: registrationData.name,
                 email: registrationData.email,
@@ -108,52 +185,13 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 createdAt: new Date().toISOString()
             });
 
-            console.log('>>> Conta criada com sucesso:', firebaseUser.uid);
+            console.log('>>> Account created:', firebaseUser.uid);
 
-            // 2. Calcular preço final
-            const originalPrice = price;
-            const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
-
-            // 3. SPECIAL CASE: Se o preço final for < R$ 5 (Asaas mínimo), ativar direto
-            if (finalValue < 5) {
-                console.log('>>> Cupom 100% detectado! Ativando plano sem cobrança...');
-
-                const nextBillingDate = new Date();
-                if (billingCycle === 'annual') {
-                    nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
-                } else {
-                    nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
-                }
-
-                await updateUserProfile(firebaseUser.uid, {
-                    subscription: {
-                        plan: planId,
-                        status: 'active',
-                        billingCycle: billingCycle,
-                        installments: 1,
-                        nextBillingDate: toLocalISODate(nextBillingDate),
-                        couponUsed: couponId,
-                        startDate: toLocalISODate(new Date()),
-                    },
-                    paymentMethodDetails: {
-                        last4: cardData.number.replace(/\s/g, '').slice(-4),
-                        holder: cardData.holderName || registrationData.name,
-                        expiry: `${cardData.expiryMonth}/${cardData.expiryYear.slice(-2)}`,
-                        brand: 'credit_card'
-                    }
-                });
-
-                localStorage.setItem('show_pro_tutorial', 'true');
-                sessionStorage.removeItem('pro_tutorial_session_seen');
-
-                toast.success('🎉 Conta criada e plano ativado com sucesso!');
-                onSuccess();
-                return;
-            }
-
-            // 4. Criar cliente no Asaas
-            console.log('>>> Criando cliente no Asaas...');
+            // 4. Get auth token for API requests
             const token = await firebaseUser.getIdToken();
+
+            // 5. Criar cliente no Asaas
+            console.log('>>> Creating customer in Asaas...');
             const customerResponse = await fetch(API_ENDPOINTS.asaas.customer, {
                 method: 'POST',
                 headers: {
@@ -178,13 +216,13 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 throw new Error(detail ? `${mainError} ${detail}` : mainError);
             }
 
-            console.log('>>> Cliente criado:', customerData.customer.id);
+            console.log('>>> Customer created:', customerData.customer.id);
 
-            // 5. Criar assinatura/pagamento no Asaas
+            // 6. Criar assinatura/pagamento no Asaas
             // Get UTM data for Utmify tracking
             const utmData = getCompleteUtmData();
 
-            console.log('>>> Criando assinatura no Asaas...');
+            console.log('>>> Processing payment...');
             const subscriptionResponse = await fetch(API_ENDPOINTS.asaas.subscription, {
                 method: 'POST',
                 headers: {
@@ -203,7 +241,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                         number: cardData.number,
                         expiryMonth: cardData.expiryMonth,
                         expiryYear: cardData.expiryYear,
-                        ccv: cardData.ccv,
+                        cvv: cardData.cvv,
                     },
                     creditCardHolderInfo: {
                         name: holderInfo.name || cardData.holderName,
@@ -214,28 +252,42 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                         phone: holderInfo.phone,
                     },
                     couponId,
-                    userId: firebaseUser.uid,
-                    utmData, // [NEW] UTM tracking for Utmify
+                    utmData,
                 }),
             });
 
             const subscriptionData = await subscriptionResponse.json();
 
-            console.log('>>> Resposta da assinatura:', subscriptionData);
+            console.log('>>> Payment response:', subscriptionData);
 
             if (!subscriptionResponse.ok || !subscriptionData.success) {
-                throw new Error(subscriptionData.error || 'Erro ao processar pagamento.');
+                // Payment failed - delete the account we just created
+                console.error('>>> Payment failed, deleting account...');
+                
+                try {
+                    // Delete from Firestore first
+                    const db = (await import('firebase/firestore')).getFirestore();
+                    const { deleteDoc, doc } = await import('firebase/firestore');
+                    await deleteDoc(doc(db, 'users', firebaseUser.uid));
+                } catch (dbError) {
+                    console.error('>>> Failed to delete user doc:', dbError);
+                }
+                
+                // Then delete Firebase Auth user
+                try {
+                    await firebaseUser.delete();
+                } catch (authError) {
+                    console.error('>>> Failed to delete Firebase user:', authError);
+                }
+
+                throw new Error(subscriptionData.error || 'Pagamento não foi aprovado. Verifique os dados do cartão.');
             }
 
-            // 6. Verificar se pagamento foi confirmado
+            // 7. Payment confirmed! Just update payment details in the profile
             if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'RECEIVED') {
-                // Payment was successful!
-                // NOTE: The backend (activatePlanOnServer) already updated subscription.* and profile.subscription.*
-                // We should NOT update subscription here to avoid race conditions
-                // We only update paymentMethodDetails which the backend doesn't handle
+                console.log('>>> Payment confirmed! Updating account with payment details...');
 
                 await updateUserProfile(firebaseUser.uid, {
-                    // DO NOT include subscription here - backend already updated it via activatePlanOnServer
                     paymentMethodDetails: {
                         last4: cardData.number.replace(/\s/g, '').slice(-4),
                         holder: cardData.holderName || registrationData.name,
@@ -250,8 +302,19 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 toast.success('🎉 Conta criada e pagamento confirmado! Bem-vindo ao Controlar+ Pro!');
                 onSuccess();
             } else {
-                // Pagamento não foi aprovado - podemos manter a conta mas sem o plano ativo
-                throw new Error(subscriptionData.error || 'Pagamento não foi aprovado. Verifique os dados do cartão.');
+                // Payment status is not confirmed - delete the account
+                console.error('>>> Payment not confirmed, deleting account...');
+                
+                try {
+                    const db = (await import('firebase/firestore')).getFirestore();
+                    const { deleteDoc, doc } = await import('firebase/firestore');
+                    await deleteDoc(doc(db, 'users', firebaseUser.uid));
+                    await firebaseUser.delete();
+                } catch (cleanupError) {
+                    console.error('>>> Failed to cleanup:', cleanupError);
+                }
+
+                throw new Error('Pagamento não confirmado. Por favor, tente novamente.');
             }
 
         } catch (err: any) {

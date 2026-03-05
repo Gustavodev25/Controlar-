@@ -16,7 +16,7 @@ interface CreditCardData {
   number: string;
   expiryMonth: string;
   expiryYear: string;
-  ccv: string;
+  cvv: string;
 }
 
 interface HolderInfo {
@@ -143,7 +143,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     number: '',
     expiryMonth: '',
     expiryYear: '',
-    ccv: ''
+    cvv: ''
   });
 
   const [holderInfo, setHolderInfo] = useState<HolderInfo>({
@@ -166,7 +166,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     number: '4532015112830366', // Número válido que passa no Luhn
     expiryMonth: '12',
     expiryYear: (new Date().getFullYear() + 2).toString(),
-    ccv: '123'
+    cvv: '123'
   };
 
   const TEST_HOLDER_INFO: HolderInfo = {
@@ -427,7 +427,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const { name, value } = e.target;
     // Limites de caracteres
     if (name === 'number' && value.length > 16) return;
-    if (name === 'ccv' && value.length > 4) return;
+    if (name === 'cvv' && value.length > 4) return;
     if ((name === 'expiryMonth' || name === 'expiryYear') && value.length > 4) return;
 
     setCardData(prev => ({ ...prev, [name]: value }));
@@ -548,7 +548,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     e.preventDefault();
 
     // Basic required fields check
-    if (!cardData.number || !cardData.holderName || !cardData.ccv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber || !holderInfo.phone) {
+    if (!cardData.number || !cardData.holderName || !cardData.cvv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber || !holderInfo.phone) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -566,7 +566,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     }
 
     // Validate CVV
-    if (!validateCVV(cardData.ccv)) {
+    if (!validateCVV(cardData.cvv)) {
       toast.error("CVV inválido. Deve ter 3 ou 4 dígitos.");
       return;
     }
@@ -1171,10 +1171,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CVV</label>
                     <input
                       type="text"
-                      name="ccv"
+                      name="cvv"
                       placeholder="123"
                       maxLength={4}
-                      value={cardData.ccv}
+                      value={cardData.cvv}
                       onChange={handleCardChange}
                       className={inputStyle}
                     />

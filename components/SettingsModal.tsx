@@ -454,18 +454,18 @@ const TwoFactorModal: React.FC<TwoFactorModalProps> = ({ isOpen, onClose, onSucc
 interface CreditCardModalProps {
    isOpen: boolean;
    onClose: () => void;
-   onSave: (cardData: { number: string; holder: string; expiry: string; cvc: string }) => Promise<void>;
+   onSave: (cardData: { number: string; holder: string; expiry: string; cvv: string }) => Promise<void>;
 }
 
 const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSave }) => {
    const [step, setStep] = useState<'input' | 'verifying'>('input');
-   const [cardData, setCardData] = useState({ number: '', holder: '', expiry: '', cvc: '' });
+   const [cardData, setCardData] = useState({ number: '', holder: '', expiry: '', cvv: '' });
    const toast = useToasts();
 
    useEffect(() => {
       if (isOpen) {
          setStep('input');
-         setCardData({ number: '', holder: '', expiry: '', cvc: '' });
+         setCardData({ number: '', holder: '', expiry: '', cvv: '' });
       }
    }, [isOpen]);
 
@@ -492,8 +492,8 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
          toast.error("Data de validade incompleta.");
          return;
       }
-      if (cardData.cvc.length < 3) {
-         toast.error("CVC inválido.");
+      if (cardData.cvv.length < 3) {
+         toast.error("CVV inválido.");
          return;
       }
 
@@ -607,9 +607,9 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
                         <div className="relative">
                            <input
                               type="text"
-                              value={cardData.cvc}
-                              onChange={e => setCardData({ ...cardData, cvc: e.target.value.replace(/\D/g, '').slice(0, 4) })}
-                              placeholder="CVC"
+                              value={cardData.cvv}
+                              onChange={e => setCardData({ ...cardData, cvv: e.target.value.replace(/\D/g, '').slice(0, 4) })}
+                              placeholder="CVV"
                               className="input-primary text-center font-mono pl-6 text-sm"
                               maxLength={4}
                            />
@@ -621,7 +621,7 @@ const CreditCardModal: React.FC<CreditCardModalProps> = ({ isOpen, onClose, onSa
 
                <button
                   onClick={handleSave}
-                  disabled={!cardData.number || !cardData.holder || !cardData.expiry || !cardData.cvc}
+                  disabled={!cardData.number || !cardData.holder || !cardData.expiry || !cardData.cvv}
                   className="w-full py-3.5 bg-[#d97757] hover:bg-[#c56a4d] text-white rounded-xl font-bold transition-all shadow-lg shadow-[#d97757]/20 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                >
                   Verificar e Salvar
@@ -1305,7 +1305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
       toast.success("Perfil atualizado com sucesso!");
    };
 
-   const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvc: string }) => {
+   const handleUpdateCard = async (cardData: { number: string; holder: string; expiry: string; cvv: string }) => {
       const { subscription } = formData;
       const subscriptionId = subscription?.asaasSubscriptionId;
       const customerId = subscription?.asaasCustomerId;
@@ -1333,7 +1333,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                      number: cardData.number,
                      expiryMonth: expMonth,
                      expiryYear: expYear,
-                     ccv: cardData.cvc
+                     cvv: cardData.cvv
                   },
                   creditCardHolderInfo: {
                      name: formData.name,

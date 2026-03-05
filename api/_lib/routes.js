@@ -532,7 +532,7 @@ const saveInvoiceReference = async (userId, paymentId, invoice) => {
   }
 };
 router.post('/asaas/customer', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
@@ -603,7 +603,7 @@ router.get('/asaas/customer', async (req, res) => {
   }
 });
 router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
@@ -620,7 +620,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
   if (!customerId || !creditCard || !creditCardHolderInfo) {
     return res.status(400).json({ error: 'Dados incompletos para criar assinatura.' });
   }
-  const activatePlanOnServer = async (uid, plan, cycle, paymentId, subId, status = 'active') => {
+  const activatePlanOnServer = async (uid, plan, cycle, paymentId, subId, customerId, couponId, status = 'active') => {
     if (!uid || !firebaseAdmin) return;
     try {
       const db = firebaseAdmin.firestore();
@@ -740,7 +740,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           number: sanitizedCardNumber,
           expiryMonth: creditCard.expiryMonth,
           expiryYear: creditCard.expiryYear,
-          ccv: creditCard.ccv
+          cvv: creditCard.cvv
         },
         creditCardHolderInfo: {
           name: creditCardHolderInfo.name,
@@ -755,7 +755,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
       };
       const payment = await asaasRequest('POST', '/payments', paymentData);
       if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {
-        await activatePlanOnServer(authUserId, planId, cycle, payment.id, null);
+        await activatePlanOnServer(authUserId, planId, cycle, payment.id, null, customerId, couponId);
         try {
           sendSaleToUtmify({
             orderId: payment.id,
@@ -838,7 +838,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
             number: sanitizedCardNumber,
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
+            cvv: creditCard.cvv
           },
           creditCardHolderInfo: {
             name: creditCardHolderInfo.name,
@@ -876,7 +876,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
             number: sanitizedCardNumber,
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
+            cvv: creditCard.cvv
           },
           creditCardHolderInfo: {
             name: creditCardHolderInfo.name,
@@ -895,7 +895,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           console.error(`>>> WARNING: Payment succeeded but Subscription failed:`, subError.message);
           subscription = { id: 'manual_recheck_needed_' + Date.now() };
         }
-        await activatePlanOnServer(authUserId, planId, cycle, firstPayment.id, subscription?.id);
+        await activatePlanOnServer(authUserId, planId, cycle, firstPayment.id, subscription?.id, customerId, couponId);
         try {
           sendSaleToUtmify({
             orderId: firstPayment.id,
@@ -951,7 +951,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           number: sanitizedCardNumber,
           expiryMonth: creditCard.expiryMonth,
           expiryYear: creditCard.expiryYear,
-          ccv: creditCard.ccv
+          cvv: creditCard.cvv
         },
         creditCardHolderInfo: {
           name: creditCardHolderInfo.name,
@@ -973,7 +973,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
         } catch (e) {
           console.log('>>> Could not fetch payment details, but subscription is ACTIVE');
         }
-        await activatePlanOnServer(authUserId, planId, cycle, firstPayment?.id, subscription.id);
+        await activatePlanOnServer(authUserId, planId, cycle, firstPayment?.id, subscription.id, customerId, couponId);
         try {
           sendSaleToUtmify({
             orderId: subscription.id,
@@ -1041,7 +1041,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
   }
 });
 router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
@@ -1058,7 +1058,7 @@ router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, 
         number: sanitizedCardNumber,
         expiryMonth: creditCard.expiryMonth,
         expiryYear: creditCard.expiryYear,
-        ccv: creditCard.ccv
+        cvv: creditCard.cvv
       },
       creditCardHolderInfo: {
         name: creditCardHolderInfo.name,
@@ -1493,7 +1493,7 @@ router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth
         number: sanitizedCardNumber,
         expiryMonth: creditCard.expiryMonth,
         expiryYear: creditCard.expiryYear,
-        ccv: creditCard.ccv
+        cvv: creditCard.cvv
       },
       creditCardHolderInfo: {
         name: creditCardHolderInfo.name,
@@ -1518,7 +1518,7 @@ router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth
   }
 });
 router.post('/asaas/payment/:paymentId/refund', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
@@ -1574,7 +1574,7 @@ router.get('/asaas/invoice/:invoiceId', async (req, res) => {
   }
 });
 router.post('/asaas/invoice/create', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
@@ -1675,7 +1675,7 @@ router.post('/admin/apply-coupons', requireFirebaseAuth, getRequesterIsAdmin, as
   }
 });
 router.post('/admin/cancel-plan', requireFirebaseAuth, async (req, res) => {
-  const authUserId = req?.user?.uid;
+  const authUserId = req?.auth?.uid;
   if (!authUserId) {
     return res.status(401).json({ error: 'Usuário não autenticado.' });
   }
