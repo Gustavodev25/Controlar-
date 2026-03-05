@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { motion, AnimatePresence, PanInfo } from 'framer-motion';
 import { TrendingUp, TrendingDown, Wallet, Sparkles, Building, Settings, Check, CreditCard, ChevronLeft, ChevronRight, Lock, Ticket } from './Icons';
 import { DashboardStats, Transaction, ConnectedAccount } from '../types';
-import { buildInvoices } from '../services/invoiceBuilder';
+import { buildInvoices, buildInvoicesPluggyFirst } from '../services/invoiceBuilder';
 import { getEffectiveInvoiceMonth } from '../utils/transactionUtils';
 import NumberFlow from '@number-flow/react';
 import { Dropdown, DropdownTrigger, DropdownContent, DropdownItem, DropdownLabel, DropdownSeparator } from './Dropdown';
@@ -589,8 +589,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
       let lastInvoiceValue: number;
 
       try {
-        // Chama buildInvoices para obter valores precisos
-        const invoiceResult = buildInvoices(card, cardTransactions, card.id);
+        // Chama buildInvoicesPluggyFirst para obter valores precisos
+        const invoiceResult = buildInvoicesPluggyFirst(card as any, cardTransactions, card.id, new Date());
 
         if (dashboardDate) {
           // When dashboardDate is active, use invoiceBuilder result
@@ -608,7 +608,7 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
 
         const sortedBills = [...(card.bills || [])].sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime());
         const lastClosedBill = sortedBills.reverse().find(b => b.state === 'CLOSED');
-        
+
         if (lastClosedBill && lastClosedBill.totalAmount !== undefined && lastClosedBill.totalAmount !== null) {
           lastInvoiceValue = Math.max(0, Math.abs(lastClosedBill.totalAmount));
         } else {
@@ -616,8 +616,8 @@ export const StatsCards: React.FC<StatsCardsProps> = ({
         }
 
       } catch (e) {
-        // Fallback para cálculo antigo se buildInvoices falhar
-        console.warn('[StatsCards] buildInvoices falhou, usando fallback:', e);
+        // Fallback para cálculo antigo se buildInvoicesPluggyFirst falhar
+        console.warn('[StatsCards] buildInvoicesPluggyFirst falhou, usando fallback:', e);
 
         if (dashboardDate && selectedMonthAmount !== null && selectedMonthAmount > 0) {
           currentInvoiceValue = selectedMonthAmount;
