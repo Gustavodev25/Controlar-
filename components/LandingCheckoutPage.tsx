@@ -241,7 +241,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                         number: cardData.number,
                         expiryMonth: cardData.expiryMonth,
                         expiryYear: cardData.expiryYear,
-                        cvv: cardData.cvv,
+                        ccv: cardData.cvv,
                     },
                     creditCardHolderInfo: {
                         name: holderInfo.name || cardData.holderName,
@@ -263,7 +263,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             if (!subscriptionResponse.ok || !subscriptionData.success) {
                 // Payment failed - delete the account we just created
                 console.error('>>> Payment failed, deleting account...');
-                
+
                 try {
                     // Delete from Firestore first
                     const db = (await import('firebase/firestore')).getFirestore();
@@ -272,7 +272,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 } catch (dbError) {
                     console.error('>>> Failed to delete user doc:', dbError);
                 }
-                
+
                 // Then delete Firebase Auth user
                 try {
                     await firebaseUser.delete();
@@ -304,7 +304,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             } else {
                 // Payment status is not confirmed - delete the account
                 console.error('>>> Payment not confirmed, deleting account...');
-                
+
                 try {
                     const db = (await import('firebase/firestore')).getFirestore();
                     const { deleteDoc, doc } = await import('firebase/firestore');

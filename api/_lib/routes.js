@@ -740,7 +740,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           number: sanitizedCardNumber,
           expiryMonth: creditCard.expiryMonth,
           expiryYear: creditCard.expiryYear,
-          cvv: creditCard.cvv
+          ccv: creditCard.ccv || creditCard.cvv
         },
         creditCardHolderInfo: {
           name: creditCardHolderInfo.name,
@@ -838,7 +838,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
             number: sanitizedCardNumber,
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
-            cvv: creditCard.cvv
+            ccv: creditCard.ccv || creditCard.cvv
           },
           creditCardHolderInfo: {
             name: creditCardHolderInfo.name,
@@ -876,7 +876,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
             number: sanitizedCardNumber,
             expiryMonth: creditCard.expiryMonth,
             expiryYear: creditCard.expiryYear,
-            cvv: creditCard.cvv
+            ccv: creditCard.ccv || creditCard.cvv
           },
           creditCardHolderInfo: {
             name: creditCardHolderInfo.name,
@@ -951,7 +951,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           number: sanitizedCardNumber,
           expiryMonth: creditCard.expiryMonth,
           expiryYear: creditCard.expiryYear,
-          cvv: creditCard.cvv
+          ccv: creditCard.ccv || creditCard.cvv
         },
         creditCardHolderInfo: {
           name: creditCardHolderInfo.name,
@@ -1058,7 +1058,7 @@ router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, 
         number: sanitizedCardNumber,
         expiryMonth: creditCard.expiryMonth,
         expiryYear: creditCard.expiryYear,
-        cvv: creditCard.cvv
+        ccv: creditCard.ccv || creditCard.cvv
       },
       creditCardHolderInfo: {
         name: creditCardHolderInfo.name,
@@ -1493,7 +1493,7 @@ router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth
         number: sanitizedCardNumber,
         expiryMonth: creditCard.expiryMonth,
         expiryYear: creditCard.expiryYear,
-        cvv: creditCard.cvv
+        ccv: creditCard.ccv || creditCard.cvv
       },
       creditCardHolderInfo: {
         name: creditCardHolderInfo.name,
