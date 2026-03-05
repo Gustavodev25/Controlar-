@@ -26,7 +26,6 @@ import {
   generateInvoiceForecast,
   type InvoiceBuildResult,
   calculateInvoicePeriodDates,
-  validateClosingDay,
   toMonthKey
 } from '../services/invoiceBuilder';
 import { exportToCSV } from '../utils/export';
@@ -238,14 +237,18 @@ const useInvoiceBuilder = (
   monthOffset: number = 0
 ) => {
   return useMemo(() => {
-    // Log removed
+    let today = new Date();
+    if (monthOffset !== 0) {
+      // Usar o dia 15 para evitar problemas com virada de mês/fuso horário durante a navegação
+      today = new Date(today.getFullYear(), today.getMonth() + monthOffset, 15, 12, 0, 0);
+    }
 
     if (!card) {
       // Log removed
       return null;
     }
 
-    const result = buildInvoicesPluggyFirst(card as any, transactions, cardId);
+    const result = buildInvoicesPluggyFirst(card as any, transactions, cardId, today);
 
     // Log removed
 

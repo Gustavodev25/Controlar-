@@ -564,6 +564,48 @@ const removeUndefined = (obj) => {
     return newObj;
 };
 
+// HELPER: Mask tax / document numbers (keeps last 4 digits visible)
+const maskTaxNumber = (s) => {
+    if (!s || typeof s !== 'string') return s;
+    const digits = s.replace(/\D/g, '');
+    if (digits.length <= 4) return s;
+    const masked = '*'.repeat(digits.length - 4) + digits.slice(-4);
+    return masked;
+};
+
+// HELPER: Sanitize Pluggy account payload to only keep card-related fields
+const sanitizePluggyAccount = (acc) => {
+    if (!acc || typeof acc !== 'object') return null;
+    const creditData = acc.creditData ? {
+        level: acc.creditData.level || null,
+        brand: acc.creditData.brand || null,
+        balanceCloseDate: acc.creditData.balanceCloseDate || null,
+        balanceDueDate: acc.creditData.balanceDueDate || null,
+        availableCreditLimit: acc.creditData.availableCreditLimit || null,
+        creditLimit: acc.creditData.creditLimit || null,
+        isLimitFlexible: acc.creditData.isLimitFlexible || null,
+        balanceForeignCurrency: acc.creditData.balanceForeignCurrency || null,
+        minimumPayment: acc.creditData.minimumPayment || null,
+        status: acc.creditData.status || null,
+        holderType: acc.creditData.holderType || null
+    } : undefined;
+
+    return removeUndefined({
+        id: acc.id,
+        type: acc.type,
+        subtype: acc.subtype,
+        name: acc.name,
+        marketingName: acc.marketingName,
+        taxNumber: acc.taxNumber ? maskTaxNumber(acc.taxNumber) : undefined,
+        owner: acc.owner,
+        number: acc.number, // usually last 4
+        balance: acc.balance,
+        itemId: acc.itemId,
+        currencyCode: acc.currencyCode,
+        creditData
+    });
+};
+
 // ============================================================
 // HELPER: Extrair dados de parcelamento de uma transação Pluggy
 // REGRA (opção 1): confiar somente no creditCardMetadata da API
@@ -735,7 +777,7 @@ const enrichTransactionDescription = (tx) => {
 // HELPER: Calcular períodos de fatura centralizados
 // Esta função é a fonte única de verdade para cálculos de período
 // ============================================================
-const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
+const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date(), absoluteCloseDate = null, absoluteDueDate = null, monthOverrides = {}) => {
     const closingDay = validateClosingDay(closingDayRaw);
 
     // Helper para criar data de fechamento segura
@@ -757,33 +799,59 @@ const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
     // Helper para criar monthKey (YYYY-MM)
     const toMonthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 
+    // Helper para obter data de fechamento respeitando overrides por mês
+    const getClosingDateWithOverride = (year, month, baseClosingDay) => {
+        const anchorDate = new Date(year, month, 1);
+        const key = toMonthKey(anchorDate);
+        const tentative = getClosingDate(year, month, baseClosingDay);
+
+        if (monthOverrides && monthOverrides[key]) {
+            const override = monthOverrides[key];
+            // Check for exactDate override (must be a string to split)
+            if (override.exactDate && typeof override.exactDate === 'string') {
+                const parts = override.exactDate.split('-').map(Number);
+                if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+                    const [y, m, d] = parts;
+                    return new Date(y, m - 1, d, 23, 59, 59);
+                }
+            }
+            if (override.closingDay && typeof override.closingDay === 'number') {
+                return getClosingDate(year, month, override.closingDay);
+            }
+        }
+        return tentative;
+    };
+
     // Calcular fechamento da fatura ATUAL (próximo fechamento a partir de hoje)
-    // REGRA DO APP MOBILE: Se hoje >= closingDay, a fatura desse mês JÁ FECHOU
+    // PRIORIDADE: Usar data real do Pluggy se disponível
     let currentClosingDate;
-    if (today.getDate() < closingDay) {
+    if (absoluteCloseDate) {
+        currentClosingDate = new Date(absoluteCloseDate);
+        currentClosingDate.setHours(23, 59, 59);
+    } else if (today.getDate() < closingDay) {
         // Ainda não fechou este mês
-        currentClosingDate = getClosingDate(today.getFullYear(), today.getMonth(), closingDay);
+        currentClosingDate = getClosingDateWithOverride(today.getFullYear(), today.getMonth(), closingDay);
     } else {
         // Já fechou este mês, próximo é mês que vem
         const nextMonth = today.getMonth() === 11 ? 0 : today.getMonth() + 1;
         const nextYear = today.getMonth() === 11 ? today.getFullYear() + 1 : today.getFullYear();
-        currentClosingDate = getClosingDate(nextYear, nextMonth, closingDay);
+        currentClosingDate = getClosingDateWithOverride(nextYear, nextMonth, closingDay);
     }
 
     // Calcular ÚLTIMA fatura (um mês antes da atual)
     const lastClosingMonth = currentClosingDate.getMonth() === 0 ? 11 : currentClosingDate.getMonth() - 1;
     const lastClosingYear = currentClosingDate.getMonth() === 0 ? currentClosingDate.getFullYear() - 1 : currentClosingDate.getFullYear();
-    const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
+    const lastClosingDate = getClosingDateWithOverride(lastClosingYear, lastClosingMonth, closingDay);
 
     // Calcular ANTES DA ÚLTIMA (dois meses antes da atual)
     const beforeLastMonth = lastClosingDate.getMonth() === 0 ? 11 : lastClosingDate.getMonth() - 1;
     const beforeLastYear = lastClosingDate.getMonth() === 0 ? lastClosingDate.getFullYear() - 1 : lastClosingDate.getFullYear();
-    const beforeLastClosingDate = getClosingDate(beforeLastYear, beforeLastMonth, closingDay);
+    const beforeLastClosingDate = getClosingDateWithOverride(beforeLastYear, beforeLastMonth, closingDay);
 
     // Calcular PRÓXIMA fatura (um mês após a atual)
     const nextClosingMonth = currentClosingDate.getMonth() === 11 ? 0 : currentClosingDate.getMonth() + 1;
     const nextClosingYear = currentClosingDate.getMonth() === 11 ? currentClosingDate.getFullYear() + 1 : currentClosingDate.getFullYear();
-    const nextClosingDate = getClosingDate(nextClosingYear, nextClosingMonth, closingDay);
+    const nextClosingDate = getClosingDateWithOverride(nextClosingYear, nextClosingMonth, closingDay);
 
     // Calcular datas de INÍCIO de cada período (dia após fechamento anterior)
     const lastInvoiceStart = new Date(beforeLastClosingDate.getTime() + 24 * 60 * 60 * 1000);
@@ -801,7 +869,7 @@ const calculateInvoicePeriods = (closingDayRaw, dueDay, today = new Date()) => {
     };
 
     const lastDueDate = calculateDueDate(lastClosingDate);
-    const currentDueDate = calculateDueDate(currentClosingDate);
+    const currentDueDate = absoluteDueDate ? new Date(absoluteDueDate) : calculateDueDate(currentClosingDate);
     const nextDueDate = calculateDueDate(nextClosingDate);
 
     // Debug log removido para performance
@@ -1333,8 +1401,8 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                 const existing = existingMap[acc.id];
 
                 // Extrair e VALIDAR closingDay e dueDay (1-28)
-                const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
-                const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+                const rawClosingDay = acc.creditData?.balanceCloseDate ? parseInt(acc.creditData.balanceCloseDate.substring(8, 10), 10) : null;
+                const rawDueDay = acc.creditData?.balanceDueDate ? parseInt(acc.creditData.balanceDueDate.substring(8, 10), 10) : null;
                 const validClosingDay = validateClosingDay(rawClosingDay);
                 const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
 
@@ -1347,7 +1415,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     closingDay: validClosingDay,
                     dueDay: validDueDay,
                     // NOVO: Períodos de fatura pré-calculados
-                    invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+                    invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay, new Date(), acc.creditData.balanceCloseDate, acc.creditData.balanceDueDate)
                 } : {};
 
                 // PRESERVAR APELIDO CUSTOMIZADO:
@@ -1367,10 +1435,14 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     }
                 }
 
+                const minimalPluggy = sanitizePluggyAccount(acc);
                 accBatch.set(accountsRef.doc(acc.id), removeUndefined({
-                    ...acc,
-                    name: nameToSave, // Usar nome preservado ou da API
-                    originalName: apiName, // Sempre salvar o nome original da API para referência
+                    id: acc.id,
+                    type: acc.type,
+                    subtype: acc.subtype,
+                    name: nameToSave,
+                    originalName: apiName,
+                    pluggyRaw: minimalPluggy,
                     ...creditFields,
                     ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                     accountNumber: acc.number || null,
@@ -1899,8 +1971,14 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
 
                     const previous = sorted.find(b => b.id !== current.id) || null;
 
-                    // Extract finance charges
                     const financeCharges = current.financeCharges || [];
+
+                    // NOVAS DATAS: Priorizar datas reais da fatura Pluggy
+                    // Pluggy retorna as datas dentro de creditData, não diretamente no account
+                    const acctCloseDate = account.creditData?.balanceCloseDate || account.balanceCloseDate || null;
+                    const acctDueDate = account.creditData?.balanceDueDate || account.balanceDueDate || null;
+                    const finalCloseDate = acctCloseDate || current.closeDate || null;
+                    const finalDueDate = acctDueDate || current.dueDate || null;
 
                     const iof = financeCharges.find(f => f.type === 'IOF')?.amount || 0;
                     const interest = financeCharges
@@ -1910,7 +1988,9 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     const otherCharges = financeCharges.find(f => f.type === 'OTHER')?.amount || 0;
 
                     // Calcular datas de período baseado no closingDay configurado
-                    const closingDay = account.closingDay || 10;
+                    // Extrair closingDay de creditData (raw Pluggy) ou do campo direto (Firestore)
+                    const rawCloseDayFromApi = acctCloseDate ? new Date(acctCloseDate).getDate() : null;
+                    const closingDay = rawCloseDayFromApi || account.closingDay || 10;
                     const today = new Date();
 
                     // Helper para criar data de fechamento
@@ -1936,12 +2016,17 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                     const lastClosingYear = nextClosingDate.getMonth() === 0 ? nextClosingDate.getFullYear() - 1 : nextClosingDate.getFullYear();
                     const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
 
-                    return accountsRef.doc(account.id).update({
+                    return accountsRef.doc(account.id).set({
+                        // Datas do cartão extraídas da API/fatura
+                        balanceCloseDate: finalCloseDate,
+                        balanceDueDate: finalDueDate,
                         currentBill: {
                             // Dados básicos da fatura
                             id: current.id,
                             dueDate: current.dueDate,
                             closeDate: current.closeDate || null,
+                            balanceCloseDate: finalCloseDate,
+                            balanceDueDate: finalDueDate,
                             // Datas de período: Usar dados do banco se houver, senão null (deixar frontend calcular)
                             periodStart: current.periodStart || null,
                             periodEnd: current.periodEnd || null,
@@ -2015,7 +2100,7 @@ router.post('/trigger-sync', withPluggyAuth, async (req, res) => {
                             };
                         }),
                         billsUpdatedAt: syncTimestamp
-                    });
+                    }, { merge: true });
                 });
 
             await Promise.all(billUpdatePromises);
@@ -2262,16 +2347,21 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                 closingDay: validClosingDay,
                 dueDay: validDueDay,
                 // NOVO: Períodos de fatura pré-calculados
-                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay, new Date(), acc.creditData.balanceCloseDate, acc.creditData.balanceDueDate)
             } : {};
 
+            const minimalPluggy = sanitizePluggyAccount(acc);
             accBatch.set(accountsRef.doc(acc.id), removeUndefined({
-                ...acc,
+                id: acc.id,
+                type: acc.type,
+                subtype: acc.subtype,
+                name: acc.name,
                 ...creditFields,
+                pluggyRaw: minimalPluggy,
                 ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                 accountNumber: acc.number || null,
                 itemId,
-                connector: itemStatus.item?.connector || null, // Save connector details provided by waitForItemReady
+                connector: itemStatus.item?.connector || null,
                 lastSyncedAt: syncTimestamp,
                 updatedAt: syncTimestamp
             }), { merge: true });
@@ -2552,6 +2642,13 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     const financeCharges = current.financeCharges || [];
                     console.log(`[Sync] Finance charges for account ${account.id}:`, JSON.stringify(financeCharges));
 
+                    // NOVAS DATAS: Priorizar datas reais da fatura Pluggy
+                    // Pluggy retorna as datas dentro de creditData, não diretamente no account
+                    const acctCloseDate = account.creditData?.balanceCloseDate || account.balanceCloseDate || null;
+                    const acctDueDate = account.creditData?.balanceDueDate || account.balanceDueDate || null;
+                    const finalCloseDate = acctCloseDate || current.closeDate || null;
+                    const finalDueDate = acctDueDate || current.dueDate || null;
+
                     const iof = financeCharges.find(f => f.type === 'IOF')?.amount || 0;
                     const interest = financeCharges
                         .filter(f => f.type === 'LATE_PAYMENT_INTEREST' || f.type === 'LATE_PAYMENT_REMUNERATIVE_INTEREST' || f.type === 'INTEREST')
@@ -2560,7 +2657,9 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     const otherCharges = financeCharges.find(f => f.type === 'OTHER')?.amount || 0;
 
                     // Calcular datas de período baseado no closingDay configurado
-                    const closingDay = account.closingDay || 10;
+                    // Extrair closingDay de creditData (raw Pluggy) ou do campo direto (Firestore)
+                    const rawCloseDayFromApi = acctCloseDate ? new Date(acctCloseDate).getDate() : null;
+                    const closingDay = rawCloseDayFromApi || account.closingDay || 10;
                     const today = new Date();
 
                     // Helper para criar data de fechamento
@@ -2586,12 +2685,17 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                     const lastClosingYear = nextClosingDate.getMonth() === 0 ? nextClosingDate.getFullYear() - 1 : nextClosingDate.getFullYear();
                     const lastClosingDate = getClosingDate(lastClosingYear, lastClosingMonth, closingDay);
 
-                    return accountsRef.doc(account.id).update({
+                    return accountsRef.doc(account.id).set({
+                        // Datas do cartão extraídas da API/fatura
+                        balanceCloseDate: finalCloseDate,
+                        balanceDueDate: finalDueDate,
                         currentBill: {
                             // Dados básicos da fatura
                             id: current.id,
                             dueDate: current.dueDate,
                             closeDate: current.closeDate || null,
+                            balanceCloseDate: finalCloseDate,
+                            balanceDueDate: finalDueDate,
                             // Datas de período calculadas
                             periodStart: new Date(lastClosingDate.getTime() + 24 * 60 * 60 * 1000).toISOString(),
                             periodEnd: nextClosingDate.toISOString(),
@@ -2665,7 +2769,7 @@ router.post('/sync', withPluggyAuth, async (req, res) => {
                             };
                         }),
                         billsUpdatedAt: syncTimestamp
-                    });
+                    }, { merge: true });
                 });
 
             await Promise.all(billUpdatePromises);
@@ -2876,7 +2980,7 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                 closingDay: validClosingDay,
                 dueDay: validDueDay,
                 // NOVO: Períodos de fatura pré-calculados
-                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay, new Date(), acc.creditData.balanceCloseDate, acc.creditData.balanceDueDate)
             } : {};
 
             console.log(`[Full-Sync] Account ${acc.id} (${acc.name}):`, {
@@ -2887,15 +2991,20 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
                 validDueDay
             });
 
-            accBatch.set(accountsRef.doc(acc.id), {
-                ...acc,
+            const minimalPluggy = sanitizePluggyAccount(acc);
+            accBatch.set(accountsRef.doc(acc.id), removeUndefined({
+                id: acc.id,
+                type: acc.type,
+                subtype: acc.subtype,
+                name: acc.name,
                 ...creditFields,
                 accountNumber: acc.number || null,
                 itemId,
                 connector: itemStatus.item?.connector || null,
+                pluggyRaw: minimalPluggy,
                 lastSyncedAt: syncTimestamp,
                 updatedAt: syncTimestamp
-            }, { merge: true });
+            }), { merge: true });
         }
         await accBatch.commit();
         console.log(`[Full-Sync] Accounts saved`);
@@ -2990,6 +3099,68 @@ router.post('/full-sync', withPluggyAuth, async (req, res) => {
         if (opCount > 0) batchPromises.push(currentBatch.commit());
         await Promise.all(batchPromises);
         console.log(`[Full-Sync] Saved ${txCount} transactions`);
+
+        // STEP 5: Fetch credit card bills (same as other sync functions)
+        const creditAccounts = accounts.filter(a => a.type === 'CREDIT' || a.subtype === 'CREDIT_CARD');
+
+        if (creditAccounts.length > 0) {
+            console.log(`[Full-Sync] Fetching bills for ${creditAccounts.length} credit accounts...`);
+            const billPromises = creditAccounts.map(account =>
+                pluggyApi.get(`/bills?accountId=${account.id}`, { headers: { 'X-API-KEY': apiKey } })
+                    .then(resp => ({ account, bills: resp.data.results || [] }))
+                    .catch(() => ({ account, bills: [] }))
+            );
+
+            const allBillResults = await Promise.all(billPromises);
+
+            const billUpdatePromises = allBillResults
+                .filter(({ bills }) => bills.length > 0)
+                .map(({ account, bills }) => {
+                    const billState = (b) => b?.state || b?.status || b?.billState || 'UNKNOWN';
+                    const billDueTime = (b) => {
+                        const t = Date.parse(b?.dueDate);
+                        return Number.isFinite(t) ? t : -Infinity;
+                    };
+                    const sorted = [...bills].sort((a, b) => billDueTime(b) - billDueTime(a));
+                    const nowTime = Date.now();
+                    const openBill = sorted.find(b => billState(b) === 'OPEN');
+                    const sortedAsc = [...sorted].sort((a, b) => billDueTime(a) - billDueTime(b));
+                    const futureBill = sortedAsc.find(b => billDueTime(b) >= nowTime);
+                    const current = openBill || futureBill || sorted[0];
+
+                    // Extrair datas do cartão: creditData (raw Pluggy) > campo direto > fatura
+                    const acctCloseDate = account.creditData?.balanceCloseDate || account.balanceCloseDate || null;
+                    const acctDueDate = account.creditData?.balanceDueDate || account.balanceDueDate || null;
+                    const finalCloseDate = acctCloseDate || current.closeDate || null;
+                    const finalDueDate = acctDueDate || current.dueDate || null;
+
+                    return accountsRef.doc(account.id).set({
+                        // Datas do cartão extraídas da API/fatura
+                        balanceCloseDate: finalCloseDate,
+                        balanceDueDate: finalDueDate,
+                        currentBill: {
+                            id: current.id,
+                            dueDate: current.dueDate,
+                            closeDate: current.closeDate || null,
+                            balanceCloseDate: finalCloseDate,
+                            balanceDueDate: finalDueDate,
+                            status: billState(current),
+                            totalAmount: current.totalAmount || null
+                        },
+                        bills: sorted.slice(0, 6).map(b => ({
+                            id: b.id,
+                            dueDate: b.dueDate,
+                            state: billState(b),
+                            status: billState(b),
+                            totalAmount: b.totalAmount || null
+                        })),
+                        billsUpdatedAt: syncTimestamp
+                    }, { merge: true });
+                });
+
+            await Promise.all(billUpdatePromises);
+            console.log(`[Full-Sync] Bills updated for ${creditAccounts.length} credit accounts`);
+        }
 
         const duration = Date.now() - startTime;
         console.log(`[Full-Sync] Completed in ${duration}ms: ${accounts.length} accounts, ${txCount} transactions`);
@@ -3177,8 +3348,8 @@ async function processWebhookSync(db, userId, itemId, eventType) {
             const isCredit = acc.type === 'CREDIT' || acc.subtype === 'CREDIT_CARD';
             const existing = existingMap[acc.id];
 
-            const rawClosingDay = acc.creditData?.balanceCloseDate ? new Date(acc.creditData.balanceCloseDate).getDate() : null;
-            const rawDueDay = acc.creditData?.balanceDueDate ? new Date(acc.creditData.balanceDueDate).getDate() : null;
+            const rawClosingDay = acc.creditData?.balanceCloseDate ? parseInt(acc.creditData.balanceCloseDate.substring(8, 10), 10) : null;
+            const rawDueDay = acc.creditData?.balanceDueDate ? parseInt(acc.creditData.balanceDueDate.substring(8, 10), 10) : null;
             const validClosingDay = validateClosingDay(rawClosingDay);
             const validDueDay = rawDueDay ? Math.max(1, Math.min(28, rawDueDay)) : null;
 
@@ -3190,7 +3361,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                 balanceDueDate: acc.creditData.balanceDueDate || null,
                 closingDay: validClosingDay,
                 dueDay: validDueDay,
-                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay)
+                invoicePeriods: calculateInvoicePeriods(validClosingDay, validDueDay, new Date(), acc.creditData.balanceCloseDate, acc.creditData.balanceDueDate)
             } : {};
 
             // PRESERVAR APELIDO CUSTOMIZADO:
@@ -3207,10 +3378,14 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                 }
             }
 
+            const minimalPluggy = sanitizePluggyAccount(acc);
             accBatch.set(accountsRef.doc(acc.id), removeUndefined({
-                ...acc,
-                name: nameToSave, // Usar nome preservado ou da API
-                originalName: apiName, // Sempre salvar o nome original da API para referência
+                id: acc.id,
+                type: acc.type,
+                subtype: acc.subtype,
+                name: nameToSave,
+                originalName: apiName,
+                pluggyRaw: minimalPluggy,
                 ...creditFields,
                 ...(existing?.connectedAt ? {} : { connectedAt: syncTimestamp }),
                 accountNumber: acc.number || null,
@@ -3335,11 +3510,22 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                 const futureBill = sortedAsc.find(b => billDueTime(b) >= nowTime);
                 const current = openBill || futureBill || sorted[0];
 
-                return accountsRef.doc(account.id).update({
+                // Extrair datas do cartão: creditData (raw Pluggy) > campo direto > fatura
+                const acctCloseDate = account.creditData?.balanceCloseDate || account.balanceCloseDate || null;
+                const acctDueDate = account.creditData?.balanceDueDate || account.balanceDueDate || null;
+                const finalCloseDate = acctCloseDate || current.closeDate || null;
+                const finalDueDate = acctDueDate || current.dueDate || null;
+
+                return accountsRef.doc(account.id).set({
+                    // Datas do cartão extraídas da API/fatura
+                    balanceCloseDate: finalCloseDate,
+                    balanceDueDate: finalDueDate,
                     currentBill: {
                         id: current.id,
                         dueDate: current.dueDate,
                         closeDate: current.closeDate || null,
+                        balanceCloseDate: finalCloseDate,
+                        balanceDueDate: finalDueDate,
                         status: billState(current),
                         totalAmount: current.totalAmount || null
                     },
@@ -3351,7 +3537,7 @@ async function processWebhookSync(db, userId, itemId, eventType) {
                         totalAmount: b.totalAmount || null
                     })),
                     billsUpdatedAt: syncTimestamp
-                });
+                }, { merge: true });
             });
 
         await Promise.all(billUpdatePromises);
@@ -3624,4 +3810,3 @@ router.post('/update-subscriptions-fields', async (req, res) => {
 });
 
 export default router;
-
