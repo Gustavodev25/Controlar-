@@ -1302,6 +1302,16 @@ router.post('/asaas/webhook', async (req, res) => {
           }
         }
         if (event.payment?.customer) {
+          // Also cancel subscription in Asaas if linked to this payment
+          if (event.payment?.subscription) {
+            try {
+              console.log(`>>> Cancelando assinatura relacionada ao estorno: ${event.payment.subscription}`);
+              await asaasRequest('DELETE', `/subscriptions/${event.payment.subscription}`);
+            } catch (subErr) {
+              console.error(`>>> Erro ao cancelar assinatura no Asaas durante estorno:`, subErr.message);
+            }
+          }
+
           const revoked = await revokeUserPlanByCustomerId(event.payment.customer, 'canceled');
           if (revoked && firebaseAdmin) {
             try {
