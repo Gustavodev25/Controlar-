@@ -1284,14 +1284,33 @@ export const buildInvoicesPluggyFirst = (
         return pluggyBillToInvoice(bill, 'OPEN'); // Status será refinado depois
     });
 
-    // Encontrar o índice da fatura corrente baseando-se no mês ou no isCurrent
-    let currentBillIdx = allBills.findIndex(b => b.isCurrent);
+    // Encontrar o índice da fatura corrente baseando-se no fechamento.
+    // A transição de fatura ocorre SOMENTE 1 dia após o fechamento. (dNum > endNum)
+    let currentBillIdx = -1;
+    const todayNum = dateToNumber(today);
+
+    // allBills está ordenado do mais futuro (0) para o mais passado (length - 1)
+    // Procuramos a fatura mais antiga que ainda inclui o dia de HOJE ou o futuro.
+    for (let i = allBills.length - 1; i >= 0; i--) {
+        const b = allBills[i];
+        if (b.periodEnd) {
+            const endNum = dateToNumber(parseDate(b.periodEnd));
+            if (endNum >= todayNum) {
+                currentBillIdx = i;
+                break;
+            }
+        }
+    }
+
     if (currentBillIdx === -1) {
-        // Fallback: busca pelo mês de referência calculado
-        currentBillIdx = allBills.findIndex(b => {
-            const bClose = pickNormalizedBillDate(b, ['periodEnd', 'closeDate', 'dueDate']);
-            return bClose && toMonthKey(parseDate(bClose)) === periods.currentMonthKey;
-        });
+        // Fallback: busca pelo mês de referência calculado ou o marcado como current
+        currentBillIdx = allBills.findIndex(b => b.isCurrent);
+        if (currentBillIdx === -1) {
+            currentBillIdx = allBills.findIndex(b => {
+                const bClose = pickNormalizedBillDate(b, ['periodEnd', 'closeDate', 'dueDate']);
+                return bClose && toMonthKey(parseDate(bClose)) === periods.currentMonthKey;
+            });
+        }
     }
 
     const effectiveCurrentIdx = currentBillIdx !== -1 ? currentBillIdx : 0;
