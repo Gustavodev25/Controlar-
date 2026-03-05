@@ -22,7 +22,7 @@ import {
   getTransactionInvoiceMonthKey,
   isCreditCardPayment as isCreditCardPaymentFromBuilder,
 
-  buildInvoices,
+  buildInvoicesPluggyFirst,
   generateInvoiceForecast,
   type InvoiceBuildResult,
   calculateInvoicePeriodDates,
@@ -45,6 +45,13 @@ function formatMonthKey(monthKey: string): string {
   return `${MONTH_NAMES[monthIndex]}/${year}`;
 }
 
+function getNextMonthKey(monthKey: string, offset: number = 1): string {
+  if (!monthKey) return '';
+  const [year, month] = monthKey.split('-').map(Number);
+  const date = new Date(year, month - 1 + offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+}
+
 // ============================================================ 
 // ============================================================ 
 // COMPONENTE: InvoiceTag (Tag Editável de Fatura)
@@ -54,7 +61,7 @@ const InvoiceTag = ({ transaction, summary, onUpdate, closingDay }: { transactio
   if (!summary || !closingDay) return null;
 
   const manualMonthKey = getEffectiveInvoiceMonth(transaction);
-  const effectiveMonthKey = manualMonthKey || getTransactionInvoiceMonthKey(transaction.date, closingDay);
+  const effectiveMonthKey = manualMonthKey || getTransactionInvoiceMonthKey(transaction, summary.periods, summary.card as any);
 
   const monthKeyToLabel = (k?: string) => {
     if (!k) return '?';
@@ -238,7 +245,7 @@ const useInvoiceBuilder = (
       return null;
     }
 
-    const result = buildInvoices(card, transactions, cardId, monthOffset);
+    const result = buildInvoicesPluggyFirst(card as any, transactions, cardId);
 
     // Log removed
 
@@ -283,7 +290,7 @@ const useInvoiceBuilder = (
       forecast: generateInvoiceForecast(result, 12),
 
       // Impacto no limite
-      limitImpact: calculateFutureLimitImpact(card, result),
+      limitImpact: calculateFutureLimitImpact(transactions, result.periods, card as any),
 
       // Dados compatíveis com formato antigo (para transição gradual)
       legacy: {
@@ -606,6 +613,9 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Filter Modal State (Mobile)
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isCardDetailsModalOpen, setIsCardDetailsModalOpen] = useState(false);
+  const [closingDayValues, setClosingDayValues] = useState<Record<string, string>>({});
+  const [isRefreshingClosing, setIsRefreshingClosing] = useState(false);
 
 
 
@@ -893,7 +903,10 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         allFutureTotal,
         // Dados extras do novo sistema
         forecast: invoiceBuilderData.forecast,
-        limitImpact: invoiceBuilderData.limitImpact
+        limitImpact: invoiceBuilderData.limitImpact,
+        // Períodos e card para o InvoiceTag
+        periods: periods,
+        card: selectedCard
       };
     }
 
@@ -913,6 +926,57 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
       isLastInvoicePaid: false
     };
   }, [invoiceBuilderData, selectedCard, transactions, selectedCardId]);
+
+  // Sincronizar dias editáveis quando o modal de detalhes abre
+  React.useEffect(() => {
+    if (isCardDetailsModalOpen && invoiceSummary) {
+      const initialDays: Record<string, string> = {};
+      const items = [
+        { id: 'beforeLast', date: invoiceSummary.beforeLastClosingDate },
+        { id: 'last', date: invoiceSummary.lastClosingDate },
+        { id: 'current', date: invoiceSummary.currentClosingDate },
+      ];
+      items.forEach(item => {
+        if (item.date) {
+          initialDays[item.id] = String(item.date.getDate());
+        }
+      });
+      setClosingDayValues(initialDays);
+    }
+  }, [isCardDetailsModalOpen, invoiceSummary]);
+
+  const handleSaveClosingDays = async () => {
+    if (!selectedCard || !onUpdateAccount) return;
+
+    const generateIsoDate = (date: Date, dayVal: string) => {
+      if (!date || !dayVal) return undefined;
+      const dNum = parseInt(dayVal, 10);
+      if (isNaN(dNum) || dNum < 1 || dNum > 31) return undefined;
+
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(dNum).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+
+    const updates: Partial<ConnectedAccount> = {};
+    const d1 = generateIsoDate(invoiceSummary.beforeLastClosingDate, closingDayValues.beforeLast);
+    const d2 = generateIsoDate(invoiceSummary.lastClosingDate, closingDayValues.last);
+    const d3 = generateIsoDate(invoiceSummary.currentClosingDate, closingDayValues.current);
+
+    if (d1) updates.manualBeforeLastClosingDate = d1;
+    if (d2) updates.manualLastClosingDate = d2;
+    if (d3) updates.manualCurrentClosingDate = d3;
+
+    try {
+      await onUpdateAccount(selectedCard.id, updates);
+      toast.success("Datas de fechamento atualizadas!");
+      setIsCardDetailsModalOpen(false);
+    } catch (error) {
+      console.error(error);
+      toast.error("Erro ao salvar datas");
+    }
+  };
 
   // Sincronizar data global (dashboardDate) com a fatura visualizada na tabela
   React.useEffect(() => {
@@ -1201,8 +1265,11 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
   // Filter invoice transactions with search, date filters and sorting
   const filteredTransactions = useMemo(() => {
-    // Use invoice transactions when card is selected and configured
-    const sourceTransactions = selectedCard?.closingDay ? invoiceTransactions : baseFilteredTransactions;
+    // Use invoice transactions when card is selected and invoice builder data is available
+    // Previously checked selectedCard?.closingDay, but Pluggy cards may not have closingDay directly set
+    // even though the invoiceBuilder successfully calculated periods from bill data
+    const hasInvoiceData = !!(invoiceBuilderData && invoiceSummary?.closingDay);
+    const sourceTransactions = hasInvoiceData ? invoiceTransactions : baseFilteredTransactions;
 
     return sourceTransactions
       .filter(t => {
@@ -1240,7 +1307,7 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
         if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
         return 0;
       });
-  }, [invoiceTransactions, allCardTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate, selectedCategory]);
+  }, [invoiceTransactions, allCardTransactions, selectedCard, searchTerm, sortField, sortDirection, startDate, endDate, selectedCategory, invoiceBuilderData, invoiceSummary]);
 
   // Combinar transações filtradas com encargos
   const transactionsWithCharges = useMemo(() => {
@@ -1917,326 +1984,229 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
           {/* Selected Card Details */}
           {selectedCard && (
             <>
-              {/* Check if card needs configuration */}
-              {!selectedCard.closingDay ? (
-                <div className="relative overflow-hidden bg-[#232322] border border-[#373734] rounded-2xl p-8 sm:p-12 text-center group transition-all hover:border-[#d97757]/30">
-                  <div className="absolute top-0 right-0 p-32 bg-[#d97757]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
-
-                  <div className="relative z-10 flex flex-col items-center max-w-lg mx-auto">
-                    <div className="w-16 h-16 bg-gradient-to-br from-[#d97757]/20 to-[#d97757]/5 rounded-2xl flex items-center justify-center mb-6 ring-1 ring-[#d97757]/20 shadow-lg shadow-[#d97757]/10 group-hover:scale-105 transition-transform duration-300">
-                      <Settings size={32} className="text-[#d97757]" />
-                    </div>
-
-                    <h3 className="text-2xl font-bold text-white mb-3">
-                      Configure o cartão <span className="text-[#d97757]">{selectedCard.name || selectedCard.institution}</span>
-                    </h3>
-
-                    <p className="text-gray-400 mb-8 leading-relaxed text-sm sm:text-base">
-                      Para visualização correta das faturas e melhor controle financeiro, precisamos que defina os dias de fechamento e vencimento deste cartão.
-                    </p>
-
-                    <div className="flex flex-wrap justify-center gap-3 mb-8">
-                      <div className="px-4 py-2 bg-[#1a1a19] rounded-lg border border-[#373734] flex items-center gap-2 text-xs text-gray-400">
-                        <div className="w-1.5 h-1.5 rounded-full bg-[#d97757]"></div>
-                        Controle de vencimentos
+              {/* As datas agora vêm via Pluggy automaticamente */}
+              <>
+                {/* Card Header with Settings */}
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    {/* Logo do banco ou ícone genérico */}
+                    {selectedCard.connector?.imageUrl ? (
+                      <img
+                        src={selectedCard.connector.imageUrl}
+                        alt=""
+                        className="w-10 h-10 rounded-full object-contain bg-white p-1"
+                      />
+                    ) : (
+                      <div className="p-2.5 bg-[#d97757]/40 rounded-full shadow-lg shadow-[#d97757]/10">
+                        <CreditCard size={20} className="text-white" />
                       </div>
-                      <div className="px-4 py-2 bg-[#1a1a19] rounded-lg border border-[#373734] flex items-center gap-2 text-xs text-gray-400">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div>
-                        Previsão de gastos
-                      </div>
-                    </div>
-
-                    {onUpdateAccount && (
-                      <Button
-                        onClick={() => {
-                          setCardSettings({
-                            closingDay: selectedCard.closingDay || 10,
-                            dueDay: selectedCard.dueDay || 20,
-                            manualBeforeLastClosingDate: selectedCard.manualBeforeLastClosingDate,
-                            manualLastClosingDate: selectedCard.manualLastClosingDate,
-                            manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
-                          });
-                          setIsSettingsModalOpen(true);
-                        }}
-                        variant="primary"
-                        size="md"
-                        className="w-full sm:w-auto font-bold text-sm shadow-lg shadow-[#d97757]/25 hover:shadow-[#d97757]/40 hover:-translate-y-0.5"
-                      >
-                        <Settings size={18} strokeWidth={2.5} />
-                        Configurar Cartão Agora
-                      </Button>
                     )}
-                  </div>
-                </div>
-              ) : (
-                <>
-                  {/* Card Header with Settings */}
-                  <div className="flex items-center justify-between mb-4">
-                    <div className="flex items-center gap-3">
-                      {/* Logo do banco ou ícone genérico */}
-                      {selectedCard.connector?.imageUrl ? (
-                        <img
-                          src={selectedCard.connector.imageUrl}
-                          alt=""
-                          className="w-10 h-10 rounded-full object-contain bg-white p-1"
-                        />
-                      ) : (
-                        <div className="p-2.5 bg-[#d97757]/40 rounded-full shadow-lg shadow-[#d97757]/10">
-                          <CreditCard size={20} className="text-white" />
-                        </div>
-                      )}
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-lg font-bold text-white max-w-[150px] truncate sm:max-w-none">
-                            {selectedCard.name || selectedCard.institution || 'Cartão'}
-                          </h3>
-                          {isAdmin && (
-                            <button
-                              onClick={() => setShowInvoiceCards(!showInvoiceCards)}
-                              className="p-1 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
-                              title={showInvoiceCards ? "Recolher cartões" : "Expandir cartões"}
-                            >
-                              {showInvoiceCards ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                            </button>
-                          )}
-                        </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-bold text-white max-w-[150px] truncate sm:max-w-none">
+                          {selectedCard.name || selectedCard.institution || 'Cartão'}
+                        </h3>
+                        <button
+                          onClick={() => setShowInvoiceCards(!showInvoiceCards)}
+                          className="p-1 rounded-full hover:bg-white/10 text-gray-500 hover:text-white transition-colors"
+                          title={showInvoiceCards ? "Recolher cartões" : "Expandir cartões"}
+                        >
+                          {showInvoiceCards ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-1">
                         <p className="text-xs text-gray-500">
                           Fecha dia {invoiceSummary.closingDay} • Vence dia {invoiceSummary.dueDay}
                         </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-
-                      {onUpdateAccount && (
                         <button
-                          onClick={() => {
-                            setCardSettings({
-                              closingDay: selectedCard.closingDay || 10,
-                              dueDay: selectedCard.dueDay || 20,
-                              manualBeforeLastClosingDate: selectedCard.manualBeforeLastClosingDate,
-                              manualLastClosingDate: selectedCard.manualLastClosingDate,
-                              manualCurrentClosingDate: selectedCard.manualCurrentClosingDate
-                            });
-                            setIsSettingsModalOpen(true);
-                          }}
-                          className="p-2.5 bg-[#232322] hover:bg-[#2a2a28] border border-[#373734] rounded-xl text-gray-400 hover:text-white transition-all"
-                          title="Configurar cartão"
+                          onClick={() => setIsCardDetailsModalOpen(true)}
+                          className="px-2 py-0.5 rounded-md bg-[#232322] border border-[#373734] text-[10px] text-gray-400 font-medium hover:text-white hover:border-[#d97757]/50 transition-colors"
                         >
-                          <Settings size={18} />
+                          Editar Fechamento
                         </button>
-                      )}
+                      </div>
                     </div>
                   </div>
 
+                  <div className="flex items-center gap-2">
+                  </div>
+                </div>
 
 
-                  {/* Invoice Cards Grid - with Animation */}
-                  <AnimatePresence>
-                    {showInvoiceCards && isAdmin && (
-                      <motion.div
-                        initial={{ height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={{ height: 0, opacity: 0 }}
-                        transition={{ duration: 0.3, ease: "easeInOut" }}
-                        className="overflow-hidden"
-                      >
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 pb-6">
-                          {/* HISTÓRICO (TODAS) */}
-                          <button
-                            onClick={() => changeInvoiceView('all')}
-                            className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'all'
-                              ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
-                              : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between mb-1 w-full">
-                              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                                Histórico
-                              </span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-gray-500/10 text-gray-400">
-                                TODAS
-                              </span>
-                            </div>
 
-                            <div className="flex flex-col gap-0.5 w-full">
+                {/* Invoice Cards Grid - with Animation */}
+                <AnimatePresence>
+                  {showInvoiceCards && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      transition={{ duration: 0.3, ease: "easeInOut" }}
+                      className="overflow-hidden"
+                    >
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pb-6">
+                        {/* HISTÓRICO (TODAS) */}
+                        <button
+                          onClick={() => changeInvoiceView('all')}
+                          className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'all'
+                            ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
+                            : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
+                            }`}
+                        >
+                          <div className="flex items-center justify-between mb-1 w-full">
+                            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                              Histórico
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-gray-500/10 text-gray-400">
+                              TODAS
+                            </span>
+                          </div>
 
-                              <span className="text-[10px] text-gray-500">
-                                Todas as transações
-                              </span>
-                              <span className="text-[9px] text-gray-600">
-                                {baseFilteredTransactions.length} lançamentos no total
-                              </span>
-                            </div>
-                          </button>
+                          <div className="flex flex-col gap-0.5 w-full">
 
-                          {/* ÚLTIMA FATURA (FECHADA) */}
-                          <button
-                            onClick={() => changeInvoiceView('last')}
-                            className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'last'
-                              ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
-                              : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between mb-1 w-full">
-                              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                                Última Fatura
-                              </span>
-                              <div className="flex items-center gap-1">
-                                {invoicePaymentInfo.last.isPaid ? (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 flex items-center gap-1">
-                                    <Check size={10} /> PAGA
-                                  </span>
-                                ) : (
-                                  <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-emerald-500/10 text-emerald-400">
-                                    FECHADA
-                                  </span>
-                                )}
-                              </div>
-                            </div>
+                            <span className="text-[10px] text-gray-500">
+                              Todas as transações
+                            </span>
+                            <span className="text-[9px] text-gray-600">
+                              {baseFilteredTransactions.length} lançamentos no total
+                            </span>
+                          </div>
+                        </button>
 
-                            <div className="flex flex-col gap-0.5 w-full">
+                        {/* ÚLTIMA FATURA (FECHADA) */}
+                        <button
+                          onClick={() => changeInvoiceView('last')}
+                          className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'last'
+                            ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
+                            : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
+                            }`}
+                        >
+                          <div className="flex items-center justify-between mb-1 w-full">
+                            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                              Última Fatura
+                            </span>
+                            <div className="flex items-center gap-1">
                               {invoicePaymentInfo.last.isPaid ? (
-                                <div className="flex flex-col">
-                                  <span className={`text-xl font-bold font-mono tracking-tight line-through opacity-50 ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                    {formatCurrency(invoicePaymentInfo.last.total)}
-                                  </span>
-                                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                                    <Check size={12} /> Pago: {formatCurrency(invoicePaymentInfo.last.paidAmount)}
-                                  </span>
-                                </div>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-emerald-500/20 text-emerald-400 flex items-center gap-1">
+                                  <Check size={10} /> PAGA
+                                </span>
                               ) : (
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
-                                    {formatCurrency(invoicePaymentInfo.last.total)}
-                                  </span>
-                                </div>
+                                <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-emerald-500/10 text-emerald-400">
+                                  FECHADA
+                                </span>
                               )}
-                              <span className="text-[10px] text-gray-500">
-                                {invoiceSummary.lastInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.lastInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                              </span>
-                              <span className="text-[9px] text-gray-600">
-                                Venceu {invoicePaymentInfo.last.dueDateToShow.toLocaleDateString('pt-BR')} • {invoiceSummary.lastInvoice.transactions.length} lançamentos
-                              </span>
-                              {/* Encargos Financeiros (IOF, Juros, Multa, Outros) - exibido quando disponível via API Pluggy */}
-                              {selectedCard.currentBill?.financeCharges && (
-                                (selectedCard.currentBill.financeCharges.iof > 0 ||
-                                  selectedCard.currentBill.financeCharges.interest > 0 ||
-                                  selectedCard.currentBill.financeCharges.lateFee > 0 ||
-                                  (selectedCard.currentBill.financeCharges.otherCharges || 0) > 0) && (
-                                  <div className="mt-1.5 p-2 rounded-lg bg-red-500/5 border border-red-500/10">
-                                    <div className="flex items-center gap-1 mb-1">
-                                      <AlertCircle size={10} className="text-red-400" />
-                                      <span className="text-[8px] text-red-400 font-semibold uppercase">Encargos</span>
-                                    </div>
-                                    <div className="flex flex-wrap gap-1">
-                                      {selectedCard.currentBill.financeCharges.iof > 0 && (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
-                                          IOF: {formatCurrency(selectedCard.currentBill.financeCharges.iof)}
-                                        </span>
-                                      )}
-                                      {selectedCard.currentBill.financeCharges.interest > 0 && (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">
-                                          Juros: {formatCurrency(selectedCard.currentBill.financeCharges.interest)}
-                                        </span>
-                                      )}
-                                      {selectedCard.currentBill.financeCharges.lateFee > 0 && (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 font-medium">
-                                          Multa: {formatCurrency(selectedCard.currentBill.financeCharges.lateFee)}
-                                        </span>
-                                      )}
-                                      {(selectedCard.currentBill.financeCharges.otherCharges || 0) > 0 && (
-                                        <span className="text-[8px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium">
-                                          Outros: {formatCurrency(selectedCard.currentBill.financeCharges.otherCharges || 0)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    {(selectedCard.currentBill.financeCharges.total || 0) > 0 && (
-                                      <div className="mt-1 pt-1 border-t border-red-500/10 text-[9px] text-red-400 font-bold">
-                                        Total Encargos: {formatCurrency(selectedCard.currentBill.financeCharges.total || 0)}
-                                      </div>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-col gap-0.5 w-full">
+                            {invoicePaymentInfo.last.isPaid ? (
+                              <div className="flex flex-col">
+                                <span className={`text-xl font-bold font-mono tracking-tight line-through opacity-50 ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
+                                  {formatCurrency(invoicePaymentInfo.last.total)}
+                                </span>
+                                <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
+                                  <Check size={12} /> Pago: {formatCurrency(invoicePaymentInfo.last.paidAmount)}
+                                </span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1.5">
+                                <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'last' ? 'text-[#d97757]' : 'text-white'}`}>
+                                  {formatCurrency(invoicePaymentInfo.last.total)}
+                                </span>
+                              </div>
+                            )}
+                            <span className="text-[10px] text-gray-500">
+                              {invoiceSummary.lastInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.lastInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <span className="text-[9px] text-gray-600">
+                              Venceu {invoicePaymentInfo.last.dueDateToShow.toLocaleDateString('pt-BR')} • {invoiceSummary.lastInvoice.transactions.length} lançamentos
+                            </span>
+                            {/* Encargos Financeiros (IOF, Juros, Multa, Outros) - exibido quando disponível via API Pluggy */}
+                            {selectedCard.currentBill?.financeCharges && (
+                              (selectedCard.currentBill.financeCharges.iof > 0 ||
+                                selectedCard.currentBill.financeCharges.interest > 0 ||
+                                selectedCard.currentBill.financeCharges.lateFee > 0 ||
+                                (selectedCard.currentBill.financeCharges.otherCharges || 0) > 0) && (
+                                <div className="mt-1.5 p-2 rounded-lg bg-red-500/5 border border-red-500/10">
+                                  <div className="flex items-center gap-1 mb-1">
+                                    <AlertCircle size={10} className="text-red-400" />
+                                    <span className="text-[8px] text-red-400 font-semibold uppercase">Encargos</span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-1">
+                                    {selectedCard.currentBill.financeCharges.iof > 0 && (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 font-medium">
+                                        IOF: {formatCurrency(selectedCard.currentBill.financeCharges.iof)}
+                                      </span>
+                                    )}
+                                    {selectedCard.currentBill.financeCharges.interest > 0 && (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 font-medium">
+                                        Juros: {formatCurrency(selectedCard.currentBill.financeCharges.interest)}
+                                      </span>
+                                    )}
+                                    {selectedCard.currentBill.financeCharges.lateFee > 0 && (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-400 font-medium">
+                                        Multa: {formatCurrency(selectedCard.currentBill.financeCharges.lateFee)}
+                                      </span>
+                                    )}
+                                    {(selectedCard.currentBill.financeCharges.otherCharges || 0) > 0 && (
+                                      <span className="text-[8px] px-1.5 py-0.5 rounded bg-purple-500/10 text-purple-400 font-medium">
+                                        Outros: {formatCurrency(selectedCard.currentBill.financeCharges.otherCharges || 0)}
+                                      </span>
                                     )}
                                   </div>
-                                ))}
-                            </div>
-                          </button>
+                                  {(selectedCard.currentBill.financeCharges.total || 0) > 0 && (
+                                    <div className="mt-1 pt-1 border-t border-red-500/10 text-[9px] text-red-400 font-bold">
+                                      Total Encargos: {formatCurrency(selectedCard.currentBill.financeCharges.total || 0)}
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                          </div>
+                        </button>
 
-                          {/* FATURA ATUAL (ABERTA) */}
-                          <button
-                            onClick={() => changeInvoiceView('current')}
-                            className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'current'
-                              ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
-                              : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between mb-1 w-full">
-                              <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
-                                Fatura Atual
-                              </span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-amber-500/10 text-amber-400">
-                                ABERTA
-                              </span>
-                            </div>
+                        {/* FATURA ATUAL (ABERTA) */}
+                        <button
+                          onClick={() => changeInvoiceView('current')}
+                          className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'current'
+                            ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
+                            : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
+                            }`}
+                        >
+                          <div className="flex items-center justify-between mb-1 w-full">
+                            <span className="text-[10px] text-gray-400 font-semibold uppercase tracking-wider">
+                              Fatura Atual
+                            </span>
+                            <span className="text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase tracking-wide bg-amber-500/10 text-amber-400">
+                              ABERTA
+                            </span>
+                          </div>
 
-                            <div className="flex flex-col gap-0.5 w-full">
-                              <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'current' ? 'text-[#d97757]' : 'text-white'}`}>
-                                {formatCurrency(cardTotals.current)}
-                              </span>
-                              <span className="text-[10px] text-gray-500">
-                                {invoiceSummary.currentInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.currentInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                              </span>
-                              <span className="text-[9px] text-gray-600">
-                                Vence {invoiceSummary.currentDueDate.toLocaleDateString('pt-BR')} • {invoiceSummary.currentInvoice.transactions.length} lançamentos
-                              </span>
-                            </div>
-                          </button>
+                          <div className="flex flex-col gap-0.5 w-full">
+                            <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'current' ? 'text-[#d97757]' : 'text-white'}`}>
+                              {formatCurrency(cardTotals.current)}
+                            </span>
+                            <span className="text-[10px] text-gray-500">
+                              {invoiceSummary.currentInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.currentInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
+                            </span>
+                            <span className="text-[9px] text-gray-600">
+                              Vence {invoiceSummary.currentDueDate.toLocaleDateString('pt-BR')} • {invoiceSummary.currentInvoice.transactions.length} lançamentos
+                            </span>
+                          </div>
+                        </button>
 
-                          {/* PRÓXIMA FATURA (FUTURA) */}
-                          <button
-                            onClick={() => changeInvoiceView('next')}
-                            className={`bg-[#232322] rounded-xl p-3 flex flex-col justify-between h-full transition-all text-left w-full ${selectedInvoice === 'next'
-                              ? 'border-2 border-[#d97757] ring-2 ring-[#d97757]/20'
-                              : 'border border-[#373734] hover:border-gray-600 opacity-60 hover:opacity-100'
-                              }`}
-                          >
-                            <div className="flex items-center justify-between mb-1 w-full">
-                              <span className="text-[10px] text-gray-500 font-semibold uppercase tracking-wider">
-                                Próxima Fatura
-                              </span>
-                              <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-blue-500/10 text-blue-400 font-bold uppercase tracking-wide">
-                                FUTURA
-                              </span>
-                            </div>
-
-                            <div className="flex flex-col gap-0.5 w-full">
-                              <span className={`text-xl font-bold font-mono tracking-tight ${selectedInvoice === 'next' ? 'text-blue-400' : 'text-white'}`}>
-                                {formatCurrency(cardTotals.next)}
-                              </span>
-                              <span className="text-[10px] text-gray-500">
-                                {invoiceSummary.nextInvoiceStart.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} → {invoiceSummary.nextInvoiceEnd.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })}
-                              </span>
-                              <span className="text-[10px] text-blue-400 font-bold">
-                                Total Futuro: {formatCurrency(invoiceSummary.allFutureTotal)}
-                              </span>
-                              <span className="text-[9px] text-gray-600">
-                                Vence em {invoiceSummary.nextDueDate.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' })} • {invoiceSummary.nextInvoice.transactions.length} lançamentos
-                              </span>
-                            </div>
-                          </button>
-                        </div>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </>
-              )}
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </>
 
             </>
           )}
 
 
-          {/* Only show filters and table if card is configured */}
+          {/* Filters Row */}
           {
-            (!selectedCard || selectedCard.closingDay) && (
+            (true) && (
               <>
                 {/* Filters Row */}
                 <div className="flex flex-wrap gap-3 items-center mb-4">
@@ -3662,6 +3632,111 @@ export const CreditCardTable: React.FC<CreditCardTableProps> = ({
 
 
 
+
+          <UniversalModal
+            isOpen={isCardDetailsModalOpen}
+            onClose={() => setIsCardDetailsModalOpen(false)}
+            title={
+              <div className="flex items-center gap-3">
+                <CreditCard size={18} />
+                <h3 className="text-base font-semibold text-white">Editar fechamento</h3>
+              </div>
+            }
+            icon={null}
+            themeColor="#d97757"
+            footer={
+              <div className="flex w-full">
+                <Button variant="primary" size="lg" className="w-full" onClick={handleSaveClosingDays}>
+                  Salvar
+                </Button>
+              </div>
+            }
+          >
+            <div className="space-y-6">
+              <p className="text-sm text-gray-400 leading-relaxed">
+                Defina o dia exato do fechamento para as faturas abaixo.
+              </p>
+
+              <div className="flex gap-2.5 items-start">
+                <AlertCircle size={16} className="text-gray-500 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-[13px] text-gray-500 leading-relaxed">
+                    {(() => {
+                      const bankName = selectedCard?.institution || selectedCard?.name || '';
+                      const originalCloseDateStr = selectedCard?.currentBill?.closeDate;
+                      const originalDueDateStr = selectedCard?.currentBill?.dueDate;
+
+                      const originalCloseDateFormatted = originalCloseDateStr ? formatDate(originalCloseDateStr) : null;
+                      const originalDueDateFormatted = originalDueDateStr ? formatDate(originalDueDateStr) : null;
+
+                      if (originalCloseDateFormatted) {
+                        return (
+                          <>
+                            Obtivemos o fechamento (<strong className="text-white font-bold">{originalCloseDateFormatted}</strong>) e o vencimento (<strong className="text-white font-bold">{originalDueDateFormatted || 'Não informado'}</strong>) enviados pelo seu banco {bankName && `(${bankName})`}.
+                          </>
+                        );
+                      } else if (originalDueDateFormatted) {
+                        return (
+                          <>
+                            Obtivemos apenas o vencimento (<strong className="text-white font-bold">{originalDueDateFormatted}</strong>). O seu banco {bankName && `(${bankName}) `}não forneceu o fechamento. As datas foram projetadas e podem ser ajustadas manualmente.
+                          </>
+                        );
+                      } else {
+                        return (
+                          <>
+                            Não foi possível obter as datas originais do seu banco {bankName && `(${bankName}) `}. Elas foram projetadas automaticamente e podem ser ajustadas.
+                          </>
+                        );
+                      }
+                    })()}
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-[#1A1A1A]/80 border border-[#2A2A2A] rounded-2xl overflow-hidden shadow-inner">
+                {[
+                  { id: 'beforeLast', date: invoiceSummary.beforeLastClosingDate, monthKey: getNextMonthKey(invoiceSummary.lastMonthKey, -1) },
+                  { id: 'last', date: invoiceSummary.lastClosingDate, monthKey: invoiceSummary.lastMonthKey },
+                  { id: 'current', date: invoiceSummary.currentClosingDate, monthKey: invoiceSummary.currentMonthKey },
+                ].map((item, index, array) => (
+                  <div key={item.id}>
+                    <div className="flex items-center gap-4 px-5 py-4 hover:bg-white/[0.02] transition-colors">
+                      <div className="w-10 h-10 rounded-xl bg-white/[0.05] flex items-center justify-center text-gray-300 shrink-0">
+                        <FileText size={20} />
+                      </div>
+                      <div className="flex-1 flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-white">{formatMonthKey(item.monthKey)}</p>
+                          <p className="text-[11px] text-gray-500 mt-0.5">Define o fechamento desta fatura</p>
+                        </div>
+                        <div className="flex items-center gap-2.5">
+                          <span className="text-sm text-gray-500">Dia</span>
+                          <input
+                            type="text"
+                            maxLength={2}
+                            inputMode="numeric"
+                            className="w-10 bg-[#252525] border border-[#333] rounded-lg py-1 px-1.5 text-center text-white font-bold text-base outline-none focus:border-[#d97757] focus:ring-1 focus:ring-[#d97757]/20 transition-all font-mono"
+                            value={closingDayValues[item.id] || ''}
+                            onChange={(e) => {
+                              const val = e.target.value.replace(/\D/g, '');
+                              const n = parseInt(val);
+                              if (val === '' || (!isNaN(n) && n >= 0 && n <= 31)) {
+                                setClosingDayValues(prev => ({ ...prev, [item.id]: val }));
+                              }
+                            }}
+                            placeholder="--"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    {index < array.length - 1 && (
+                      <div className="h-px bg-[#2A2A2A] mx-5" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </UniversalModal>
 
         </div >
       )

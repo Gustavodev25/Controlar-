@@ -1,0 +1,3293 @@
+
+[1m[46m RUN [49m[22m [36mv4.0.18 [39m[90mC:/Users/de/Desktop/Controlar-[39m
+
+ [31m❯[39m api/_lib/routes.payment-token.test.ts [2m([22m[2m1 test[22m[2m | [22m[31m1 failed[39m[2m)[22m[32m 14[2mms[22m[39m
+[31m     [31m×[31m should pass creditCard data directly without manual tokenization[39m[32m 12[2mms[22m[39m
+
+[31m⎯⎯⎯⎯⎯⎯⎯[39m[1m[41m Failed Tests 1 [49m[22m[31m⎯⎯⎯⎯⎯⎯⎯[39m
+
+[41m[1m FAIL [22m[49m api/_lib/routes.payment-token.test.ts[2m > [22mAsaas payment - direct credit card architecture[2m > [22mshould pass creditCard data directly without manual tokenization
+[31m[1mAssertionError[22m: expected 'import express from \'express\';\r\ni…' not to contain 'asaasRequest(\'POST\', \'/creditCard/…'[39m
+
+[32m- Expected[39m
+[31m+ Received[39m
+
+[32m- asaasRequest('POST', '/creditCard/tokenize'[39m
+[31m+ import express from 'express';[39m
+[31m+ import cors from 'cors';[39m
+[31m+ import twilio from 'twilio';[39m
+[31m+ import Anthropic from '@anthropic-ai/sdk';[39m
+[31m+ import axios from 'axios';[39m
+[31m+ import geminiHandler from './gemini.js';[39m
+[31m+ import claudeHandler from './claude.js';[39m
+[31m+ import nodemailer from 'nodemailer';[39m
+[31m+ import pluggyRouter from './pluggy.js';[39m
+[31m+ import cronSyncRouter from './cron-sync.js';[39m
+[31m+ import { firebaseAdmin, firebaseAuth } from './firebaseAdmin.js';[39m
+[31m+ import { requireFirebaseAuth, getRequesterIsAdmin } from './authMiddleware.js';[39m
+[31m+ import { loadEnv } from './env.js';[39m
+[31m+ import { sendSaleToUtmify, sendRefundToUtmify } from './utmifyService.js';[39m
+[31m+ [39m
+[31m+ loadEnv();[39m
+[31m+ [39m
+[31m+ const router = express.Router();[39m
+[31m+ [39m
+[31m+ router.use(cors());[39m
+[31m+ router.use(express.urlencoded({ extended: false, limit: '50mb' }));[39m
+[31m+ router.use(express.json({ limit: '50mb' }));[39m
+[31m+ [39m
+[31m+ // Health Check / Diagnostics[39m
+[31m+ router.get('/status', async (req, res) => {[39m
+[31m+   const status = {[39m
+[31m+     timestamp: new Date().toISOString(),[39m
+[31m+     environment: process.env.NODE_ENV || 'development',[39m
+[31m+     services: {[39m
+[31m+       firebase: !!firebaseAdmin ? 'Connected' : 'Not Initialized',[39m
+[31m+       pluggy: {[39m
+[31m+         clientId: !!process.env.PLUGGY_CLIENT_ID ? 'Configured' : 'Missing',[39m
+[31m+         clientSecret: !!process.env.PLUGGY_CLIENT_SECRET ? 'Configured' : 'Missing'[39m
+[31m+       },[39m
+[31m+       smtp: {[39m
+[31m+         host: process.env.SMTP_HOST || 'Default',[39m
+[31m+         user: !!process.env.SMTP_USER ? 'Configured' : 'Missing'[39m
+[31m+       },[39m
+[31m+       asaas: {[39m
+[31m+         apiKey: !!process.env.ASAAS_API_KEY ? 'Configured' : 'Missing'[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+   };[39m
+[31m+   res.json(status);[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ===============================[39m
+[31m+ // AUTH & OTP SYSTEM[39m
+[31m+ // ===============================[39m
+[31m+ const otpStore = new Map(); // Store OTPs in memory: email -> { code, expires }[39m
+[31m+ [39m
+[31m+ // Clean up expired OTPs every 10 minutes[39m
+[31m+ setInterval(() => {[39m
+[31m+   const now = Date.now();[39m
+[31m+   for (const [email, data] of otpStore.entries()) {[39m
+[31m+     if (data.expires < now) {[39m
+[31m+       otpStore.delete(email);[39m
+[31m+     }[39m
+[31m+   }[39m
+[31m+ }, 10 * 60 * 1000);[39m
+[31m+ [39m
+[31m+ router.post('/auth/send-recovery-code', async (req, res) => {[39m
+[31m+   const { email } = req.body;[39m
+[31m+ [39m
+[31m+   if (!email) {[39m
+[31m+     return res.status(400).json({ error: 'Email é obrigatório.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   // Validate email format[39m
+[31m+   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;[39m
+[31m+   if (!emailRegex.test(email)) {[39m
+[31m+     return res.status(400).json({ error: 'Formato de email inválido.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     // Generate 6-digit code[39m
+[31m+     const code = Math.floor(100000 + Math.random() * 900000).toString();[39m
+[31m+     const expires = Date.now() + 15 * 60 * 1000; // 15 minutes[39m
+[31m+ [39m
+[31m+     otpStore.set(email.toLowerCase(), { code, expires });[39m
+[31m+ [39m
+[31m+     // Send Email - Dark theme matching the app design[39m
+[31m+     const htmlTemplate = `[39m
+[31m+       <!DOCTYPE html>[39m
+[31m+ <html lang="pt-BR">[39m
+[31m+ <head>[39m
+[31m+   <meta charset="UTF-8">[39m
+[31m+   <meta name="viewport" content="width=device-width, initial-scale=1.0">[39m
+[31m+   <title>Recuperação de Senha</title>[39m
+[31m+ </head>[39m
+[31m+ <body style="margin: 0; padding: 0; background-color: transparent; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">[39m
+[31m+   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: transparent; padding: 40px 0;">[39m
+[31m+     <tr>[39m
+[31m+       <td align="center">[39m
+[31m+         <table width="500" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #30302E; border: 1px solid #373734; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">[39m
+[31m+           [39m
+[31m+           <!-- Header -->[39m
+[31m+           <tr>[39m
+[31m+             <td align="left" style="padding: 24px 32px; background-color: #333432; border-bottom: 1px solid #373734;">[39m
+[31m+               <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em;">[39m
+[31m+                 Controlar<span style="color: #d97757;">+</span>[39m
+[31m+               </div>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+ [39m
+[31m+           <!-- Content -->[39m
+[31m+           <tr>[39m
+[31m+             <td style="padding: 40px 32px;">[39m
+[31m+               <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; text-align: left;">[39m
+[31m+                 Recuperação de Senha[39m
+[31m+               </h1>[39m
+[31m+               [39m
+[31m+               <p style="color: #d1d5db; font-size: 16px; line-height: 1.6; margin: 0 0 16px 0;">[39m
+[31m+                 Olá,[39m
+[31m+               </p>[39m
+[31m+               [39m
+[31m+               <p style="color: #d1d5db; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0;">[39m
+[31m+                 Recebemos uma solicitação para redefinir a senha da sua conta no <strong style="color: #ffffff;">Controlar+</strong>.[39m
+[31m+               </p>[39m
+[31m+               [39m
+[31m+               <p style="color: #9ca3af; font-size: 14px; text-align: center; margin: 0 0 16px 0;">[39m
+[31m+                 Use o código abaixo para validar sua identidade:[39m
+[31m+               </p>[39m
+[31m+               [39m
+[31m+               <!-- Code Box -->[39m
+[31m+               <div style="text-align: center; margin: 32px 0;">[39m
+[31m+                 <div style="display: inline-block; background: linear-gradient(135deg, #363735 0%, #30302E 100%); padding: 20px 40px; border-radius: 12px; border: 1px solid #4a4a48;">[39m
+[31m+                   <!-- Placeholder value used for preview: 852910 -->[39m
+[31m+                   <span style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #d97757; font-family: 'Courier New', monospace;">${code}</span>[39m
+[31m+                 </div>[39m
+[31m+               </div>[39m
+[31m+               [39m
+[31m+               <p style="color: #9ca3af; font-size: 14px; text-align: center; margin: 24px 0 0 0;">[39m
+[31m+                 Este código expira em <strong style="color: #ffffff;">15 minutos</strong>.[39m
+[31m+               </p>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+ [39m
+[31m+           <!-- Footer -->[39m
+[31m+           <tr>[39m
+[31m+             <td style="padding: 24px 32px; background-color: #333432; border-top: 1px solid #373734;">[39m
+[31m+               <p style="color: #6b7280; font-size: 12px; text-align: center; margin: 0 0 8px 0;">[39m
+[31m+                 Se você não solicitou esta redefinição de senha, pode ignorar este email com segurança.[39m
+[31m+               </p>[39m
+[31m+               <p style="color: #4b5563; font-size: 11px; text-align: center; margin: 0;">[39m
+[31m+                 <!-- Placeholder value used for preview: 2025 -->[39m
+[31m+                 © 2025 Controlar+. Todos os direitos reservados.[39m
+[31m+               </p>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+           [39m
+[31m+         </table>[39m
+[31m+       </td>[39m
+[31m+     </tr>[39m
+[31m+   </table>[39m
+[31m+ </body>[39m
+[31m+ </html>[39m
+[31m+     `;[39m
+[31m+ [39m
+[31m+     await smtpTransporter.sendMail({[39m
+[31m+       from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,[39m
+[31m+       to: email,[39m
+[31m+       subject: 'Código de Recuperação de Senha - Controlar+',[39m
+[31m+       html: htmlTemplate,[39m
+[31m+       text: `Seu código de recuperação é: ${code}`[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     console.log(`>>> OTP sent to ${email}: ${code}`);[39m
+[31m+     res.json({ success: true, message: 'Código enviado com sucesso.' });[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('Send OTP Error:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao enviar código.', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/auth/verify-recovery-code', async (req, res) => {[39m
+[31m+   const { email, code } = req.body;[39m
+[31m+ [39m
+[31m+   if (!email || !code) {[39m
+[31m+     return res.status(400).json({ error: 'Email e código são obrigatórios.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const normalizedEmail = email.toLowerCase();[39m
+[31m+   const record = otpStore.get(normalizedEmail);[39m
+[31m+ [39m
+[31m+   if (!record) {[39m
+[31m+     return res.status(400).json({ error: 'Código inválido ou expirado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (record.code !== code) {[39m
+[31m+     return res.status(400).json({ error: 'Código incorreto.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (record.expires < Date.now()) {[39m
+[31m+     otpStore.delete(normalizedEmail);[39m
+[31m+     return res.status(400).json({ error: 'Código expirado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   // Mark as verified so reset-password knows it's valid[39m
+[31m+   record.verified = true;[39m
+[31m+   otpStore.set(normalizedEmail, record);[39m
+[31m+ [39m
+[31m+   res.json({ success: true, message: 'Código válido.' });[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/auth/reset-password', async (req, res) => {[39m
+[31m+   const { email, code, newPassword } = req.body;[39m
+[31m+ [39m
+[31m+   if (!email || !code || !newPassword) {[39m
+[31m+     return res.status(400).json({ error: 'Dados incompletos.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (newPassword.length < 6) {[39m
+[31m+     return res.status(400).json({ error: 'A senha deve ter pelo menos 6 caracteres.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const normalizedEmail = email.toLowerCase();[39m
+[31m+ [39m
+[31m+   // Verify OTP again[39m
+[31m+   const record = otpStore.get(normalizedEmail);[39m
+[31m+   if (!record || record.code !== code || record.expires < Date.now()) {[39m
+[31m+     return res.status(400).json({ error: 'Sessão inválida ou expirada. Solicite um novo código.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     // If Firebase Admin is available, use it[39m
+[31m+     if (firebaseAuth) {[39m
+[31m+       const user = await firebaseAuth.getUserByEmail(email);[39m
+[31m+       await firebaseAuth.updateUser(user.uid, {[39m
+[31m+         password: newPassword[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       // Clear OTP[39m
+[31m+       otpStore.delete(normalizedEmail);[39m
+[31m+ [39m
+[31m+       console.log(`>>> Password reset successful for ${email} via Firebase Admin`);[39m
+[31m+       return res.json({ success: true, message: 'Senha alterada com sucesso!' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Alternative: Use Firebase REST API[39m
+[31m+     const firebaseApiKey = process.env.VITE_FIREBASE_API_KEY || 'AIzaSyBGhm5J90b4fVlhmyP7bhVPliQZmQUSmmo';[39m
+[31m+ [39m
+[31m+     // Step 1: Send password reset email via Firebase REST API to get an oobCode[39m
+[31m+     const sendResetResponse = await axios.post([39m
+[31m+       `https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${firebaseApiKey}`,[39m
+[31m+       {[39m
+[31m+         requestType: 'PASSWORD_RESET',[39m
+[31m+         email: email[39m
+[31m+       }[39m
+[31m+     );[39m
+[31m+ [39m
+[31m+     if (sendResetResponse.data.email) {[39m
+[31m+       // Firebase sent a reset email - we'll store the new password and [39m
+[31m+       // instruct the user to click the link, OR we redirect them to use the link[39m
+[31m+ [39m
+[31m+       // Clear our OTP since Firebase is handling it[39m
+[31m+       otpStore.delete(normalizedEmail);[39m
+[31m+ [39m
+[31m+       console.log(`>>> Password reset email sent to ${email} via Firebase REST API`);[39m
+[31m+       return res.json({[39m
+[31m+         success: true,[39m
+[31m+         message: 'Enviamos um email do Firebase com link para redefinir sua senha. Clique no link recebido.',[39m
+[31m+         requiresFirebaseLink: true[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('Reset Password Error:', error);[39m
+[31m+ [39m
+[31m+     // Handle Firebase Admin SDK errors[39m
+[31m+     if (error.code === 'auth/user-not-found') {[39m
+[31m+       return res.status(404).json({ error: 'Usuário não encontrado. Verifique o email.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (error.code === 'auth/invalid-password') {[39m
+[31m+       return res.status(400).json({ error: 'Senha inválida. A senha deve ter pelo menos 6 caracteres.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Handle Firebase REST API errors (legacy fallback)[39m
+[31m+     const firebaseError = error.response?.data?.error;[39m
+[31m+     if (firebaseError?.message === 'EMAIL_NOT_FOUND') {[39m
+[31m+       return res.status(404).json({ error: 'Email não encontrado. Verifique se digitou corretamente.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao redefinir senha.',[39m
+[31m+       details: error.message || 'Erro interno no servidor.'[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ===============================[39m
+[31m+ // TWILIO + CLAUDE (WhatsApp bot)[39m
+[31m+ // ===============================[39m
+[31m+ const accountSid = process.env.TWILIO_ACCOUNT_SID;[39m
+[31m+ const authToken = process.env.TWILIO_AUTH_TOKEN;[39m
+[31m+ const anthropicKey = process.env.ANTHROPIC_API_KEY || process.env.VITE_ANTHROPIC_API_KEY;[39m
+[31m+ const fromNumber = process.env.TWILIO_PHONE_NUMBER || 'whatsapp:+14155238886';[39m
+[31m+ [39m
+[31m+ // Initialize Twilio client if credentials are present[39m
+[31m+ let client;[39m
+[31m+ try {[39m
+[31m+   if (accountSid && authToken) {[39m
+[31m+     client = twilio(accountSid, authToken);[39m
+[31m+   }[39m
+[31m+ } catch (e) {[39m
+[31m+   console.error('Twilio init error:', e);[39m
+[31m+ }[39m
+[31m+ [39m
+[31m+ const claude = anthropicKey ? new Anthropic({ apiKey: anthropicKey }) : null;[39m
+[31m+ // Use Sonnet 3.5 (latest stable) for smart responses[39m
+[31m+ const CLAUDE_MODEL = 'claude-3-5-sonnet-20240620';[39m
+[31m+ [39m
+[31m+ async function generateResponse(text) {[39m
+[31m+   if (!claude) return 'Erro: API do Claude nao configurada.';[39m
+[31m+ [39m
+[31m+   const todayStr = new Date().toLocaleDateString('pt-BR', {[39m
+[31m+     weekday: 'long',[39m
+[31m+     year: 'numeric',[39m
+[31m+     month: 'long',[39m
+[31m+     day: 'numeric'[39m
+[31m+   });[39m
+[31m+ [39m
+[31m+   const systemPrompt = `[39m
+[31m+ Hoje é: ${todayStr}.[39m
+[31m+ Você é o "Coinzinha", um assistente financeiro pessoal divertido, amigável e inteligente.[39m
+[31m+ [39m
+[31m+ O usuário enviou via WhatsApp: "${text}"[39m
+[31m+ [39m
+[31m+ Objetivo:[39m
+[31m+ 1. Se for uma transação (ex: "gastei 10 padaria"), responda confirmando com o valor e categoria de forma amigável (não precisa salvar, apenas confirmar o entendimento).[39m
+[31m+ 2. Se for conversa, responda de forma curta e amigável.[39m
+[31m+ 3. Use emojis.[39m
+[31m+ 4. Responda SEMPRE em português brasileiro.[39m
+[31m+ 5. Seja conciso (max 2-3 frases).[39m
+[31m+ `;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const response = await claude.messages.create({[39m
+[31m+       model: CLAUDE_MODEL,[39m
+[31m+       max_tokens: 300,[39m
+[31m+       system: systemPrompt,[39m
+[31m+       messages: [[39m
+[31m+         { role: 'user', content: text }[39m
+[31m+       ][39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     // Extract text from response content[39m
+[31m+     const reply = response.content[39m
+[31m+       .filter(block => block.type === 'text')[39m
+[31m+       .map(block => block.text)[39m
+[31m+       .join('');[39m
+[31m+ [39m
+[31m+     return reply;[39m
+[31m+   } catch (e) {[39m
+[31m+     console.error('Claude Error:', e);[39m
+[31m+     return 'Opa, tive um problema aqui. Pode repetir?';[39m
+[31m+   }[39m
+[31m+ }[39m
+[31m+ [39m
+[31m+ // WhatsApp webhook[39m
+[31m+ router.post('/whatsapp', async (req, res) => {[39m
+[31m+   const { Body, From } = req.body;[39m
+[31m+   console.log(`Mensagem de ${From}: ${Body}`);[39m
+[31m+ [39m
+[31m+   if (Body?.toLowerCase().includes('join')) {[39m
+[31m+     const welcomeMsg =[39m
+[31m+       "Conectado ao Coinzinha! Pode falar comigo. Ex: 'Gastei 50 reais no mercado'.";[39m
+[31m+ [39m
+[31m+     if (client) {[39m
+[31m+       await client.messages.create({[39m
+[31m+         from: fromNumber,[39m
+[31m+         to: From,[39m
+[31m+         body: welcomeMsg[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.set('Content-Type', 'text/xml');[39m
+[31m+     return res.send('<Response></Response>');[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!client) {[39m
+[31m+     console.error('Twilio client not ready.');[39m
+[31m+     return res.status(500).send('Twilio not configured');[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const replyText = await generateResponse(Body);[39m
+[31m+     console.log(`Claude Reply: ${replyText}`);[39m
+[31m+ [39m
+[31m+     await client.messages.create({[39m
+[31m+       from: fromNumber,[39m
+[31m+       to: From,[39m
+[31m+       body: replyText[39m
+[31m+     });[39m
+[31m+   } catch (e) {[39m
+[31m+     console.error('Error processing message:', e);[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   res.set('Content-Type', 'text/xml');[39m
+[31m+   res.send('<Response></Response>');[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Gemini proxy endpoint[39m
+[31m+ router.post('/gemini', geminiHandler);[39m
+[31m+ [39m
+[31m+ // Claude proxy endpoint[39m
+[31m+ router.post('/claude', claudeHandler);[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // EMAIL SENDING (NODEMAILER)[39m
+[31m+ // ========================================[39m
+[31m+ [39m
+[31m+ // Remove spaces from password if present (common when copying from Google)[39m
+[31m+ const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');[39m
+[31m+ [39m
+[31m+ // Auto-detect Zoho for controlarmais domain[39m
+[31m+ const smtpUser = process.env.SMTP_USER || '';[39m
+[31m+ const isZohoEmail = smtpUser.includes('@controlarmais.com.br') || smtpUser.includes('zoho');[39m
+[31m+ const defaultHost = isZohoEmail ? 'smtp.zoho.com' : 'smtp.gmail.com';[39m
+[31m+ [39m
+[31m+ const smtpConfig = {[39m
+[31m+   host: process.env.SMTP_HOST || defaultHost,[39m
+[31m+   port: parseInt(process.env.SMTP_PORT || '465', 10),[39m
+[31m+   secure: process.env.SMTP_SECURE === 'true',[39m
+[31m+   auth: {[39m
+[31m+     user: smtpUser,[39m
+[31m+     pass: smtpPass[39m
+[31m+   },[39m
+[31m+   logger: false,[39m
+[31m+   debug: false,[39m
+[31m+   // Zoho specific settings[39m
+[31m+   tls: {[39m
+[31m+     rejectUnauthorized: true[39m
+[31m+   }[39m
+[31m+ };[39m
+[31m+ [39m
+[31m+ console.log(`>>> SMTP Config: host=${smtpConfig.host}, port=${smtpConfig.port}, secure=${smtpConfig.secure}, user=${smtpUser ? smtpUser.substring(0, 5) + '...' : 'NOT SET'}`);[39m
+[31m+ [39m
+[31m+ const smtpTransporter = nodemailer.createTransport(smtpConfig);[39m
+[31m+ [39m
+[31m+ smtpTransporter.verify(function (error, success) {[39m
+[31m+   if (error) {[39m
+[31m+     console.error('>>> SMTP Connection Error:', error.message);[39m
+[31m+     console.error('>>> SMTP Error Code:', error.code);[39m
+[31m+   } else {[39m
+[31m+     console.log('>>> SMTP Server is ready to send emails');[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/admin/send-email', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {[39m
+[31m+   const {[39m
+[31m+     recipients,[39m
+[31m+     subject,[39m
+[31m+     title,[39m
+[31m+     body,[39m
+[31m+     boxContent, // New field[39m
+[31m+     buttonText,[39m
+[31m+     buttonLink,[39m
+[31m+     headerAlign,[39m
+[31m+     titleAlign,[39m
+[31m+     bodyAlign[39m
+[31m+   } = req.body;[39m
+[31m+ [39m
+[31m+   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {[39m
+[31m+     return res.status(400).json({ error: 'Nenhum destinatário selecionado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const hAlign = headerAlign || 'center';[39m
+[31m+   const tAlign = titleAlign || 'center';[39m
+[31m+   const bAlign = bodyAlign || 'left';[39m
+[31m+ [39m
+[31m+   const htmlTemplate = `[39m
+[31m+  <!DOCTYPE html>[39m
+[31m+ <html lang="pt-BR">[39m
+[31m+ <head>[39m
+[31m+   <meta charset="UTF-8">[39m
+[31m+   <meta name="viewport" content="width=device-width, initial-scale=1.0">[39m
+[31m+   <title>${subject}</title>[39m
+[31m+   <style>[39m
+[31m+     body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }[39m
+[31m+     table,td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }[39m
+[31m+     img { -ms-interpolation-mode: bicubic; }[39m
+[31m+   </style>[39m
+[31m+ </head>[39m
+[31m+ <body style="margin: 0; padding: 0; background-color: transparent; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #d1d5db;">[39m
+[31m+   <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: transparent; padding: 40px 0;">[39m
+[31m+     <tr>[39m
+[31m+       <td align="center">[39m
+[31m+         <!-- Largura alterada para 500 e cores ajustadas para o tema do exemplo 2 -->[39m
+[31m+         <table width="500" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #30302E; border: 1px solid #373734; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); border-collapse: separate; mso-border-radius-alt: 16px;">[39m
+[31m+           [39m
+[31m+           <!-- Header (Estilo visual do exemplo 2, mas com alinhamento variável do exemplo 1) -->[39m
+[31m+           <tr>[39m
+[31m+             <td align="${hAlign === 'justify' ? 'left' : hAlign}" style="padding: 24px 32px; background-color: transparent; border-bottom: 1px solid #373734; text-align: ${hAlign === 'justify' ? 'left' : hAlign};">[39m
+[31m+               <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em; line-height: 1; display: inline-block;">[39m
+[31m+                 Controlar<span style="color: #d97757;">+</span>[39m
+[31m+               </div>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+ [39m
+[31m+           <!-- Content (Padding e cores do exemplo 2) -->[39m
+[31m+           <tr>[39m
+[31m+             <td style="padding: 40px 32px; background-color: #30302E;">[39m
+[31m+               <h1 style="margin: 0 0 8px 0; color: #ffffff; font-size: 24px; font-weight: bold; line-height: 1.25; text-align: ${tAlign};">[39m
+[31m+                 ${title || 'Título da Mensagem'}[39m
+[31m+               </h1>[39m
+[31m+ [39m
+[31m+               <div style="color: #d1d5db; font-size: 16px; line-height: 1.6; text-align: ${bAlign};">[39m
+[31m+                 ${(body || '').replace(/\n/g, '<br/>')}[39m
+[31m+               </div>[39m
+[31m+ [39m
+[31m+               <!-- Box Content (Opcional) -->[39m
+[31m+               ${boxContent ? `[39m
+[31m+               <div style="text-align: center; margin: 32px 0;">[39m
+[31m+                 <div style="display: inline-block; background: linear-gradient(135deg, #363735 0%, #30302E 100%); padding: 20px 40px; border-radius: 12px; border: 1px solid #4a4a48;">[39m
+[31m+                   <span style="font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #d97757; font-family: 'Courier New', monospace;">${boxContent}</span>[39m
+[31m+                 </div>[39m
+[31m+               </div>[39m
+[31m+               ` : ''}[39m
+[31m+ [39m
+[31m+               <!-- Botão (Mantido a lógica, mas ajustado visualmente se necessário) -->[39m
+[31m+               <div style="margin-top: 32px; text-align: center;">[39m
+[31m+                 <a href="${buttonLink}" target="_blank" style="display: inline-block; background-color: #d97757; color: #ffffff; font-weight: bold; padding: 12px 32px; border-radius: 9999px; text-decoration: none; box-shadow: 0 4px 6px -1px rgba(217, 119, 87, 0.2);">[39m
+[31m+                   ${buttonText || 'Ver Agora'}[39m
+[31m+                 </a>[39m
+[31m+               </div>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+ [39m
+[31m+           <!-- Footer (Estilo visual do exemplo 2) -->[39m
+[31m+           <tr>[39m
+[31m+             <td align="center" style="padding: 24px 32px; background-color: transparent; color: #6b7280; font-size: 12px;">[39m
+[31m+               <p style="margin: 0;">© ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.</p>[39m
+[31m+               <p style="margin: 8px 0 0 0;">[39m
+[31m+                 <a href="#" style="color: #9ca3af; text-decoration: underline;">Descadastrar</a> • [39m
+[31m+                 <a href="#" style="color: #9ca3af; text-decoration: underline; margin-left: 8px;">Política de Privacidade</a>[39m
+[31m+               </p>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+         </table>[39m
+[31m+ [39m
+[31m+       </td>[39m
+[31m+     </tr>[39m
+[31m+   </table>[39m
+[31m+ </body>[39m
+[31m+ </html>[39m
+[31m+   `;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     // Helper functionality for batching[39m
+[31m+     const batchSize = 10; // Number of emails per batch[39m
+[31m+     const delayBetweenBatches = 2000; // Delay in ms (2 seconds)[39m
+[31m+ [39m
+[31m+     // Split recipients into batches[39m
+[31m+     const batches = [];[39m
+[31m+     for (let i = 0; i < recipients.length; i += batchSize) {[39m
+[31m+       batches.push(recipients.slice(i, i + batchSize));[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     console.log(`>>> Starting batch email send. Total recipients: ${recipients.length}. Batches: ${batches.length}`);[39m
+[31m+ [39m
+[31m+     let successCount = 0;[39m
+[31m+     let failCount = 0;[39m
+[31m+     const failures = [];[39m
+[31m+ [39m
+[31m+     // Process batches sequentially[39m
+[31m+     for (let i = 0; i < batches.length; i++) {[39m
+[31m+       const batch = batches[i];[39m
+[31m+       console.log(`>>> Sending batch ${i + 1}/${batches.length} (${batch.length} emails)...`);[39m
+[31m+ [39m
+[31m+       const batchPromises = batch.map((email) => {[39m
+[31m+         return smtpTransporter.sendMail({[39m
+[31m+           from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,[39m
+[31m+           to: email,[39m
+[31m+           subject: subject,[39m
+[31m+           html: htmlTemplate,[39m
+[31m+           text: body[39m
+[31m+         });[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       // Wait for all emails in this batch to finish[39m
+[31m+       const results = await Promise.allSettled(batchPromises);[39m
+[31m+ [39m
+[31m+       // Tally results[39m
+[31m+       results.forEach(r => {[39m
+[31m+         if (r.status === 'fulfilled') {[39m
+[31m+           successCount++;[39m
+[31m+         } else {[39m
+[31m+           failCount++;[39m
+[31m+           failures.push(r);[39m
+[31m+         }[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       // If there are more batches, wait before sending the next one[39m
+[31m+       if (i < batches.length - 1) {[39m
+[31m+         console.log(`>>> Waiting ${delayBetweenBatches}ms before next batch...`);[39m
+[31m+         await new Promise(resolve => setTimeout(resolve, delayBetweenBatches));[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     console.log(`>>> Email Campaign Finished: ${successCount} success, ${failCount} failed.`);[39m
+[31m+ [39m
+[31m+     if (successCount === 0 && failCount > 0) {[39m
+[31m+       const firstError = failures[0].reason;[39m
+[31m+       return res.status(500).json({[39m
+[31m+         error: 'Falha ao enviar todos os emails.',[39m
+[31m+         details: firstError?.message || 'Erro desconhecido no SMTP.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       sent: successCount,[39m
+[31m+       failed: failCount,[39m
+[31m+       message: `Enviado para ${successCount} usuários.`[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('Email Send Error:', error);[39m
+[31m+     res.status(500).json({ error: 'Falha ao processar envio.', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // ASAAS PAYMENT INTEGRATION[39m
+[31m+ // ========================================[39m
+[31m+ const ASAAS_API_KEY = process.env.ASAAS_API_KEY;[39m
+[31m+ const ASAAS_API_URL = ASAAS_API_KEY && ASAAS_API_KEY.includes('hmlg')[39m
+[31m+   ? 'https://sandbox.asaas.com/api/v3'[39m
+[31m+   : 'https://www.asaas.com/api/v3';[39m
+[31m+ [39m
+[31m+ // Helper to get client IP from request (works with proxies/serverless)[39m
+[31m+ const getClientIp = (req) => {[39m
+[31m+   const forwarded = req.headers['x-forwarded-for'];[39m
+[31m+   if (forwarded) {[39m
+[31m+     // x-forwarded-for can contain multiple IPs: client, proxy1, proxy2, etc.[39m
+[31m+     return forwarded.split(',')[0].trim();[39m
+[31m+   }[39m
+[31m+   return req.headers['x-real-ip'] || req.ip || req.connection?.remoteAddress || '127.0.0.1';[39m
+[31m+ };[39m
+[31m+ [39m
+[31m+ const asaasRequest = async (method, endpoint, data = null) => {[39m
+[31m+   const config = {[39m
+[31m+     method,[39m
+[31m+     url: `${ASAAS_API_URL}${endpoint}`,[39m
+[31m+     headers: {[39m
+[31m+       'Content-Type': 'application/json',[39m
+[31m+       access_token: ASAAS_API_KEY[39m
+[31m+     }[39m
+[31m+   };[39m
+[31m+ [39m
+[31m+   if (data) config.data = data;[39m
+[31m+ [39m
+[31m+   console.log(`>>> ASAAS ${method.toUpperCase()} ${endpoint}`);[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const response = await axios(config);[39m
+[31m+     return response.data;[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> ASAAS Error:', error.response?.data || error.message);[39m
+[31m+     throw error;[39m
+[31m+   }[39m
+[31m+ };[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // NOTA FISCAL (NFSe) INTEGRATION[39m
+[31m+ // ========================================[39m
+[31m+ [39m
+[31m+ /**[39m
+[31m+  * Cria uma Nota Fiscal de Serviço Eletrônica (NFSe) para um pagamento.[39m
+[31m+  * @param {string} paymentId - ID do pagamento no Asaas[39m
+[31m+  * @returns {Promise<object|null>} - Dados da nota fiscal ou null se falhar[39m
+[31m+  */[39m
+[31m+ const createInvoice = async (paymentId) => {[39m
+[31m+   try {[39m
+[31m+     const invoiceData = {[39m
+[31m+       payment: paymentId,[39m
+[31m+       serviceDescription: 'Assinatura Controlar+ - Serviço de gestão financeira pessoal',[39m
+[31m+       observations: 'Obrigado por assinar o Controlar+!'[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     const invoice = await asaasRequest('POST', '/invoices', invoiceData);[39m
+[31m+     console.log(`>>> NFSe created: ${invoice.id} for payment ${paymentId}`);[39m
+[31m+     return invoice;[39m
+[31m+   } catch (error) {[39m
+[31m+     // Não falhar o fluxo principal se NFSe falhar (pode não estar configurado)[39m
+[31m+     console.error('>>> NFSe creation error:', error.response?.data || error.message);[39m
+[31m+     return null;[39m
+[31m+   }[39m
+[31m+ };[39m
+[31m+ [39m
+[31m+ /**[39m
+[31m+  * Salva a referência da NFSe no Firestore do usuário[39m
+[31m+  * @param {string} userId - ID do usuário no Firebase[39m
+[31m+  * @param {string} paymentId - ID do pagamento no Asaas[39m
+[31m+  * @param {object} invoice - Dados da nota fiscal[39m
+[31m+  */[39m
+[31m+ const saveInvoiceReference = async (userId, paymentId, invoice) => {[39m
+[31m+   if (!userId || !invoice || !firebaseAdmin) return;[39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     await db.collection('users').doc(userId).collection('invoices').doc(invoice.id).set({[39m
+[31m+       paymentId,[39m
+[31m+       asaasInvoiceId: invoice.id,[39m
+[31m+       invoiceNumber: invoice.number || null,[39m
+[31m+       invoiceUrl: invoice.pdfUrl || invoice.xmlUrl || null,[39m
+[31m+       status: invoice.status,[39m
+[31m+       value: invoice.value,[39m
+[31m+       createdAt: new Date().toISOString()[39m
+[31m+     });[39m
+[31m+     console.log(`>>> Invoice reference saved for user ${userId}`);[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Error saving invoice reference:', error.message);[39m
+[31m+   }[39m
+[31m+ };[39m
+[31m+ [39m
+[31m+ // Validate credit card before purchase[39m
+[31m+ router.post('/asaas/validate-card', async (req, res) => {[39m
+[31m+   const { creditCard, creditCardHolderInfo, customerId, customerData } = req.body;[39m
+[31m+ [39m
+[31m+   if (!creditCard || !creditCardHolderInfo) {[39m
+[31m+     return res.status(400).json({[39m
+[31m+       valid: false,[39m
+[31m+       error: 'Dados do cartão incompletos.'[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     let customerIdToUse = customerId;[39m
+[31m+ [39m
+[31m+     // If no customerId provided, create/update customer first[39m
+[31m+     if (!customerIdToUse && customerData) {[39m
+[31m+       console.log('>>> Creating/updating customer for card validation...');[39m
+[31m+ [39m
+[31m+       // Search for existing customer by CPF[39m
+[31m+       const searchResult = await asaasRequest([39m
+[31m+         'GET',[39m
+[31m+         `/customers?cpfCnpj=${customerData.cpfCnpj.replace(/\D/g, '')}`[39m
+[31m+       );[39m
+[31m+ [39m
+[31m+       if (searchResult.data && searchResult.data.length > 0) {[39m
+[31m+         // Update existing customer[39m
+[31m+         const existingCustomer = searchResult.data[0];[39m
+[31m+         const updateData = {[39m
+[31m+           name: customerData.name,[39m
+[31m+           email: customerData.email,[39m
+[31m+           phone: customerData.phone?.replace(/\D/g, '') || undefined,[39m
+[31m+           postalCode: customerData.postalCode?.replace(/\D/g, '') || undefined,[39m
+[31m+           addressNumber: customerData.addressNumber || undefined[39m
+[31m+         };[39m
+[31m+         await asaasRequest('PUT', `/customers/${existingCustomer.id}`, updateData);[39m
+[31m+         customerIdToUse = existingCustomer.id;[39m
+[31m+         console.log('>>> Updated existing customer:', customerIdToUse);[39m
+[31m+       } else {[39m
+[31m+         // Create new customer[39m
+[31m+         const newCustomerData = {[39m
+[31m+           name: customerData.name,[39m
+[31m+           email: customerData.email,[39m
+[31m+           cpfCnpj: customerData.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+           phone: customerData.phone?.replace(/\D/g, '') || undefined,[39m
+[31m+           postalCode: customerData.postalCode?.replace(/\D/g, '') || undefined,[39m
+[31m+           addressNumber: customerData.addressNumber || undefined,[39m
+[31m+           notificationDisabled: false[39m
+[31m+         };[39m
+[31m+         const newCustomer = await asaasRequest('POST', '/customers', newCustomerData);[39m
+[31m+         customerIdToUse = newCustomer.id;[39m
+[31m+         console.log('>>> Created new customer:', customerIdToUse);[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (!customerIdToUse) {[39m
+[31m+       return res.status(400).json({[39m
+[31m+         valid: false,[39m
+[31m+         error: 'Dados do cliente incompletos para validação.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Use Asaas tokenization to validate the card[39m
+[31m+     const tokenData = {[39m
+[31m+       customer: customerIdToUse,[39m
+[31m+       creditCard: {[39m
+[31m+         holderName: creditCard.holderName,[39m
+[31m+         number: creditCard.number.replace(/\s/g, ''),[39m
+[31m+         expiryMonth: creditCard.expiryMonth,[39m
+[31m+         expiryYear: creditCard.expiryYear,[39m
+[31m+         ccv: creditCard.ccv[39m
+[31m+       },[39m
+[31m+       creditCardHolderInfo: {[39m
+[31m+         name: creditCardHolderInfo.name,[39m
+[31m+         email: creditCardHolderInfo.email,[39m
+[31m+         cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+         postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+         addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+         phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+       },[39m
+[31m+       remoteIp: getClientIp(req)[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', tokenData);[39m
+[31m+ [39m
+[31m+     if (tokenResult.creditCardToken) {[39m
+[31m+       return res.json({[39m
+[31m+         valid: true,[39m
+[31m+         customerId: customerIdToUse,[39m
+[31m+         token: tokenResult.creditCardToken,[39m
+[31m+         brand: tokenResult.creditCardBrand,[39m
+[31m+         lastDigits: tokenResult.creditCardNumber[39m
+[31m+       });[39m
+[31m+     } else {[39m
+[31m+       return res.status(400).json({[39m
+[31m+         valid: false,[39m
+[31m+         error: 'Não foi possível validar o cartão. Verifique os dados e tente novamente.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+   } catch (error) {[39m
+[31m+     const asaasError = error.response?.data?.errors?.[0];[39m
+[31m+     const errorMessage = asaasError?.description || 'Cartão inválido ou não autorizado para esta transação.';[39m
+[31m+ [39m
+[31m+     console.error('>>> Card validation error:', asaasError || error.message);[39m
+[31m+ [39m
+[31m+     return res.status(400).json({[39m
+[31m+       valid: false,[39m
+[31m+       error: errorMessage,[39m
+[31m+       code: asaasError?.code[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/customer', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const { name, email, cpfCnpj, phone, postalCode, addressNumber } = req.body;[39m
+[31m+ [39m
+[31m+   if (!name || !email || !cpfCnpj) {[39m
+[31m+     return res.status(400).json({ error: 'Nome, email e CPF/CNPJ são obrigatórios.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const searchResult = await asaasRequest([39m
+[31m+       'GET',[39m
+[31m+       `/customers?cpfCnpj=${cpfCnpj.replace(/\D/g, '')}`[39m
+[31m+     );[39m
+[31m+ [39m
+[31m+     let customer;[39m
+[31m+ [39m
+[31m+     if (searchResult.data && searchResult.data.length > 0) {[39m
+[31m+       customer = searchResult.data[0];[39m
+[31m+       console.log(`>>> Found existing customer: ${customer.id}`);[39m
+[31m+ [39m
+[31m+       const updateData = {[39m
+[31m+         name,[39m
+[31m+         email,[39m
+[31m+         phone: phone?.replace(/\D/g, '') || undefined,[39m
+[31m+         postalCode: postalCode?.replace(/\D/g, '') || undefined,[39m
+[31m+         addressNumber: addressNumber || undefined[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       customer = await asaasRequest('PUT', `/customers/${customer.id}`, updateData);[39m
+[31m+     } else {[39m
+[31m+       const customerData = {[39m
+[31m+         name,[39m
+[31m+         email,[39m
+[31m+         cpfCnpj: cpfCnpj ? cpfCnpj.replace(/\D/g, '') : undefined,[39m
+[31m+         phone: phone?.replace(/\D/g, '') || undefined,[39m
+[31m+         postalCode: postalCode?.replace(/\D/g, '') || undefined,[39m
+[31m+         addressNumber: addressNumber || undefined,[39m
+[31m+         notificationDisabled: false[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       customer = await asaasRequest('POST', '/customers', customerData);[39m
+[31m+       console.log(`>>> Created new customer: ${customer.id}`);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.json({ success: true, customer });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Customer creation error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao criar cliente.',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Get customer by CPF/CNPJ (for refund lookup)[39m
+[31m+ router.get('/asaas/customer', async (req, res) => {[39m
+[31m+   const { cpfCnpj } = req.query;[39m
+[31m+ [39m
+[31m+   if (!cpfCnpj) {[39m
+[31m+     return res.status(400).json({ error: 'CPF/CNPJ é obrigatório.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const searchResult = await asaasRequest([39m
+[31m+       'GET',[39m
+[31m+       `/customers?cpfCnpj=${cpfCnpj.replace(/\D/g, '')}`[39m
+[31m+     );[39m
+[31m+ [39m
+[31m+     if (searchResult.data && searchResult.data.length > 0) {[39m
+[31m+       res.json({ success: true, customer: searchResult.data[0] });[39m
+[31m+     } else {[39m
+[31m+       res.status(404).json({ error: 'Cliente não encontrado.' });[39m
+[31m+     }[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Customer search error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar cliente.',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const {[39m
+[31m+     // userId, We securely use authUserId instead[39m
+[31m+     customerId,[39m
+[31m+     planId,[39m
+[31m+     billingCycle,[39m
+[31m+     creditCard,[39m
+[31m+     creditCardHolderInfo,[39m
+[31m+     installmentCount,[39m
+[31m+     couponId, // [NEW] Track coupon[39m
+[31m+     utmData   // [NEW] UTM tracking data for Utmify[39m
+[31m+   } = req.body;[39m
+[31m+ [39m
+[31m+   if (!customerId || !creditCard || !creditCardHolderInfo) {[39m
+[31m+     return res.status(400).json({ error: 'Dados incompletos para criar assinatura.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   // Helper to activate plan in Firestore[39m
+[31m+   const activatePlanOnServer = async (uid, plan, cycle, paymentId, subId, status = 'active') => {[39m
+[31m+     if (!uid || !firebaseAdmin) return;[39m
+[31m+     try {[39m
+[31m+       const db = firebaseAdmin.firestore();[39m
+[31m+       const now = new Date();[39m
+[31m+ [39m
+[31m+       const nextDate = new Date();[39m
+[31m+       if (cycle === 'YEARLY' || cycle === 'annual') {[39m
+[31m+         nextDate.setFullYear(nextDate.getFullYear() + 1);[39m
+[31m+       } else {[39m
+[31m+         nextDate.setMonth(nextDate.getMonth() + 1);[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       const billingCycleFormatted = cycle === 'YEARLY' ? 'annual' : 'monthly';[39m
+[31m+       const nextBillingDateFormatted = nextDate.toISOString().split('T')[0];[39m
+[31m+       const updatedAtFormatted = now.toISOString();[39m
+[31m+       const subscriptionIdValue = subId || paymentId;[39m
+[31m+       const couponValue = couponId || null;[39m
+[31m+ [39m
+[31m+       // Update BOTH subscription.* (root) AND profile.subscription.* for consistency[39m
+[31m+       // The frontend merges both, so we must update both to prevent stale data[39m
+[31m+       await db.collection('users').doc(uid).update({[39m
+[31m+         'subscription.plan': plan,[39m
+[31m+         'subscription.status': status,[39m
+[31m+         'subscription.billingCycle': billingCycleFormatted,[39m
+[31m+         'subscription.nextBillingDate': nextBillingDateFormatted,[39m
+[31m+         'subscription.paymentMethod': 'CREDIT_CARD',[39m
+[31m+         'subscription.asaasCustomerId': customerId,[39m
+[31m+         'subscription.asaasSubscriptionId': subscriptionIdValue,[39m
+[31m+         'subscription.couponUsed': couponValue,[39m
+[31m+         'subscription.updatedAt': updatedAtFormatted,[39m
+[31m+         'profile.subscription.plan': plan,[39m
+[31m+         'profile.subscription.status': status,[39m
+[31m+         'profile.subscription.billingCycle': billingCycleFormatted,[39m
+[31m+         'profile.subscription.nextBillingDate': nextBillingDateFormatted,[39m
+[31m+         'profile.subscription.paymentMethod': 'CREDIT_CARD',[39m
+[31m+         'profile.subscription.asaasCustomerId': customerId,[39m
+[31m+         'profile.subscription.asaasSubscriptionId': subscriptionIdValue,[39m
+[31m+         'profile.subscription.couponUsed': couponValue,[39m
+[31m+         'profile.subscription.updatedAt': updatedAtFormatted[39m
+[31m+       });[39m
+[31m+       console.log(`>>> [SERVER] User ${uid} plan ACTIVATED: ${plan} (${cycle})`);[39m
+[31m+     } catch (e) {[39m
+[31m+       console.error(`>>> [SERVER] Failed to activate plan for ${uid}:`, e);[39m
+[31m+     }[39m
+[31m+   };[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     // SERVER-SIDE PRICING VALIDATION[39m
+[31m+     const PLANS = {[39m
+[31m+       starter: { monthly: 0, annual: 0 },[39m
+[31m+       pro: { monthly: 35.90, annual: 399.00 },[39m
+[31m+       family: { monthly: 59.90, annual: 599.00 } // Safety defaults[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     const selectedPlanConfig = PLANS[planId];[39m
+[31m+     if (!selectedPlanConfig) {[39m
+[31m+       return res.status(400).json({ error: 'Plano inválido selecionado.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const cycle = billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';[39m
+[31m+ [39m
+[31m+     // Define recurring value as the absolute source of truth[39m
+[31m+     const recurringValue = cycle === 'YEARLY' ? selectedPlanConfig.annual : selectedPlanConfig.monthly;[39m
+[31m+     let valueToCharge = recurringValue;[39m
+[31m+ [39m
+[31m+     // Coupon Calculation Logic on Server[39m
+[31m+     if (couponId && firebaseAdmin) {[39m
+[31m+       try {[39m
+[31m+         const db = firebaseAdmin.firestore();[39m
+[31m+         const couponDoc = await db.collection('coupons').doc(couponId).get();[39m
+[31m+         if (couponDoc.exists) {[39m
+[31m+           const couponData = couponDoc.data();[39m
+[31m+           const maxUses = couponData.maxUses || Infinity;[39m
+[31m+           const currentUses = couponData.currentUses || 0;[39m
+[31m+ [39m
+[31m+           if (couponData.isActive && currentUses < maxUses) {[39m
+[31m+             console.log(`>>> [PRICING] Coupon ${couponId} loaded for server-side evaluation.`);[39m
+[31m+ [39m
+[31m+             if (couponData.type === 'percentage') {[39m
+[31m+               valueToCharge = recurringValue * (1 - (couponData.value / 100));[39m
+[31m+             } else if (couponData.type === 'fixed') {[39m
+[31m+               valueToCharge = recurringValue - couponData.value;[39m
+[31m+             } else if (couponData.type === 'progressive') {[39m
+[31m+               const firstDiscount = couponData.progressiveDiscounts?.find((d) => d.month === 1);[39m
+[31m+               if (firstDiscount) {[39m
+[31m+                 if (firstDiscount.discountType === 'fixed') {[39m
+[31m+                   valueToCharge = recurringValue - firstDiscount.discount;[39m
+[31m+                 } else {[39m
+[31m+                   valueToCharge = recurringValue * (1 - (firstDiscount.discount / 100));[39m
+[31m+                 }[39m
+[31m+               }[39m
+[31m+             }[39m
+[31m+             console.log(`>>> [PRICING] Final valid price with coupon applied: R$ ${valueToCharge.toFixed(2)}`);[39m
+[31m+           } else {[39m
+[31m+             console.warn('>>> [PRICING] Coupon invalid or expired uses. Defaulting to full real price.');[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+       } catch (err) {[39m
+[31m+         console.error('>>> [PRICING] Error parsing coupon:', err);[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Assign final values[39m
+[31m+     const value = Math.max(0, valueToCharge);[39m
+[31m+ [39m
+[31m+     // Use current date for immediate charge attempt (robust format YYYY-MM-DD)[39m
+[31m+     const now = new Date();[39m
+[31m+     const year = now.getFullYear();[39m
+[31m+     const month = String(now.getMonth() + 1).padStart(2, '0');[39m
+[31m+     const day = String(now.getDate()).padStart(2, '0');[39m
+[31m+     const dueDateStr = `${year}-${month}-${day}`;[39m
+[31m+ [39m
+[31m+     // CASE 1: Annual Plan with Installments (One-off payment splitted)[39m
+[31m+     if (billingCycle === 'annual' && installmentCount && installmentCount > 1) {[39m
+[31m+ [39m
+[31m+       // Calculate the correct value to charge.[39m
+[31m+       // If a coupon was applied, 'value' contains the discounted price.[39m
+[31m+       // For annual installments, we charge the DISCOUNTED price ('value') splitted.[39m
+[31m+       const valueToCharge = value;[39m
+[31m+ [39m
+[31m+       const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');[39m
+[31m+       if (authUserId && firebaseAdmin) {[39m
+[31m+         try {[39m
+[31m+           const db = firebaseAdmin.firestore();[39m
+[31m+           await db.collection('users').doc(authUserId).update({[39m
+[31m+             'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),[39m
+[31m+             'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)[39m
+[31m+           });[39m
+[31m+         } catch (dbError) {[39m
+[31m+           console.error('>>> [DB] Failed to save credit card info:', dbError);[39m
+[31m+         }[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       const paymentData = {[39m
+[31m+         customer: customerId,[39m
+[31m+         billingType: 'CREDIT_CARD',[39m
+[31m+         value: valueToCharge,[39m
+[31m+         dueDate: dueDateStr,[39m
+[31m+         description: `Plano ${planId} - Anual (${installmentCount}x)`,[39m
+[31m+         installmentCount: installmentCount,[39m
+[31m+         installmentValue: Math.round((valueToCharge / installmentCount) * 100) / 100,[39m
+[31m+         creditCard: {[39m
+[31m+           holderName: creditCard.holderName,[39m
+[31m+           number: sanitizedCardNumber,[39m
+[31m+           expiryMonth: creditCard.expiryMonth,[39m
+[31m+           expiryYear: creditCard.expiryYear,[39m
+[31m+           ccv: creditCard.ccv[39m
+[31m+         },[39m
+[31m+         creditCardHolderInfo: {[39m
+[31m+           name: creditCardHolderInfo.name,[39m
+[31m+           email: creditCardHolderInfo.email,[39m
+[31m+           cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+           postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+           addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+         },[39m
+[31m+         remoteIp: getClientIp(req),[39m
+[31m+         externalReference: `${authUserId}:${planId}_annual_${Date.now()}` // [MODIFIED] Include authUserId[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       const payment = await asaasRequest('POST', '/payments', paymentData);[39m
+[31m+ [39m
+[31m+       if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {[39m
+[31m+ [39m
+[31m+         // [NEW] Activate on Server[39m
+[31m+         await activatePlanOnServer(authUserId, planId, cycle, payment.id, null);[39m
+[31m+ [39m
+[31m+         // [NEW] Send sale to Utmify for tracking[39m
+[31m+         try {[39m
+[31m+           sendSaleToUtmify({[39m
+[31m+             orderId: payment.id,[39m
+[31m+             paymentMethod: 'credit_card',[39m
+[31m+             status: 'paid',[39m
+[31m+             valueInCents: Math.round(value * 100),[39m
+[31m+             customer: {[39m
+[31m+               name: creditCardHolderInfo.name,[39m
+[31m+               email: creditCardHolderInfo.email,[39m
+[31m+               phone: creditCardHolderInfo.phone,[39m
+[31m+               document: creditCardHolderInfo.cpfCnpj[39m
+[31m+             },[39m
+[31m+             product: {[39m
+[31m+               id: planId,[39m
+[31m+               name: `Plano ${planId} - Anual`[39m
+[31m+             },[39m
+[31m+             utmData: utmData || {}[39m
+[31m+           }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));[39m
+[31m+         } catch (utmError) {[39m
+[31m+           console.error('>>> [UTMIFY] Error building payload:', utmError);[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         return res.json({[39m
+[31m+           success: true,[39m
+[31m+           payment,[39m
+[31m+           status: 'CONFIRMED',[39m
+[31m+           message: 'Pagamento confirmado com sucesso!'[39m
+[31m+         });[39m
+[31m+       } else {[39m
+[31m+         // Reject PENDING, REFUSED, or any other non-confirmed status[39m
+[31m+         const errorMsg = payment.status === 'PENDING'[39m
+[31m+           ? 'Pagamento não pôde ser processado. Verifique os dados do cartão e tente novamente.'[39m
+[31m+           : payment.status === 'REFUSED'[39m
+[31m+             ? 'Cartão recusado. Verifique os dados ou tente outro cartão.'[39m
+[31m+             : `Pagamento não aprovado (${payment.status}). Verifique os dados do cartão.`;[39m
+[31m+ [39m
+[31m+         return res.status(400).json({[39m
+[31m+           success: false,[39m
+[31m+           payment,[39m
+[31m+           status: payment.status,[39m
+[31m+           error: errorMsg[39m
+[31m+         });[39m
+[31m+       }[39m
+[31m+     } else {[39m
+[31m+       // CASE 2: Subscription (Monthly or Yearly recurring)[39m
+[31m+ [39m
+[31m+       // Check if coupon was applied (discounted value)[39m
+[31m+       const hasDiscount = value < recurringValue;[39m
+[31m+ [39m
+[31m+       console.log(`>>> Creating subscription: originalValue=${recurringValue}, discountedValue=${value}, hasDiscount=${hasDiscount}`);[39m
+[31m+ [39m
+[31m+       // Calculate next month date for subscription start (if using coupon)[39m
+[31m+       const getNextMonthDate = () => {[39m
+[31m+         const next = new Date();[39m
+[31m+         if (cycle === 'YEARLY') {[39m
+[31m+           next.setFullYear(next.getFullYear() + 1);[39m
+[31m+         } else {[39m
+[31m+           next.setMonth(next.getMonth() + 1);[39m
+[31m+         }[39m
+[31m+         const y = next.getFullYear();[39m
+[31m+         const m = String(next.getMonth() + 1).padStart(2, '0');[39m
+[31m+         const d = String(next.getDate()).padStart(2, '0');[39m
+[31m+         return `${y}-${m}-${d}`;[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       // If coupon applied: Create single payment first, then subscription starting next month[39m
+[31m+       if (hasDiscount) {[39m
+[31m+         console.log(`>>> Coupon detected! Creating single payment of R$ ${value} + subscription starting next month`);[39m
+[31m+ [39m
+[31m+         const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');[39m
+[31m+ [39m
+[31m+         // SAVE INFO TO FIRESTORE[39m
+[31m+         if (authUserId && firebaseAdmin) {[39m
+[31m+           try {[39m
+[31m+             const db = firebaseAdmin.firestore();[39m
+[31m+             await db.collection('users').doc(authUserId).update({[39m
+[31m+               'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),[39m
+[31m+               'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)[39m
+[31m+             });[39m
+[31m+           } catch (dbError) {[39m
+[31m+             console.error('>>> [DB] Failed to save credit card info:', dbError);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         // 1. Create single payment with discounted value[39m
+[31m+         const paymentData = {[39m
+[31m+           customer: customerId,[39m
+[31m+           billingType: 'CREDIT_CARD',[39m
+[31m+           value: Math.round(value * 100) / 100, // Discounted value from coupon[39m
+[31m+           dueDate: dueDateStr,[39m
+[31m+           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,[39m
+[31m+           remoteIp: getClientIp(req),[39m
+[31m+           externalReference: `${authUserId}:${planId}_first_${Date.now()}`,[39m
+[31m+           creditCard: {[39m
+[31m+             holderName: creditCard.holderName,[39m
+[31m+             number: sanitizedCardNumber,[39m
+[31m+             expiryMonth: creditCard.expiryMonth,[39m
+[31m+             expiryYear: creditCard.expiryYear,[39m
+[31m+             ccv: creditCard.ccv[39m
+[31m+           },[39m
+[31m+           creditCardHolderInfo: {[39m
+[31m+             name: creditCardHolderInfo.name,[39m
+[31m+             email: creditCardHolderInfo.email,[39m
+[31m+             cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+             postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+             addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+           }[39m
+[31m+         };[39m
+[31m+ [39m
+[31m+         const firstPayment = await asaasRequest('POST', '/payments', paymentData);[39m
+[31m+         console.log(`>>> First payment created: ${firstPayment.id}, status: ${firstPayment.status}`);[39m
+[31m+ [39m
+[31m+         // Check if first payment was successful[39m
+[31m+         if (firstPayment.status !== 'CONFIRMED' && firstPayment.status !== 'RECEIVED') {[39m
+[31m+           const errorMsg = firstPayment.status === 'REFUSED'[39m
+[31m+             ? 'Cartão recusado. Verifique os dados ou tente outro cartão.'[39m
+[31m+             : 'Pagamento não aprovado. Verifique os dados do cartão.';[39m
+[31m+ [39m
+[31m+           return res.status(400).json({[39m
+[31m+             success: false,[39m
+[31m+             payment: firstPayment,[39m
+[31m+             status: firstPayment.status,[39m
+[31m+             error: errorMsg[39m
+[31m+           });[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         // 2. Create subscription starting next month with full value[39m
+[31m+         // [FIX] Use the tokenized card to ensure subscription has valid payment method[39m
+[31m+         const subscriptionData = {[39m
+[31m+           customer: customerId,[39m
+[31m+           billingType: 'CREDIT_CARD',[39m
+[31m+           value: Math.round(recurringValue * 100) / 100, // Full price for future months[39m
+[31m+           nextDueDate: getNextMonthDate(), // Starts next month[39m
+[31m+           cycle: cycle,[39m
+[31m+           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,[39m
+[31m+           remoteIp: getClientIp(req),[39m
+[31m+           externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`,[39m
+[31m+           creditCard: {[39m
+[31m+             holderName: creditCard.holderName,[39m
+[31m+             number: sanitizedCardNumber,[39m
+[31m+             expiryMonth: creditCard.expiryMonth,[39m
+[31m+             expiryYear: creditCard.expiryYear,[39m
+[31m+             ccv: creditCard.ccv[39m
+[31m+           },[39m
+[31m+           creditCardHolderInfo: {[39m
+[31m+             name: creditCardHolderInfo.name,[39m
+[31m+             email: creditCardHolderInfo.email,[39m
+[31m+             cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+             postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+             addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+             phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+           }[39m
+[31m+         };[39m
+[31m+ [39m
+[31m+         // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.[39m
+[31m+         let subscription = null;[39m
+[31m+         try {[39m
+[31m+           subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);[39m
+[31m+           console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);[39m
+[31m+         } catch (subError) {[39m
+[31m+           console.error(`>>> WARNING: Payment succeeded but Subscription failed:`, subError.message);[39m
+[31m+           console.error('>>> The plan will be ACTIVATED to honor the payment. Admin must fix subscription manually.');[39m
+[31m+ [39m
+[31m+           // Mock a partial subscription object for the activation logs[39m
+[31m+           subscription = { id: 'manual_recheck_needed_' + Date.now() };[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         // [NEW] Activate on Server (Even if subscription failed, because Payment was CONFIRMED)[39m
+[31m+         await activatePlanOnServer(authUserId, planId, cycle, firstPayment.id, subscription?.id);[39m
+[31m+ [39m
+[31m+         // [NEW] Send sale to Utmify for tracking[39m
+[31m+         try {[39m
+[31m+           sendSaleToUtmify({[39m
+[31m+             orderId: firstPayment.id,[39m
+[31m+             paymentMethod: 'credit_card',[39m
+[31m+             status: 'paid',[39m
+[31m+             valueInCents: Math.round(value * 100),[39m
+[31m+             customer: {[39m
+[31m+               name: creditCardHolderInfo.name,[39m
+[31m+               email: creditCardHolderInfo.email,[39m
+[31m+               phone: creditCardHolderInfo.phone,[39m
+[31m+               document: creditCardHolderInfo.cpfCnpj[39m
+[31m+             },[39m
+[31m+             product: {[39m
+[31m+               id: planId,[39m
+[31m+               name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`[39m
+[31m+             },[39m
+[31m+             utmData: utmData || {}[39m
+[31m+           }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));[39m
+[31m+         } catch (utmError) {[39m
+[31m+           console.error('>>> [UTMIFY] Error building payload:', utmError);[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         return res.json({[39m
+[31m+           success: true,[39m
+[31m+           payment: firstPayment,[39m
+[31m+           // If subscription failed, we return success but maybe checking status logs[39m
+[31m+           subscription: subscription,[39m
+[31m+           status: 'CONFIRMED',[39m
+[31m+           message: 'Pagamento confirmado! Plano ativado.'[39m
+[31m+         });[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       // No coupon: Create normal subscription starting today[39m
+[31m+ [39m
+[31m+       const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');[39m
+[31m+       // SAVE INFO TO FIRESTORE[39m
+[31m+       if (authUserId && firebaseAdmin) {[39m
+[31m+         try {[39m
+[31m+           const db = firebaseAdmin.firestore();[39m
+[31m+           await db.collection('users').doc(authUserId).update({[39m
+[31m+             'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),[39m
+[31m+             'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)[39m
+[31m+           });[39m
+[31m+         } catch (dbError) {[39m
+[31m+           console.error('>>> [DB] Failed to save credit card info:', dbError);[39m
+[31m+         }[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       const subscriptionData = {[39m
+[31m+         customer: customerId,[39m
+[31m+         billingType: 'CREDIT_CARD',[39m
+[31m+         value: Math.round(recurringValue * 100) / 100,[39m
+[31m+         nextDueDate: dueDateStr,[39m
+[31m+         cycle: cycle,[39m
+[31m+         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,[39m
+[31m+         remoteIp: getClientIp(req),[39m
+[31m+         externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`, // [MODIFIED] Include authUserId[39m
+[31m+         creditCard: {[39m
+[31m+           holderName: creditCard.holderName,[39m
+[31m+           number: sanitizedCardNumber,[39m
+[31m+           expiryMonth: creditCard.expiryMonth,[39m
+[31m+           expiryYear: creditCard.expiryYear,[39m
+[31m+           ccv: creditCard.ccv[39m
+[31m+         },[39m
+[31m+         creditCardHolderInfo: {[39m
+[31m+           name: creditCardHolderInfo.name,[39m
+[31m+           email: creditCardHolderInfo.email,[39m
+[31m+           cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+           postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+           addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+           phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+         }[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);[39m
+[31m+       console.log(`>>> Subscription created: ${subscription.id}, status: ${subscription.status}`);[39m
+[31m+ [39m
+[31m+       // If subscription is ACTIVE, success[39m
+[31m+       if (subscription.status === 'ACTIVE') {[39m
+[31m+         let firstPayment = null;[39m
+[31m+         try {[39m
+[31m+           const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);[39m
+[31m+           firstPayment = payments.data?.[0];[39m
+[31m+           console.log(`>>> First payment status: ${firstPayment?.status || 'processing'}`);[39m
+[31m+         } catch (e) {[39m
+[31m+           console.log('>>> Could not fetch payment details, but subscription is ACTIVE');[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         // [NEW] Activate on Server[39m
+[31m+         await activatePlanOnServer(authUserId, planId, cycle, firstPayment?.id, subscription.id);[39m
+[31m+ [39m
+[31m+         // [NEW] Send sale to Utmify for tracking[39m
+[31m+         try {[39m
+[31m+           sendSaleToUtmify({[39m
+[31m+             orderId: subscription.id,[39m
+[31m+             paymentMethod: 'credit_card',[39m
+[31m+             status: 'paid',[39m
+[31m+             valueInCents: Math.round(value * 100),[39m
+[31m+             customer: {[39m
+[31m+               name: creditCardHolderInfo.name,[39m
+[31m+               email: creditCardHolderInfo.email,[39m
+[31m+               phone: creditCardHolderInfo.phone,[39m
+[31m+               document: creditCardHolderInfo.cpfCnpj[39m
+[31m+             },[39m
+[31m+             product: {[39m
+[31m+               id: planId,[39m
+[31m+               name: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`[39m
+[31m+             },[39m
+[31m+             utmData: utmData || {}[39m
+[31m+           }).catch(err => console.error('>>> [UTMIFY] Error sending:', err));[39m
+[31m+         } catch (utmError) {[39m
+[31m+           console.error('>>> [UTMIFY] Error building payload:', utmError);[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         return res.json({[39m
+[31m+           success: true,[39m
+[31m+           subscription,[39m
+[31m+           payment: firstPayment,[39m
+[31m+           status: 'CONFIRMED',[39m
+[31m+           message: 'Assinatura criada com sucesso!'[39m
+[31m+         });[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       // Check for refused payment[39m
+[31m+       const payments = await asaasRequest('GET', `/payments?subscription=${subscription.id}`);[39m
+[31m+       const firstPayment = payments.data?.[0];[39m
+[31m+ [39m
+[31m+       if (firstPayment?.status === 'REFUSED') {[39m
+[31m+         console.log(`>>> Payment REFUSED, cancelling subscription`);[39m
+[31m+         try {[39m
+[31m+           await asaasRequest('DELETE', `/subscriptions/${subscription.id}`);[39m
+[31m+         } catch (cancelError) {[39m
+[31m+           console.error('>>> Error cancelling subscription:', cancelError.message);[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         return res.status(400).json({[39m
+[31m+           success: false,[39m
+[31m+           subscription,[39m
+[31m+           status: 'REFUSED',[39m
+[31m+           error: 'Cartão recusado. Verifique os dados ou tente outro cartão.'[39m
+[31m+         });[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       // For other statuses, consider success (pending processing)[39m
+[31m+       // [NEW] We should probably NOT activate here if it's not confirmed yet, [39m
+[31m+       // but usually 'ACTIVE' subscription means payment was at least initiated successfully.[39m
+[31m+ [39m
+[31m+       return res.json({[39m
+[31m+         success: true,[39m
+[31m+         subscription,[39m
+[31m+         payment: firstPayment,[39m
+[31m+         status: firstPayment?.status || subscription.status,[39m
+[31m+         message: 'Assinatura criada! Pagamento sendo processado.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Subscription error:', error.response?.data || error.message);[39m
+[31m+ [39m
+[31m+     const asaasErrors = error.response?.data?.errors;[39m
+[31m+     let errorMessage = 'Erro ao processar pagamento.';[39m
+[31m+ [39m
+[31m+     if (asaasErrors && asaasErrors.length > 0) {[39m
+[31m+       errorMessage = asaasErrors.map((e) => e.description).join('. ');[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.status(500).json({[39m
+[31m+       error: errorMessage,[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ [39m
+[31m+ // ===============================[39m
+[31m+ // [NEW] Update Credit Card for Subscription[39m
+[31m+ // ===============================[39m
+[31m+ router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const { subscriptionId, customerId, creditCard, creditCardHolderInfo } = req.body;[39m
+[31m+ [39m
+[31m+   if (!subscriptionId || !customerId || !creditCard || !creditCardHolderInfo) {[39m
+[31m+     return res.status(400).json({ error: 'Dados incompletos para atualização do cartão.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     console.log(`>>> Updating card for subscription: ${subscriptionId}`);[39m
+[31m+ [39m
+[31m+     const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');[39m
+[31m+ [39m
+[31m+     // 1. Update Subscription with new Card directly[39m
+[31m+     // Asaas API v3: POST /subscriptions/{id} -> this endpoint updates the credit card in Asaas[39m
+[31m+     const updatedSub = await asaasRequest('POST', `/subscriptions/${subscriptionId}`, {[39m
+[31m+       creditCard: {[39m
+[31m+         holderName: creditCard.holderName,[39m
+[31m+         number: sanitizedCardNumber,[39m
+[31m+         expiryMonth: creditCard.expiryMonth,[39m
+[31m+         expiryYear: creditCard.expiryYear,[39m
+[31m+         ccv: creditCard.ccv[39m
+[31m+       },[39m
+[31m+       creditCardHolderInfo: {[39m
+[31m+         name: creditCardHolderInfo.name,[39m
+[31m+         email: creditCardHolderInfo.email,[39m
+[31m+         cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),[39m
+[31m+         postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),[39m
+[31m+         addressNumber: creditCardHolderInfo.addressNumber,[39m
+[31m+         phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined[39m
+[31m+       },[39m
+[31m+       remoteIp: getClientIp(req)[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     console.log(`>>> [UPDATE CARD] Subscription ${subscriptionId} updated with new card.`);[39m
+[31m+ [39m
+[31m+     if (authUserId && firebaseAdmin) {[39m
+[31m+       try {[39m
+[31m+         const db = firebaseAdmin.firestore();[39m
+[31m+         const nowIso = new Date().toISOString();[39m
+[31m+         const last4 = sanitizedCardNumber.slice(-4);[39m
+[31m+ [39m
+[31m+         await db.collection('users').doc(authUserId).update({[39m
+[31m+           'subscription.creditCardLast4': last4,[39m
+[31m+           'subscription.updatedAt': nowIso,[39m
+[31m+           'profile.subscription.creditCardLast4': last4,[39m
+[31m+           'profile.subscription.updatedAt': nowIso,[39m
+[31m+           'profile.paymentMethodDetails.last4': last4[39m
+[31m+         });[39m
+[31m+       } catch (dbError) {[39m
+[31m+         console.error('>>> [DB] Failed to save updated card info:', dbError);[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     return res.json({[39m
+[31m+       success: true,[39m
+[31m+       subscription: updatedSub,[39m
+[31m+       message: 'Cartão atualizado com sucesso!'[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Update Card Error:', error.response?.data || error.message);[39m
+[31m+ [39m
+[31m+     const asaasErrors = error.response?.data?.errors;[39m
+[31m+     let errorMessage = 'Erro ao atualizar o cartão de crédito.';[39m
+[31m+ [39m
+[31m+     if (asaasErrors && asaasErrors.length > 0) {[39m
+[31m+       errorMessage = asaasErrors.map((e) => e.description).join('. ');[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.status(500).json({[39m
+[31m+       error: errorMessage,[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/subscription/sync-card-info', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const { subscriptionId, userId } = req.body;[39m
+[31m+ [39m
+[31m+   if (!subscriptionId || !userId) {[39m
+[31m+     return res.status(400).json({ error: 'Subscription ID and User ID are required.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const isAdmin = await getRequesterIsAdmin(req);[39m
+[31m+     if (!isAdmin) return res.status(403).json({ error: 'Acesso negado.' });[39m
+[31m+ [39m
+[31m+     console.log(`>>> [SYNC] Syncing card info for subscription: ${subscriptionId} (User: ${userId})`);[39m
+[31m+ [39m
+[31m+     // 1. Fetch Subscription from Asaas[39m
+[31m+     const subscription = await asaasRequest('GET', `/subscriptions/${subscriptionId}`);[39m
+[31m+ [39m
+[31m+     if (!subscription) {[39m
+[31m+       return res.status(404).json({ success: false, message: 'Assinatura não encontrada.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     let foundToken = null;[39m
+[31m+     let cardInfo = subscription.creditCard || {}; // Might be present with partial info[39m
+[31m+ [39m
+[31m+     // 2. Try to find a REAL token from previous payments[39m
+[31m+     // Asaas API v3: GET /payments?subscription=...[39m
+[31m+     try {[39m
+[31m+       // Fetch recent payments (up to 5)[39m
+[31m+       const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subscriptionId}&limit=5`);[39m
+[31m+ [39m
+[31m+       if (paymentsRes.data && paymentsRes.data.length > 0) {[39m
+[31m+         // Find the most recent payment that has credit card info[39m
+[31m+         const ccPayment = paymentsRes.data[39m
+[31m+           .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated)) // Newest first[39m
+[31m+           .find(p => p.billingType === 'CREDIT_CARD' || p.creditCard);[39m
+[31m+ [39m
+[31m+         if (ccPayment) {[39m
+[31m+           console.log(`>>> [SYNC] Found potential card payment: ${ccPayment.id}`);[39m
+[31m+ [39m
+[31m+           // Fetch FULL details to get the token (often hidden in list view)[39m
+[31m+           const fullPayment = await asaasRequest('GET', `/payments/${ccPayment.id}`);[39m
+[31m+ [39m
+[31m+           if (fullPayment.creditCardToken || fullPayment.creditCard?.creditCardToken) {[39m
+[31m+             foundToken = fullPayment.creditCardToken || fullPayment.creditCard.creditCardToken;[39m
+[31m+             console.log(`>>> [SYNC] Successfully extracted token from payment: ${foundToken}`);[39m
+[31m+ [39m
+[31m+             // Enrich card info if missing[39m
+[31m+             if (!cardInfo.creditCardNumber && fullPayment.creditCard) {[39m
+[31m+               cardInfo = fullPayment.creditCard;[39m
+[31m+             }[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+       }[39m
+[31m+     } catch (paymentError) {[39m
+[31m+       console.warn(`>>> [SYNC] Failed to fetch payments for token extraction:`, paymentError.message);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // 3. Fallback: If no payment found (new sub) or no token returned, use placeholder[39m
+[31m+     if (!foundToken && (cardInfo.creditCardNumber || cardInfo.creditCardBrand)) {[39m
+[31m+       foundToken = 'MANAGED_BY_ASAAS_DIRECTLY';[39m
+[31m+       console.log(`>>> [SYNC] No previous payment token found. Using managed placeholder.`);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (!foundToken) {[39m
+[31m+       return res.json({[39m
+[31m+         success: false,[39m
+[31m+         message: 'Nenhum cartão ou token identificado nesta assinatura.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const cardLast4 = cardInfo.creditCardNumber?.slice(-4) || '****';[39m
+[31m+     const cardBrand = cardInfo.creditCardBrand || 'CREDIT_CARD';[39m
+[31m+ [39m
+[31m+     // 4. Update User in Firestore[39m
+[31m+     if (firebaseAdmin) {[39m
+[31m+       const db = firebaseAdmin.firestore();[39m
+[31m+ [39m
+[31m+       const updateData = {[39m
+[31m+         'subscription.creditCardLast4': cardLast4,[39m
+[31m+         'subscription.creditCardBrand': cardBrand,[39m
+[31m+         'subscription.creditCardToken': foundToken,[39m
+[31m+         'subscription.paymentMethod': 'CREDIT_CARD', // Ensure method is set[39m
+[31m+ [39m
+[31m+         // Sync profile[39m
+[31m+         'profile.paymentMethodDetails.last4': cardLast4,[39m
+[31m+         'profile.paymentMethodDetails.brand': cardBrand,[39m
+[31m+ [39m
+[31m+         // Clear failure flags as we are re-syncing valid card info[39m
+[31m+         'subscription.paymentFailureReason': firebaseAdmin.firestore.FieldValue.delete(),[39m
+[31m+         'subscription.paymentFailedAt': firebaseAdmin.firestore.FieldValue.delete(),[39m
+[31m+         'profile.subscription.paymentFailureReason': firebaseAdmin.firestore.FieldValue.delete(),[39m
+[31m+         'profile.subscription.paymentFailedAt': firebaseAdmin.firestore.FieldValue.delete()[39m
+[31m+       };[39m
+[31m+ [39m
+[31m+       await db.collection('users').doc(userId).update(updateData);[39m
+[31m+       console.log(`>>> [SYNC] User ${userId} updated with card ending in ${cardLast4} (Token: ${foundToken === 'MANAGED_BY_ASAAS_DIRECTLY' ? 'Managed' : 'Real'})`);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     return res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: 'Informações do cartão sincronizadas com sucesso!',[39m
+[31m+       card: { last4: cardLast4, brand: cardBrand, hasToken: !!foundToken }[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> [SYNC] Error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({ error: 'Erro ao sincronizar informações.' });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/webhook', async (req, res) => {[39m
+[31m+   // Ignore webhooks on Vercel to prevent double processing/conflicts[39m
+[31m+   if (process.env.VERCEL || process.env.VERCEL_URL) {[39m
+[31m+     console.log('>>> Asaas Webhook ignored on Vercel.');[39m
+[31m+     return res.status(200).json({ received: true, ignored: true, environment: 'Vercel' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const event = req.body;[39m
+[31m+   const incomingToken = req.headers['asaas-access-token'];[39m
+[31m+   const configuredToken = process.env.ASAAS_WEBHOOK_TOKEN;[39m
+[31m+ [39m
+[31m+   if (configuredToken && incomingToken !== configuredToken) {[39m
+[31m+     console.warn('>>> Suspicious Webhook Attempt: Invalid Token');[39m
+[31m+     return res.status(401).json({ error: 'Unauthorized webhook' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   console.log('>>> ASAAS WEBHOOK RECEIVED:', event.event);[39m
+[31m+   console.log('>>> Payment ID:', event.payment?.id);[39m
+[31m+   console.log('>>> Subscription ID:', event.subscription?.id);[39m
+[31m+   console.log('>>> Customer ID:', event.payment?.customer || event.subscription?.customer);[39m
+[31m+   console.log('>>> Status:', event.payment?.status);[39m
+[31m+ [39m
+[31m+   // Helper function to revoke user plan by customer ID[39m
+[31m+   const revokeUserPlanByCustomerId = async (customerId, newStatus) => {[39m
+[31m+     if (!customerId || !firebaseAdmin) return false;[39m
+[31m+     try {[39m
+[31m+       const db = firebaseAdmin.firestore();[39m
+[31m+       const usersRef = db.collection('users');[39m
+[31m+       const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', customerId).get();[39m
+[31m+ [39m
+[31m+       if (snapshot.empty) {[39m
+[31m+         console.log(`>>> No user found with asaasCustomerId: ${customerId}`);[39m
+[31m+         return false;[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       const batch = db.batch();[39m
+[31m+       const now = new Date().toISOString();[39m
+[31m+       snapshot.forEach(doc => {[39m
+[31m+         // Update BOTH subscription.* (root) AND profile.subscription.* for consistency[39m
+[31m+         // The frontend merges both, so we must update both to prevent stale data[39m
+[31m+         batch.update(doc.ref, {[39m
+[31m+           'subscription.plan': 'starter',[39m
+[31m+           'subscription.status': newStatus,[39m
+[31m+           'subscription.autoRenew': false,[39m
+[31m+           'subscription.updatedAt': now,[39m
+[31m+           'profile.subscription.plan': 'starter',[39m
+[31m+           'profile.subscription.status': newStatus,[39m
+[31m+           'profile.subscription.autoRenew': false,[39m
+[31m+           'profile.subscription.updatedAt': now[39m
+[31m+         });[39m
+[31m+         console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       await batch.commit();[39m
+[31m+       return true;[39m
+[31m+     } catch (error) {[39m
+[31m+       console.error('>>> Error revoking user plan:', error);[39m
+[31m+       return false;[39m
+[31m+     }[39m
+[31m+   };[39m
+[31m+ [39m
+[31m+   // Helper function to revoke user plan by subscription ID[39m
+[31m+   const revokeUserPlanBySubscriptionId = async (subscriptionId, newStatus) => {[39m
+[31m+     if (!subscriptionId || !firebaseAdmin) return false;[39m
+[31m+     try {[39m
+[31m+       const db = firebaseAdmin.firestore();[39m
+[31m+       const usersRef = db.collection('users');[39m
+[31m+       const snapshot = await usersRef.where('subscription.asaasSubscriptionId', '==', subscriptionId).get();[39m
+[31m+ [39m
+[31m+       if (snapshot.empty) {[39m
+[31m+         console.log(`>>> No user found with asaasSubscriptionId: ${subscriptionId}`);[39m
+[31m+         return false;[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       const batch = db.batch();[39m
+[31m+       const now = new Date().toISOString();[39m
+[31m+       snapshot.forEach(doc => {[39m
+[31m+         // Update BOTH subscription.* (root) AND profile.subscription.* for consistency[39m
+[31m+         // The frontend merges both, so we must update both to prevent stale data[39m
+[31m+         batch.update(doc.ref, {[39m
+[31m+           'subscription.plan': 'starter',[39m
+[31m+           'subscription.status': newStatus,[39m
+[31m+           'subscription.autoRenew': false,[39m
+[31m+           'subscription.updatedAt': now,[39m
+[31m+           'profile.subscription.plan': 'starter',[39m
+[31m+           'profile.subscription.status': newStatus,[39m
+[31m+           'profile.subscription.autoRenew': false,[39m
+[31m+           'profile.subscription.updatedAt': now[39m
+[31m+         });[39m
+[31m+         console.log(`>>> Revoking plan for user ${doc.id} (status: ${newStatus})`);[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       await batch.commit();[39m
+[31m+       return true;[39m
+[31m+     } catch (error) {[39m
+[31m+       console.error('>>> Error revoking user plan:', error);[39m
+[31m+       return false;[39m
+[31m+     }[39m
+[31m+   };[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     switch (event.event) {[39m
+[31m+       case 'PAYMENT_CONFIRMED':[39m
+[31m+       case 'PAYMENT_RECEIVED':[39m
+[31m+         console.log(`>>> Payment confirmed: ${event.payment?.id}`);[39m
+[31m+         // Tentar emitir Nota Fiscal automaticamente[39m
+[31m+         if (event.payment?.id && event.payment?.customer) {[39m
+[31m+           try {[39m
+[31m+             // Buscar userId pelo customerId[39m
+[31m+             let userId = null;[39m
+[31m+             if (firebaseAdmin) {[39m
+[31m+               const db = firebaseAdmin.firestore();[39m
+[31m+               const snapshot = await db.collection('users')[39m
+[31m+                 .where('subscription.asaasCustomerId', '==', event.payment.customer)[39m
+[31m+                 .limit(1)[39m
+[31m+                 .get();[39m
+[31m+ [39m
+[31m+               if (!snapshot.empty) {[39m
+[31m+                 userId = snapshot.docs[0].id;[39m
+[31m+                 const userDoc = snapshot.docs[0];[39m
+[31m+ [39m
+[31m+                 // [FIX] Clear any payment failure flags when payment is confirmed[39m
+[31m+                 // This restores full access for users who had overdue payments[39m
+[31m+                 const userData = userDoc.data();[39m
+[31m+                 if (userData.subscription?.paymentFailedAt || userData.subscription?.graceUntil) {[39m
+[31m+                   await userDoc.ref.update({[39m
+[31m+                     'subscription.paymentFailedAt': null,[39m
+[31m+                     'subscription.graceUntil': null,[39m
+[31m+                     'subscription.paymentFailureReason': null,[39m
+[31m+                     'subscription.status': 'active',[39m
+[31m+                     'profile.subscription.paymentFailedAt': null,[39m
+[31m+                     'profile.subscription.graceUntil': null,[39m
+[31m+                     'profile.subscription.paymentFailureReason': null,[39m
+[31m+                     'profile.subscription.status': 'active'[39m
+[31m+                   });[39m
+[31m+                   console.log(`>>> Cleared payment failure flags for user ${userId} - access restored!`);[39m
+[31m+                 }[39m
+[31m+               }[39m
+[31m+             }[39m
+[31m+ [39m
+[31m+             // Emitir NFSe (não bloqueia se falhar)[39m
+[31m+             const invoice = await createInvoice(event.payment.id);[39m
+[31m+             if (invoice && userId) {[39m
+[31m+               await saveInvoiceReference(userId, event.payment.id, invoice);[39m
+[31m+               console.log(`>>> NFSe emitida automaticamente para pagamento ${event.payment.id}`);[39m
+[31m+             }[39m
+[31m+           } catch (invoiceError) {[39m
+[31m+             // Não falha o webhook se NFSe falhar[39m
+[31m+             console.error('>>> NFSe auto-creation error (non-blocking):', invoiceError.message);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'PAYMENT_CREDIT_CARD_CAPTURE_REFUSED':[39m
+[31m+         // Card was refused - notify admin, mark user[39m
+[31m+         console.log(`>>> Payment card refused: ${event.payment?.id}`);[39m
+[31m+         if (event.payment?.customer && firebaseAdmin) {[39m
+[31m+           try {[39m
+[31m+             const db = firebaseAdmin.firestore();[39m
+[31m+             const snapshot = await db.collection('users')[39m
+[31m+               .where('subscription.asaasCustomerId', '==', event.payment.customer)[39m
+[31m+               .limit(1)[39m
+[31m+               .get();[39m
+[31m+ [39m
+[31m+             if (!snapshot.empty) {[39m
+[31m+               const userDoc = snapshot.docs[0];[39m
+[31m+               const now = new Date().toISOString();[39m
+[31m+ [39m
+[31m+               // Try to get specific reason from Asaas payload if available[39m
+[31m+               // It's often in creditCard.acquirerReturnCode or simply "CARD_REFUSED"[39m
+[31m+               const specificReason = event.payment?.creditCard?.acquirerReturnCode || 'CARD_REFUSED';[39m
+[31m+ [39m
+[31m+               await userDoc.ref.update({[39m
+[31m+                 'subscription.paymentFailedAt': now,[39m
+[31m+                 'subscription.paymentFailureReason': specificReason,[39m
+[31m+                 'profile.subscription.paymentFailedAt': now,[39m
+[31m+                 'profile.subscription.paymentFailureReason': specificReason[39m
+[31m+               });[39m
+[31m+               console.log(`>>> Marked user ${userDoc.id} with payment failure (${specificReason})`);[39m
+[31m+             }[39m
+[31m+           } catch (err) {[39m
+[31m+             console.error('>>> Error marking payment failure:', err.message);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'PAYMENT_OVERDUE':[39m
+[31m+         // Payment is overdue - mark user with grace period[39m
+[31m+         console.log(`>>> Payment overdue: ${event.payment?.id}`);[39m
+[31m+         if (event.payment?.customer && firebaseAdmin) {[39m
+[31m+           try {[39m
+[31m+             const db = firebaseAdmin.firestore();[39m
+[31m+             const snapshot = await db.collection('users')[39m
+[31m+               .where('subscription.asaasCustomerId', '==', event.payment.customer)[39m
+[31m+               .limit(1)[39m
+[31m+               .get();[39m
+[31m+ [39m
+[31m+             if (!snapshot.empty) {[39m
+[31m+               const userDoc = snapshot.docs[0];[39m
+[31m+               const userData = userDoc.data();[39m
+[31m+ [39m
+[31m+               // Only set grace period if not already set[39m
+[31m+               if (!userData.subscription?.paymentFailedAt) {[39m
+[31m+                 const now = new Date();[39m
+[31m+                 const graceUntil = new Date(now);[39m
+[31m+                 graceUntil.setDate(graceUntil.getDate() + 7); // 7 days grace period[39m
+[31m+ [39m
+[31m+                 await userDoc.ref.update({[39m
+[31m+                   'subscription.paymentFailedAt': now.toISOString(),[39m
+[31m+                   'subscription.graceUntil': graceUntil.toISOString(),[39m
+[31m+                   'subscription.paymentFailureReason': 'OVERDUE',[39m
+[31m+                   'profile.subscription.paymentFailedAt': now.toISOString(),[39m
+[31m+                   'profile.subscription.graceUntil': graceUntil.toISOString(),[39m
+[31m+                   'profile.subscription.paymentFailureReason': 'OVERDUE'[39m
+[31m+                 });[39m
+[31m+                 console.log(`>>> User ${userDoc.id} marked with OVERDUE, grace until: ${graceUntil.toISOString()}`);[39m
+[31m+               } else {[39m
+[31m+                 console.log(`>>> User ${userDoc.id} already has paymentFailedAt set, skipping`);[39m
+[31m+               }[39m
+[31m+             }[39m
+[31m+           } catch (err) {[39m
+[31m+             console.error('>>> Error marking payment overdue:', err.message);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'PAYMENT_REFUNDED':[39m
+[31m+       case 'PAYMENT_REFUND_IN_PROGRESS':[39m
+[31m+       case 'PAYMENT_CHARGEBACK_REQUESTED':[39m
+[31m+       case 'PAYMENT_CHARGEBACK_DISPUTE':[39m
+[31m+         // Revoke plan when payment is refunded or chargeback occurs[39m
+[31m+         console.log(`>>> Payment refunded/chargeback: ${event.payment?.id}`);[39m
+[31m+         if (event.payment?.id) {[39m
+[31m+           try {[39m
+[31m+             await sendRefundToUtmify(event.payment.id);[39m
+[31m+           } catch (e) {[39m
+[31m+             console.error('>>> [UTMIFY] Error sending refund:', e);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+         if (event.payment?.customer) {[39m
+[31m+           const revoked = await revokeUserPlanByCustomerId(event.payment.customer, 'canceled');[39m
+[31m+           if (revoked && firebaseAdmin) {[39m
+[31m+             try {[39m
+[31m+               const db = firebaseAdmin.firestore();[39m
+[31m+               const snap = await db.collection('users').where('subscription.asaasCustomerId', '==', event.payment.customer).get();[39m
+[31m+               snap.forEach(doc => {[39m
+[31m+                 doc.ref.update({[39m
+[31m+                   'subscription.revokedReason': 'Refund/Estorno (Webhook)',[39m
+[31m+                   'subscription.revokedAt': new Date().toISOString(),[39m
+[31m+                   'profile.subscription.revokedReason': 'Refund/Estorno (Webhook)',[39m
+[31m+                   'profile.subscription.revokedAt': new Date().toISOString()[39m
+[31m+                 });[39m
+[31m+               });[39m
+[31m+             } catch (err) {[39m
+[31m+               console.error('>>> Error updating refund reason:', err);[39m
+[31m+             }[39m
+[31m+           }[39m
+[31m+           console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);[39m
+[31m+         }[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'SUBSCRIPTION_CREATED':[39m
+[31m+         console.log(`>>> Subscription created: ${event.subscription?.id}`);[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'SUBSCRIPTION_RENEWED':[39m
+[31m+         console.log(`>>> Subscription renewed: ${event.subscription?.id}`);[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       case 'SUBSCRIPTION_CANCELED':[39m
+[31m+       case 'SUBSCRIPTION_DELETED':[39m
+[31m+         // Check if user has accessUntil set (graceful cancellation by admin)[39m
+[31m+         // If so, don't revoke immediately - user keeps access until that date[39m
+[31m+         console.log(`>>> Subscription canceled: ${event.subscription?.id}`);[39m
+[31m+         if (event.subscription?.id && firebaseAdmin) {[39m
+[31m+           try {[39m
+[31m+             const db = firebaseAdmin.firestore();[39m
+[31m+             const usersRef = db.collection('users');[39m
+[31m+             const snapshot = await usersRef.where('subscription.asaasSubscriptionId', '==', event.subscription.id).get();[39m
+[31m+ [39m
+[31m+             if (!snapshot.empty) {[39m
+[31m+               const userDoc = snapshot.docs[0];[39m
+[31m+               const userData = userDoc.data();[39m
+[31m+               const accessUntil = userData.subscription?.accessUntil;[39m
+[31m+ [39m
+[31m+               if (accessUntil) {[39m
+[31m+                 // User has graceful cancellation - check if access period has passed[39m
+[31m+                 const accessUntilDate = new Date(accessUntil);[39m
+[31m+                 const now = new Date();[39m
+[31m+ [39m
+[31m+                 if (now < accessUntilDate) {[39m
+[31m+                   // Access period not expired - do NOT revoke now[39m
+[31m+                   console.log(`>>> User ${userDoc.id} has accessUntil ${accessUntil} - keeping plan active until then`);[39m
+[31m+                   // Just ensure status is marked as canceled (in case webhook fired first)[39m
+[31m+                   await userDoc.ref.update({[39m
+[31m+                     'subscription.status': 'canceled',[39m
+[31m+                     'subscription.autoRenew': false,[39m
+[31m+                     'profile.subscription.status': 'canceled',[39m
+[31m+                     'profile.subscription.autoRenew': false[39m
+[31m+                   });[39m
+[31m+                 } else {[39m
+[31m+                   // Access period expired - revoke now[39m
+[31m+                   console.log(`>>> User ${userDoc.id} accessUntil ${accessUntil} has passed - revoking now`);[39m
+[31m+                   const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');[39m
+[31m+                   console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);[39m
+[31m+                 }[39m
+[31m+               } else {[39m
+[31m+                 // No accessUntil set - immediate revocation (legacy behavior or immediate cancel)[39m
+[31m+                 const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');[39m
+[31m+                 console.log(`>>> Plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);[39m
+[31m+               }[39m
+[31m+             } else {[39m
+[31m+               console.log(`>>> No user found with subscription ${event.subscription.id}`);[39m
+[31m+             }[39m
+[31m+           } catch (checkError) {[39m
+[31m+             console.error('>>> Error checking accessUntil:', checkError);[39m
+[31m+             // Fallback to immediate revocation on error[39m
+[31m+             const revoked = await revokeUserPlanBySubscriptionId(event.subscription.id, 'canceled');[39m
+[31m+             console.log(`>>> Fallback plan revocation result: ${revoked ? 'SUCCESS' : 'FAILED'}`);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+         break;[39m
+[31m+ [39m
+[31m+       default:[39m
+[31m+         console.log(`>>> Unknown event: ${event.event}`);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.status(200).json({ received: true });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Webhook processing error:', error);[39m
+[31m+     res.status(500).json({ error: 'Webhook processing failed' });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.get('/asaas/subscription/:subscriptionId', async (req, res) => {[39m
+[31m+   const { subscriptionId } = req.params;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const subscription = await asaasRequest('GET', `/subscriptions/${subscriptionId}`);[39m
+[31m+     res.json({ success: true, subscription });[39m
+[31m+   } catch (error) {[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar assinatura.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.delete('/asaas/subscription/:subscriptionId', async (req, res) => {[39m
+[31m+   const { subscriptionId } = req.params;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const result = await asaasRequest('DELETE', `/subscriptions/${subscriptionId}`);[39m
+[31m+     res.json({ success: true, result });[39m
+[31m+   } catch (error) {[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao cancelar assinatura.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.get('/asaas/payments', async (req, res) => {[39m
+[31m+   try {[39m
+[31m+     const { customer, subscription, status, limit, offset, 'dueDate[ge]': dueDateGe, 'dueDate[le]': dueDateLe } = req.query;[39m
+[31m+ [39m
+[31m+     // Build query string[39m
+[31m+     const params = new URLSearchParams();[39m
+[31m+     if (customer) params.append('customer', customer);[39m
+[31m+     if (subscription) params.append('subscription', subscription);[39m
+[31m+     if (status) params.append('status', status);[39m
+[31m+     if (limit) params.append('limit', limit);[39m
+[31m+     if (offset) params.append('offset', offset);[39m
+[31m+     if (dueDateGe) params.append('dueDate[ge]', dueDateGe);[39m
+[31m+     if (dueDateLe) params.append('dueDate[le]', dueDateLe);[39m
+[31m+ [39m
+[31m+     const queryString = params.toString() ? `?${params.toString()}` : '';[39m
+[31m+ [39m
+[31m+     const result = await asaasRequest('GET', `/payments${queryString}`);[39m
+[31m+     res.json({ success: true, ...result });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> /asaas/payments Error:', error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar pagamentos.',[39m
+[31m+       message: error.message,[39m
+[31m+       details: error.response?.data,[39m
+[31m+       stack: process.env.NODE_ENV === 'development' ? error.stack : undefined[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.get('/asaas/payment/:paymentId', async (req, res) => {[39m
+[31m+   const { paymentId } = req.params;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const payment = await asaasRequest('GET', `/payments/${paymentId}`);[39m
+[31m+     res.json({ success: true, payment });[39m
+[31m+   } catch (error) {[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar pagamento.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/payment/:paymentId/pay-with-saved-card', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const { paymentId } = req.params;[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firestore não inicializado no servidor.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   const targetUserId = req.body?.userId || req.auth?.uid;[39m
+[31m+   if (!targetUserId) {[39m
+[31m+     return res.status(400).json({ error: 'userId é obrigatório.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     if (targetUserId !== req.auth?.uid) {[39m
+[31m+       const isAdmin = await getRequesterIsAdmin(req);[39m
+[31m+       if (!isAdmin) return res.status(403).json({ error: 'Acesso negado.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     const userSnap = await db.collection('users').doc(targetUserId).get();[39m
+[31m+ [39m
+[31m+     if (!userSnap.exists) {[39m
+[31m+       return res.status(404).json({ error: 'Usuário não encontrado.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const userData = userSnap.data() || {};[39m
+[31m+     const subscription = userData.subscription || userData.profile?.subscription || {};[39m
+[31m+     const asaasCustomerId = subscription.asaasCustomerId;[39m
+[31m+     const asaasSubscriptionId = subscription.asaasSubscriptionId;[39m
+[31m+ [39m
+[31m+     const payment = await asaasRequest('GET', `/payments/${paymentId}`);[39m
+[31m+ [39m
+[31m+     if (payment?.status && ['CONFIRMED', 'RECEIVED', 'RECEIVED_IN_CASH'].includes(payment.status)) {[39m
+[31m+       return res.status(409).json({ error: 'Este pagamento já está quitado.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (payment?.billingType && payment.billingType !== 'CREDIT_CARD') {[39m
+[31m+       return res.status(409).json({ error: 'Este pagamento não é de cartão de crédito.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (asaasCustomerId && payment?.customer && payment.customer !== asaasCustomerId) {[39m
+[31m+       const isAdmin = await getRequesterIsAdmin(req);[39m
+[31m+       if (!isAdmin) return res.status(403).json({ error: 'Pagamento não pertence ao cliente do usuário.' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     let creditCardToken = subscription.creditCardToken;[39m
+[31m+     if (creditCardToken === 'MANAGED_BY_ASAAS_DIRECTLY') creditCardToken = null;[39m
+[31m+ [39m
+[31m+     if (!creditCardToken && (payment?.creditCardToken || payment?.creditCard?.creditCardToken)) {[39m
+[31m+       creditCardToken = payment.creditCardToken || payment.creditCard.creditCardToken;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (!creditCardToken && asaasSubscriptionId) {[39m
+[31m+       try {[39m
+[31m+         const paymentsRes = await asaasRequest('GET', `/payments?subscription=${asaasSubscriptionId}&limit=5`);[39m
+[31m+         const list = paymentsRes?.data || [];[39m
+[31m+         const ccPayment = list[39m
+[31m+           .sort((a, b) => new Date(b.dateCreated) - new Date(a.dateCreated))[39m
+[31m+           .find(p => p.billingType === 'CREDIT_CARD' || p.creditCard);[39m
+[31m+ [39m
+[31m+         if (ccPayment) {[39m
+[31m+           const fullPayment = await asaasRequest('GET', `/payments/${ccPayment.id}`);[39m
+[31m+           if (fullPayment?.creditCardToken || fullPayment?.creditCard?.creditCardToken) {[39m
+[31m+             creditCardToken = fullPayment.creditCardToken || fullPayment.creditCard.creditCardToken;[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+       } catch (error) {[39m
+[31m+         creditCardToken = null;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (!creditCardToken) {[39m
+[31m+       return res.status(409).json({[39m
+[31m+         error: 'Não foi possível reutilizar o cartão automaticamente.',[39m
+[31m+         message: 'O Asaas não retornou um creditCardToken válido. Necessário atualizar o cartão para gerar novo token.',[39m
+[31m+         invoiceUrl: payment?.invoiceUrl || null,[39m
+[31m+         paymentId,[39m
+[31m+         asaasSubscriptionId: payment?.subscription || asaasSubscriptionId || null,[39m
+[31m+         asaasCustomerId: payment?.customer || asaasCustomerId || null[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (creditCardToken !== subscription.creditCardToken) {[39m
+[31m+       const updateData = {[39m
+[31m+         'subscription.creditCardToken': creditCardToken,[39m
+[31m+         'profile.subscription.creditCardToken': creditCardToken[39m
+[31m+       };[39m
+[31m+       await db.collection('users').doc(targetUserId).set(updateData, { merge: true });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const result = await asaasRequest('POST', `/payments/${paymentId}/payWithCreditCard`, {[39m
+[31m+       creditCardToken,[39m
+[31m+       remoteIp: getClientIp(req)[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     res.json({ success: true, result });[39m
+[31m+   } catch (error) {[39m
+[31m+     const asaasErrors = error.response?.data?.errors;[39m
+[31m+     const errorMessage = asaasErrors?.length[39m
+[31m+       ? asaasErrors.map((e) => e.description).join('. ')[39m
+[31m+       : (error.response?.data?.message || error.message || 'Erro ao cobrar no cartão.');[39m
+[31m+ [39m
+[31m+     res.status(500).json({[39m
+[31m+       error: errorMessage,[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ router.post('/asaas/payment/:paymentId/refund', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+   const { paymentId } = req.params;[39m
+[31m+   const { value, description } = req.body;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const payload = {[39m
+[31m+       value: value || undefined, // Optional: for partial refunds[39m
+[31m+       description: description || 'Solicitado pelo cliente (15 dias)'[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     const result = await asaasRequest('POST', `/payments/${paymentId}/refund`, payload);[39m
+[31m+ [39m
+[31m+     console.log(`>>> Payment ${paymentId} refunded:`, result);[39m
+[31m+ [39m
+[31m+     res.json({ success: true, result });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Refund error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao estornar pagamento.',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // NOTA FISCAL (NFSe) ENDPOINTS[39m
+[31m+ // ========================================[39m
+[31m+ [39m
+[31m+ // List invoices for a customer or payment[39m
+[31m+ router.get('/asaas/invoices', async (req, res) => {[39m
+[31m+   try {[39m
+[31m+     const { customer, payment, status, limit, offset } = req.query;[39m
+[31m+ [39m
+[31m+     const params = new URLSearchParams();[39m
+[31m+     if (customer) params.append('customer', customer);[39m
+[31m+     if (payment) params.append('payment', payment);[39m
+[31m+     if (status) params.append('status', status);[39m
+[31m+     if (limit) params.append('limit', limit);[39m
+[31m+     if (offset) params.append('offset', offset);[39m
+[31m+ [39m
+[31m+     const queryString = params.toString() ? `?${params.toString()}` : '';[39m
+[31m+ [39m
+[31m+     const result = await asaasRequest('GET', `/invoices${queryString}`);[39m
+[31m+     res.json({ success: true, ...result });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> /asaas/invoices Error:', error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar notas fiscais.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Get invoice details by ID[39m
+[31m+ router.get('/asaas/invoice/:invoiceId', async (req, res) => {[39m
+[31m+   const { invoiceId } = req.params;[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const invoice = await asaasRequest('GET', `/invoices/${invoiceId}`);[39m
+[31m+     res.json({ success: true, invoice });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> /asaas/invoice/:id Error:', error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar nota fiscal.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Create invoice (NFSe) for a payment - Manual trigger[39m
+[31m+ router.post('/asaas/invoice/create', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+   const { paymentId, userId } = req.body;[39m
+[31m+ [39m
+[31m+   if (!paymentId) {[39m
+[31m+     return res.status(400).json({ error: 'paymentId é obrigatório.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const invoice = await createInvoice(paymentId);[39m
+[31m+ [39m
+[31m+     if (!invoice) {[39m
+[31m+       return res.status(500).json({[39m
+[31m+         error: 'Erro ao criar nota fiscal. Verifique se a configuração fiscal está correta no Asaas.'[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Save reference if userId provided[39m
+[31m+     if (userId) {[39m
+[31m+       await saveInvoiceReference(userId, paymentId, invoice);[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.json({ success: true, invoice });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> /asaas/invoice/create Error:', error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao criar nota fiscal.',[39m
+[31m+       details: error.response?.data[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Endpoint to apply coupon to users (and update Asaas if needed)[39m
+[31m+ router.post('/admin/apply-coupons', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {[39m
+[31m+   const { userIds, couponId, month } = req.body; // month: YYYY-MM[39m
+[31m+ [39m
+[31m+   if (!userIds || !Array.isArray(userIds) || !couponId) {[39m
+[31m+     return res.status(400).json({ error: 'Dados inválidos. userIds (array) e couponId são obrigatórios.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado.' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+ [39m
+[31m+     // 1. Get Coupon Details[39m
+[31m+     const couponDoc = await db.collection('coupons').doc(couponId).get();[39m
+[31m+     if (!couponDoc.exists) {[39m
+[31m+       return res.status(404).json({ error: 'Cupom não encontrado.' });[39m
+[31m+     }[39m
+[31m+     const coupon = { id: couponDoc.id, ...couponDoc.data() };[39m
+[31m+ [39m
+[31m+     let successCount = 0;[39m
+[31m+     let errorCount = 0;[39m
+[31m+ [39m
+[31m+     for (const userId of userIds) {[39m
+[31m+       try {[39m
+[31m+         // 2. Update Firestore[39m
+[31m+         // Update BOTH subscription.* (root) AND profile.subscription.*[39m
+[31m+         const updatePayload = {[39m
+[31m+           'subscription.couponUsed': couponId,[39m
+[31m+           'profile.subscription.couponUsed': couponId[39m
+[31m+         };[39m
+[31m+ [39m
+[31m+         if (month) {[39m
+[31m+           updatePayload['subscription.couponStartMonth'] = month;[39m
+[31m+           updatePayload['profile.subscription.couponStartMonth'] = month;[39m
+[31m+         } else {[39m
+[31m+           // Remove start month if not provided (apply generally)[39m
+[31m+           updatePayload['subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+           updatePayload['profile.subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         await db.collection('users').doc(userId).update(updatePayload);[39m
+[31m+ [39m
+[31m+         // 3. Try to update Asaas Payment (if month is provided)[39m
+[31m+         // This is optional - if it fails, we still count as success since Firebase was updated[39m
+[31m+         if (month) {[39m
+[31m+           try {[39m
+[31m+             const userDoc = await db.collection('users').doc(userId).get();[39m
+[31m+             const user = userDoc.data();[39m
+[31m+             const subId = user?.subscription?.asaasSubscriptionId;[39m
+[31m+ [39m
+[31m+             if (subId) {[39m
+[31m+               // Find pending payments for this subscription[39m
+[31m+               const paymentsRes = await asaasRequest('GET', `/payments?subscription=${subId}&status=PENDING`);[39m
+[31m+               const payments = paymentsRes.data || [];[39m
+[31m+ [39m
+[31m+               // Find payment due in the target month (YYYY-MM)[39m
+[31m+               const targetPayment = payments.find(p => p.dueDate && p.dueDate.startsWith(month));[39m
+[31m+ [39m
+[31m+               if (targetPayment) {[39m
+[31m+                 let discountObj = null;[39m
+[31m+ [39m
+[31m+                 if (coupon.type === 'percentage') {[39m
+[31m+                   discountObj = { value: coupon.value, type: 'PERCENTAGE' };[39m
+[31m+                 } else if (coupon.type === 'fixed') {[39m
+[31m+                   discountObj = { value: coupon.value, type: 'FIXED' };[39m
+[31m+                 }[39m
+[31m+                 // Note: 'progressive' logic is complex to map to a single payment update without context.[39m
+[31m+                 // For now, only simple coupons trigger immediate Asaas update.[39m
+[31m+                 // If progressive, we might need to calculate the specific value for this month manually.[39m
+[31m+ [39m
+[31m+                 if (discountObj) {[39m
+[31m+                   // Update the payment in Asaas[39m
+[31m+                   await asaasRequest('POST', `/payments/${targetPayment.id}`, {[39m
+[31m+                     discount: discountObj[39m
+[31m+                   });[39m
+[31m+                   console.log(`>>> [ADMIN] Updated Asaas payment ${targetPayment.id} with coupon ${coupon.code}`);[39m
+[31m+                 }[39m
+[31m+               } else {[39m
+[31m+                 console.log(`>>> [ADMIN] No pending payment found for month ${month} - coupon applied to Firebase only`);[39m
+[31m+               }[39m
+[31m+             }[39m
+[31m+           } catch (asaasErr) {[39m
+[31m+             // Asaas update failed, but Firebase was updated successfully[39m
+[31m+             console.warn(`>>> [ADMIN] Asaas update failed for user ${userId}, but Firebase was updated:`, asaasErr.message);[39m
+[31m+           }[39m
+[31m+         }[39m
+[31m+ [39m
+[31m+         successCount++;[39m
+[31m+       } catch (err) {[39m
+[31m+         console.error(`>>> Error applying coupon to user ${userId}:`, err);[39m
+[31m+         errorCount++;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     res.json({ success: true, processed: successCount, errors: errorCount });[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Apply Coupon Error:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao aplicar cupons.', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // CANCEL PLAN (GRACEFUL) - Cancel subscription but maintain access until next billing date[39m
+[31m+ // User keeps PRO access until nextBillingDate, then gets revoked automatically[39m
+[31m+ // ========================================[39m
+[31m+ router.post('/admin/cancel-plan', requireFirebaseAuth, async (req, res) => {[39m
+[31m+   const authUserId = req?.user?.uid;[39m
+[31m+   if (!authUserId) {[39m
+[31m+     return res.status(401).json({ error: 'Usuário não autenticado.' });[39m
+[31m+   }[39m
+[31m+   const { userId, subscriptionId } = req.body;[39m
+[31m+ [39m
+[31m+   if (!userId) {[39m
+[31m+     return res.status(400).json({ error: 'userId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     const userRef = db.collection('users').doc(userId);[39m
+[31m+     const userDoc = await userRef.get();[39m
+[31m+ [39m
+[31m+     if (!userDoc.exists) {[39m
+[31m+       return res.status(404).json({ error: 'Usuário não encontrado' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const userData = userDoc.data();[39m
+[31m+     const subscription = userData.subscription || {};[39m
+[31m+     const currentPlan = subscription.plan || 'starter';[39m
+[31m+     const nextBillingDate = subscription.nextBillingDate;[39m
+[31m+     const asaasSubId = subscriptionId || subscription.asaasSubscriptionId;[39m
+[31m+ [39m
+[31m+     // Cancel subscription on Asaas if we have the ID[39m
+[31m+     if (asaasSubId && !asaasSubId.startsWith('manual_')) {[39m
+[31m+       try {[39m
+[31m+         await asaasRequest('DELETE', `/subscriptions/${asaasSubId}`);[39m
+[31m+         console.log(`>>> [ADMIN] Canceled Asaas subscription: ${asaasSubId}`);[39m
+[31m+       } catch (asaasError) {[39m
+[31m+         console.warn(`>>> [ADMIN] Failed to cancel Asaas subscription ${asaasSubId}:`, asaasError.message);[39m
+[31m+         // Continue anyway - maybe already canceled[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const now = new Date().toISOString();[39m
+[31m+ [39m
+[31m+     // Determine accessUntil date (use nextBillingDate, fallback to end of current month)[39m
+[31m+     let accessUntil = nextBillingDate;[39m
+[31m+     if (!accessUntil) {[39m
+[31m+       // Fallback: end of current billing period (assume monthly, end of next month)[39m
+[31m+       const fallbackDate = new Date();[39m
+[31m+       fallbackDate.setMonth(fallbackDate.getMonth() + 1);[39m
+[31m+       accessUntil = fallbackDate.toISOString().split('T')[0];[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Update subscription: status = canceled, BUT keep current plan until accessUntil[39m
+[31m+     const updatePayload = {[39m
+[31m+       'subscription.status': 'canceled',[39m
+[31m+       'subscription.autoRenew': false,[39m
+[31m+       'subscription.canceledAt': now,[39m
+[31m+       'subscription.accessUntil': accessUntil,[39m
+[31m+       'subscription.updatedAt': now,[39m
+[31m+       'profile.subscription.status': 'canceled',[39m
+[31m+       'profile.subscription.autoRenew': false,[39m
+[31m+       'profile.subscription.canceledAt': now,[39m
+[31m+       'profile.subscription.accessUntil': accessUntil,[39m
+[31m+       'profile.subscription.updatedAt': now[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     // NOTE: We do NOT change subscription.plan here - user keeps PRO/Family until accessUntil[39m
+[31m+ [39m
+[31m+     await userRef.update(updatePayload);[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Plan canceled gracefully for user ${userId}. Plan: ${currentPlan}, Access until: ${accessUntil}`);[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: `Assinatura cancelada. Usuário mantém acesso ${currentPlan.toUpperCase()} até ${accessUntil}`,[39m
+[31m+       userId,[39m
+[31m+       currentPlan,[39m
+[31m+       accessUntil,[39m
+[31m+       canceledAt: now[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Error canceling plan:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao cancelar plano', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Endpoint to revoke user plan (admin action)[39m
+[31m+ router.post('/admin/revoke-plan', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {[39m
+[31m+   const { userId, reason } = req.body;[39m
+[31m+ [39m
+[31m+   if (!userId) {[39m
+[31m+     return res.status(400).json({ error: 'userId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     const userRef = db.collection('users').doc(userId);[39m
+[31m+     const userDoc = await userRef.get();[39m
+[31m+ [39m
+[31m+     if (!userDoc.exists) {[39m
+[31m+       return res.status(404).json({ error: 'Usuário não encontrado' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const userData = userDoc.data();[39m
+[31m+     const previousPlan = userData.subscription?.plan || 'starter';[39m
+[31m+ [39m
+[31m+     const now = new Date().toISOString();[39m
+[31m+     const newStatus = reason === 'refund' ? 'refunded' : 'canceled';[39m
+[31m+ [39m
+[31m+     // Update BOTH subscription.* (root) AND profile.subscription.* for consistency[39m
+[31m+     // The frontend merges both, so we must update both to prevent stale data on reload[39m
+[31m+     await userRef.update({[39m
+[31m+       'subscription.plan': 'starter',[39m
+[31m+       'subscription.status': newStatus,[39m
+[31m+       'subscription.autoRenew': false,[39m
+[31m+       'subscription.updatedAt': now,[39m
+[31m+       'subscription.revokedAt': now,[39m
+[31m+       'subscription.revokedReason': reason || 'admin_action',[39m
+[31m+       'profile.subscription.plan': 'starter',[39m
+[31m+       'profile.subscription.status': newStatus,[39m
+[31m+       'profile.subscription.autoRenew': false,[39m
+[31m+       'profile.subscription.updatedAt': now,[39m
+[31m+       'profile.subscription.revokedAt': now,[39m
+[31m+       'profile.subscription.revokedReason': reason || 'admin_action'[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Plan revoked for user ${userId}. Previous: ${previousPlan}, Reason: ${reason}`);[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: `Plano revogado com sucesso`,[39m
+[31m+       previousPlan,[39m
+[31m+       userId[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Error revoking plan:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao revogar plano', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Endpoint to revoke plan by customer ID (for webhook fallback or admin use)[39m
+[31m+ router.post('/admin/revoke-plan-by-customer', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {[39m
+[31m+   const { customerId, reason } = req.body;[39m
+[31m+ [39m
+[31m+   if (!customerId) {[39m
+[31m+     return res.status(400).json({ error: 'customerId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     const usersRef = db.collection('users');[39m
+[31m+     const snapshot = await usersRef.where('subscription.asaasCustomerId', '==', customerId).get();[39m
+[31m+ [39m
+[31m+     if (snapshot.empty) {[39m
+[31m+       return res.status(404).json({ error: 'Nenhum usuário encontrado com esse customerId' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const results = [];[39m
+[31m+     const batch = db.batch();[39m
+[31m+ [39m
+[31m+     snapshot.forEach(doc => {[39m
+[31m+       const userData = doc.data();[39m
+[31m+       results.push({[39m
+[31m+         userId: doc.id,[39m
+[31m+         previousPlan: userData.subscription?.plan || 'starter'[39m
+[31m+       });[39m
+[31m+ [39m
+[31m+       const now = new Date().toISOString();[39m
+[31m+       const newStatus = reason === 'refund' ? 'refunded' : 'canceled';[39m
+[31m+ [39m
+[31m+       // Update BOTH subscription.* (root) AND profile.subscription.* for consistency[39m
+[31m+       batch.update(doc.ref, {[39m
+[31m+         'subscription.plan': 'starter',[39m
+[31m+         'subscription.status': newStatus,[39m
+[31m+         'subscription.autoRenew': false,[39m
+[31m+         'subscription.updatedAt': now,[39m
+[31m+         'subscription.revokedAt': now,[39m
+[31m+         'subscription.revokedReason': reason || 'admin_action',[39m
+[31m+         'profile.subscription.plan': 'starter',[39m
+[31m+         'profile.subscription.status': newStatus,[39m
+[31m+         'profile.subscription.autoRenew': false,[39m
+[31m+         'profile.subscription.updatedAt': now,[39m
+[31m+         'profile.subscription.revokedAt': now,[39m
+[31m+         'profile.subscription.revokedReason': reason || 'admin_action'[39m
+[31m+       });[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     await batch.commit();[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Plan revoked for ${results.length} user(s) with customerId: ${customerId}`);[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: `Plano revogado para ${results.length} usuário(s)`,[39m
+[31m+       results[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Error revoking plan:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao revogar plano', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // UPDATE PLAN - For admin to manually update user's plan[39m
+[31m+ // ========================================[39m
+[31m+ router.post('/admin/update-plan', async (req, res) => {[39m
+[31m+   const { userId, customerId, plan, status, billingCycle, couponUsed } = req.body;[39m
+[31m+ [39m
+[31m+   if (!userId && !customerId) {[39m
+[31m+     return res.status(400).json({ error: 'userId ou customerId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     let userDoc;[39m
+[31m+     let userDocId;[39m
+[31m+ [39m
+[31m+     // Find user by userId or customerId[39m
+[31m+     if (userId) {[39m
+[31m+       userDoc = await db.collection('users').doc(userId).get();[39m
+[31m+       if (!userDoc.exists) {[39m
+[31m+         return res.status(404).json({ error: 'Usuário não encontrado' });[39m
+[31m+       }[39m
+[31m+       userDocId = userId;[39m
+[31m+     } else {[39m
+[31m+       const snapshot = await db.collection('users')[39m
+[31m+         .where('subscription.asaasCustomerId', '==', customerId)[39m
+[31m+         .get();[39m
+[31m+ [39m
+[31m+       if (snapshot.empty) {[39m
+[31m+         return res.status(404).json({ error: 'Usuário não encontrado com esse customerId' });[39m
+[31m+       }[39m
+[31m+       userDoc = snapshot.docs[0];[39m
+[31m+       userDocId = userDoc.id;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const userData = userDoc.data();[39m
+[31m+     const now = new Date().toISOString();[39m
+[31m+ [39m
+[31m+     // Build update payload[39m
+[31m+     const updatePayload = {[39m
+[31m+       'subscription.updatedAt': now,[39m
+[31m+       'profile.subscription.updatedAt': now[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     if (plan) {[39m
+[31m+       updatePayload['subscription.plan'] = plan;[39m
+[31m+       updatePayload['profile.subscription.plan'] = plan;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (status) {[39m
+[31m+       updatePayload['subscription.status'] = status;[39m
+[31m+       updatePayload['profile.subscription.status'] = status;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (billingCycle) {[39m
+[31m+       updatePayload['subscription.billingCycle'] = billingCycle;[39m
+[31m+       updatePayload['profile.subscription.billingCycle'] = billingCycle;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (couponUsed !== undefined) {[39m
+[31m+       if (couponUsed === null || couponUsed === '') {[39m
+[31m+         // Remove coupon[39m
+[31m+         updatePayload['subscription.couponUsed'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+         updatePayload['profile.subscription.couponUsed'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+         updatePayload['subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+         updatePayload['profile.subscription.couponStartMonth'] = firebaseAdmin.firestore.FieldValue.delete();[39m
+[31m+       } else {[39m
+[31m+         updatePayload['subscription.couponUsed'] = couponUsed;[39m
+[31m+         updatePayload['profile.subscription.couponUsed'] = couponUsed;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     await db.collection('users').doc(userDocId).update(updatePayload);[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Plan updated for user ${userDocId}. New plan: ${plan}, Status: ${status}`);[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: 'Plano atualizado com sucesso',[39m
+[31m+       userId: userDocId,[39m
+[31m+       updates: {[39m
+[31m+         plan,[39m
+[31m+         status,[39m
+[31m+         billingCycle,[39m
+[31m+         couponUsed[39m
+[31m+       },[39m
+[31m+       previousData: {[39m
+[31m+         plan: userData.subscription?.plan,[39m
+[31m+         status: userData.subscription?.status[39m
+[31m+       }[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> Error updating plan:', error);[39m
+[31m+     res.status(500).json({ error: 'Erro ao atualizar plano', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // FIX SUBSCRIPTION - For customers with manual_recheck_needed status[39m
+[31m+ // ========================================[39m
+[31m+ router.post('/admin/fix-subscription', async (req, res) => {[39m
+[31m+   const { userId, customerId, planId, billingCycle, cardToken } = req.body;[39m
+[31m+ [39m
+[31m+   if (!userId && !customerId) {[39m
+[31m+     return res.status(400).json({ error: 'userId ou customerId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     let userDoc;[39m
+[31m+     let userData;[39m
+[31m+ [39m
+[31m+     // Find user by userId or customerId[39m
+[31m+     if (userId) {[39m
+[31m+       userDoc = await db.collection('users').doc(userId).get();[39m
+[31m+       if (!userDoc.exists) {[39m
+[31m+         return res.status(404).json({ error: 'Usuário não encontrado' });[39m
+[31m+       }[39m
+[31m+       userData = userDoc.data();[39m
+[31m+     } else {[39m
+[31m+       const snapshot = await db.collection('users')[39m
+[31m+         .where('subscription.asaasCustomerId', '==', customerId)[39m
+[31m+         .get();[39m
+[31m+ [39m
+[31m+       if (snapshot.empty) {[39m
+[31m+         return res.status(404).json({ error: 'Usuário não encontrado com esse customerId' });[39m
+[31m+       }[39m
+[31m+       userDoc = snapshot.docs[0];[39m
+[31m+       userData = userDoc.data();[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const subscription = userData.subscription || {};[39m
+[31m+     const asaasCustomerId = customerId || subscription.asaasCustomerId;[39m
+[31m+     const currentPlan = planId || subscription.plan || 'pro';[39m
+[31m+     const cycle = billingCycle || subscription.billingCycle || 'monthly';[39m
+[31m+ [39m
+[31m+     // Validate that subscription needs fixing[39m
+[31m+     const subId = subscription.asaasSubscriptionId || '';[39m
+[31m+     if (!subId.startsWith('manual_recheck_needed_')) {[39m
+[31m+       return res.status(400).json({[39m
+[31m+         error: 'Este usuário não precisa de correção',[39m
+[31m+         currentSubscriptionId: subId[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     if (!asaasCustomerId) {[39m
+[31m+       return res.status(400).json({ error: 'asaasCustomerId não encontrado para este usuário' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Calculate next due date (start of next month or year)[39m
+[31m+     const getNextDueDate = () => {[39m
+[31m+       const next = new Date();[39m
+[31m+       if (cycle === 'annual' || cycle === 'YEARLY') {[39m
+[31m+         next.setFullYear(next.getFullYear() + 1);[39m
+[31m+       } else {[39m
+[31m+         next.setMonth(next.getMonth() + 1);[39m
+[31m+       }[39m
+[31m+       const y = next.getFullYear();[39m
+[31m+       const m = String(next.getMonth() + 1).padStart(2, '0');[39m
+[31m+       const d = String(next.getDate()).padStart(2, '0');[39m
+[31m+       return `${y}-${m}-${d}`;[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     // Get plan value[39m
+[31m+     const getPlanValue = (plan, billing) => {[39m
+[31m+       const prices = {[39m
+[31m+         pro: { monthly: 35.90, annual: 359.00 },[39m
+[31m+         premium: { monthly: 79.90, annual: 799.00 }[39m
+[31m+       };[39m
+[31m+       const planPrices = prices[plan] || prices.pro;[39m
+[31m+       return billing === 'annual' || billing === 'YEARLY' ? planPrices.annual : planPrices.monthly;[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     // Allow custom value override via request body[39m
+[31m+     const value = req.body.value || getPlanValue(currentPlan, cycle);[39m
+[31m+     const asaasCycle = cycle === 'annual' || cycle === 'YEARLY' ? 'YEARLY' : 'MONTHLY';[39m
+[31m+ [39m
+[31m+     // Create subscription in Asaas[39m
+[31m+     const subscriptionData = {[39m
+[31m+       customer: asaasCustomerId,[39m
+[31m+       billingType: 'CREDIT_CARD',[39m
+[31m+       value: value,[39m
+[31m+       nextDueDate: getNextDueDate(),[39m
+[31m+       cycle: asaasCycle,[39m
+[31m+       description: `Plano ${currentPlan} - ${asaasCycle === 'YEARLY' ? 'Anual' : 'Mensal'} (Correção Admin)`,[39m
+[31m+       externalReference: `${userDoc.id}:${currentPlan}_${asaasCycle.toLowerCase()}_fix_${Date.now()}`[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     // If card token provided, use it (optional - Asaas may use saved card)[39m
+[31m+     if (cardToken) {[39m
+[31m+       subscriptionData.creditCardToken = cardToken;[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Creating subscription for user ${userDoc.id}:`, subscriptionData);[39m
+[31m+ [39m
+[31m+     const newSubscription = await asaasRequest('POST', '/subscriptions', subscriptionData);[39m
+[31m+     console.log(`>>> [ADMIN] Subscription created: ${newSubscription.id}`);[39m
+[31m+ [39m
+[31m+     // Update user's subscription in Firebase[39m
+[31m+     await db.collection('users').doc(userDoc.id).update({[39m
+[31m+       'subscription.asaasSubscriptionId': newSubscription.id,[39m
+[31m+       'subscription.updatedAt': new Date().toISOString(),[39m
+[31m+       'subscription.fixedAt': new Date().toISOString(),[39m
+[31m+       'subscription.fixedBy': 'admin'[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: 'Assinatura criada com sucesso!',[39m
+[31m+       subscription: newSubscription,[39m
+[31m+       user: {[39m
+[31m+         id: userDoc.id,[39m
+[31m+         email: userData.email,[39m
+[31m+         plan: currentPlan,[39m
+[31m+         billingCycle: cycle[39m
+[31m+       }[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> [ADMIN] Fix subscription error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao criar assinatura',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // CREATE SUBSCRIPTION - For users with COUPON_100 (no Asaas subscription)[39m
+[31m+ // ========================================[39m
+[31m+ router.post('/admin/create-subscription', async (req, res) => {[39m
+[31m+   const { userId, value, billingType = 'BOLETO' } = req.body;[39m
+[31m+ [39m
+[31m+   if (!userId) {[39m
+[31m+     return res.status(400).json({ error: 'userId é obrigatório' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   if (!firebaseAdmin) {[39m
+[31m+     return res.status(500).json({ error: 'Firebase não inicializado' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const db = firebaseAdmin.firestore();[39m
+[31m+     const userDoc = await db.collection('users').doc(userId).get();[39m
+[31m+ [39m
+[31m+     if (!userDoc.exists) {[39m
+[31m+       return res.status(404).json({ error: 'Usuário não encontrado' });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     const userData = userDoc.data();[39m
+[31m+     const profile = userData.profile || {};[39m
+[31m+     const subscription = userData.subscription || {};[39m
+[31m+     const address = profile.address || {};[39m
+[31m+ [39m
+[31m+     // Log for debugging[39m
+[31m+     console.log(`>>> [ADMIN] User data keys:`, Object.keys(userData));[39m
+[31m+     console.log(`>>> [ADMIN] Profile keys:`, Object.keys(profile));[39m
+[31m+ [39m
+[31m+     // Get user data - check multiple possible locations[39m
+[31m+     const name = userData.name || profile.name;[39m
+[31m+     const email = userData.email || profile.email;[39m
+[31m+     const cpf = profile.cpf || userData.cpf;[39m
+[31m+     const phone = profile.phone || userData.phone;[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Found: name=${name}, email=${email}, cpf=${cpf}`);[39m
+[31m+ [39m
+[31m+     if (!name || !email || !cpf) {[39m
+[31m+       return res.status(400).json({[39m
+[31m+         error: 'Dados incompletos do usuário',[39m
+[31m+         missing: { name: !name, email: !email, cpf: !cpf },[39m
+[31m+         available: {[39m
+[31m+           userDataKeys: Object.keys(userData),[39m
+[31m+           profileKeys: Object.keys(profile)[39m
+[31m+         }[39m
+[31m+       });[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Check if user already has Asaas customer[39m
+[31m+     let customerId = subscription.asaasCustomerId;[39m
+[31m+ [39m
+[31m+     if (!customerId) {[39m
+[31m+       // Search for existing customer by CPF[39m
+[31m+       const cleanCpf = cpf.replace(/\D/g, '');[39m
+[31m+       const searchResult = await asaasRequest('GET', `/customers?cpfCnpj=${cleanCpf}`);[39m
+[31m+ [39m
+[31m+       if (searchResult.data && searchResult.data.length > 0) {[39m
+[31m+         customerId = searchResult.data[0].id;[39m
+[31m+         console.log(`>>> Found existing Asaas customer: ${customerId}`);[39m
+[31m+       } else {[39m
+[31m+         // Create new customer[39m
+[31m+         const customerData = {[39m
+[31m+           name,[39m
+[31m+           email,[39m
+[31m+           cpfCnpj: cleanCpf,[39m
+[31m+           phone: phone?.replace(/\D/g, '') || undefined,[39m
+[31m+           postalCode: address.cep?.replace(/\D/g, '') || undefined,[39m
+[31m+           address: address.street || undefined,[39m
+[31m+           addressNumber: address.number || undefined,[39m
+[31m+           complement: address.complement || undefined,[39m
+[31m+           province: address.neighborhood || undefined,[39m
+[31m+           notificationDisabled: false[39m
+[31m+         };[39m
+[31m+ [39m
+[31m+         const newCustomer = await asaasRequest('POST', '/customers', customerData);[39m
+[31m+         customerId = newCustomer.id;[39m
+[31m+         console.log(`>>> Created new Asaas customer: ${customerId}`);[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Calculate next due date based on user's nextBillingDate or next month[39m
+[31m+     const getNextDueDate = () => {[39m
+[31m+       if (subscription.nextBillingDate) {[39m
+[31m+         // Use existing nextBillingDate if it's in the future[39m
+[31m+         const existing = new Date(subscription.nextBillingDate);[39m
+[31m+         const today = new Date();[39m
+[31m+         if (existing > today) {[39m
+[31m+           return subscription.nextBillingDate;[39m
+[31m+         }[39m
+[31m+       }[39m
+[31m+ [39m
+[31m+       // Otherwise, use next month[39m
+[31m+       const next = new Date();[39m
+[31m+       next.setMonth(next.getMonth() + 1);[39m
+[31m+       const y = next.getFullYear();[39m
+[31m+       const m = String(next.getMonth() + 1).padStart(2, '0');[39m
+[31m+       const d = String(next.getDate()).padStart(2, '0');[39m
+[31m+       return `${y}-${m}-${d}`;[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     const cycle = subscription.billingCycle === 'annual' ? 'YEARLY' : 'MONTHLY';[39m
+[31m+     const planValue = value || 35.90;[39m
+[31m+     const nextDueDate = getNextDueDate();[39m
+[31m+ [39m
+[31m+     // Create subscription[39m
+[31m+     const subscriptionData = {[39m
+[31m+       customer: customerId,[39m
+[31m+       billingType: billingType, // BOLETO, PIX, or CREDIT_CARD (needs token)[39m
+[31m+       value: planValue,[39m
+[31m+       nextDueDate: nextDueDate,[39m
+[31m+       cycle: cycle,[39m
+[31m+       description: `Plano ${subscription.plan || 'pro'} - Mensal`,[39m
+[31m+       externalReference: `${userId}:${subscription.plan || 'pro'}_monthly_admin_${Date.now()}`[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN] Creating subscription for user ${userId}:`, subscriptionData);[39m
+[31m+ [39m
+[31m+     const newSubscription = await asaasRequest('POST', '/subscriptions', subscriptionData);[39m
+[31m+     console.log(`>>> [ADMIN] Subscription created: ${newSubscription.id}`);[39m
+[31m+ [39m
+[31m+     // Update user's subscription in Firebase[39m
+[31m+     await db.collection('users').doc(userId).update({[39m
+[31m+       'subscription.asaasCustomerId': customerId,[39m
+[31m+       'subscription.asaasSubscriptionId': newSubscription.id,[39m
+[31m+       'subscription.paymentMethod': billingType,[39m
+[31m+       'subscription.updatedAt': new Date().toISOString(),[39m
+[31m+       'subscription.createdByAdmin': true[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       message: 'Assinatura criada com sucesso!',[39m
+[31m+       subscription: newSubscription,[39m
+[31m+       user: {[39m
+[31m+         id: userId,[39m
+[31m+         name: name,[39m
+[31m+         email: email,[39m
+[31m+         plan: subscription.plan || 'pro',[39m
+[31m+         billingCycle: subscription.billingCycle || 'monthly',[39m
+[31m+         nextDueDate: nextDueDate[39m
+[31m+       }[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> [ADMIN] Create subscription error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao criar assinatura',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // PLUGGY OPEN FINANCE INTEGRATION[39m
+[31m+ // ========================================[39m
+[31m+ router.use('/pluggy', pluggyRouter);[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // CRON JOB - AUTOMATIC SYNC[39m
+[31m+ // ========================================[39m
+[31m+ router.use('/cron/sync', cronSyncRouter);[39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // ASAAS ADMIN STATS - DASHBOARD METRICS[39m
+[31m+ // ========================================[39m
+[31m+ router.get('/asaas/admin/stats', async (req, res) => {[39m
+[31m+   try {[39m
+[31m+     // Fee constants (same as AdminDashboard.tsx)[39m
+[31m+     const ASAAS_CARD_FEE_PERCENT = 2.99;[39m
+[31m+     const ASAAS_ANTICIPATION_FEE_PERCENT = 1.15;[39m
+[31m+     const ASAAS_ANTICIPATION_MIN_VALUE = 5.00;[39m
+[31m+ [39m
+[31m+     const calculateNetValue = (grossValue, installments = 1) => {[39m
+[31m+       if (grossValue <= 0) return 0;[39m
+[31m+       let cardFeePercent = ASAAS_CARD_FEE_PERCENT;[39m
+[31m+       if (installments >= 2 && installments <= 6) cardFeePercent = 3.49;[39m
+[31m+       else if (installments >= 7 && installments <= 12) cardFeePercent = 3.99;[39m
+[31m+       else if (installments >= 13) cardFeePercent = 4.29;[39m
+[31m+ [39m
+[31m+       const cardFee = grossValue * (cardFeePercent / 100);[39m
+[31m+       let anticipationFee = 0;[39m
+[31m+       if (grossValue > ASAAS_ANTICIPATION_MIN_VALUE) {[39m
+[31m+         anticipationFee = grossValue * (ASAAS_ANTICIPATION_FEE_PERCENT / 100);[39m
+[31m+       }[39m
+[31m+       return grossValue - cardFee - anticipationFee;[39m
+[31m+     };[39m
+[31m+ [39m
+[31m+     // 1. Fetch active subscriptions[39m
+[31m+     let subscriptions = [];[39m
+[31m+     let offset = 0;[39m
+[31m+     let hasMore = true;[39m
+[31m+ [39m
+[31m+     while (hasMore) {[39m
+[31m+       const subsResult = await asaasRequest('GET', `/subscriptions?status=ACTIVE&limit=100&offset=${offset}`);[39m
+[31m+       if (subsResult.data && subsResult.data.length > 0) {[39m
+[31m+         subscriptions = subscriptions.concat(subsResult.data);[39m
+[31m+         offset += subsResult.data.length;[39m
+[31m+         hasMore = subsResult.hasMore || false;[39m
+[31m+       } else {[39m
+[31m+         hasMore = false;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Calculate subscription metrics[39m
+[31m+     let monthlyCount = 0;[39m
+[31m+     let yearlyCount = 0;[39m
+[31m+     let mrrGross = 0;[39m
+[31m+ [39m
+[31m+     subscriptions.forEach(sub => {[39m
+[31m+       const value = sub.value || 0;[39m
+[31m+       if (sub.cycle === 'MONTHLY') {[39m
+[31m+         monthlyCount++;[39m
+[31m+         mrrGross += value;[39m
+[31m+       } else if (sub.cycle === 'YEARLY') {[39m
+[31m+         yearlyCount++;[39m
+[31m+         mrrGross += value / 12; // Convert to monthly[39m
+[31m+       } else if (sub.cycle === 'WEEKLY') {[39m
+[31m+         mrrGross += value * 4; // Convert to monthly[39m
+[31m+       }[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     const mrrNet = calculateNetValue(mrrGross, 1);[39m
+[31m+ [39m
+[31m+     // 2. Fetch received/confirmed payments for total revenue[39m
+[31m+     let payments = [];[39m
+[31m+     offset = 0;[39m
+[31m+     hasMore = true;[39m
+[31m+ [39m
+[31m+     // Get payments from last 12 months[39m
+[31m+     const oneYearAgo = new Date();[39m
+[31m+     oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);[39m
+[31m+     const dateFilter = oneYearAgo.toISOString().split('T')[0];[39m
+[31m+ [39m
+[31m+     while (hasMore) {[39m
+[31m+       const paymentsResult = await asaasRequest([39m
+[31m+         'GET',[39m
+[31m+         `/payments?status=RECEIVED&dateCreated[ge]=${dateFilter}&limit=100&offset=${offset}`[39m
+[31m+       );[39m
+[31m+       if (paymentsResult.data && paymentsResult.data.length > 0) {[39m
+[31m+         payments = payments.concat(paymentsResult.data);[39m
+[31m+         offset += paymentsResult.data.length;[39m
+[31m+         hasMore = paymentsResult.hasMore || false;[39m
+[31m+       } else {[39m
+[31m+         hasMore = false;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Also fetch CONFIRMED status[39m
+[31m+     offset = 0;[39m
+[31m+     hasMore = true;[39m
+[31m+     while (hasMore) {[39m
+[31m+       const confirmedResult = await asaasRequest([39m
+[31m+         'GET',[39m
+[31m+         `/payments?status=CONFIRMED&dateCreated[ge]=${dateFilter}&limit=100&offset=${offset}`[39m
+[31m+       );[39m
+[31m+       if (confirmedResult.data && confirmedResult.data.length > 0) {[39m
+[31m+         payments = payments.concat(confirmedResult.data);[39m
+[31m+         offset += confirmedResult.data.length;[39m
+[31m+         hasMore = confirmedResult.hasMore || false;[39m
+[31m+       } else {[39m
+[31m+         hasMore = false;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     // Calculate total revenue[39m
+[31m+     let totalRevenueGross = 0;[39m
+[31m+     payments.forEach(payment => {[39m
+[31m+       totalRevenueGross += payment.value || 0;[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     const totalRevenueNet = calculateNetValue(totalRevenueGross, 1);[39m
+[31m+ [39m
+[31m+     // 3. Fetch pending payments[39m
+[31m+     let pendingPayments = [];[39m
+[31m+     offset = 0;[39m
+[31m+     hasMore = true;[39m
+[31m+ [39m
+[31m+     while (hasMore) {[39m
+[31m+       const pendingResult = await asaasRequest([39m
+[31m+         'GET',[39m
+[31m+         `/payments?status=PENDING&limit=100&offset=${offset}`[39m
+[31m+       );[39m
+[31m+       if (pendingResult.data && pendingResult.data.length > 0) {[39m
+[31m+         pendingPayments = pendingPayments.concat(pendingResult.data);[39m
+[31m+         offset += pendingResult.data.length;[39m
+[31m+         hasMore = pendingResult.hasMore || false;[39m
+[31m+       } else {[39m
+[31m+         hasMore = false;[39m
+[31m+       }[39m
+[31m+     }[39m
+[31m+ [39m
+[31m+     let pendingRevenue = 0;[39m
+[31m+     pendingPayments.forEach(payment => {[39m
+[31m+       pendingRevenue += payment.value || 0;[39m
+[31m+     });[39m
+[31m+ [39m
+[31m+     console.log(`>>> [ADMIN STATS] Subs: ${subscriptions.length}, Payments: ${payments.length}, MRR: R$ ${mrrGross.toFixed(2)}`);[39m
+[31m+ [39m
+[31m+     res.json({[39m
+[31m+       success: true,[39m
+[31m+       subscriptions: {[39m
+[31m+         active: subscriptions.length,[39m
+[31m+         monthly: monthlyCount,[39m
+[31m+         yearly: yearlyCount[39m
+[31m+       },[39m
+[31m+       revenue: {[39m
+[31m+         mrrGross: Math.round(mrrGross * 100) / 100,[39m
+[31m+         mrrNet: Math.round(mrrNet * 100) / 100,[39m
+[31m+         totalGross: Math.round(totalRevenueGross * 100) / 100,[39m
+[31m+         totalNet: Math.round(totalRevenueNet * 100) / 100,[39m
+[31m+         pending: Math.round(pendingRevenue * 100) / 100[39m
+[31m+       },[39m
+[31m+       paymentsCount: payments.length,[39m
+[31m+       fetchedAt: new Date().toISOString()[39m
+[31m+     });[39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('>>> [ADMIN STATS] Error:', error.response?.data || error.message);[39m
+[31m+     res.status(500).json({[39m
+[31m+       error: 'Erro ao buscar estatísticas do Asaas',[39m
+[31m+       details: error.response?.data?.errors?.[0]?.description || error.message[39m
+[31m+     });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ [39m
+[31m+ [39m
+[31m+ // ========================================[39m
+[31m+ // SEND EMAIL (GENERIC) - For Admin Notifications[39m
+[31m+ // ========================================[39m
+[31m+ router.post('/admin/send-email', requireFirebaseAuth, getRequesterIsAdmin, async (req, res) => {[39m
+[31m+   const { recipients, subject, title, body, buttonText, buttonLink, headerAlign, titleAlign, bodyAlign } = req.body;[39m
+[31m+ [39m
+[31m+   if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {[39m
+[31m+     return res.status(400).json({ error: 'Recipients array is required' });[39m
+[31m+   }[39m
+[31m+ [39m
+[31m+   try {[39m
+[31m+     const htmlTemplate = `[39m
+[31m+       <!DOCTYPE html>[39m
+[31m+       <html lang="pt-BR">[39m
+[31m+       <head>[39m
+[31m+         <meta charset="UTF-8">[39m
+[31m+         <meta name="viewport" content="width=device-width, initial-scale=1.0">[39m
+[31m+         <title>${title || 'Notificacao Controlar+'}</title>[39m
+[31m+       </head>[39m
+[31m+       <body style="margin: 0; padding: 0; background-color: transparent; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;">[39m
+[31m+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color: transparent; padding: 40px 0;">[39m
+[31m+           <tr>[39m
+[31m+             <td align="center">[39m
+[31m+               <table width="500" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #30302E; border: 1px solid #373734; border-radius: 16px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);">[39m
+[31m+                 [39m
+[31m+                 <!-- Header -->[39m
+[31m+                 <tr>[39m
+[31m+                   <td align="${headerAlign || 'left'}" style="padding: 24px 32px; background-color: #333432; border-bottom: 1px solid #373734;">[39m
+[31m+                     <div style="font-family: 'Helvetica Neue', Arial, sans-serif; font-size: 24px; font-weight: bold; color: #ffffff; letter-spacing: -0.025em;">[39m
+[31m+                       Controlar<span style="color: #d97757;">+</span>[39m
+[31m+                     </div>[39m
+[31m+                   </td>[39m
+[31m+                 </tr>[39m
+[31m+ [39m
+[31m+                 <!-- Content -->[39m
+[31m+                 <tr>[39m
+[31m+                   <td style="padding: 40px 32px;">[39m
+[31m+                     <h1 style="margin: 0 0 24px 0; color: #ffffff; font-size: 24px; font-weight: bold; text-align: ${titleAlign || 'left'};">[39m
+[31m+                       ${title || 'Notificacao'}[39m
+[31m+                     </h1>[39m
+[31m+                     [39m
+[31m+                     <div style="color: #d1d5db; font-size: 16px; line-height: 1.6; margin: 0 0 24px 0; text-align: ${bodyAlign || 'left'}; white-space: pre-line;">[39m
+[31m+                       ${body}[39m
+[31m+                     </div>[39m
+[31m+                     [39m
+[31m+                     ${buttonText && buttonLink ? `[39m
+[31m+                     <!-- Button -->[39m
+[31m+                     <div style="text-align: center; margin: 32px 0;">[39m
+[31m+                       <a href="${buttonLink}" style="display: inline-block; background-color: #d97757; color: #ffffff; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 16px;">[39m
+[31m+                         ${buttonText}[39m
+[31m+                       </a>[39m
+[31m+                     </div>[39m
+[31m+                     ` : ''}[39m
+[31m+                   </td>[39m
+[31m+                 </tr>[39m
+[31m+ [39m
+[31m+                 <!-- Footer -->[39m
+[31m+                 <tr>[39m
+[31m+                   <td style="padding: 24px 32px; background-color: #333432; border-top: 1px solid #373734;">[39m
+[31m+                     <p style="color: #4b5563; font-size: 11px; text-align: center; margin: 0;">[39m
+[31m+                       © ${new Date().getFullYear()} Controlar+. Todos os direitos reservados.[39m
+[31m+                     </p>[39m
+[31m+                   </td>[39m
+[31m+                 </tr>[39m
+[31m+                 [39m
+[31m+               </table>[39m
+[31m+             </td>[39m
+[31m+           </tr>[39m
+[31m+         </table>[39m
+[31m+       </body>[39m
+[31m+       </html>[39m
+[31m+     `;[39m
+[31m+ [39m
+[31m+     // Send to all recipients[39m
+[31m+     const promises = recipients.map(email =>[39m
+[31m+       // Assuming smtpTransporter is reused from recovery logic. I must ensure it's available in scope.[39m
+[31m+       // Checking top of file... I see imports but smtpTransporter definition was likely not exported or globally available if defined inside a closure.[39m
+[31m+       // Wait, I need to check where `smtpTransporter` is defined.[39m
+[31m+       // In line 159 of previous view_file, `smtpTransporter.sendMail` was used.[39m
+[31m+       // I should define or get it. [39m
+[31m+       // Actually, looking at previous code, `smtpTransporter` was used directly.[39m
+[31m+       // Let's assume it is defined in the file scope. I'll add a check or re-define if unsure.[39m
+[31m+       // But re-defining might break if I don't import `nodemailer` properly.[39m
+[31m+       // `nodemailer` is imported at top.[39m
+[31m+       // Let's create a new transporter instance just to be safe if `smtpTransporter` isn't global, OR rely on it being there.[39m
+[31m+       // Given the file structure, it's likely defined at the top level.[39m
+[31m+       // Let's look at lines 1-100 to find `smtpTransporter`.[39m
+[31m+       smtpTransporter.sendMail({[39m
+[31m+         from: process.env.SMTP_FROM || `"Controlar+" <${process.env.SMTP_USER}>`,[39m
+[31m+         to: email,[39m
+[31m+         subject: subject || 'Notificacao Controlar+',[39m
+[31m+         html: htmlTemplate,[39m
+[31m+         text: body // Fallback text[39m
+[31m+       })[39m
+[31m+     );[39m
+[31m+ [39m
+[31m+     await Promise.all(promises);[39m
+[31m+ [39m
+[31m+     console.log(`>>> Emails sent to ${recipients.length} recipients`);[39m
+[31m+     res.json({ success: true, count: recipients.length });[39m
+[31m+ [39m
+[31m+   } catch (error) {[39m
+[31m+     console.error('Send Email Error:', error);[39m
+[31m+     res.status(500).json({ error: 'Failed to send emails', details: error.message });[39m
+[31m+   }[39m
+[31m+ });[39m
+[31m+ [39m
+[31m+ // Mount separate routers[39m
+[31m+ router.use('/pluggy', pluggyRouter);[39m
+[31m+ router.use('/cron-sync', cronSyncRouter);[39m
+[31m+ [39m
+[31m+ export default router;[39m
+[31m+ [39m
+[31m+[39m
+
+[36m [2m❯[22m api/_lib/routes.payment-token.test.ts:[2m12:25[22m[39m
+    [90m 10| [39m
+    [90m 11| [39m    [90m// 1. Assert tokenization endpoint is NO LONGER called[39m
+    [90m 12| [39m    expect(content).not.toContain("asaasRequest('POST', '/creditCard/t…
+    [90m   | [39m                        [31m^[39m
+    [90m 13| [39m    expect(content).not.toContain("asaasRequest('POST', '/creditCard/t…
+    [90m 14| [39m
+
+[31m[2m⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯[22m[39m
+
+
+[2m Test Files [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m      Tests [22m [1m[31m1 failed[39m[22m[90m (1)[39m
+[2m   Start at [22m 12:31:27
+[2m   Duration [22m 1.29s[2m (transform 33ms, setup 138ms, import 13ms, tests 14ms, environment 921ms)[22m
+

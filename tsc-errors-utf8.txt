@@ -1,0 +1,23 @@
+﻿components/StatsCards.tsx(692,21): error TS2657: JSX expressions must have one parent element.
+components/StatsCards.tsx(818,39): error TS1128: Declaration or statement expected.
+components/StatsCards.tsx(820,35): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/StatsCards.tsx(820,37): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/StatsCards.tsx(821,35): error TS17002: Expected corresponding JSX closing tag for 'DropdownContent'.
+components/StatsCards.tsx(822,33): error TS17002: Expected corresponding JSX closing tag for 'Dropdown'.
+components/StatsCards.tsx(822,80): error TS17002: Expected corresponding JSX closing tag for 'div'.
+components/StatsCards.tsx(824,29): error TS1005: ')' expected.
+components/StatsCards.tsx(836,26): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/StatsCards.tsx(837,25): error TS17002: Expected corresponding JSX closing tag for 'motion.div'.
+components/StatsCards.tsx(910,21): error TS1005: ')' expected.
+components/StatsCards.tsx(910,23): error TS17002: Expected corresponding JSX closing tag for 'AnimatePresence'.
+components/StatsCards.tsx(912,17): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/StatsCards.tsx(966,16): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`?
+components/StatsCards.tsx(967,13): error TS17002: Expected corresponding JSX closing tag for 'div'.
+components/StatsCards.tsx(970,9): error TS1005: ')' expected.
+components/StatsCards.tsx(1025,5): error TS1128: Declaration or statement expected.
+components/StatsCards.tsx(1026,3): error TS1109: Expression expected.
+components/StatsCards.tsx(1027,1): error TS1128: Declaration or statement expected.
+patch.cjs(7,31): error TS1136: Property assignment expected.
+patch.cjs(7,39): error TS1005: ';' expected.
+patch.cjs(11,16): error TS1128: Declaration or statement expected.
+patch.cjs(12,13): error TS1161: Unterminated regular expression literal.

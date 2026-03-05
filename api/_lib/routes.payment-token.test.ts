@@ -2,26 +2,29 @@ import { describe, it, expect } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-describe('Asaas payment - card token persistence', () => {
-  it('should use creditCardToken and persist token on annual installments flow', async () => {
-    const routesPath = path.join(process.cwd(), 'api', 'routes.js');
+describe('Asaas payment - direct credit card architecture', () => {
+  it('should pass creditCard data directly without manual tokenization', async () => {
+    // Ensure accurate path to routes.js
+    const routesPath = path.join(process.cwd(), 'api', '_lib', 'routes.js');
     const content = await readFile(routesPath, 'utf8');
 
-    const start = content.indexOf('CASE 1: Annual Plan with Installments');
-    expect(start).toBeGreaterThan(-1);
+    // 1. Assert tokenization endpoint is NO LONGER called
+    expect(content).not.toContain("asaasRequest('POST', '/creditCard/tokenize'");
+    expect(content).not.toContain("asaasRequest('POST', '/creditCard/tokenizeCreditCard'");
 
-    const end = content.indexOf("const payment = await asaasRequest('POST', '/payments'", start);
-    expect(end).toBeGreaterThan(start);
+    // 2. Assert we are NO LONGER saving the token to Firestore
+    expect(content).not.toContain("'subscription.creditCardToken':");
+    expect(content).not.toContain("'profile.subscription.creditCardToken':");
 
-    const segment = content.slice(start, end);
+    // 3. Assert we DO save the last 4 digits
+    expect(content).toContain("'subscription.creditCardLast4':");
 
-    expect(segment).toContain("asaasRequest('POST', '/creditCard/tokenizeCreditCard'");
-    expect(segment).toContain("'subscription.creditCardToken'");
-    expect(segment).toContain("'profile.subscription.creditCardToken'");
+    // 4. Assert the payload injects 'creditCard' wrapper
+    // Check that 'creditCard: {' is present in the file multiple times now
+    const creditCardMatches = content.match(/creditCard: \{/g);
+    expect(creditCardMatches?.length).toBeGreaterThan(0);
 
-    const paymentDataMatch = segment.match(/const paymentData = \{[\s\S]*?\r?\n\s*\};/);
-    expect(paymentDataMatch).not.toBeNull();
-    expect(paymentDataMatch?.[0]).toContain('creditCardToken: creditCardToken');
-    expect(paymentDataMatch?.[0]).not.toContain('creditCard:');
+    // 5. Assert 'creditCardHolderInfo' is present
+    expect(content).toContain('creditCardHolderInfo: {');
   });
 });

@@ -1057,45 +1057,16 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
       // For annual installments, we charge the DISCOUNTED price ('value') splitted.
       const valueToCharge = value;
 
-      let creditCardToken = null;
-      try {
-        console.log('>>> [TOKENIZATION] Tokenizing credit card (Annual Installments)...');
-        const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
-          customer: customerId,
-          creditCard: {
-            holderName: creditCard.holderName,
-            number: creditCard.number.replace(/\s/g, ''),
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          },
-          remoteIp: getClientIp(req)
-        });
-        creditCardToken = tokenResult.creditCardToken;
-        console.log('>>> [TOKENIZATION] Success! Token created.');
-      } catch (tokenError) {
-        console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with fallback:', tokenError.message);
-      }
-
       const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
-      if (creditCardToken && authUserId && firebaseAdmin) {
+      if (authUserId && firebaseAdmin) {
         try {
           const db = firebaseAdmin.firestore();
           await db.collection('users').doc(authUserId).update({
-            'subscription.creditCardToken': creditCardToken,
             'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
-            'profile.subscription.creditCardToken': creditCardToken
+            'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)
           });
         } catch (dbError) {
-          console.error('>>> [DB] Failed to save token:', dbError);
+          console.error('>>> [DB] Failed to save credit card info:', dbError);
         }
       }
 
@@ -1107,23 +1078,21 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
         description: `Plano ${planId} - Anual (${installmentCount}x)`,
         installmentCount: installmentCount,
         installmentValue: Math.round((valueToCharge / installmentCount) * 100) / 100,
-        ...(creditCardToken ? { creditCardToken } : {
-          creditCard: {
-            holderName: creditCard.holderName,
-            number: sanitizedCardNumber,
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          }
-        }),
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: sanitizedCardNumber,
+          expiryMonth: creditCard.expiryMonth,
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          email: creditCardHolderInfo.email,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          addressNumber: creditCardHolderInfo.addressNumber,
+          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+        },
         remoteIp: getClientIp(req),
         externalReference: `${authUserId}:${planId}_annual_${Date.now()}` // [MODIFIED] Include authUserId
       };
@@ -1133,7 +1102,7 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
       if (payment.status === 'CONFIRMED' || payment.status === 'RECEIVED') {
 
         // [NEW] Activate on Server
-        await activatePlanOnServer(userId, planId, cycle, payment.id, null);
+        await activatePlanOnServer(authUserId, planId, cycle, payment.id, null);
 
         // [NEW] Send sale to Utmify for tracking
         try {
@@ -1205,50 +1174,18 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
       if (hasDiscount) {
         console.log(`>>> Coupon detected! Creating single payment of R$ ${value} + subscription starting next month`);
 
-        // =====================================================
-        // [FIX] STEP 0: Tokenize the credit card FIRST (STRICT MODE)
-        // =====================================================
-        let creditCardToken = null;
-        try {
-          console.log('>>> [TOKENIZATION] Tokenizing credit card before creating payment...');
-          const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
-            customer: customerId,
-            creditCard: {
-              holderName: creditCard.holderName,
-              number: creditCard.number.replace(/\s/g, ''),
-              expiryMonth: creditCard.expiryMonth,
-              expiryYear: creditCard.expiryYear,
-              ccv: creditCard.ccv
-            },
-            creditCardHolderInfo: {
-              name: creditCardHolderInfo.name,
-              email: creditCardHolderInfo.email,
-              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-              addressNumber: creditCardHolderInfo.addressNumber,
-              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-            },
-            remoteIp: getClientIp(req)
-          });
-          creditCardToken = tokenResult.creditCardToken;
-          console.log('>>> [TOKENIZATION] Success! Token created.');
-        } catch (tokenError) {
-          console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with direct charge fallback:', tokenError.message);
-        }
-
         const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
-        // SAVE TOKEN TO FIRESTORE
+
+        // SAVE INFO TO FIRESTORE
         if (authUserId && firebaseAdmin) {
           try {
             const db = firebaseAdmin.firestore();
-            const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
             await db.collection('users').doc(authUserId).update({
-              'subscription.creditCardToken': creditCardToken,
               'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
-              'profile.subscription.creditCardToken': creditCardToken
+              'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)
             });
           } catch (dbError) {
-            console.error('>>> [DB] Failed to save token:', dbError);
+            console.error('>>> [DB] Failed to save credit card info:', dbError);
           }
         }
 
@@ -1261,23 +1198,21 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           description: `Plano ${planId} - Primeira mensalidade (com desconto)`,
           remoteIp: getClientIp(req),
           externalReference: `${authUserId}:${planId}_first_${Date.now()}`,
-          ...(creditCardToken ? { creditCardToken } : {
-            creditCard: {
-              holderName: creditCard.holderName,
-              number: sanitizedCardNumber,
-              expiryMonth: creditCard.expiryMonth,
-              expiryYear: creditCard.expiryYear,
-              ccv: creditCard.ccv
-            },
-            creditCardHolderInfo: {
-              name: creditCardHolderInfo.name,
-              email: creditCardHolderInfo.email,
-              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-              addressNumber: creditCardHolderInfo.addressNumber,
-              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-            }
-          })
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: sanitizedCardNumber,
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          }
         };
 
         const firstPayment = await asaasRequest('POST', '/payments', paymentData);
@@ -1308,30 +1243,28 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
           description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
           remoteIp: getClientIp(req),
           externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`,
-          ...(creditCardToken ? { creditCardToken } : {
-            creditCard: {
-              holderName: creditCard.holderName,
-              number: sanitizedCardNumber,
-              expiryMonth: creditCard.expiryMonth,
-              expiryYear: creditCard.expiryYear,
-              ccv: creditCard.ccv
-            },
-            creditCardHolderInfo: {
-              name: creditCardHolderInfo.name,
-              email: creditCardHolderInfo.email,
-              cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-              postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-              addressNumber: creditCardHolderInfo.addressNumber,
-              phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-            }
-          })
+          creditCard: {
+            holderName: creditCard.holderName,
+            number: sanitizedCardNumber,
+            expiryMonth: creditCard.expiryMonth,
+            expiryYear: creditCard.expiryYear,
+            ccv: creditCard.ccv
+          },
+          creditCardHolderInfo: {
+            name: creditCardHolderInfo.name,
+            email: creditCardHolderInfo.email,
+            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+            addressNumber: creditCardHolderInfo.addressNumber,
+            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+          }
         };
 
         // SAFEGUARD: If subscription fails but payment succeeded, we MUST still activate the plan.
         let subscription = null;
         try {
           subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
-          console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}, hasToken: ${!!creditCardToken}`);
+          console.log(`>>> Subscription created: ${subscription.id}, starts: ${getNextMonthDate()}`);
         } catch (subError) {
           console.error(`>>> WARNING: Payment succeeded but Subscription failed:`, subError.message);
           console.error('>>> The plan will be ACTIVATED to honor the payment. Admin must fix subscription manually.');
@@ -1378,49 +1311,17 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
 
       // No coupon: Create normal subscription starting today
 
-      // =====================================================
-      // [FIX] STEP 0: Tokenize the credit card FIRST (STRICT MODE)
-      // =====================================================
-      let creditCardToken = null;
-      try {
-        console.log('>>> [TOKENIZATION] Tokenizing credit card (No Coupon Flow)...');
-        const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
-          customer: customerId,
-          creditCard: {
-            holderName: creditCard.holderName,
-            number: creditCard.number.replace(/\s/g, ''),
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          },
-          remoteIp: getClientIp(req)
-        });
-        creditCardToken = tokenResult.creditCardToken;
-        console.log('>>> [TOKENIZATION] Success! Token created.');
-      } catch (tokenError) {
-        console.warn('>>> [TOKENIZATION] Failed to tokenize card, proceeding with direct fallback:', tokenError.message);
-      }
-
       const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
-      // SAVE TOKEN TO FIRESTORE
-      if (creditCardToken && authUserId && firebaseAdmin) {
+      // SAVE INFO TO FIRESTORE
+      if (authUserId && firebaseAdmin) {
         try {
           const db = firebaseAdmin.firestore();
           await db.collection('users').doc(authUserId).update({
-            'subscription.creditCardToken': creditCardToken,
             'subscription.creditCardLast4': sanitizedCardNumber.slice(-4),
-            'profile.subscription.creditCardToken': creditCardToken
+            'profile.subscription.creditCardLast4': sanitizedCardNumber.slice(-4)
           });
         } catch (dbError) {
-          console.error('>>> [DB] Failed to save token:', dbError);
+          console.error('>>> [DB] Failed to save credit card info:', dbError);
         }
       }
 
@@ -1433,23 +1334,21 @@ router.post('/asaas/subscription', requireFirebaseAuth, async (req, res) => {
         description: `Plano ${planId} - ${cycle === 'YEARLY' ? 'Anual' : 'Mensal'}`,
         remoteIp: getClientIp(req),
         externalReference: `${authUserId}:${planId}_${cycle.toLowerCase()}_${Date.now()}`, // [MODIFIED] Include authUserId
-        ...(creditCardToken ? { creditCardToken } : {
-          creditCard: {
-            holderName: creditCard.holderName,
-            number: sanitizedCardNumber,
-            expiryMonth: creditCard.expiryMonth,
-            expiryYear: creditCard.expiryYear,
-            ccv: creditCard.ccv
-          },
-          creditCardHolderInfo: {
-            name: creditCardHolderInfo.name,
-            email: creditCardHolderInfo.email,
-            cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-            postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-            addressNumber: creditCardHolderInfo.addressNumber,
-            phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-          }
-        })
+        creditCard: {
+          holderName: creditCard.holderName,
+          number: sanitizedCardNumber,
+          expiryMonth: creditCard.expiryMonth,
+          expiryYear: creditCard.expiryYear,
+          ccv: creditCard.ccv
+        },
+        creditCardHolderInfo: {
+          name: creditCardHolderInfo.name,
+          email: creditCardHolderInfo.email,
+          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+          addressNumber: creditCardHolderInfo.addressNumber,
+          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+        }
       };
 
       const subscription = await asaasRequest('POST', '/subscriptions', subscriptionData);
@@ -1569,66 +1468,46 @@ router.post('/asaas/subscription/update-card', requireFirebaseAuth, async (req, 
   try {
     console.log(`>>> Updating card for subscription: ${subscriptionId}`);
 
-    // 1. Tokenize the new card
-    let creditCardToken = null;
-    try {
-      const tokenResult = await asaasRequest('POST', '/creditCard/tokenize', {
-        customer: customerId,
-        creditCard: {
-          holderName: creditCard.holderName,
-          number: creditCard.number.replace(/\s/g, ''),
-          expiryMonth: creditCard.expiryMonth,
-          expiryYear: creditCard.expiryYear,
-          ccv: creditCard.ccv
-        },
-        creditCardHolderInfo: {
-          name: creditCardHolderInfo.name,
-          email: creditCardHolderInfo.email,
-          cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
-          postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
-          addressNumber: creditCardHolderInfo.addressNumber,
-          phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
-        },
-        remoteIp: getClientIp(req)
-      });
-      creditCardToken = tokenResult.creditCardToken;
-      console.log('>>> [UPDATE CARD] Tokenization success.');
-    } catch (tokenError) {
-      console.error('>>> [UPDATE CARD] Tokenization failed:', tokenError.message);
-      return res.status(400).json({ error: 'Falha ao validar o cartão com a operadora.' });
-    }
+    const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
 
-    if (!creditCardToken) {
-      return res.status(400).json({ error: 'Não foi possível tokenizar o cartão. Verifique os dados.' });
-    }
-
-    // 2. Update Subscription with new Token
-    // Asaas API v3: PUT /subscriptions/{id}
+    // 1. Update Subscription with new Card directly
+    // Asaas API v3: POST /subscriptions/{id} -> this endpoint updates the credit card in Asaas
     const updatedSub = await asaasRequest('POST', `/subscriptions/${subscriptionId}`, {
-      creditCardToken: creditCardToken,
+      creditCard: {
+        holderName: creditCard.holderName,
+        number: sanitizedCardNumber,
+        expiryMonth: creditCard.expiryMonth,
+        expiryYear: creditCard.expiryYear,
+        ccv: creditCard.ccv
+      },
+      creditCardHolderInfo: {
+        name: creditCardHolderInfo.name,
+        email: creditCardHolderInfo.email,
+        cpfCnpj: creditCardHolderInfo.cpfCnpj.replace(/\D/g, ''),
+        postalCode: creditCardHolderInfo.postalCode.replace(/\D/g, ''),
+        addressNumber: creditCardHolderInfo.addressNumber,
+        phone: creditCardHolderInfo.phone?.replace(/\D/g, '') || undefined
+      },
       remoteIp: getClientIp(req)
     });
 
-    console.log(`>>> [UPDATE CARD] Subscription ${subscriptionId} updated with new card token.`);
+    console.log(`>>> [UPDATE CARD] Subscription ${subscriptionId} updated with new card.`);
 
     if (authUserId && firebaseAdmin) {
       try {
         const db = firebaseAdmin.firestore();
-        const sanitizedCardNumber = creditCard.number.replace(/\s/g, '');
         const nowIso = new Date().toISOString();
         const last4 = sanitizedCardNumber.slice(-4);
 
         await db.collection('users').doc(authUserId).update({
-          'subscription.creditCardToken': creditCardToken,
           'subscription.creditCardLast4': last4,
           'subscription.updatedAt': nowIso,
-          'profile.subscription.creditCardToken': creditCardToken,
           'profile.subscription.creditCardLast4': last4,
           'profile.subscription.updatedAt': nowIso,
           'profile.paymentMethodDetails.last4': last4
         });
       } catch (dbError) {
-        console.error('>>> [DB] Failed to save updated card token:', dbError);
+        console.error('>>> [DB] Failed to save updated card info:', dbError);
       }
     }
 
