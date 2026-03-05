@@ -2,10 +2,10 @@
     "name": "controlar-api",
     "version": "1.0.0",
     "type": "module",
-    "main": "server.js",
+    "main": "_lib/server.js",
     "scripts": {
-        "start": "node server.js",
-        "dev": "node server.js"
+        "start": "node _lib/server.js",
+        "dev": "node _lib/server.js"
     },
     "dependencies": {
         "@anthropic-ai/sdk": "^0.71.2",
