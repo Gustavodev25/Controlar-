@@ -5,9 +5,12 @@ import { ShiningText } from '../ShiningText';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 import { InfiniteSlider } from '../InfiniteSlider';
 import { BlurTextEffect } from '../BlurTextEffect';
-import { Sparkles, CheckCircle, ShieldCheck, LogIn } from 'lucide-react';
+import { Sparkles, CheckCircle, ShieldCheck, LogIn, TrendingDown, SearchX, AlertTriangle } from 'lucide-react';
 import dashboardImg from '../../assets/dashboard.png';
 import fogueteImg from '../../assets/foguete.png';
+import celularImg from '../../assets/celular.png';
+import celular2Img from '../../assets/celular 2.png';
+import celular3Img from '../../assets/celular3.png';
 import demoVideo from '../../assets/video.MOV';
 
 // Bank logos
@@ -162,10 +165,9 @@ const CountdownTimer: React.FC = () => {
     useEffect(() => {
         const calculateTimeLeft = () => {
             const now = new Date();
-            const target = new Date(now);
-            target.setHours(24, 0, 0, 0); // Set to next midnight (00:00:00 of tomorrow)
-
-            const difference = target.getTime() - now.getTime();
+            // Lançamento em 14 dias a partir de hoje às 00:00
+            const launchDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 14, 0, 0, 0);
+            const difference = launchDate.getTime() - now.getTime();
 
             if (difference > 0) {
                 return {
@@ -500,112 +502,241 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                     {/* Left Side: Original Hero Text */}
                     <motion.div className="w-full max-w-4xl space-y-8 text-center flex flex-col items-center">
 
-                        {/* New Premium Scarcity Badge */}
-                        <motion.div variants={itemVariants} className="flex justify-center mb-2">
-                            <div
-                                className="relative group cursor-pointer"
-                                onClick={() => onSubscribe && onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' })}
-                            >
-                                <div className="absolute -inset-1 bg-gradient-to-r from-[#D97757] via-amber-500 to-[#D97757] rounded-full blur opacity-25 group-hover:opacity-75 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
-                                <div className="relative px-2 py-1 md:px-4 md:py-1.5 bg-[#1a0f0a] ring-1 ring-white/10 rounded-full leading-none flex items-center gap-2 md:gap-3">
-                                    <span className="flex items-center justify-center px-2 py-0.5 rounded-full bg-gradient-to-r from-[#D97757] to-amber-600 text-[10px] font-bold text-white shadow-sm shadow-orange-500/50">
-                                        NOVO
-                                    </span>
-                                    <span className="text-gray-300 text-[10px] md:text-xs tracking-wide">
-                                        Desconto exclusivo liberado: <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#D97757] to-amber-500 font-bold">50% OFF</span>
-                                    </span>
-                                    <div className="w-px h-3 bg-white/10 hidden md:block"></div>
-                                    <span className="text-gray-500 text-[10px] font-medium hidden md:flex items-center gap-1 group-hover:text-[#D97757] transition-colors">
-                                        Resgatar <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                                    </span>
-                                </div>
-                            </div>
+                        <motion.div variants={itemVariants} className="flex flex-col items-center gap-4 mb-4">
+                            <span className="text-[#D97757] text-[10px] sm:text-xs uppercase tracking-[0.4em] font-bold">O App Controlar+ chega em:</span>
+                            <CountdownTimer />
                         </motion.div>
 
                         <motion.h1 variants={itemVariants} className="text-4xl md:text-5xl lg:text-6xl font-bold tracking-tight text-white leading-tight">
                             Desbloqueie o potencial <br />
                             das suas <ShiningText text="Finanças." />
                         </motion.h1>
-                        <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-2xl mx-auto">
+                        <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-2xl mx-auto mt-4">
                             Controlar+ é a plataforma financeira mais produtiva já feita.
-                            obtenha clareza total sobre seu dinheiro em segundos.
+                            Obtenha clareza total sobre seu dinheiro em segundos.
                         </motion.p>
 
-                        {/* Countdown Timer Featured */}
-                        {/* Countdown Timer Featured */}
-                        {/* Countdown Timer & CTA */}
+                        <motion.div variants={itemVariants} className="mt-12 relative max-w-[300px] md:max-w-[400px] mx-auto flex flex-col items-center">
+                            {/* Feature Pills */}
+                            <div className="flex flex-wrap justify-center gap-2 mb-8 relative z-20">
+                                <span className="px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-gray-400 text-[11px] font-medium backdrop-blur-sm">
+                                    Open finance
+                                </span>
+                                <span className="px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-gray-400 text-[11px] font-medium backdrop-blur-sm">
+                                    Simples e intuitivo
+                                </span>
+                                <span className="px-4 py-1.5 rounded-full bg-white/[0.03] border border-white/[0.08] text-gray-400 text-[11px] font-medium backdrop-blur-sm">
+                                    100% seguro
+                                </span>
+                            </div>
 
-                        {/* Interactive Dual Action Button */}
-                        <motion.div variants={itemVariants} className="flex flex-col items-center gap-6 pt-4">
+                            <div className="relative w-full">
+                                <div className="absolute inset-0 bg-gradient-to-t from-[#D97757]/40 to-transparent blur-3xl rounded-full opacity-80"></div>
+                                <img src={celularImg} alt="Controlar+ no Celular" className="relative z-10 w-full h-auto drop-shadow-2xl" />
+                            </div>
+                        </motion.div>
 
+                        <motion.div variants={itemVariants} className="mt-10 flex flex-col items-center gap-6">
                             <button onClick={() => {
                                 if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' });
-                            }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40 relative overflow-hidden">
+                            }} className="px-12 py-4 min-w-[200px] bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-medium transition-all flex items-center justify-center gap-2 group shadow-lg shadow-[#D97757]/20 hover:shadow-[#D97757]/40 relative overflow-hidden mx-auto">
                                 <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                                Assinar Agora com 50% OFF
+                                Começar Agora
                                 <svg className="w-4 h-4 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
                                 </svg>
                             </button>
 
-                            <div className="flex items-center gap-2 mt-2 -mb-2">
-                                <span className="flex h-2 w-2 relative">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                                </span>
-                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                    Cupom <span className="text-emerald-400">PROMO50</span> aplicado automaticamente
-                                </span>
+                            {/* App Download Badges - Launching soon */}
+                            <div className="flex flex-col items-center gap-3">
+                                <span className="text-gray-500 text-[9px] uppercase tracking-[0.15em] font-bold opacity-70">Disponível em breve para</span>
+                                <div className="flex items-center gap-3 relative group/badges">
+                                    <div className="h-9 opacity-40 grayscale pointer-events-none cursor-not-allowed">
+                                        <img
+                                            src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg"
+                                            alt="Download on App Store"
+                                            className="h-full w-auto"
+                                        />
+                                    </div>
+                                    <div className="h-9 opacity-40 grayscale pointer-events-none cursor-not-allowed">
+                                        <img
+                                            src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg"
+                                            alt="Get it on Google Play"
+                                            className="h-full w-auto"
+                                        />
+                                    </div>
+                                    {/* Tooltip or Label */}
+                                    <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-white text-[10px] px-2 py-0.5 rounded border border-white/10 opacity-0 group-hover/badges:opacity-100 transition-opacity">
+                                        Aguarde o lançamento
+                                    </div>
+                                </div>
                             </div>
+                        </motion.div>
 
-                            {/* Trust & Social Proof */}
-                            <div className="flex flex-col items-center gap-4 mt-2">
-                                <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-xs font-medium text-gray-400">
-                                    <span className="flex items-center gap-1.5">
-                                        <CheckCircle size={13} className="text-emerald-500" /> Pronto em 5 minutos
-                                    </span>
-                                    <span className="flex items-center gap-1.5">
-                                        <CheckCircle size={13} className="text-emerald-500" /> 100% seguro
-                                    </span>
-                                    <span className="flex items-center gap-1.5">
-                                        <CheckCircle size={13} className="text-emerald-500" /> Automatizado com IA
-                                    </span>
+
+                        {/* Pain Points Section */}
+                        <motion.div variants={itemVariants} className="w-full max-w-md mx-auto mt-20 text-left px-2 pb-12">
+                            <h3 className="text-[22px] sm:text-2xl text-[#d4d4d4] mb-6 font-normal tracking-wide">
+                                Sua vida financeira <br />
+                                transborda <span className="font-bold text-white">desorganização</span>?
+                            </h3>
+
+                            <div className="space-y-4">
+                                <div className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05]">
+                                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D97757]/10 border border-[#D97757]/20 shadow-inner shadow-[#D97757]/20">
+                                        <TrendingDown className="w-5 h-5 text-[#D97757]" />
+                                    </div>
+                                    <span className="text-[#9ca3af] text-[15px] font-medium leading-snug">Não consegue manter o controle<br className="hidden sm:block" /> dos gastos</span>
+                                </div>
+                                <div className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05]">
+                                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D97757]/10 border border-[#D97757]/20 shadow-inner shadow-[#D97757]/20">
+                                        <SearchX className="w-5 h-5 text-[#D97757]" />
+                                    </div>
+                                    <span className="text-[#9ca3af] text-[15px] font-medium leading-snug">Dinheiro acaba e você nem sabe<br className="hidden sm:block" /> aonde foi parar</span>
+                                </div>
+                                <div className="flex items-center gap-4 bg-white/[0.03] p-4 rounded-2xl border border-white/[0.05]">
+                                    <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center rounded-full bg-[#D97757]/10 border border-[#D97757]/20 shadow-inner shadow-[#D97757]/20">
+                                        <AlertTriangle className="w-5 h-5 text-[#D97757]" />
+                                    </div>
+                                    <span className="text-[#9ca3af] text-[15px] font-medium leading-snug">Vive no aperto e perde<br className="hidden sm:block" /> oportunidades</span>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        {/* Funcionalidades Card 1 */}
+                        <motion.div variants={itemVariants} className="w-full max-w-5xl mx-auto mt-4 text-left px-4">
+                            <h3 className="text-[16px] font-medium text-gray-400 mb-6 tracking-wide pl-2">
+                                Funcionalidades
+                            </h3>
+
+                            <div className="relative bg-[#D97757] rounded-[36px] overflow-hidden shadow-3xl group transition-all duration-300 cursor-default w-full h-[380px] sm:h-[440px] p-8 sm:p-12 flex flex-col md:flex-row items-center">
+
+                                {/* Phone Mockup - Fixed on the left edge */}
+                                <div className="absolute bottom-0 left-6 sm:left-12 w-full max-w-[160px] sm:max-w-[180px] lg:max-w-[220px] z-10 transition-transform duration-500 translate-y-[35%] group-hover:translate-y-[30%] order-2 md:order-1">
+                                    <img
+                                        src={celularImg}
+                                        alt="Visão completa"
+                                        className="w-full h-auto object-cover object-top drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+                                    />
                                 </div>
 
-                                <div className="flex items-center gap-3">
-                                    <div className="flex -space-x-3">
-                                        {[
-                                            "https://randomuser.me/api/portraits/women/44.jpg",
-                                            "https://randomuser.me/api/portraits/men/32.jpg",
-                                            "https://randomuser.me/api/portraits/women/65.jpg",
-                                            "https://randomuser.me/api/portraits/men/86.jpg"
-                                        ].map((src, i) => (
-                                            <div key={i} className="w-8 h-8 rounded-full border-2 border-[#1a0f0a] flex items-center justify-center overflow-hidden bg-gray-800">
-                                                <img
-                                                    src={src}
-                                                    alt="User"
-                                                    className="w-full h-full object-cover"
-                                                />
-                                            </div>
-                                        ))}
-                                        <div className="w-8 h-8 rounded-full border-2 border-[#1a0f0a] bg-[#D97757] flex items-center justify-center text-[10px] font-bold text-white relative z-10">
-                                            +1k
+                                {/* Content Text - Adjusted to be closer to the left but not touching the phone */}
+                                <div className="relative z-20 w-full md:pl-[240px] lg:pl-[300px] text-left order-1 md:order-2">
+                                    <h4 className="text-[28px] sm:text-[36px] lg:text-[44px] font-bold text-white leading-[1.1] filter drop-shadow-sm max-w-[500px]">
+                                        Tenha visão completa do seu dinheiro
+                                    </h4>
+                                </div>
+
+                                {/* Next Button - Bottom Right */}
+                                <div className="absolute bottom-6 right-6 sm:bottom-10 sm:right-10 w-[64px] h-[64px] sm:w-[76px] sm:h-[76px] bg-[#1d1d1b] rounded-full flex items-center justify-center shadow-[0_15px_35px_rgba(0,0,0,0.5)] hover:scale-110 transition-transform cursor-pointer z-30">
+                                    <svg className="w-9 h-9 text-[#D97757] ml-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" />
+                                    </svg>
+                                </div>
+                            </div>
+                        </motion.div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-5xl mx-auto mt-6 px-4 pb-12">
+                            {/* Funcionalidades Card 2 - Faturas */}
+                            <motion.div variants={itemVariants} className="w-full">
+                                <div className="relative bg-[#1d1d1b] rounded-[36px] overflow-hidden shadow-3xl group transition-all duration-300 cursor-default w-full h-[350px] sm:h-[420px] p-8 sm:p-12 flex flex-col items-center text-center">
+                                    {/* Content Text */}
+                                    <div className="relative z-20 w-full mb-auto">
+                                        <h4 className="text-[14px] sm:text-[16px] font-bold text-white leading-[1.3] filter drop-shadow-sm max-w-[240px] mx-auto">
+                                            Controle suas faturas de todos os cartões em um só lugar
+                                        </h4>
+                                    </div>
+
+                                    {/* Phone Mockup - Better masking and positioning */}
+                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[220px] sm:w-[260px] z-10 translate-y-[55%] group-hover:translate-y-[45%] transition-transform duration-500">
+                                        <div className="relative">
+                                            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1d1d1b] to-transparent z-20"></div>
+                                            <img
+                                                src={celular3Img}
+                                                alt="Controle de Faturas"
+                                                className="w-full h-auto object-cover object-top drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+                                            />
                                         </div>
                                     </div>
-                                    <span className="text-sm text-gray-400">
-                                        <span className="text-white font-bold">+ de 1.000</span> usuários ativos
-                                    </span>
                                 </div>
-                            </div>
-                        </motion.div >
-                    </motion.div >
+                            </motion.div>
 
+                            {/* Funcionalidades Card 3 - Automação Bancária */}
+                            <motion.div variants={itemVariants} className="w-full">
+                                <div className="relative bg-[#1d1d1b] rounded-[36px] overflow-hidden shadow-3xl group transition-all duration-300 cursor-default w-full h-[350px] sm:h-[420px] p-8 sm:p-12 flex flex-col items-center text-center">
+                                    {/* Content Text */}
+                                    <div className="relative z-20 w-full mb-auto">
+                                        <h4 className="text-[14px] sm:text-[16px] font-bold text-white leading-[1.3] filter drop-shadow-sm max-w-[260px] mx-auto">
+                                            Automatize o lançamento de gastos e receitas conectando seus bancos
+                                        </h4>
+                                    </div>
 
+                                    {/* Phone Mockup - Better masking and positioning */}
+                                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[220px] sm:w-[260px] z-10 translate-y-[55%] group-hover:translate-y-[45%] transition-transform duration-500">
+                                        <div className="relative">
+                                            <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#1d1d1b] to-transparent z-20"></div>
+                                            <img
+                                                src={celular2Img}
+                                                alt="Automação Bancária"
+                                                className="w-full h-auto object-cover object-top drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </motion.div>
+                        </div>
+                    </motion.div>
                 </motion.div >
             </section >
 
+            {/* Mobile First Section */}
+            <section className="relative w-full py-20 bg-[#1a0f0a]">
+                <div className="container mx-auto px-4">
+                    <div className="relative overflow-hidden p-8 sm:p-16 flex flex-col md:flex-row items-center gap-12">
+
+                        <div className="flex-1 space-y-6 relative z-10 text-center md:text-left">
+                            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#D97757]/10 border border-[#D97757]/20 text-[#D97757] text-xs font-bold uppercase tracking-widest">
+                                Mobile Experience
+                            </span>
+                            <h2 className="text-4xl md:text-5xl font-bold text-white leading-tight">
+                                <BlurTextEffect>Suas finanças na palma da mão.</BlurTextEffect>
+                            </h2>
+                            <p className="text-gray-400 text-lg max-w-xl">
+                                Registre gastos, consulte saldos e receba alertas importantes onde quer que você esteja. Nossos apps para <span className="text-white font-medium">iOS</span> e <span className="text-white font-medium">Android</span> oferecem a experiência mais fluida do mercado.
+                            </p>
+
+                            <div className="flex flex-wrap justify-center md:justify-start gap-4 pt-4 relative group/badges">
+                                <div className="h-12 opacity-40 grayscale pointer-events-none">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg" alt="App Store" className="h-full" />
+                                </div>
+                                <div className="h-12 opacity-40 grayscale pointer-events-none">
+                                    <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="Google Play" className="h-full" />
+                                </div>
+                                <div className="absolute -bottom-8 left-1/2 md:left-24 -translate-x-1/2 whitespace-nowrap bg-[#D97757]/20 text-[#D97757] text-xs font-bold px-3 py-1 rounded-full border border-[#D97757]/30 backdrop-blur-sm">
+                                    Vem aí em 14 dias
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 relative flex justify-center items-center">
+
+                            <motion.div
+                                initial={{ y: 40, opacity: 0 }}
+                                whileInView={{ y: 0, opacity: 1 }}
+                                transition={{ duration: 0.8 }}
+                                viewport={{ once: true }}
+                                className="relative w-full max-w-[280px]"
+                            >
+                                <img src={celularImg} alt="App Preview" className="w-full h-auto drop-shadow-[0_35px_60px_-15px_rgba(0,0,0,0.6)]" />
+                            </motion.div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
             {/* Video Demo Section */}
             < section className="relative w-full py-20 bg-[#1a0f0a]" >
+
                 <div className="container mx-auto px-8">
                     <AnimatedSection direction="up" delay={0} className="text-center mb-12">
                         <span className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#D97757]/10 border border-[#D97757]/20 text-[#D97757] text-sm font-medium mb-6">
@@ -639,103 +770,6 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                 </div>
             </section >
 
-            {/* Infinite Slider - Bancos Parceiros */}
-            < section className="relative w-full py-8 bg-[#1a0f0a] border-y border-white/5" >
-                <div className="flex flex-col md:flex-row items-center">
-                    {/* Quadrado com texto */}
-                    <div className="flex-shrink-0 px-8 py-4 border-b md:border-b-0 md:border-r border-white/10 w-full md:w-auto text-center md:text-left">
-                        <p className="text-sm text-gray-400 uppercase tracking-widest whitespace-nowrap">Conecte com seus bancos favoritos</p>
-                    </div>
-
-                    {/* Slider */}
-                    <div className="relative flex-1 overflow-hidden w-full">
-                        {/* Fade nas laterais */}
-                        <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-[#1a0f0a] to-transparent z-10 pointer-events-none" />
-                        <div className="absolute right-0 top-0 bottom-0 w-32 bg-gradient-to-l from-[#1a0f0a] to-transparent z-10 pointer-events-none" />
-
-                        <InfiniteSlider gap={48} duration={30}>
-                            {banks.map((bank) => (
-                                <div key={bank.name} className="flex items-center justify-center px-6 py-4">
-                                    <img
-                                        src={bank.logo}
-                                        alt={bank.name}
-                                        className="h-8 w-auto opacity-60 hover:opacity-100 transition-opacity"
-                                    />
-                                </div>
-                            ))}
-                        </InfiniteSlider>
-                    </div>
-                </div>
-            </section >
-
-            {/* Estatísticas do Sistema */}
-            < section className="relative w-full py-12 bg-[#1a0f0a]" >
-                <div className="container mx-auto px-8">
-                    <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
-                        {/* Texto Principal */}
-                        <AnimatedSection direction="left" delay={0} className="flex-shrink-0">
-                            <h2 className="text-2xl md:text-3xl font-bold text-white leading-tight">
-                                <BlurTextEffect>Simplificando sua vida</BlurTextEffect> <br />
-                                <BlurTextEffect>financeira todos os dias.</BlurTextEffect>
-                            </h2>
-                            <DrawLine delay={0.4} />
-                        </AnimatedSection>
-
-                        {/* Métricas */}
-                        <div className="flex flex-wrap items-center justify-center lg:justify-end gap-12 lg:gap-16">
-                            <AnimatedStat
-                                value={50000}
-                                displayValue={50}
-                                prefix="+ "
-                                suffix="K"
-                                label="Transações processadas"
-                                delay={100}
-                            />
-                            <AnimatedStat
-                                value={1500}
-                                displayValue={1500}
-                                prefix="+ "
-                                label="Usuários ativos"
-                                delay={200}
-                            />
-                            <AnimatedStat
-                                value={2000000}
-                                displayValue={2}
-                                prefix="R$ "
-                                suffix="M+"
-                                label="Economia gerada"
-                                delay={300}
-                            />
-                        </div>
-                    </div>
-                </div>
-            </section >
-
-
-            {/* WhatsApp Floating Button */}
-            < motion.a
-                href="https://wa.me/5511947595786?text=Ol%C3%A1%2C%20tenho%20uma%20d%C3%BAvida%20sobre%20o%20site%20Controlar%2B"
-                target="_blank"
-                rel="noopener noreferrer"
-                initial={{ scale: 0, opacity: 0 }}
-                animate={{ scale: 1, opacity: 1 }}
-                transition={{ delay: 1, type: "spring", stiffness: 260, damping: 20 }}
-                className="fixed bottom-6 right-6 z-50 bg-[#D97757] hover:bg-[#c66a4e] text-white p-3 rounded-full shadow-lg shadow-[#D97757]/30 flex items-center justify-center hover:scale-110 transition-transform duration-300 group"
-                aria-label="Contato WhatsApp"
-            >
-
-                {/* Balloon Tooltip */}
-                <div className="absolute right-full mr-4 top-1/2 -translate-y-1/2 bg-[#262624] text-white px-4 py-2 rounded-xl shadow-xl shadow-black/20 whitespace-nowrap border border-white/10">
-                    <span className="font-semibold text-sm">Alguma dúvida?</span>
-                    {/* Arrow pointing to button */}
-                    <div className="absolute top-1/2 -right-2 -translate-y-1/2 w-0 h-0 border-t-[8px] border-t-transparent border-l-[8px] border-l-[#262624] border-b-[8px] border-b-transparent"></div>
-                    {/* Arrow Border (optional adjustment to make it look perfect not implemented for simplicity, relying on visual blending) */}
-                </div>
-
-                <svg viewBox="0 0 24 24" fill="currentColor" className="w-6 h-6">
-                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                </svg>
-            </motion.a>
-        </div>
+        </div >
     );
 }

@@ -1,8 +1,12 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
+import Clarity from '@microsoft/clarity';
 
 import { NovaLanding } from './components/novalandingpage/NovaLanding';
+
+// Initialize Microsoft Clarity
+Clarity.init("vrjxwi0q7x");
 
 const rootElement = document.getElementById('root');
 if (!rootElement) {
@@ -14,6 +18,6 @@ const isNovaLanding = window.location.pathname === '/novalanding';
 
 root.render(
   <React.StrictMode>
-    {isNovaLanding ? <NovaLanding /> : <App />}
+    {isNovaLanding ? <NovaLanding onLogin={() => window.location.href = '/'} /> : <App />}
   </React.StrictMode>
 );

@@ -27,7 +27,6 @@ export const NovaLanding: React.FC<NovaLandingProps> = ({ onLogin, onSubscribe }
         <div className="min-h-screen bg-[#1a0f0a] text-[#faf9f5] font-sans selection:bg-[#d97757]/30">
             <Topbar onLogin={onLogin} onSubscribe={onSubscribe} />
             <Hero onLogin={onLogin} onSubscribe={onSubscribe} />
-            <FeaturesSectionWithHoverEffects />
 
             <PricingSection onLogin={onLogin} onSubscribe={onSubscribe} />
             <TestimonialsSection />
