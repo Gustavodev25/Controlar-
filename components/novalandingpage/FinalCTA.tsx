@@ -11,7 +11,7 @@ interface SubscribeData {
 }
 
 interface FinalCTAProps {
-    onLogin: (view?: 'login' | 'signup') => void;
+    onLogin: (view?: 'login' | 'signup', showTerms?: boolean) => void;
     onSubscribe?: (data: SubscribeData) => void;
 }
 
@@ -62,23 +62,27 @@ export const FinalCTA: React.FC<FinalCTAProps> = ({ onLogin, onSubscribe }) => {
                         Controlar+ e veja seu dinheiro render mais.
                     </p>
 
-                    <div className="flex flex-col items-center justify-center gap-4">
-                        <button onClick={() => {
-                            if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' });
-                        }} className="group px-12 py-5 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)] relative overflow-hidden text-lg">
-                            <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
-                            Assinar Agora com 50% OFF
-                            <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
-                        </button>
+                    <div className="flex flex-col md:flex-row items-center justify-center gap-6">
 
-                        <div className="flex items-center gap-2 mt-2">
-                            <span className="flex h-2 w-2 relative">
-                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                                <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
-                            </span>
-                            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
-                                Cupom <span className="text-emerald-400">PROMO50</span> aplicado automaticamente
-                            </span>
+
+                        <div className="flex flex-col items-center gap-4">
+                            <button onClick={() => {
+                                if (onSubscribe) onSubscribe({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' });
+                            }} className="group px-12 py-5 bg-[#D97757] hover:bg-[#c66a4e] text-white rounded-full font-bold transition-all flex items-center gap-2 shadow-[0_0_20px_rgba(217,119,87,0.3)] hover:shadow-[0_0_30px_rgba(217,119,87,0.5)] relative overflow-hidden text-lg">
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
+                                Assinar Agora com 50% OFF
+                                <ArrowUpRight className="w-5 h-5 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                            </button>
+
+                            <div className="flex items-center gap-2">
+                                <span className="flex h-2 w-2 relative">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">
+                                    Cupom <span className="text-emerald-400">PROMO50</span> aplicado automaticamente
+                                </span>
+                            </div>
                         </div>
                     </div>
                 </motion.div>

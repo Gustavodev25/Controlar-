@@ -127,14 +127,15 @@ interface SubscribeData {
 interface LoginNewProps {
     onSubscribe?: (data: SubscribeData) => void;
     initialView?: 'login' | 'signup';
+    showTermsInitial?: boolean;
 }
 
-export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = 'login' }) => {
+export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = 'login', showTermsInitial = false }) => {
     const toast = useToasts();
     const [isLogin, setIsLogin] = useState(initialView === 'login');
     const [step, setStep] = useState(1);
     const [acceptedTerms, setAcceptedTerms] = useState(false);
-    const [showTerms, setShowTerms] = useState(false);
+    const [showTerms, setShowTerms] = useState(showTermsInitial);
     const [isLoading, setIsLoading] = useState(false);
 
     // Password Recovery State
@@ -546,18 +547,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                         className="text-left mb-8"
                     >
                         {/* Trial Banner - Only visible on Signup */}
-                        {!isLogin && (
-                            <motion.div
-                                initial={{ opacity: 0, y: -10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="-mt-8 -mx-8 mb-8 bg-[#d97757]/15 border-b border-[#d97757]/10 p-3 flex items-center justify-center text-center relative overflow-hidden backdrop-blur-sm"
-                            >
-                                <div className="absolute inset-0 bg-gradient-to-r from-[#d97757]/10 via-transparent to-[#d97757]/10 opacity-30" />
-                                <div className="relative z-10">
-                                    Oferta Especial: 7 Dias de Teste Grátis
-                                </div>
-                            </motion.div>
-                        )}
+
                         {/* Back Button inline with title */}
                         {((!isLogin && step === 2) || (isResettingPassword && recoveryStep > 0)) && (
                             <button
@@ -675,7 +665,6 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                                     <div className="space-y-1.5">
                                         <div className="flex justify-between items-center pl-1 pr-1">
                                             <label className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Senha</label>
-                                            <button type="button" onClick={() => { setIsResettingPassword(true); setRecoveryStep(1); }} className="text-[10px] text-[#d97757] hover:text-orange-400 transition-colors font-medium">Esqueceu?</button>
                                         </div>
                                         <div className="relative group">
                                             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500 group-focus-within:text-[#d97757] transition-colors"><Lock size={18} /></div>
@@ -718,7 +707,7 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                                         </button>
 
                                         <p className="text-[10px] text-gray-500">
-                                            7 dias de garantia • Cancele quando quiser
+                                            Cancele quando quiser
                                         </p>
                                     </div>
                                 </motion.div>
@@ -741,16 +730,57 @@ export const LoginNew: React.FC<LoginNewProps> = ({ onSubscribe, initialView = '
                         )}
                     </form>
 
-                    <motion.p layout className="mt-8 text-left text-xs text-gray-500">
+                    <motion.p layout className="mt-8 text-left text-xs text-gray-500 flex flex-col gap-4">
                         {isResettingPassword && (
                             <a
                                 href="#"
                                 onClick={(e) => { e.preventDefault(); setIsResettingPassword(false); setRecoveryStep(1); setIsLogin(true); }}
-                                className="font-bold text-white hover:text-[#d97757] transition-colors ml-1"
+                                className="font-bold text-white hover:text-[#d97757] transition-colors"
                             >
                                 Voltar para Login
                             </a>
                         )}
+
+                        <div className="flex flex-col gap-6 pt-6 border-t border-white/5 w-full">
+                            <div className="flex items-center justify-between w-full">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIsLogin(!isLogin);
+                                        setIsResettingPassword(false);
+                                        setStep(1);
+                                    }}
+                                    className="text-[11px] text-gray-400 hover:text-white transition-colors"
+                                >
+                                    {isLogin ? (
+                                        <>Ainda não tem conta? <span className="text-white font-bold hover:text-[#d97757] transition-colors">Criar uma conta</span></>
+                                    ) : (
+                                        <>Já tem uma conta? <span className="text-white font-bold hover:text-[#d97757] transition-colors">Fazer login</span></>
+                                    )}
+                                </button>
+
+                                {isLogin && !isResettingPassword && (
+                                    <button
+                                        type="button"
+                                        onClick={() => { setIsResettingPassword(true); setRecoveryStep(1); }}
+                                        className="text-[11px] text-[#d97757] hover:text-orange-400 transition-colors font-semibold"
+                                    >
+                                        Esqueceu a senha?
+                                    </button>
+                                )}
+                            </div>
+
+                            <div className="flex justify-center">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowTerms(true)}
+                                    className="text-[10px] text-gray-600 hover:text-gray-400 transition-colors flex items-center gap-1.5 group"
+                                >
+                                    <FileText size={10} className="text-gray-700 group-hover:text-[#d97757] transition-colors" />
+                                    Termos e Privacidade
+                                </button>
+                            </div>
+                        </div>
                     </motion.p>
                 </motion.div>
             </div>

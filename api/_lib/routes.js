@@ -302,6 +302,69 @@ router.post('/whatsapp', async (req, res) => {
 });
 router.post('/gemini', geminiHandler);
 router.post('/claude', claudeHandler);
+
+router.post('/checkout/abandoned-intent', async (req, res) => {
+  const { name, email, phone } = req.body;
+  if (!email || !phone) return res.status(400).json({ error: 'Faltam dados' });
+
+  console.log(`[ABANDONED INTENT] Registrado para ${email}`);
+
+  // Test delay: 1 minute (for testing). In prod, it should be 15-30 mins.
+  const DELAY_MS = 1 * 60 * 1000;
+
+  setTimeout(async () => {
+    try {
+      if (!firebaseAdmin) return;
+      const db = firebaseAdmin.firestore();
+
+      // Look up user by email to see if they bought
+      let hasPurchased = false;
+      const usersRef = db.collection('users');
+      const snapshot = await usersRef.where('email', '==', email).limit(1).get();
+
+      if (!snapshot.empty) {
+        const userDoc = snapshot.docs[0].data();
+        if (userDoc.subscription && userDoc.subscription.status === 'active') {
+          hasPurchased = true;
+        }
+      }
+
+      // If the user hasn't purchased, run the automation to send a message
+      if (!hasPurchased) {
+        console.log(`[ABANDONED INTENT] User ${email} MENSAGEM ENVIADA!`);
+
+        const webhookUrl = process.env.ABANDONED_CART_WEBHOOK_URL || 'https://toney-nonreversing-cedrick.ngrok-free.dev/webhook/abandoned-cart';
+        const payload = {
+          action: 'send_abandoned_message',
+          name,
+          email,
+          phone: '+5511947595786', // specifically requested test number
+          originalPhone: phone
+        };
+
+        // 1. Post to Webhook for n8n/make if they prefer
+        try { await axios.post(webhookUrl, payload); } catch (e) { }
+
+        // 2. Twilio WhatsApp fallback since it's in the repo
+        if (client) {
+          const messageText = `Olá ${name}! Vimos que você iniciou o cadastro no Controlar+ mas não finalizou a assinatura. Teve alguma dificuldade com o pagamento? Pode falar por aqui que eu te ajudo!`;
+          await client.messages.create({
+            from: fromNumber,
+            to: 'whatsapp:+5511947595786',
+            body: messageText
+          }).catch(err => console.error('Erro no Twilio (Abandon-cart):', err.message));
+        }
+      } else {
+        console.log(`[ABANDONED INTENT] User ${email} já comprou. Nenhuma mensagem enviada.`);
+      }
+
+    } catch (err) {
+      console.error('[ABANDONED INTENT] Erro na verificação', err);
+    }
+  }, DELAY_MS);
+
+  res.json({ success: true, message: 'Intent registrado' });
+});
 const smtpPass = (process.env.SMTP_PASS || '').replace(/\s+/g, '');
 const smtpUser = process.env.SMTP_USER || '';
 const isZohoEmail = smtpUser.includes('@controlarmais.com.br') || smtpUser.includes('zoho');

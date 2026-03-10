@@ -256,6 +256,7 @@ const App: React.FC = () => {
   });
   const [viewFilter, setViewFilter] = useState<'all' | 'credit_card' | 'savings' | 'checking'>('all');
   const [authInitialView, setAuthInitialView] = useState<'login' | 'signup'>('login');
+  const [showTermsOnAuth, setShowTermsOnAuth] = useState(false);
   const toast = useToasts();
 
   // Handle Family Invite Link & Context Loading
@@ -3787,8 +3788,9 @@ const App: React.FC = () => {
           <ToastContainer />
           <LandingPage
             variant={landingVariant}
-            onLogin={(view?: 'login' | 'signup') => {
+            onLogin={(view?: 'login' | 'signup', showTerms?: boolean) => {
               setAuthInitialView(view || 'login');
+              setShowTermsOnAuth(!!showTerms);
               setShowLanding(false);
             }}
             onSubscribe={(data) => setLandingCheckoutData({ ...data, couponCode: data.couponCode || 'PROMO50' })}
@@ -3802,6 +3804,7 @@ const App: React.FC = () => {
         <ToastContainer />
         <LoginNew
           initialView={authInitialView}
+          showTermsInitial={showTermsOnAuth}
           onSubscribe={(data) => setLandingCheckoutData({ ...data, couponCode: data.couponCode || 'PROMO50' })}
         />
       </>

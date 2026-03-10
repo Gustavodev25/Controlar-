@@ -9,7 +9,7 @@ interface SubscribeData {
 }
 
 interface LandingPageProps {
-  onLogin: () => void;
+  onLogin: (view?: 'login' | 'signup', showTerms?: boolean) => void;
   onSubscribe?: (data: SubscribeData) => void;
   variant?: 'waitlist' | 'auth';
 }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Lock, Loader2, Ticket, X, Check, User, Mail, Phone, MapPin, Calendar, ChevronRight, ArrowLeft, FileText, Zap, ShieldCheck, Users, TrendingUp, Timer } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import NumberFlow from '@number-flow/react';
@@ -156,6 +156,32 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   });
 
   const [installments, setInstallments] = useState(1);
+  const hasSentIntent = useRef(false);
+
+  const registerAbandonedIntent = () => {
+    if (hasSentIntent.current) return;
+    if (requiresRegistration && registrationData.email && registrationData.phone) {
+      if (registrationData.phone.replace(/\D/g, '').length >= 10) {
+        hasSentIntent.current = true;
+        try {
+          fetch(`${import.meta.env.VITE_API_URL || '/api'}/checkout/abandoned-intent`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              name: registrationData.name,
+              email: registrationData.email,
+              phone: registrationData.phone
+            })
+          }).catch(() => {
+            hasSentIntent.current = false;
+          });
+        } catch (err) {
+          console.error("Failed to register checkout intent:", err);
+          hasSentIntent.current = false;
+        }
+      }
+    }
+  };
 
   // Estado para cartão de teste admin
   const [isTestCard, setIsTestCard] = useState(false);
@@ -524,8 +550,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     return true;
   };
 
-  const handleContinueToPayment = () => {
+  const handleContinueToPayment = async () => {
     if (validateRegistrationStep()) {
+      // Registrar intenção de compra para a automação de carrinho abandonado se ainda não foi
+      registerAbandonedIntent();
+
       // Preencher holderInfo automaticamente com dados do cadastro
       setHolderInfo(prev => ({
         ...prev,
@@ -689,6 +718,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     type="email"
                     value={registrationData.email}
                     onChange={(e) => setRegistrationData({ ...registrationData, email: e.target.value })}
+                    onBlur={registerAbandonedIntent}
                     placeholder="seu@email.com"
                     className={`${inputStyle} pl-11`}
                   />
@@ -755,6 +785,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       maxLength={15}
                       value={formatPhone(registrationData.phone)}
                       onChange={(e) => setRegistrationData({ ...registrationData, phone: e.target.value })}
+                      onBlur={registerAbandonedIntent}
                       placeholder="(00) 90000-0000"
                       className={`${inputStyle} pl-11`}
                     />
@@ -832,13 +863,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
 
-            {/* Guarantee Tag Flush Top */}
-            <div className="-mt-8 -mx-8 bg-[#00A96E]/10 border-b border-[#00A96E]/10 p-3 flex items-center justify-center gap-2 mb-8">
-              <ShieldCheck size={14} className="text-[#00A96E]/80" fill="currentColor" fillOpacity={0.2} />
-              <span className="text-[#00A96E]/90 text-xs font-bold uppercase tracking-wide">
-                Garantia de 7 dias ou seu dinheiro de volta
-              </span>
-            </div>
+
 
             <h3 className="text-lg font-bold text-white mb-6">Resumo</h3>
 
@@ -1287,13 +1312,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
 
-              {/* Guarantee Tag Flush Top */}
-              <div className="-mt-8 -mx-8 bg-[#00A96E]/10 border-b border-[#00A96E]/10 p-3 flex items-center justify-center gap-2 mb-8">
-                <ShieldCheck size={14} className="text-[#00A96E]/80" fill="currentColor" fillOpacity={0.2} />
-                <span className="text-[#00A96E]/90 text-xs font-bold uppercase tracking-wide">
-                  Garantia de 15 DIAS ou seu dinheiro de volta
-                </span>
-              </div>
+
 
               <h3 className="text-lg font-bold text-white mb-6">Resumo</h3>
 

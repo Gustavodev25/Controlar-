@@ -979,8 +979,8 @@ export const AuthModal: React.FC<AuthModalProps> = ({
           )}
 
           {!isTwoFactorPending && (
-            <div className="flex flex-col items-center gap-4 mt-8">
-              <p className="text-center text-sm text-gray-400">
+            <div className="flex items-center justify-between w-full mt-8">
+              <p className="text-sm text-gray-400">
                 {isResettingPassword ? (
                   <button
                     onClick={() => { setIsResettingPassword(false); setRecoveryStep(1); }}
@@ -990,12 +990,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({
                   </button>
                 ) : (
                   <>
-                    {isLogin ? 'Não tem uma conta?' : 'Já tem uma conta?'}
+                    {isLogin ? 'Ainda não tem conta?' : 'Já tem uma conta?'}
                     <button
                       onClick={() => { setIsLogin(!isLogin); }}
                       className="ml-1.5 text-[#d97757] hover:text-[#e68e70] font-bold hover:underline transition-all"
                     >
-                      {isLogin ? 'Cadastre-se' : 'Fazer login'}
+                      {isLogin ? 'Criar uma conta' : 'Fazer login'}
                     </button>
                   </>
                 )}
