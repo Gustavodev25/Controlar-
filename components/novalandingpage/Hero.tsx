@@ -5,7 +5,7 @@ import { ShiningText } from '../ShiningText';
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
 import { InfiniteSlider } from '../InfiniteSlider';
 import { BlurTextEffect } from '../BlurTextEffect';
-import { Sparkles, CheckCircle, ShieldCheck, LogIn, TrendingDown, SearchX, AlertTriangle } from 'lucide-react';
+import { Sparkles, CheckCircle, ShieldCheck, LogIn, TrendingDown, SearchX, AlertTriangle, ArrowRight } from 'lucide-react';
 import dashboardImg from '../../assets/dashboard.png';
 import fogueteImg from '../../assets/foguete.png';
 import celularImg from '../../assets/celular.png';
@@ -331,6 +331,28 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                         <motion.p variants={itemVariants} className="text-xl text-gray-400 max-w-2xl mx-auto mt-4">
                             Economize tempo e esforço controlando seu dinheiro com a Controlar+
                         </motion.p>
+
+                        <motion.div variants={itemVariants} className="mt-8 flex flex-col sm:flex-row items-center justify-center gap-4">
+                            <button
+                                onClick={() => onSubscribe?.({ planId: 'pro', billingCycle: 'monthly' })}
+                                className="group relative px-8 py-4 bg-[#D97757] text-white font-bold rounded-2xl shadow-lg shadow-[#D97757]/20 hover:bg-[#c56a4d] transition-all hover:scale-[1.02] active:scale-[0.98] overflow-hidden"
+                            >
+                                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+                                <span className="relative z-10 flex items-center gap-2">
+                                    Começar agora
+                                    <ArrowRight size={18} />
+                                </span>
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const element = document.getElementById('features');
+                                    if (element) element.scrollIntoView({ behavior: 'smooth' });
+                                }}
+                                className="px-8 py-4 bg-white/5 text-white font-medium rounded-2xl border border-white/10 hover:bg-white/10 transition-all"
+                            >
+                                Ver funcionalidades
+                            </button>
+                        </motion.div>
 
                         <motion.div variants={itemVariants} className="mt-12 relative max-w-[300px] md:max-w-[400px] mx-auto flex flex-col items-center">
                             {/* Feature Pills */}

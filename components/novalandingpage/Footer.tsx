@@ -2,7 +2,18 @@ import React from 'react';
 import logo from '../../assets/logo.png';
 import { Instagram } from 'lucide-react';
 
-export const Footer: React.FC = () => {
+interface SubscribeData {
+    planId: 'pro';
+    billingCycle: 'monthly' | 'annual';
+    couponCode?: string;
+}
+
+interface FooterProps {
+    onLogin?: (view?: 'login' | 'signup') => void;
+    onSubscribe?: (data: SubscribeData) => void;
+}
+
+export const Footer: React.FC<FooterProps> = ({ onLogin, onSubscribe }) => {
     return (
         <footer className="w-full bg-[#1a0f0a] border-t border-white/5 pt-16 pb-8">
             <div className="container mx-auto px-6">
@@ -30,6 +41,28 @@ export const Footer: React.FC = () => {
                             <li><a href="#features" className="hover:text-[#D97757] transition-colors">Funcionalidades</a></li>
                             <li><a href="#pricing" className="hover:text-[#D97757] transition-colors">Planos</a></li>
                             <li><a href="#testimonials" className="hover:text-[#D97757] transition-colors">Depoimentos</a></li>
+                            <li>
+                                <button 
+                                    onClick={() => onSubscribe?.({ planId: 'pro', billingCycle: 'monthly', couponCode: 'PROMO50' })} 
+                                    className="hover:text-[#D97757] transition-colors text-left"
+                                >
+                                    Assinar Agora
+                                </button>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div className="col-span-1">
+                        <h4 className="font-bold text-white mb-6">Suporte</h4>
+                        <ul className="space-y-4 text-sm text-gray-400">
+                            <li>
+                                <button
+                                    onClick={() => onLogin?.('login')}
+                                    className="hover:text-[#D97757] transition-colors text-left"
+                                >
+                                    Acessar Conta
+                                </button>
+                            </li>
                         </ul>
                     </div>
 

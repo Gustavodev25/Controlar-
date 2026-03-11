@@ -409,6 +409,17 @@ const App: React.FC = () => {
   useEffect(() => {
     if (typeof window !== 'undefined') {
       captureUtmFromUrl();
+
+      // Detect ?checkout=pro or ?checkout=true to open checkout automatically
+      const params = new URLSearchParams(window.location.search);
+      const checkoutParam = params.get('checkout');
+      if (checkoutParam === 'pro' || checkoutParam === 'true') {
+        setLandingCheckoutData({
+          planId: 'pro',
+          billingCycle: 'monthly',
+          couponCode: 'PROMO50'
+        });
+      }
     }
   }, []);
 

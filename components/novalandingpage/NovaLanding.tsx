@@ -32,7 +32,7 @@ export const NovaLanding: React.FC<NovaLandingProps> = ({ onLogin, onSubscribe }
             <TestimonialsSection />
             <FAQSection onLogin={onLogin} />
             <FinalCTA onLogin={onLogin} onSubscribe={onSubscribe} />
-            <Footer />
+            <Footer onLogin={onLogin} onSubscribe={onSubscribe} />
         </div>
     );
 };
