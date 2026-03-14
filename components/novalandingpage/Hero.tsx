@@ -158,84 +158,7 @@ const AnimatedStat: React.FC<{
 };
 
 // Helper Component Types
-const CountdownTimer: React.FC = () => {
-    const [timeLeft, setTimeLeft] = useState<{ d: number; h: number; m: number; s: number }>({ d: 0, h: 0, m: 0, s: 0 });
 
-    useEffect(() => {
-        // Chave para identificar o timer no navegador do usuário
-        const STORAGE_KEY = 'controlar_launch_target_date';
-        
-        const getOrSetTargetDate = () => {
-            const storedDate = localStorage.getItem(STORAGE_KEY);
-            if (storedDate) {
-                return parseInt(storedDate, 10);
-            }
-            
-            // Se não houver data, define para 14 dias a partir do primeiro acesso
-            const now = new Date();
-            // Define o alvo exatamente para 14 dias a partir de agora
-            const targetDate = now.getTime() + (14 * 24 * 60 * 60 * 1000);
-            localStorage.setItem(STORAGE_KEY, targetDate.toString());
-            return targetDate;
-        };
-
-        const targetTimestamp = getOrSetTargetDate();
-
-        const calculateTimeLeft = () => {
-            const now = new Date().getTime();
-            const difference = targetTimestamp - now;
-
-            if (difference > 0) {
-                return {
-                    d: Math.floor(difference / (1000 * 60 * 60 * 24)),
-                    h: Math.floor((difference / (1000 * 60 * 60)) % 24),
-                    m: Math.floor((difference / 1000 / 60) % 60),
-                    s: Math.floor((difference / 1000) % 60),
-                };
-            }
-            return { d: 0, h: 0, m: 0, s: 0 };
-        };
-
-        setTimeLeft(calculateTimeLeft());
-        const timer = setInterval(() => {
-            setTimeLeft(calculateTimeLeft());
-        }, 1000);
-
-        return () => clearInterval(timer);
-    }, []);
-
-    return (
-        <div className="flex items-center gap-3 text-white">
-            <div className="flex flex-col items-center">
-                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
-                    <NumberFlow value={timeLeft.d} format={{ minimumIntegerDigits: 2 }} />
-                </span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Dias</span>
-            </div>
-            <span className="text-xl font-bold text-gray-600">:</span>
-            <div className="flex flex-col items-center">
-                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
-                    <NumberFlow value={timeLeft.h} format={{ minimumIntegerDigits: 2 }} />
-                </span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Horas</span>
-            </div>
-            <span className="text-xl font-bold text-gray-600">:</span>
-            <div className="flex flex-col items-center">
-                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
-                    <NumberFlow value={timeLeft.m} format={{ minimumIntegerDigits: 2 }} />
-                </span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Min</span>
-            </div>
-            <span className="text-xl font-bold text-gray-600">:</span>
-            <div className="flex flex-col items-center">
-                <span className="text-2xl font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded-lg px-2.5 py-1.5 text-[#D97757]">
-                    <NumberFlow value={timeLeft.s} format={{ minimumIntegerDigits: 2 }} />
-                </span>
-                <span className="text-[10px] uppercase tracking-wider text-gray-500 mt-1">Seg</span>
-            </div>
-        </div>
-    );
-};
 
 // Benefits Item Component
 const BenefitsItem = ({ text }: { text: string }) => (
@@ -343,15 +266,7 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                                     <ArrowRight size={18} />
                                 </span>
                             </button>
-                            <button
-                                onClick={() => {
-                                    const element = document.getElementById('features');
-                                    if (element) element.scrollIntoView({ behavior: 'smooth' });
-                                }}
-                                className="px-8 py-4 bg-white/5 text-white font-medium rounded-2xl border border-white/10 hover:bg-white/10 transition-all"
-                            >
-                                Ver funcionalidades
-                            </button>
+
                         </motion.div>
 
                         <motion.div variants={itemVariants} className="mt-12 relative max-w-[300px] md:max-w-[400px] mx-auto flex flex-col items-center">
@@ -374,10 +289,7 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
                             </div>
                         </motion.div>
 
-                        <motion.div variants={itemVariants} className="mt-10 flex flex-col items-center gap-6">
-                            <span className="text-[#D97757] text-[10px] sm:text-xs uppercase tracking-[0.4em] font-bold">O App Controlar+ chega em:</span>
-                            <CountdownTimer />
-                        </motion.div>
+
 
 
                         {/* Pain Points Section */}
@@ -411,9 +323,7 @@ export function Hero({ onLogin, onSubscribe }: HeroProps) {
 
                         {/* Funcionalidades Card 1 */}
                         <motion.div variants={itemVariants} className="w-full max-w-5xl mx-auto mt-4 text-left px-4">
-                            <h3 className="text-[16px] font-medium text-gray-400 mb-6 tracking-wide pl-2">
-                                Funcionalidades
-                            </h3>
+
 
                             <div className="relative bg-[#D97757] rounded-[36px] overflow-hidden shadow-3xl group transition-all duration-300 cursor-default w-full h-[380px] sm:h-[440px] p-8 sm:p-12 flex flex-col md:flex-row items-center">
 

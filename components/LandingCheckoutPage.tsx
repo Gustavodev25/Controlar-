@@ -53,15 +53,7 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             email: string;
             password: string;
             cpf: string;
-            birthDate: string;
             phone: string;
-            cep: string;
-            street: string;
-            number: string;
-            complement: string;
-            neighborhood: string;
-            city: string;
-            state: string;
         }
     ) => {
         if (!registrationData) {
@@ -113,16 +105,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                     baseSalary: 0,
                     isAdmin: false,
                     cpf: registrationData.cpf,
-                    birthDate: registrationData.birthDate,
-                    address: {
-                        cep: registrationData.cep,
-                        street: registrationData.street,
-                        number: registrationData.number,
-                        complement: registrationData.complement,
-                        neighborhood: registrationData.neighborhood,
-                        city: registrationData.city,
-                        state: registrationData.state
-                    },
                     subscription: {
                         plan: planId,
                         status: 'active',
@@ -172,16 +154,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 baseSalary: 0,
                 isAdmin: false,
                 cpf: registrationData.cpf,
-                birthDate: registrationData.birthDate,
-                address: {
-                    cep: registrationData.cep,
-                    street: registrationData.street,
-                    number: registrationData.number,
-                    complement: registrationData.complement,
-                    neighborhood: registrationData.neighborhood,
-                    city: registrationData.city,
-                    state: registrationData.state
-                },
                 createdAt: new Date().toISOString()
             });
 

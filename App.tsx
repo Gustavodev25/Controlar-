@@ -43,6 +43,7 @@ import { usePaymentStatus } from './components/PaymentStatus';
 import { InviteAcceptModal } from './components/InviteAcceptModal';
 import { InviteLanding } from './components/InviteLanding';
 import { PostSignupModal } from './components/PostSignupModal';
+import { CompleteRegistrationModal } from './components/CompleteRegistrationModal';
 
 import { LandingCheckoutPage } from './components/LandingCheckoutPage';
 import { AdminDashboard } from './components/AdminDashboard';
@@ -555,6 +556,8 @@ const App: React.FC = () => {
     couponCode?: string;
   } | null>(null);
 
+  const [showCompleteRegistration, setShowCompleteRegistration] = useState(false);
+
   // Handle browser back/forward for URL changes
   useEffect(() => {
     const handlePopState = () => {
@@ -760,6 +763,25 @@ const App: React.FC = () => {
       }
     }
   }, [isTrialExpired, effectivePlan]);
+
+  // Logic to show Complete Registration Modal
+  useEffect(() => {
+    if (userId && currentUser) {
+      // Logic: Only show if NOT admin, AND plan is active (paid), AND missing required info
+      const hasCep = currentUser.address?.cep;
+      const hasBirthDate = currentUser.birthDate;
+      const isActive = currentUser.subscription?.status === 'active';
+      const isAdmin = currentUser.isAdmin;
+
+      if (!isAdmin && isActive && (!hasCep || !hasBirthDate)) {
+        setShowCompleteRegistration(true);
+      } else {
+        setShowCompleteRegistration(false);
+      }
+    } else {
+      setShowCompleteRegistration(false);
+    }
+  }, [userId, currentUser?.birthDate, currentUser?.address?.cep, currentUser?.subscription?.status, currentUser?.isAdmin]);
 
 
 
@@ -4443,6 +4465,15 @@ const App: React.FC = () => {
         } : null}
         onDismiss={handleDismissPopup}
       />
+
+      {/* Complete Registration Modal */}
+      {userId && (
+        <CompleteRegistrationModal
+          isOpen={showCompleteRegistration}
+          onClose={() => setShowCompleteRegistration(false)}
+          userId={userId}
+        />
+      )}
     </div>
   );
 };

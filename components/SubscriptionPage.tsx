@@ -351,40 +351,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
             <div className="flex-1 p-4 lg:p-8 max-w-7xl mx-auto w-full">
                 {view === 'plans' ? (
                     <div className="space-y-12">
-                        {/* Billing Toggle */}
-                        <div className="flex justify-center">
-                            <div className="bg-[#30302E] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
-                                <button
-                                    onClick={() => setBillingCycle('monthly')}
-                                    className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                                >
-                                    {billingCycle === 'monthly' && (
-                                        <motion.div
-                                            layoutId="billing-pill"
-                                            className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
-                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        />
-                                    )}
-                                    <span className="relative z-10">Mensal</span>
-                                </button>
-                                <button
-                                    onClick={() => setBillingCycle('annual')}
-                                    className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 flex items-center gap-2 ${billingCycle === 'annual' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                                >
-                                    {billingCycle === 'annual' && (
-                                        <motion.div
-                                            layoutId="billing-pill"
-                                            className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
-                                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                        />
-                                    )}
-                                    <span className="relative z-10">Anual</span>
-                                    <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
-                                        -7%
-                                    </span>
-                                </button>
-                            </div>
-                        </div>
+
 
                         {/* Cards Grid */}
                         <div className="flex flex-col md:flex-row justify-center items-center md:items-stretch gap-6 lg:gap-8 max-w-4xl mx-auto pt-4">
@@ -453,29 +420,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                                             </span>
                                             <span className="text-gray-500">/mês</span>
 
-                                            <AnimatePresence>
-                                                {billingCycle === 'annual' && plan.annualPrice && (
-                                                    <motion.div
-                                                        initial={{ opacity: 0, height: 0, scale: 0.9 }}
-                                                        animate={{ opacity: 1, height: 'auto', scale: 1 }}
-                                                        exit={{ opacity: 0, height: 0, scale: 0.9 }}
-                                                        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                                                        className="flex flex-col items-center mt-1"
-                                                    >
-                                                        <span className="text-xs text-gray-500 block">
-                                                            cobrado R$ {plan.annualPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} /ano
-                                                        </span>
-                                                        <motion.span
-                                                            initial={{ scale: 0.8, opacity: 0 }}
-                                                            animate={{ scale: 1, opacity: 1 }}
-                                                            transition={{ delay: 0.1, type: "spring", stiffness: 400, damping: 15 }}
-                                                            className="text-xs text-[#d97757] font-bold mt-1 bg-[#d97757]/10 px-2 py-0.5 rounded-md"
-                                                        >
-                                                            12x sem juros
-                                                        </motion.span>
-                                                    </motion.div>
-                                                )}
-                                            </AnimatePresence>                                    </div>
+                                    </div>
 
                                         <ul className="space-y-4 mb-8 flex-1">
                                             {plan.features.map((feature, idx) => (
@@ -503,7 +448,7 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                                                 }
                                         `}
                                         >
-                                            {isCurrent ? 'Plano Atual' : (plan.price === 0 ? 'Começar Grátis' : (billingCycle === 'annual' ? `Assinar Anual` : 'Assinar Agora'))}
+                                            {isCurrent ? 'Plano Atual' : (plan.price === 0 ? 'Começar Grátis' : 'Assinar Agora')}
                                         </button>
                                     </motion.div>
                                 );

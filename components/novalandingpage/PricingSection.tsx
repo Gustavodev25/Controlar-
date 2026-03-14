@@ -11,6 +11,7 @@ import quebraCabecaImg from '../../assets/quebra-cabeca.png';
 import fogueteImg from '../../assets/foguete.png';
 
 import { AnimatedGridPattern } from '../AnimatedGridPattern';
+import { CountdownTimer } from './CountdownTimer';
 
 interface SubscribeData {
     planId: 'pro';
@@ -24,7 +25,7 @@ interface PricingSectionProps {
 }
 
 export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubscribe }) => {
-    const [billingCycle, setBillingCycle] = useState<'monthly' | 'annual'>('monthly');
+    const billingCycle = 'monthly';
 
     const plans = [
         {
@@ -74,45 +75,18 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                         Escolha o plano ideal para transformar sua vida financeira.
                     </p>
 
-                    {/* Billing Toggle */}
-                    <div className="flex justify-center">
-                        <div className="bg-[#262624] p-1.5 rounded-full border border-white/5 flex items-center relative backdrop-blur-sm">
-                            <button
-                                onClick={() => setBillingCycle('monthly')}
-                                className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 ${billingCycle === 'monthly' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                            >
-                                {billingCycle === 'monthly' && (
-                                    <motion.div
-                                        layoutId="billing-pill"
-                                        className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    />
-                                )}
-                                <span className="relative z-10">Mensal</span>
-                            </button>
-                            <button
-                                onClick={() => setBillingCycle('annual')}
-                                className={`relative z-10 px-8 py-2.5 rounded-full text-sm font-bold transition-colors duration-300 flex items-center gap-2 ${billingCycle === 'annual' ? 'text-white' : 'text-gray-400 hover:text-gray-200'}`}
-                            >
-                                {billingCycle === 'annual' && (
-                                    <motion.div
-                                        layoutId="billing-pill"
-                                        className="absolute inset-0 bg-[#d97757] rounded-full shadow-lg shadow-[#d97757]/20"
-                                        transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                                    />
-                                )}
-                                <span className="relative z-10">Anual</span>
-                                <span className={`relative z-10 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wide ${billingCycle === 'annual' ? 'bg-white text-[#d97757]' : 'bg-[#d97757]/10 text-[#d97757] border border-[#d97757]/20'}`}>
-                                    -7%
-                                </span>
-                            </button>
-                        </div>
-                    </div>
+
+                </div>
+
+
+                <div className="flex flex-col items-center mb-8">
+                    <span className="text-[#D97757] text-[10px] sm:text-xs uppercase tracking-[0.4em] font-bold mb-4">A oferta de lançamento termina em:</span>
+                    <CountdownTimer />
                 </div>
 
                 <div className="flex justify-center w-full max-w-sm mx-auto">
                     {plans.map((plan) => {
-                        const originalPrice = billingCycle === 'monthly' ? plan.price : (plan.annualPrice ? plan.annualPrice / 12 : 0);
+                        const originalPrice = plan.price;
                         const price = originalPrice * 0.5; // 50% OFF
                         const isPro = plan.popular;
 
@@ -133,13 +107,6 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                                         Mais Popular
                                     </div>
                                 )}
-
-                                {!isPro && (
-                                    <div className="absolute top-0 right-0 bg-transparent text-transparent text-[10px] font-bold px-3 py-1 selection:rounded-bl-xl rounded-tr-2xl h-[24px]">
-                                        &nbsp;
-                                    </div>
-                                )}
-
 
                                 {/* Ícone / Imagem Centralizada */}
                                 <div className="flex justify-center mb-6">
@@ -185,22 +152,7 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
 
 
 
-                                    <div className="h-6 mt-1">
-                                        <AnimatePresence mode="wait">
-                                            {billingCycle === 'annual' && plan.annualPrice > 0 && (
-                                                <motion.div
-                                                    initial={{ opacity: 0, y: -5 }}
-                                                    animate={{ opacity: 1, y: 0 }}
-                                                    exit={{ opacity: 0, y: 5 }}
-                                                    className="flex flex-col items-center"
-                                                >
-                                                    <span className="text-xs text-[#d97757] font-bold bg-[#d97757]/10 px-2 py-0.5 rounded-md">
-                                                        12x sem juros
-                                                    </span>
-                                                </motion.div>
-                                            )}
-                                        </AnimatePresence>
-                                    </div>
+
                                 </div>
 
                                 {/* Lista de Features */}

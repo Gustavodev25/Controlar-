@@ -387,6 +387,71 @@ export const addWaitlistEntry = async (entry: Omit<WaitlistEntry, 'id'>) => {
   return { id: docRef.id };
 };
 
+// --- Checkout Lead Services (Abandoned Cart) ---
+export interface CheckoutLead {
+  id?: string;
+  name: string;
+  email: string;
+  phone: string;
+  planName: string;
+  price: number;
+  billingCycle: string;
+  status: 'abandoned' | 'completed';
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const registerCheckoutLead = async (lead: Omit<CheckoutLead, 'id' | 'createdAt' | 'updatedAt'>) => {
+  if (!db) return;
+  try {
+    const leadsRef = collection(db, "checkoutLeads");
+    
+    // Check if lead already exists for this email/phone to update instead of duplicate
+    const q = query(leadsRef, where("email", "==", lead.email), limit(1));
+    const snap = await getDocs(q);
+    
+    const now = new Date().toISOString();
+    
+    if (!snap.empty) {
+      const docRef = snap.docs[0].ref;
+      await updateDoc(docRef, {
+        ...lead,
+        updatedAt: now
+      });
+      return docRef.id;
+    } else {
+      const payload = {
+        ...lead,
+        createdAt: now,
+        updatedAt: now
+      };
+      const docRef = await addDoc(leadsRef, payload);
+      return docRef.id;
+    }
+  } catch (error) {
+    console.error("Error registering checkout lead:", error);
+  }
+};
+
+export const updateCheckoutLeadStatus = async (email: string, status: 'completed') => {
+  if (!db) return;
+  try {
+    const leadsRef = collection(db, "checkoutLeads");
+    const q = query(leadsRef, where("email", "==", email), limit(1));
+    const snap = await getDocs(q);
+    
+    if (!snap.empty) {
+      const docRef = snap.docs[0].ref;
+      await updateDoc(docRef, {
+        status,
+        updatedAt: new Date().toISOString()
+      });
+    }
+  } catch (error) {
+    console.error("Error updating lead status:", error);
+  }
+};
+
 export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {
   if (!db) {
     console.warn("Database não inicializado");
@@ -2795,6 +2860,8 @@ export interface SyncStatus {
   message: string;
   details?: string;
   lastUpdated: string;
+  current?: number;
+  total?: number;
 }
 
 export const listenToSyncStatus = (userId: string, callback: (status: SyncStatus | null) => void) => {

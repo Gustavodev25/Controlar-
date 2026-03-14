@@ -34,15 +34,7 @@ interface RegistrationData {
   email: string;
   password: string;
   cpf: string;
-  birthDate: string;
   phone: string;
-  cep: string;
-  street: string;
-  number: string;
-  complement: string;
-  neighborhood: string;
-  city: string;
-  state: string;
 }
 
 interface CheckoutFormProps {
@@ -122,18 +114,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     email: '',
     password: '',
     cpf: '',
-    birthDate: '',
-    phone: '',
-    cep: '',
-    street: '',
-    number: '',
-    complement: '',
-    neighborhood: '',
-    city: '',
-    state: ''
+    phone: ''
   });
 
-  const [showAddressFields, setShowAddressFields] = useState(false);
+
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTerms, setShowTerms] = useState(false);
@@ -159,27 +143,24 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const hasSentIntent = useRef(false);
 
   const registerAbandonedIntent = () => {
-    if (hasSentIntent.current) return;
-    if (requiresRegistration && registrationData.email && registrationData.phone) {
-      if (registrationData.phone.replace(/\D/g, '').length >= 10) {
-        hasSentIntent.current = true;
-        try {
-          fetch(`${import.meta.env.VITE_API_URL || '/api'}/checkout/abandoned-intent`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              name: registrationData.name,
-              email: registrationData.email,
-              phone: registrationData.phone
-            })
-          }).catch(() => {
-            hasSentIntent.current = false;
-          });
-        } catch (err) {
-          console.error("Failed to register checkout intent:", err);
-          hasSentIntent.current = false;
-        }
-      }
+    // Pegar dados de onde estiverem (cadastro ou pagamento direto)
+    const email = requiresRegistration ? registrationData.email : holderInfo.email;
+    const phone = requiresRegistration ? registrationData.phone : holderInfo.phone;
+    const name = requiresRegistration ? registrationData.name : holderInfo.name;
+
+    if (!email || !phone) return;
+
+    // Validar se o telefone parece válido antes de salvar (pelo menos 10 dígitos)
+    if (phone.replace(/\D/g, '').length >= 10) {
+      dbService.registerCheckoutLead({
+        name: name || 'Interessado',
+        email: email,
+        phone: phone,
+        planName: planName,
+        price: finalPrice,
+        billingCycle: billingCycle,
+        status: 'abandoned'
+      });
     }
   };
 
@@ -212,17 +193,18 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   };
 
   // Coupon State
-  const [couponCode, setCouponCode] = useState(initialCouponCode || '');
+  const [couponCode, setCouponCode] = useState(initialCouponCode || 'PROMO50');
   const [spotsLeft, setSpotsLeft] = useState(3);
   const [appliedCoupon, setAppliedCoupon] = useState<Coupon | null>(null);
   const [isValidatingCoupon, setIsValidatingCoupon] = useState(false);
 
-
   useEffect(() => {
-    if (initialCouponCode) {
-      handleApplyCoupon(initialCouponCode);
-    }
-  }, [initialCouponCode]);
+    const codeToApply = initialCouponCode || 'PROMO50';
+    handleApplyCoupon(codeToApply);
+  }, []);
+
+
+
 
   const toast = useToasts();
   const { trackEvent } = usePixelEvent();
@@ -271,42 +253,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   };
 
   // ===== BUSCA CEP =====
-  const fetchCepData = async (cepValue: string) => {
-    const cep = cepValue.replace(/\D/g, '');
-    if (cep.length === 8) {
-      setIsCepLoading(true);
-      try {
-        const response = await fetch(`https://viacep.com.br/ws/${cep}/json/`);
-        const data = await response.json();
-        if (!data.erro) {
-          setRegistrationData(prev => ({
-            ...prev,
-            street: data.logradouro,
-            neighborhood: data.bairro,
-            city: data.localidade,
-            state: data.uf
-          }));
-          setShowAddressFields(true);
-        } else {
-          toast.error('CEP não encontrado.');
-          setShowAddressFields(true);
-        }
-      } catch (err) {
-        console.error("Erro ao buscar CEP:", err);
-      } finally {
-        setIsCepLoading(false);
-      }
-    }
-  };
 
-  const handleCepChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const rawVal = e.target.value;
-    const formatted = formatCEP(rawVal);
-    setRegistrationData({ ...registrationData, cep: formatted });
-    if (formatted.replace(/\D/g, '').length === 8) {
-      fetchCepData(formatted);
-    }
-  };
 
   // Luhn Algorithm for Credit Card Validation
   const validateCardNumber = (number: string): boolean => {
@@ -523,20 +470,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   // ===== VALIDAÇÃO DO STEP DE CADASTRO =====
   const validateRegistrationStep = (): boolean => {
-    if (!registrationData.name || !registrationData.email || !registrationData.password) {
-      toast.error("Preencha nome, e-mail e senha.");
-      return false;
-    }
     if (registrationData.password.length < 6) {
       toast.error("A senha deve ter pelo menos 6 caracteres.");
       return false;
     }
-    if (!validateCPFChecksum(registrationData.cpf)) {
-      toast.error("CPF inválido.");
-      return false;
-    }
-    if (!registrationData.birthDate || !registrationData.cep || !registrationData.street || !registrationData.number || !registrationData.city || !registrationData.state || !registrationData.phone) {
-      toast.error("Preencha todos os campos obrigatórios.");
+    if (!registrationData.phone) {
+      toast.error("Preencha o telefone.");
       return false;
     }
     if (registrationData.phone.replace(/\D/g, '').length < 10) {
@@ -560,9 +499,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         ...prev,
         name: registrationData.name,
         email: registrationData.email,
-        cpfCnpj: registrationData.cpf,
-        postalCode: registrationData.cep,
-        addressNumber: registrationData.number,
+        cpfCnpj: '',
+        postalCode: '',
+        addressNumber: '',
         phone: registrationData.phone
       }));
       // Also pre-fill card holder name if empty
@@ -577,7 +516,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     e.preventDefault();
 
     // Basic required fields check
-    if (!cardData.number || !cardData.holderName || !cardData.cvv || !holderInfo.cpfCnpj || !holderInfo.postalCode || !holderInfo.addressNumber || !holderInfo.phone) {
+    if (!cardData.number || !cardData.holderName || !cardData.cvv || !holderInfo.cpfCnpj || !holderInfo.phone) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
@@ -638,14 +577,24 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     }
 
     // Passar registrationData se requiresRegistration
-    await onSubmit(
-      cardData,
-      { ...holderInfo, name: cardData.holderName },
-      installments,
-      couponToSubmit,
-      priceToSubmit,
-      requiresRegistration ? registrationData : undefined
-    );
+    try {
+      await onSubmit(
+        cardData,
+        { ...holderInfo, name: cardData.holderName },
+        installments,
+        couponToSubmit,
+        priceToSubmit,
+        requiresRegistration ? { ...registrationData, cpf: holderInfo.cpfCnpj, phone: holderInfo.phone } : undefined
+      );
+
+      // Se o pagamento deu certo, marcar o lead como completo
+      const email = requiresRegistration ? registrationData.email : holderInfo.email;
+      if (email) {
+        dbService.updateCheckoutLeadStatus(email, 'completed');
+      }
+    } catch (error) {
+      console.error("Erro ao processar checkout:", error);
+    }
   };
 
   const inputStyle = "input-primary w-full bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757] text-[#faf9f5] placeholder-gray-500 h-11 transition-all";
@@ -739,107 +688,24 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
-              {/* CPF e Data de Nascimento */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF</label>
+              <div>
+                <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Telefone / WhatsApp</label>
+                <div className="relative">
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} /></div>
                   <input
                     type="text"
-                    maxLength={14}
-                    value={formatCPF(registrationData.cpf)}
-                    onChange={(e) => setRegistrationData({ ...registrationData, cpf: e.target.value })}
-                    placeholder="000.000.000-00"
-                    className={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Data de Nascimento</label>
-                  <CustomDatePicker
-                    value={registrationData.birthDate}
-                    onChange={(val) => setRegistrationData({ ...registrationData, birthDate: val })}
-                    placeholder="dd/mm/aaaa"
-                    dropdownMode="fixed"
+                    maxLength={15}
+                    value={formatPhone(registrationData.phone)}
+                    onChange={(e) => setRegistrationData({ ...registrationData, phone: e.target.value })}
+                    onBlur={registerAbandonedIntent}
+                    placeholder="(00) 90000-0000"
+                    className={`${inputStyle} pl-11`}
                   />
                 </div>
               </div>
 
-              {/* CEP e Telefone */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CEP</label>
-                  <input
-                    type="text"
-                    maxLength={9}
-                    value={registrationData.cep}
-                    onChange={handleCepChange}
-                    placeholder="00000-000"
-                    className={inputStyle}
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Telefone / WhatsApp</label>
-                  <div className="relative">
-                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} /></div>
-                    <input
-                      type="text"
-                      maxLength={15}
-                      value={formatPhone(registrationData.phone)}
-                      onChange={(e) => setRegistrationData({ ...registrationData, phone: e.target.value })}
-                      onBlur={registerAbandonedIntent}
-                      placeholder="(00) 90000-0000"
-                      className={`${inputStyle} pl-11`}
-                    />
-                  </div>
-                </div>
-              </div>
 
-              {/* Campos de endereço (aparecem após CEP) */}
-              <AnimatePresence>
-                {showAddressFields && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-4 overflow-hidden">
-                    <div className="flex gap-3">
-                      <div className="flex-1">
-                        <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Rua</label>
-                        <input
-                          type="text"
-                          value={registrationData.street}
-                          onChange={(e) => setRegistrationData({ ...registrationData, street: e.target.value })}
-                          className={inputStyle}
-                        />
-                      </div>
-                      <div className="w-24">
-                        <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Número</label>
-                        <input
-                          type="text"
-                          value={registrationData.number}
-                          onChange={(e) => setRegistrationData({ ...registrationData, number: e.target.value })}
-                          className={inputStyle}
-                        />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Cidade</label>
-                        <input
-                          type="text"
-                          value={registrationData.city}
-                          onChange={(e) => setRegistrationData({ ...registrationData, city: e.target.value })}
-                          className={inputStyle}
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Estado</label>
-                        <input
-                          type="text"
-                          value={registrationData.state}
-                          onChange={(e) => setRegistrationData({ ...registrationData, state: e.target.value })}
-                          className={inputStyle}
-                        />
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+
 
               {/* Termos de Uso */}
               <div
@@ -1117,13 +983,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           <div className="lg:col-span-2 space-y-6">
 
             {/* Payment Detail */}
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
               <div className="flex items-center gap-3 mb-1">
-                {requiresRegistration && (
-                  <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center justify-center text-white/90 text-sm font-bold">2</div>
-                )}
+                <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center justify-center text-white/90 text-sm font-bold">
+                  {requiresRegistration ? '2' : '1'}
+                </div>
                 <h2 className="text-lg font-bold text-white">Informações de Pagamento</h2>
               </div>
               <div className="flex items-center justify-between mb-6">
@@ -1206,53 +1072,17 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF/CNPJ</label>
+                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF/CNPJ do Titular</label>
                     <input
                       type="text"
                       name="cpfCnpj"
                       placeholder="000.000.000-00"
-                      value={holderInfo.cpfCnpj}
-                      onChange={handleHolderChange}
-                      className={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Telefone</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      placeholder="(00) 00000-0000"
-                      value={holderInfo.phone}
-                      onChange={handleHolderChange}
-                      className={inputStyle}
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CEP</label>
-                    <input
-                      type="text"
-                      name="postalCode"
-                      placeholder="00000-000"
-                      value={holderInfo.postalCode}
-                      onChange={handleHolderChange}
-                      className={inputStyle}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Número</label>
-                    <input
-                      type="text"
-                      name="addressNumber"
-                      placeholder="123"
-                      value={holderInfo.addressNumber}
-                      onChange={handleHolderChange}
+                      maxLength={14}
+                      value={formatCPF(holderInfo.cpfCnpj)}
+                      onChange={(e) => setHolderInfo(prev => ({ ...prev, cpfCnpj: e.target.value }))}
+                      onBlur={registerAbandonedIntent}
                       className={inputStyle}
                     />
                   </div>
@@ -1274,7 +1104,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
             </div>
 
             {/* Security Notice */}
-            <div className="rounded-[24px] border border-white/10 p-6 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex gap-4 mb-6" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-6 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex gap-4 mb-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
               <div className="text-green-500 shrink-0 mt-0.5 relative z-10">
@@ -1308,7 +1138,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
           {/* Coluna Direita - Summary */}
           <div className="lg:col-span-1">
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "#30302E", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
+            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
 
