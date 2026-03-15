@@ -538,6 +538,17 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
   }, []);
 
 
+  const getSafeInstitutionName = (val: any): string => {
+    if (!val) return "Banco";
+    if (typeof val === 'string') return val;
+    if (typeof val === 'object') {
+      if (typeof val.name === 'string') return val.name;
+      // If the object itself looks like a connector (has imageUrl, etc) but name is missing
+      if (val.id || val.imageUrl) return val.name || "Banco"; 
+    }
+    return String(val);
+  };
+
   const groupedAccounts = useMemo(() => {
     const groups: Record<string, { accounts: ConnectedAccount[], itemId: string, institution: string }> = {};
 
@@ -545,8 +556,9 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     accounts.forEach((acc) => {
       const key = acc.itemId || acc.institution || "Outros";
       const itemStatus = acc.itemId ? itemStatuses[acc.itemId] : null;
+      
       const connectorName = itemStatus?.connectorName;
-      const institutionName = connectorName || acc.connector?.name || acc.institution || "Banco";
+      const institutionName = getSafeInstitutionName(connectorName || acc.connector?.name || acc.institution);
 
       if (!groups[key]) {
         groups[key] = {
@@ -562,15 +574,13 @@ export const ConnectedAccounts: React.FC<ConnectedAccountsProps> = ({
     });
 
     // 2. Add orphan items (Connected in Pluggy but accounts not saved in DB yet)
-    // This fixes the "Connected but not showing" issue
     Object.values(itemStatuses).forEach(status => {
       const itemId = status.id;
-      // If this item is NOT already in the groups, add it
       if (!groups[itemId]) {
         groups[itemId] = {
           accounts: [],
           itemId: itemId,
-          institution: status.connectorName || "Banco Conectado (Sem contas)"
+          institution: getSafeInstitutionName(status.connectorName) || "Banco Conectado (Sem contas)"
         };
       }
     });

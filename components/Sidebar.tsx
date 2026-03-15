@@ -12,7 +12,7 @@ import {
   MessageSquare,
   Map
 } from './Icons';
-import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag, CreditCard } from 'lucide-react';
+import { Flame, Users as UsersIcon, BrainCircuit, ChevronDown, TrendingUp, BarChart3, ShoppingBag, CreditCard, ShoppingCart } from 'lucide-react';
 import { motion, AnimatePresence, LayoutGroup, Variants } from 'framer-motion';
 
 
@@ -25,7 +25,7 @@ import * as dbService from '../services/database';
 export type TabType =
   | 'dashboard' | 'table' | 'credit_cards' | 'categories' | 'reminders' | 'subscriptions'
   | 'budgets' | 'connections' | 'investments' | 'fire' | 'roadmap'
-  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_kanban' | 'admin_control' | 'admin_changelog' | 'chat' | 'products';
+  | 'subscription' | 'admin_overview' | 'admin_waitlist' | 'admin_checkout_leads' | 'admin_email' | 'admin_coupons' | 'admin_feedbacks' | 'admin_support' | 'admin_users' | 'admin_subscriptions' | 'admin_kanban' | 'admin_control' | 'admin_changelog' | 'chat' | 'products';
 
 // --- NAVITEM: Item Individual ---
 // --- NAVITEM: Item Individual ---
@@ -432,6 +432,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     onClick={() => handleNavClick('admin_kanban')}
                     icon={<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v10" /><path d="M12 7v10" /><path d="M16 7v10" /></svg>}
                     label="Kanban"
+                    isOpen={isOpen}
+                  />
+                  <NavItem
+                    active={activeTab === 'admin_checkout_leads'}
+                    onClick={() => handleNavClick('admin_checkout_leads')}
+                    icon={<ShoppingCart size={20} />}
+                    label="Checkout Leads"
                     isOpen={isOpen}
                   />
                   <NavItem

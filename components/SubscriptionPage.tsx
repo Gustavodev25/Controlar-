@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, ChevronLeft, Sparkles, CheckCircle } from 'lucide-react';
+import { Check, ChevronLeft, Sparkles, CheckCircle, ShieldCheck } from 'lucide-react';
 import { User } from '../types';
 import { CheckoutForm } from './CheckoutForm';
 import { useToasts } from './Toast';
@@ -450,6 +450,13 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                                         >
                                             {isCurrent ? 'Plano Atual' : (plan.price === 0 ? 'Começar Grátis' : 'Assinar Agora')}
                                         </button>
+
+                                        {plan.price > 0 && !isCurrent && (
+                                            <div className="mt-4 flex items-center justify-center gap-2 text-gray-500">
+                                                <ShieldCheck size={14} className="text-[#d97757]" />
+                                                <span className="text-[10px] font-medium uppercase tracking-wider">7 dias de garantia incondicional</span>
+                                            </div>
+                                        )}
                                     </motion.div>
                                 );
                             })}

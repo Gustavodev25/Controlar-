@@ -631,9 +631,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       {/* Scarcity Banner */}
 
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Coluna Esquerda - Formulário de Cadastro */}
-        <div className="lg:col-span-2 space-y-6">
+      <div className="flex justify-center">
+        {/* Formulário de Cadastro */}
+        <div className="w-full max-w-2xl space-y-6">
           <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
             <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
             <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
@@ -704,9 +704,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
-
-
-
               {/* Termos de Uso */}
               <div
                 className="flex items-center gap-2 pt-2 cursor-pointer group"
@@ -719,74 +716,28 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   Li e aceito os <button type="button" onClick={(e) => { e.stopPropagation(); setShowTerms(true); }} className="text-[#d97757] hover:underline font-medium">Termos de Uso</button> do sistema.
                 </span>
               </div>
-            </div>
-          </div>
-        </div>
 
-        {/* Coluna Direita - Resumo */}
-        <div className="lg:col-span-1">
-          <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
-            <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
+              <div className="pt-6 space-y-3">
+                <button
+                  type="button"
+                  onClick={handleContinueToPayment}
+                  disabled={isLoading}
+                  className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
+                >
+                  Continuar para Pagamento
+                  <ChevronRight size={18} />
+                </button>
 
-
-
-            <h3 className="text-lg font-bold text-white mb-6">Resumo</h3>
-
-            <div className="space-y-4 mb-6 pb-6 border-b border-gray-800">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Plano</span>
-                <span className="font-medium text-white">{planName}</span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Valor Original</span>
-                <span className="font-medium text-white">R$ {price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-              </div>
-
-              {appliedCoupon && (
-                <div className="flex justify-between text-sm text-green-500 animate-fade-in">
-                  <span className="font-medium flex items-center gap-1">
-                    <Ticket size={12} />
-                    Desconto ({appliedCoupon.code})
-                  </span>
-                  <span className="font-bold">- R$ {discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-400">Duração</span>
-                <span className="font-medium text-white">{billingCycle === 'annual' ? 'Anual' : 'Mensal'}</span>
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+                >
+                  <ArrowLeft size={16} />
+                  Voltar
+                </button>
               </div>
             </div>
-
-
-
-            <div className="flex justify-between items-center mb-6">
-              <span className="text-lg font-bold text-white">Total</span>
-              <span className="text-2xl font-bold text-[#d97757]">
-                R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-              </span>
-            </div>
-
-            <button
-              type="button"
-              onClick={handleContinueToPayment}
-              disabled={isLoading}
-              className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
-            >
-              Continuar para Pagamento
-              <ChevronRight size={18} />
-            </button>
-
-            <button
-              type="button"
-              onClick={onBack}
-              className="w-full mt-3 h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
-            >
-              <ArrowLeft size={16} />
-              Voltar
-            </button>
           </div>
         </div>
       </div>
@@ -974,15 +925,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       transition={{ duration: 0.3 }}
       className="p-6"
     >
-
-
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="flex justify-center">
+          {/* Formulário Centralizado */}
+          <div className="w-full max-w-2xl space-y-6">
 
-          {/* Coluna Esquerda - Formulário */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Payment Detail */}
+            {/* Payment Detail Card */}
             <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
               <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
               <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
@@ -992,11 +940,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
                 <h2 className="text-lg font-bold text-white">Informações de Pagamento</h2>
               </div>
-              <div className="flex items-center justify-between mb-6">
-                <p className="text-sm text-gray-400 ml-11">Preencha os dados do seu cartão de crédito</p>
-                {/* Botão secreto para admin usar cartão de teste */}
-
-              </div>
+              <p className="text-sm text-gray-400 mb-6 ml-11">Preencha os dados do seu cartão de crédito</p>
 
               <div className="space-y-4">
                 <div>
@@ -1072,21 +1016,62 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF/CNPJ do Titular</label>
-                    <input
-                      type="text"
-                      name="cpfCnpj"
-                      placeholder="000.000.000-00"
-                      maxLength={14}
-                      value={formatCPF(holderInfo.cpfCnpj)}
-                      onChange={(e) => setHolderInfo(prev => ({ ...prev, cpfCnpj: e.target.value }))}
-                      onBlur={registerAbandonedIntent}
-                      className={inputStyle}
-                    />
-                  </div>
+                <div>
+                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF/CNPJ do Titular</label>
+                  <input
+                    type="text"
+                    name="cpfCnpj"
+                    placeholder="000.000.000-00"
+                    maxLength={14}
+                    value={formatCPF(holderInfo.cpfCnpj)}
+                    onChange={(e) => setHolderInfo(prev => ({ ...prev, cpfCnpj: e.target.value }))}
+                    onBlur={registerAbandonedIntent}
+                    className={inputStyle}
+                  />
                 </div>
+
+                {/* Cupom de Desconto */}
+                {true && (
+                  <div className="pt-2">
+                    <label className="block text-xs font-semibold text-gray-400 mb-2 ml-1">Cupom de Desconto</label>
+                    {!appliedCoupon ? (
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+                          placeholder="Código"
+                          className={`${inputStyle} flex-1 uppercase`}
+                        />
+                        <Button
+                          type="button"
+                          onClick={() => handleApplyCoupon()}
+                          disabled={!couponCode || isValidatingCoupon}
+                          isLoading={isValidatingCoupon}
+                          className="w-auto px-6 shadow-none"
+                        >
+                          Aplicar
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
+                        <div className="flex items-center gap-2">
+                          <div className="bg-green-500 rounded-full p-0.5">
+                            <Check size={10} className="text-black" />
+                          </div>
+                          <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleRemoveCoupon}
+                          className="text-gray-400 hover:text-white transition-colors"
+                        >
+                          <X size={16} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {billingCycle === 'annual' && (
                   <div>
@@ -1100,182 +1085,74 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     />
                   </div>
                 )}
-              </div>
-            </div>
 
-            {/* Security Notice */}
-            <div className="rounded-[24px] border border-white/10 p-6 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] flex gap-4 mb-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
-              <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
-              <div className="text-green-500 shrink-0 mt-0.5 relative z-10">
-                <Lock size={20} />
-              </div>
-              <div className="relative z-10">
-                <h3 className="font-bold text-white mb-2">Pagamento Seguro</h3>
-                <p className="text-sm text-gray-400 leading-relaxed">
-                  Seus dados são protegidos com criptografia de ponta a ponta. Utilizamos as melhores práticas de segurança do mercado.
-                </p>
-              </div>
-            </div>
-
-            {/* Social Proof */}
-            <div className="flex items-center gap-3 justify-center text-xs text-gray-500 mt-2">
-              <div className="flex -space-x-2">
-                {[
-                  "https://randomuser.me/api/portraits/women/44.jpg",
-                  "https://randomuser.me/api/portraits/men/32.jpg",
-                  "https://randomuser.me/api/portraits/women/65.jpg",
-                  "https://randomuser.me/api/portraits/men/86.jpg"
-                ].map((src, i) => (
-                  <div key={i} className="w-6 h-6 rounded-full border-2 border-[#121212] flex items-center justify-center overflow-hidden bg-gray-800">
-                    <img src={src} alt="User" className="w-full h-full object-cover" />
-                  </div>
-                ))}
-              </div>
-              <span><strong className="text-white">Mais de 1.200</strong> pessoas já assinaram essa semana.</span>
-            </div>
-          </div>
-
-          {/* Coluna Direita - Summary */}
-          <div className="lg:col-span-1">
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)] sticky top-6" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
-              <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
-
-
-
-              <h3 className="text-lg font-bold text-white mb-6">Resumo</h3>
-
-              <div className="space-y-4 mb-6 pb-6 border-b border-gray-800">
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Plano</span>
-                  <span className="font-medium text-white">{planName}</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Valor Original</span>
-                  <span className="font-medium text-white">R$ {price.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                </div>
-
-                {appliedCoupon && (
-                  <div className="flex justify-between text-sm text-green-500 animate-fade-in">
-                    <span className="font-medium flex items-center gap-1">
-                      <Ticket size={12} />
-                      Desconto ({appliedCoupon.code})
-                    </span>
-                    <span className="font-bold">- R$ {discount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Taxa</span>
-                  <span className="font-medium text-white">R$ 0,00</span>
-                </div>
-
-                <div className="flex justify-between text-sm">
-                  <span className="text-gray-400">Duração</span>
-                  <span className="font-medium text-white">{billingCycle === 'annual' ? 'Anual' : 'Mensal'}</span>
-                </div>
-              </div>
-
-              {/* Coupon Input - Only for monthly plans */}
-              {billingCycle === 'monthly' && (
-                <div className="mb-6">
-                  <label className="block text-xs font-semibold text-gray-400 mb-2">Cupom de Desconto</label>
-                  {!appliedCoupon ? (
-                    <div className="flex gap-2">
-                      <input
-                        type="text"
-                        value={couponCode}
-                        onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-                        placeholder="Código"
-                        className={`${inputStyle} flex-1 uppercase`}
-                      />
-                      <Button
-                        type="button"
-                        onClick={() => handleApplyCoupon()}
-                        disabled={!couponCode || isValidatingCoupon}
-                        isLoading={isValidatingCoupon}
-                        className="w-auto px-6 shadow-none"
-                      >
-                        Aplicar
-                      </Button>
+                {/* Total Display */}
+                <div className="pt-6 mt-6 border-t border-gray-800">
+                  <div className="flex justify-between items-center mb-6">
+                    <div>
+                      <span className="text-sm text-gray-400 block mb-1">Total a pagar</span>
+                      <span className="text-lg font-bold text-white uppercase text-[10px] tracking-widest opacity-50">Plano {planName}</span>
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
-                      <div className="flex items-center gap-2">
-                        <div className="bg-green-500 rounded-full p-0.5">
-                          <Check size={10} className="text-black" />
+                    <div className="text-right">
+                      <span className="text-3xl font-bold text-[#d97757]">
+                        {installments > 1
+                          ? `${installments}x R$ ${(finalPrice / installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                          : `R$ ${finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                        }
+                      </span>
+                      {installments > 1 && (
+                        <div className="text-xs text-gray-400 mt-1">
+                          Total: R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                         </div>
-                        <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
-                      </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Buttons */}
+                  <div className="space-y-3">
+                    <button
+                      type="submit"
+                      disabled={isLoading}
+                      className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader2 size={18} className="animate-spin" />
+                          Processando...
+                        </>
+                      ) : (
+                        "Confirmar pagamento"
+                      )}
+                    </button>
+
+                    {requiresRegistration ? (
                       <button
                         type="button"
-                        onClick={handleRemoveCoupon}
-                        className="text-gray-400 hover:text-white transition-colors"
+                        onClick={() => setCurrentStep('registration')}
+                        className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
                       >
-                        <X size={16} />
+                        <ArrowLeft size={16} />
+                        Voltar para Cadastro
                       </button>
-                    </div>
-                  )}
-                </div>
-              )}
-
-
-
-              <div className="flex justify-between items-center mb-6">
-                <span className="text-lg font-bold text-white">Total</span>
-                <div className="text-right">
-                  <span className="text-2xl font-bold text-[#d97757]">
-                    {installments > 1
-                      ? `${installments}x R$ ${(finalPrice / installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                      : `R$ ${finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                    }
-                  </span>
-                  {installments > 1 && (
-                    <div className="text-xs text-gray-400 mt-1">
-                      Total: R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                    </div>
-                  )}
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={onBack}
+                        className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+                      >
+                        <ArrowLeft size={16} />
+                        Voltar
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
+            </div>
 
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 size={18} className="animate-spin" />
-                    Processando...
-                  </>
-                ) : (
-                  "Confirmar pagamento"
-                )}
-              </button>
-
-              {requiresRegistration && (
-                <button
-                  type="button"
-                  onClick={() => setCurrentStep('registration')}
-                  className="w-full mt-3 h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft size={16} />
-                  Voltar para Cadastro
-                </button>
-              )}
-
-              {!requiresRegistration && (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="w-full mt-3 h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft size={16} />
-                  Voltar
-                </button>
-              )}
+            {/* Security Notice Minimal */}
+            <div className="flex items-center justify-center gap-2 text-gray-500 text-xs py-2">
+              <Lock size={12} />
+              <span>Pagamento 100% seguro com criptografia SSL</span>
             </div>
           </div>
         </div>

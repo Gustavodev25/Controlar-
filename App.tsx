@@ -49,6 +49,7 @@ import { LandingCheckoutPage } from './components/LandingCheckoutPage';
 import { AdminDashboard } from './components/AdminDashboard';
 import { AdminWaitlist } from './components/AdminWaitlist';
 import { AdminCoupons } from './components/AdminCoupons';
+import { AdminCheckoutLeads } from './components/AdminCheckoutLeads';
 
 import { PixelPageViewTracker } from './components/PixelPageViewTracker';
 import { AdminFeedbacks } from './components/AdminFeedbacks';
@@ -1139,15 +1140,28 @@ const App: React.FC = () => {
 
   // Enrich connected accounts with institution names from items-status
   const enrichedConnectedAccounts = useMemo(() => {
+    const getSafeName = (val: any): string => {
+      if (!val) return 'Banco';
+      if (typeof val === 'string') return val;
+      if (typeof val === 'object' && val.name && typeof val.name === 'string') return val.name;
+      return 'Banco';
+    };
+
     return connectedAccounts.map(acc => {
-      // Se já tem institution preenchida, mantém
-      if (acc.institution && acc.institution !== 'Banco') {
+      // Se já tem institution preenchida e é string, mantém
+      if (acc.institution && typeof acc.institution === 'string' && acc.institution !== 'Banco') {
         return acc;
       }
+
+      // Se institution for objeto, tenta extrair o nome
+      if (acc.institution && typeof acc.institution === 'object') {
+        return { ...acc, institution: getSafeName(acc.institution) };
+      }
+
       // Tenta pegar o nome do connector do mapa
       const connectorName = acc.itemId ? itemConnectorNames[acc.itemId] : null;
       if (connectorName) {
-        return { ...acc, institution: connectorName };
+        return { ...acc, institution: getSafeName(connectorName) };
       }
       return acc;
     });
@@ -3979,6 +3993,8 @@ const App: React.FC = () => {
             <AdminEmailMessage currentUser={currentUser} />
           ) : activeTab === 'admin_coupons' ? (
             <AdminCoupons />
+          ) : activeTab === 'admin_checkout_leads' ? (
+            <AdminCheckoutLeads />
 
           ) : activeTab === 'admin_feedbacks' ? (
             <AdminFeedbacks />

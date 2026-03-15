@@ -399,6 +399,8 @@ export interface CheckoutLead {
   status: 'abandoned' | 'completed';
   createdAt: string;
   updatedAt: string;
+  data?: string;
+  hora?: string;
 }
 
 export const registerCheckoutLead = async (lead: Omit<CheckoutLead, 'id' | 'createdAt' | 'updatedAt'>) => {
@@ -411,19 +413,25 @@ export const registerCheckoutLead = async (lead: Omit<CheckoutLead, 'id' | 'crea
     const snap = await getDocs(q);
     
     const now = new Date().toISOString();
+    const dateStr = new Date().toLocaleDateString('pt-BR');
+    const timeStr = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     
     if (!snap.empty) {
       const docRef = snap.docs[0].ref;
       await updateDoc(docRef, {
         ...lead,
-        updatedAt: now
+        updatedAt: now,
+        data: dateStr,
+        hora: timeStr
       });
       return docRef.id;
     } else {
       const payload = {
         ...lead,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
+        data: dateStr,
+        hora: timeStr
       };
       const docRef = await addDoc(leadsRef, payload);
       return docRef.id;
@@ -444,12 +452,41 @@ export const updateCheckoutLeadStatus = async (email: string, status: 'completed
       const docRef = snap.docs[0].ref;
       await updateDoc(docRef, {
         status,
-        updatedAt: new Date().toISOString()
+        updatedAt: new Date().toISOString(),
+        data: new Date().toLocaleDateString('pt-BR'),
+        hora: new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
       });
     }
   } catch (error) {
     console.error("Error updating lead status:", error);
   }
+};
+
+export const getCheckoutLeads = async (): Promise<CheckoutLead[]> => {
+  if (!db) return [];
+  try {
+    const leadsRef = collection(db, "checkoutLeads");
+    const snapshot = await getDocs(leadsRef);
+    
+    const leads = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...(doc.data() as Omit<CheckoutLead, 'id'>)
+    }));
+
+    // Sort by updatedAt descending
+    leads.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
+
+    return leads;
+  } catch (error) {
+    console.error("Error fetching checkout leads:", error);
+    return [];
+  }
+};
+
+export const deleteCheckoutLead = async (id: string) => {
+  if (!db) return;
+  const leadRef = doc(db, "checkoutLeads", id);
+  await deleteDoc(leadRef);
 };
 
 export const getWaitlistEntries = async (): Promise<WaitlistEntry[]> => {

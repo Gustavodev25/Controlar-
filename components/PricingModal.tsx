@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Check, Puzzle, Rocket } from 'lucide-react';
+import { X, Check, Puzzle, Rocket, ShieldCheck } from 'lucide-react';
 import { User } from '../types';
 import { CheckoutForm } from './CheckoutForm';
 
@@ -170,6 +170,13 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
                   >
                     {plan.buttonText}
                   </button>
+
+                  {plan.price > 0 && (
+                    <div className="mt-4 flex items-center justify-center gap-2 text-gray-500">
+                      <ShieldCheck size={14} className="text-[#d97757]" />
+                      <span className="text-[10px] font-medium uppercase tracking-wider">7 dias de garantia incondicional</span>
+                    </div>
+                  )}
                 </div>
               );
             })}

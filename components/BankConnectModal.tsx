@@ -238,12 +238,11 @@ export const BankConnectModal: React.FC<BankConnectModalProps> = ({
 
         // Helper to determine the best display name for the institution
         const getInstitutionName = () => {
-            // Priority 1: connector name (most reliable)
-            if (account.connector?.name) return account.connector.name;
-            // Priority 2: institution name from parent item
-            if (account.item?.connector?.name) return account.item.connector.name;
-            // Priority 3: bankData organization name
-            if (bankData.organizationName) return bankData.organizationName;
+            const rawName = account.connector?.name || account.item?.connector?.name || bankData.organizationName;
+            if (rawName) {
+                if (typeof rawName === 'string') return rawName;
+                if (typeof rawName === 'object' && rawName.name) return String(rawName.name);
+            }
             // Priority 4: Use marketing name if it looks like a bank name
             if (account.marketingName && !/^\d/.test(account.marketingName)) return account.marketingName;
             // Fallback

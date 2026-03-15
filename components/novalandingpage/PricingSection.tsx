@@ -1,7 +1,7 @@
 
 "use client";
 import React, { useState } from 'react';
-import { Check, Sparkles, CheckCircle } from 'lucide-react';
+import { Check, Sparkles, CheckCircle, ShieldCheck, RotateCcw } from 'lucide-react';
 import { BlurTextEffect } from '../BlurTextEffect';
 import { motion, AnimatePresence } from 'framer-motion';
 import NumberFlow from '@number-flow/react';
@@ -188,10 +188,43 @@ export const PricingSection: React.FC<PricingSectionProps> = ({ onLogin, onSubsc
                                     <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-1000"></div>
                                     Assinar Agora com 50% OFF
                                 </button>
+
+                                {/* Garantia Incondicional */}
+                                <div className="mt-6 pt-6 border-t border-gray-800/50 flex flex-col items-center gap-2">
+                                    <div className="flex items-center gap-2 text-white/90">
+                                        <ShieldCheck size={18} className="text-[#d97757]" />
+                                        <span className="text-sm font-bold tracking-tight">7 Dias de Garantia</span>
+                                    </div>
+                                    <p className="text-[11px] text-gray-500 text-center leading-relaxed">
+                                        Satisfação garantida ou seu dinheiro de volta. <br />
+                                        Risco zero para sua assinatura.
+                                    </p>
+                                </div>
                             </motion.div>
                         );
                     })}
                 </div>
+
+                {/* Banner de Garantia Grande */}
+                <motion.div 
+                    initial={{ opacity: 0, y: 20 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true }}
+                    className="mt-16 max-w-2xl mx-auto p-6 md:p-8 rounded-3xl bg-gradient-to-b from-[#262624] to-[#1a0f0a] border border-gray-800 flex flex-col md:flex-row items-center gap-6 text-center md:text-left relative overflow-hidden group shadow-2xl"
+                >
+                    <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-[#d97757]/50 to-transparent"></div>
+                    
+                    <div className="w-16 h-16 rounded-2xl bg-[#d97757]/10 flex items-center justify-center shrink-0 border border-[#d97757]/20 group-hover:scale-110 transition-transform duration-500">
+                        <RotateCcw size={32} className="text-[#d97757]" />
+                    </div>
+
+                    <div>
+                        <h4 className="text-xl font-bold text-white mb-2 line-clamp-1">Sua satisfação ou seu dinheiro de volta</h4>
+                        <p className="text-gray-400 text-sm leading-relaxed">
+                            Acreditamos tanto no valor do Controlar que oferecemos uma garantia incondicional de 7 dias. Se você não se adaptar, devolvemos 100% do seu investimento. Sem perguntas, sem letras miúdas.
+                        </p>
+                    </div>
+                </motion.div>
             </div>
         </section>
     );
