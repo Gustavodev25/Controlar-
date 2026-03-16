@@ -9,7 +9,7 @@ import { PricingSection } from './PricingSection';
 import { FinalCTA } from './FinalCTA';
 
 import { Footer } from './Footer';
-import { TrialBanner } from './TrialBanner';
+
 
 interface SubscribeData {
     planId: 'pro';

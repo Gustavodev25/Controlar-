@@ -177,6 +177,8 @@ export const PricingModal: React.FC<PricingModalProps> = ({ isOpen, onClose, cur
                       <span className="text-[10px] font-medium uppercase tracking-wider">7 dias de garantia incondicional</span>
                     </div>
                   )}
+
+
                 </div>
               );
             })}

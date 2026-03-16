@@ -457,6 +457,8 @@ export const SubscriptionPage: React.FC<SubscriptionPageProps> = ({
                                                 <span className="text-[10px] font-medium uppercase tracking-wider">7 dias de garantia incondicional</span>
                                             </div>
                                         )}
+
+
                                     </motion.div>
                                 );
                             })}
