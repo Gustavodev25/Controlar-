@@ -52,18 +52,22 @@ service cloud.firestore {
       allow create: if true;
       allow read, update, delete: if request.auth != null && isUserAdmin();
     }
+    
+    // --- REGRAS PARA CHECKOUT ABANDONADO ---
+    match /checkoutLeads/{document} {
+      // Permitir que qualquer visitante (unauthenticated) crie seu lead ou atualize com novos dados (onBlur)
+      allow create, update: if true; 
+      // Apenas admins podem ler a lista de leads ou excluir
+      allow read, delete: if request.auth != null && isUserAdmin();
+    }
+
     // --- REGRAS DE CUPONS ---
-    // Leitura: Permitida para todos os usuários autenticados (para validar na hora do checkout)
-    // Escrita/Criação: Apenas Admins podem criar ou alterar propriedades do cupom
-    // Atualização de Uso (currentUses): Permitimos que QUALQUER usuário autenticado incremente o contador
-    // desde que seja a única mudança feita no documento (segurança via regras).
     match /coupons/{couponId} {
       allow read: if true;
       allow create, delete: if request.auth != null && isUserAdmin();
       allow update: if request.auth != null && (
         isUserAdmin() || 
         (
-          // Permite usuários comuns atualizarem APENAS o campo 'currentUses'
           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['currentUses']) &&
           request.resource.data.currentUses == resource.data.currentUses + 1
         )
@@ -95,7 +99,7 @@ service cloud.firestore {
 
     // --- REGRAS PARA CHAMADOS DE SUPORTE ---
     match /support_tickets/{ticketId} {
-      allow create: if request.auth != null; // Changed to simple auth check, validated by logic
+      allow create: if request.auth != null;
       allow read, update: if request.auth != null && (resource.data.userId == request.auth.uid || isUserAdmin());
       allow delete: if request.auth != null && isUserAdmin();
 
@@ -117,21 +121,13 @@ service cloud.firestore {
       allow read, write: if request.auth != null && isUserAdmin();
     }
 
-    // --- REMINDERS (APP MOBILE - ROOT COLLECTION) ---
-    // O app mobile salva reminders na coleção raiz em vez de users/{userId}/reminders
-    // Para queries com 'where' funcionarem, a regra de leitura precisa validar via request.auth
-    // A query no código já filtra por userId/ownerId, garantindo que só os dados do usuário sejam retornados
+    // --- REMINDERS (ROOT COLLECTION) ---
     match /reminders/{reminderId} {
-      // Leitura: Permite se o usuário está autenticado E o documento pertence a ele
-      // Nota: Para queries funcionarem, também verificamos request.query se disponível
       allow read: if request.auth != null && (
-        // Acesso direto a documento específico
         resource.data.userId == request.auth.uid || 
         resource.data.ownerId == request.auth.uid ||
-        // OU admin
         isUserAdmin()
       );
-      // Permite listar (queries) se o usuário está autenticado - a query já filtra por userId/ownerId
       allow list: if request.auth != null;
       allow create: if request.auth != null && (
         request.resource.data.userId == request.auth.uid || 
@@ -143,15 +139,13 @@ service cloud.firestore {
       );
     }
 
-    // --- SUBSCRIPTIONS (APP MOBILE - ROOT COLLECTION) ---
-    // Similar ao reminders, o app pode salvar subscriptions na coleção raiz
+    // --- SUBSCRIPTIONS (ROOT COLLECTION) ---
     match /subscriptions/{subscriptionId} {
       allow read: if request.auth != null && (
         resource.data.userId == request.auth.uid || 
         resource.data.ownerId == request.auth.uid ||
         isUserAdmin()
       );
-      // Permite listar (queries) se o usuário está autenticado
       allow list: if request.auth != null;
       allow create: if request.auth != null && (
         request.resource.data.userId == request.auth.uid || 
@@ -163,7 +157,24 @@ service cloud.firestore {
       );
     }
 
-    // --- COLLECTION GROUP QUERIES ---
+    // --- REGRAS PARA CONTAS E TRANSAÇÕES BANCÁRIAS (RAIZ) ---
+    match /accounts/{accountId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isUserAdmin());
+    }
+    match /transactions/{txId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isUserAdmin());
+    }
+    match /creditCardTransactions/{txId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isUserAdmin());
+    }
+    match /creditCardBills/{billId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isUserAdmin());
+    }
+    match /userConfigs/{userId} {
+      allow read, write: if request.auth != null && (request.auth.uid == userId || isUserAdmin());
+    }
+
+    // --- COLLECTION GROUP QUERIES & NEW CATEGORIES ---
     match /{path=**}/items/{itemId} {
       allow read: if request.auth != null && isUserAdmin();
     }
@@ -173,6 +184,12 @@ service cloud.firestore {
     match /{path=**}/accounts/{accountId} {
       allow read: if request.auth != null && isUserAdmin();
     }
+    
+    // REGRA DE CATEGORIAS (Adicionada)
+    match /categories/{categoryId} {
+      allow read, write: if request.auth != null && (resource == null || resource.data.userId == request.auth.uid || request.resource.data.userId == request.auth.uid || isUserAdmin());
+    }
+    
     match /{path=**}/pluggyItems/{itemId} {
       allow read: if request.auth != null && isUserAdmin();
     }

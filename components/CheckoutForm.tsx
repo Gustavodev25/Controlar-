@@ -148,20 +148,26 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const phone = requiresRegistration ? registrationData.phone : holderInfo.phone;
     const name = requiresRegistration ? registrationData.name : holderInfo.name;
 
-    if (!email || !phone) return;
+    // Apenas o e-mail é obrigatório para iniciar o registro do lead
+    if (!email) return;
 
-    // Validar se o telefone parece válido antes de salvar (pelo menos 10 dígitos)
-    if (phone.replace(/\D/g, '').length >= 10) {
-      dbService.registerCheckoutLead({
-        name: name || 'Interessado',
-        email: email,
-        phone: phone,
-        planName: planName,
-        price: finalPrice,
-        billingCycle: billingCycle,
-        status: 'abandoned'
-      });
+    const payload: any = {
+      name: name || 'Interessado',
+      email: email,
+      planName: planName,
+      price: finalPrice,
+      billingCycle: billingCycle,
+      status: 'abandoned'
+    };
+
+    // Só incluir o telefone se ele parecer válido (evita salvar lixo ou campos incompletos)
+    if (phone && phone.replace(/\D/g, '').length >= 10) {
+      payload.phone = phone;
+    } else {
+      payload.phone = ''; // Mantém o campo para consistência mas vazio
     }
+
+    dbService.registerCheckoutLead(payload);
   };
 
   // Estado para cartão de teste admin
@@ -490,10 +496,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   };
 
   const handleContinueToPayment = async () => {
-    if (validateRegistrationStep()) {
-      // Registrar intenção de compra para a automação de carrinho abandonado se ainda não foi
-      registerAbandonedIntent();
+    // Registrar intenção de compra antes da validação para capturar mesmo se ele errar e sair
+    registerAbandonedIntent();
 
+    if (validateRegistrationStep()) {
       // Preencher holderInfo automaticamente com dados do cadastro
       setHolderInfo(prev => ({
         ...prev,
@@ -653,6 +659,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     type="text"
                     value={registrationData.name}
                     onChange={(e) => setRegistrationData({ ...registrationData, name: e.target.value })}
+                    onBlur={registerAbandonedIntent}
                     placeholder="Seu nome completo"
                     className={`${inputStyle} pl-11`}
                   />
