@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import NumberFlow from '@number-flow/react';
 
 import { useToasts } from './Toast';
-import { CustomSelect, CustomDatePicker } from './UIComponents';
+import { CustomSelect, CustomDatePicker, SelectWhite } from './UIComponents';
 import * as dbService from '../services/database';
 import { Button } from './Button';
 import { Coupon } from '../types';
@@ -47,6 +47,9 @@ interface CheckoutFormProps {
   initialCouponCode?: string;
   /** Se true, exibe step de cadastro antes do pagamento */
   requiresRegistration?: boolean;
+  onCouponApplied?: (code: string, discount: number, finalValue: number) => void;
+  onCouponRemoved?: () => void;
+  onStepChange?: (step: 'registration' | 'payment') => void;
 }
 
 const CheckoutTimer: React.FC = () => {
@@ -77,16 +80,16 @@ const CheckoutTimer: React.FC = () => {
   }, []);
 
   return (
-    <div className="flex items-center gap-1.5 text-white">
-      <span className="text-base font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded px-2.5 py-1 text-[#D97757]">
+    <div className="flex items-center gap-1.5 text-gray-900">
+      <span className="text-base font-bold bg-gray-100 border border-gray-200 rounded px-2.5 py-1 text-gray-900">
         <NumberFlow value={timeLeft.h} format={{ minimumIntegerDigits: 2 }} />
       </span>
-      <span className="text-xs font-bold text-[#D97757]">:</span>
-      <span className="text-base font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded px-2.5 py-1 text-[#D97757]">
+      <span className="text-xs font-bold text-gray-900">:</span>
+      <span className="text-base font-bold bg-gray-100 border border-gray-200 rounded px-2.5 py-1 text-gray-900">
         <NumberFlow value={timeLeft.m} format={{ minimumIntegerDigits: 2 }} />
       </span>
-      <span className="text-xs font-bold text-[#D97757]">:</span>
-      <span className="text-base font-bold bg-[#D97757]/10 border border-[#D97757]/20 rounded px-2.5 py-1 text-[#D97757]">
+      <span className="text-xs font-bold text-gray-900">:</span>
+      <span className="text-base font-bold bg-gray-100 border border-gray-200 rounded px-2.5 py-1 text-gray-900">
         <NumberFlow value={timeLeft.s} format={{ minimumIntegerDigits: 2 }} />
       </span>
     </div>
@@ -101,12 +104,20 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   onBack,
   isLoading,
   initialCouponCode,
-  requiresRegistration = false
+  requiresRegistration = false,
+  onCouponApplied,
+  onCouponRemoved,
+  onStepChange
 }) => {
   // Step: 'registration' ou 'payment'
   const [currentStep, setCurrentStep] = useState<'registration' | 'payment'>(
     requiresRegistration ? 'registration' : 'payment'
   );
+
+  // Notifica quando o passo muda
+  useEffect(() => {
+    onStepChange?.(currentStep);
+  }, [currentStep, onStepChange]);
 
   // Dados de cadastro
   const [registrationData, setRegistrationData] = useState<RegistrationData>({
@@ -116,7 +127,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     cpf: '',
     phone: ''
   });
-
 
   const [isCepLoading, setIsCepLoading] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
@@ -143,12 +153,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const hasSentIntent = useRef(false);
 
   const registerAbandonedIntent = () => {
-    // Pegar dados de onde estiverem (cadastro ou pagamento direto)
     const email = requiresRegistration ? registrationData.email : holderInfo.email;
     const phone = requiresRegistration ? registrationData.phone : holderInfo.phone;
     const name = requiresRegistration ? registrationData.name : holderInfo.name;
 
-    // Apenas o e-mail é obrigatório para iniciar o registro do lead
     if (!email) return;
 
     const payload: any = {
@@ -160,23 +168,20 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       status: 'abandoned'
     };
 
-    // Só incluir o telefone se ele parecer válido (evita salvar lixo ou campos incompletos)
     if (phone && phone.replace(/\D/g, '').length >= 10) {
       payload.phone = phone;
     } else {
-      payload.phone = ''; // Mantém o campo para consistência mas vazio
+      payload.phone = '';
     }
 
     dbService.registerCheckoutLead(payload);
   };
 
-  // Estado para cartão de teste admin
   const [isTestCard, setIsTestCard] = useState(false);
 
-  // Dados do cartão de teste que passam na validação Luhn (número de teste válido)
   const TEST_CARD_DATA: CreditCardData = {
     holderName: 'ADMIN TESTE',
-    number: '4532015112830366', // Número válido que passa no Luhn
+    number: '4532015112830366',
     expiryMonth: '12',
     expiryYear: (new Date().getFullYear() + 2).toString(),
     cvv: '123'
@@ -185,13 +190,12 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const TEST_HOLDER_INFO: HolderInfo = {
     name: 'Admin Teste',
     email: 'admin@controlar.app',
-    cpfCnpj: '52998224725', // CPF válido para teste
+    cpfCnpj: '52998224725',
     postalCode: '01310100',
     addressNumber: '1000',
     phone: '11999999999'
   };
 
-  // Função para usar cartão de teste
   const handleUseTestCard = () => {
     setCardData(TEST_CARD_DATA);
     setHolderInfo(TEST_HOLDER_INFO);
@@ -208,9 +212,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const codeToApply = initialCouponCode || 'PROMO50';
     handleApplyCoupon(codeToApply);
   }, []);
-
-
-
 
   const toast = useToasts();
   const { trackEvent } = usePixelEvent();
@@ -258,47 +259,28 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     return true;
   };
 
-  // ===== BUSCA CEP =====
-
-
-  // Luhn Algorithm for Credit Card Validation
   const validateCardNumber = (number: string): boolean => {
     const cleaned = number.replace(/\s/g, '');
-
-    // Check if it's only digits
     if (!/^\d+$/.test(cleaned)) return false;
-
-    // Check length (most cards are 13-19 digits)
     if (cleaned.length < 13 || cleaned.length > 19) return false;
-
-    // Check for obvious fake patterns (all same digits)
     if (/^(.)\1+$/.test(cleaned)) return false;
 
-    // Luhn Algorithm
     let sum = 0;
     let isEven = false;
-
     for (let i = cleaned.length - 1; i >= 0; i--) {
       let digit = parseInt(cleaned[i], 10);
-
       if (isEven) {
         digit *= 2;
-        if (digit > 9) {
-          digit -= 9;
-        }
+        if (digit > 9) digit -= 9;
       }
-
       sum += digit;
       isEven = !isEven;
     }
-
     return sum % 10 === 0;
   };
 
-  // Validate card expiry date
   const validateExpiryDate = (month: string, year: string): boolean => {
     if (!month || !year) return false;
-
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
@@ -306,45 +288,30 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     const expMonth = parseInt(month, 10);
     const expYear = parseInt(year, 10);
 
-    // Check if month is valid
     if (expMonth < 1 || expMonth > 12) return false;
-
-    // Check if card is expired
     if (expYear < currentYear) return false;
     if (expYear === currentYear && expMonth < currentMonth) return false;
 
     return true;
   };
 
-  // Validate CVV
   const validateCVV = (cvv: string): boolean => {
-    // CVV must be 3-4 digits
     return /^\d{3,4}$/.test(cvv);
   };
 
-  // Validate CPF (Brazilian ID)
   const validateCPF = (cpf: string): boolean => {
     const cleaned = cpf.replace(/\D/g, '');
-
-    // CPF must have 11 digits
     if (cleaned.length !== 11) return false;
-
-    // Check for known invalid CPFs (all same digits)
     if (/^(.)\1+$/.test(cleaned)) return false;
 
-    // Validate CPF checksum
     let sum = 0;
-    for (let i = 0; i < 9; i++) {
-      sum += parseInt(cleaned[i]) * (10 - i);
-    }
+    for (let i = 0; i < 9; i++) sum += parseInt(cleaned[i]) * (10 - i);
     let remainder = (sum * 10) % 11;
     if (remainder === 10 || remainder === 11) remainder = 0;
     if (remainder !== parseInt(cleaned[9])) return false;
 
     sum = 0;
-    for (let i = 0; i < 10; i++) {
-      sum += parseInt(cleaned[i]) * (11 - i);
-    }
+    for (let i = 0; i < 10; i++) sum += parseInt(cleaned[i]) * (11 - i);
     remainder = (sum * 10) % 11;
     if (remainder === 10 || remainder === 11) remainder = 0;
     if (remainder !== parseInt(cleaned[10])) return false;
@@ -352,50 +319,21 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     return true;
   };
 
-  // Função para colocar espaços no número do cartão (visual)
   const formatCardNumber = (value: string) => {
     return value.replace(/\W/gi, '').replace(/(.{4})/g, '$1 ').trim();
   };
 
-  // Detect card brand from number
   const detectCardBrand = (number: string): { brand: string; color: string } | null => {
     const cleaned = number.replace(/\s/g, '');
     if (cleaned.length < 1) return null;
 
-    // Visa: starts with 4
-    if (/^4/.test(cleaned)) {
-      return { brand: 'VISA', color: 'bg-blue-600' };
-    }
-
-    // Mastercard: 51-55 or 2221-2720
-    if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) {
-      return { brand: 'MASTER', color: 'bg-red-600' };
-    }
-
-    // Elo: Brazilian card with specific ranges
-    if (/^(636368|636297|504175|438935|451416|636369|5067|4576|4011|509)/.test(cleaned)) {
-      return { brand: 'ELO', color: 'bg-yellow-500' };
-    }
-
-    // Hipercard
-    if (/^(606282|3841)/.test(cleaned)) {
-      return { brand: 'HIPER', color: 'bg-orange-600' };
-    }
-
-    // Diners Club: 300-305, 36, 38
-    if (/^3(?:0[0-5]|[68])/.test(cleaned)) {
-      return { brand: 'DINERS', color: 'bg-gray-600' };
-    }
-
-    // Discover: 6011, 65, 644-649
-    if (/^6(?:011|5|4[4-9])/.test(cleaned)) {
-      return { brand: 'DISCOVER', color: 'bg-orange-500' };
-    }
-
-    // JCB: 35
-    if (/^35/.test(cleaned)) {
-      return { brand: 'JCB', color: 'bg-green-600' };
-    }
+    if (/^4/.test(cleaned)) return { brand: 'VISA', color: 'bg-blue-600' };
+    if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) return { brand: 'MASTER', color: 'bg-red-600' };
+    if (/^(636368|636297|504175|438935|451416|636369|5067|4576|4011|509)/.test(cleaned)) return { brand: 'ELO', color: 'bg-yellow-500' };
+    if (/^(606282|3841)/.test(cleaned)) return { brand: 'HIPER', color: 'bg-orange-600' };
+    if (/^3(?:0[0-5]|[68])/.test(cleaned)) return { brand: 'DINERS', color: 'bg-gray-600' };
+    if (/^6(?:011|5|4[4-9])/.test(cleaned)) return { brand: 'DISCOVER', color: 'bg-orange-500' };
+    if (/^35/.test(cleaned)) return { brand: 'JCB', color: 'bg-green-600' };
 
     return null;
   };
@@ -404,7 +342,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   const handleCardChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    // Limites de caracteres
     if (name === 'number' && value.length > 16) return;
     if (name === 'cvv' && value.length > 4) return;
     if ((name === 'expiryMonth' || name === 'expiryYear') && value.length > 4) return;
@@ -427,9 +364,28 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
       if (result.isValid && result.coupon) {
         setAppliedCoupon(result.coupon);
+        // Calcular desconto para callback
+        let discount = 0;
+        if (result.coupon.type === 'progressive') {
+          const month1Rule = result.coupon.progressiveDiscounts?.find(d => d.month === 1);
+          if (month1Rule) {
+            if (month1Rule.discountType === 'fixed') {
+              discount = month1Rule.discount;
+            } else {
+              discount = price * (month1Rule.discount / 100);
+            }
+          }
+        } else if (result.coupon.type === 'percentage') {
+          discount = price * (result.coupon.value / 100);
+        } else {
+          discount = result.coupon.value;
+        }
+        const finalValue = Math.max(0, price - discount);
+        onCouponApplied?.(code.toUpperCase(), discount, finalValue);
         toast.success("Cupom aplicado com sucesso!");
       } else {
         setAppliedCoupon(null);
+        onCouponRemoved?.();
         toast.error(result.error || "Cupom inválido.");
       }
     } catch (error: any) {
@@ -443,6 +399,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
     setCouponCode('');
+    onCouponRemoved?.();
   };
 
   const calculateTotal = () => {
@@ -451,13 +408,11 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
     if (appliedCoupon) {
       if (appliedCoupon.type === 'progressive') {
-        // For progressive coupons, use month 1 discount for first subscription
         const month1Rule = appliedCoupon.progressiveDiscounts?.find(d => d.month === 1);
         if (month1Rule) {
           if (month1Rule.discountType === 'fixed') {
             discount = month1Rule.discount;
           } else {
-            // Default to percentage
             discount = price * (month1Rule.discount / 100);
           }
         }
@@ -474,7 +429,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
 
   const { finalPrice, discount } = calculateTotal();
 
-  // ===== VALIDAÇÃO DO STEP DE CADASTRO =====
   const validateRegistrationStep = (): boolean => {
     if (registrationData.password.length < 6) {
       toast.error("A senha deve ter pelo menos 6 caracteres.");
@@ -496,11 +450,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   };
 
   const handleContinueToPayment = async () => {
-    // Registrar intenção de compra antes da validação para capturar mesmo se ele errar e sair
     registerAbandonedIntent();
 
     if (validateRegistrationStep()) {
-      // Preencher holderInfo automaticamente com dados do cadastro
       setHolderInfo(prev => ({
         ...prev,
         name: registrationData.name,
@@ -510,7 +462,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         addressNumber: '',
         phone: registrationData.phone
       }));
-      // Also pre-fill card holder name if empty
       if (!cardData.holderName) {
         setCardData(prev => ({ ...prev, holderName: registrationData.name.toUpperCase() }));
       }
@@ -521,37 +472,31 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    // Basic required fields check
     if (!cardData.number || !cardData.holderName || !cardData.cvv || !holderInfo.cpfCnpj || !holderInfo.phone) {
       toast.error("Preencha todos os campos obrigatórios.");
       return;
     }
 
-    // Validate card number with Luhn algorithm
     if (!validateCardNumber(cardData.number)) {
       toast.error("Número do cartão inválido. Verifique os dígitos.");
       return;
     }
 
-    // Validate expiry date
     if (!validateExpiryDate(cardData.expiryMonth, cardData.expiryYear)) {
       toast.error("Data de validade inválida ou cartão expirado.");
       return;
     }
 
-    // Validate CVV
     if (!validateCVV(cardData.cvv)) {
       toast.error("CVV inválido. Deve ter 3 ou 4 dígitos.");
       return;
     }
 
-    // Validate CPF
     if (!validateCPF(holderInfo.cpfCnpj)) {
       toast.error("CPF inválido. Verifique os dígitos.");
       return;
     }
 
-    // Validate Phone
     const validatePhone = (phone: string): boolean => {
       const cleaned = phone.replace(/\D/g, '');
       return cleaned.length >= 10 && cleaned.length <= 11;
@@ -562,16 +507,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       return;
     }
 
-    // If coupon used, increment usage
     if (appliedCoupon) {
       dbService.incrementCouponUsage(appliedCoupon.id, finalPrice);
     }
 
-    // Determinar o preço final - se for cartão de teste admin, usar 0 para ativar sem cobrança
     const priceToSubmit = isTestCard ? 0 : finalPrice;
     const couponToSubmit = isTestCard ? 'ADMIN_TEST_CARD' : appliedCoupon?.id;
 
-    // Meta Pixel: AddPaymentInfo (não rastrear se for cartão de teste)
     if (!isTestCard) {
       trackEvent('AddPaymentInfo', {
         value: finalPrice,
@@ -582,7 +524,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       });
     }
 
-    // Passar registrationData se requiresRegistration
     try {
       await onSubmit(
         cardData,
@@ -593,7 +534,6 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         requiresRegistration ? { ...registrationData, cpf: holderInfo.cpfCnpj, phone: holderInfo.phone } : undefined
       );
 
-      // Se o pagamento deu certo, marcar o lead como completo
       const email = requiresRegistration ? registrationData.email : holderInfo.email;
       if (email) {
         dbService.updateCheckoutLeadStatus(email, 'completed');
@@ -603,7 +543,8 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
     }
   };
 
-  const inputStyle = "input-primary w-full bg-gray-900/50 border-gray-800 focus:bg-gray-900 focus:border-[#d97757] text-[#faf9f5] placeholder-gray-500 h-11 transition-all";
+  // Ajustado para tema claro
+  const inputStyle = "w-full bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-black focus:border-black text-gray-900 placeholder-gray-400 h-11 transition-all";
 
   const monthOptions = Array.from({ length: 12 }, (_, i) => ({
     value: (i + 1).toString().padStart(2, '0'),
@@ -632,29 +573,21 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 20 }}
       transition={{ duration: 0.3 }}
-      className="p-6"
+      className="p-2 sm:p-6"
     >
-      {/* Scarcity Banner */}
-
-
       <div className="flex justify-center">
-        {/* Formulário de Cadastro */}
-        <div className="w-full max-w-2xl space-y-6">
-          <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
-            <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
-            <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
-            <div className="flex items-center gap-3 mb-1">
-              <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center justify-center text-white/90 text-sm font-bold">1</div>
-              <h2 className="text-lg font-bold text-white">Crie sua conta</h2>
+        <div className="w-full space-y-6">
+          <div className="relative">
+            <div className="flex items-center gap-3 mb-2">
+              <h2 className="text-xl font-bold text-gray-900">Crie sua conta</h2>
             </div>
-            <p className="text-sm text-gray-400 mb-6 ml-11">Preencha seus dados para criar sua conta</p>
+            <p className="text-sm text-gray-500 mb-6">Preencha seus dados para começar</p>
 
             <div className="space-y-4">
-              {/* Nome, Email, Senha */}
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Nome Completo</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Nome Completo</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><User size={18} /></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"><User size={18} /></div>
                   <input
                     type="text"
                     value={registrationData.name}
@@ -667,9 +600,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">E-mail</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">E-mail</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Mail size={18} /></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"><Mail size={18} /></div>
                   <input
                     type="email"
                     value={registrationData.email}
@@ -682,9 +615,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Senha</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Senha</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Lock size={18} /></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"><Lock size={18} /></div>
                   <input
                     type="password"
                     value={registrationData.password}
@@ -696,9 +629,9 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Telefone / WhatsApp</label>
+                <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Telefone / WhatsApp</label>
                 <div className="relative">
-                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-500"><Phone size={18} /></div>
+                  <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400"><Phone size={18} /></div>
                   <input
                     type="text"
                     maxLength={15}
@@ -711,16 +644,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
               </div>
 
-              {/* Termos de Uso */}
               <div
                 className="flex items-center gap-2 pt-2 cursor-pointer group"
                 onClick={() => setAcceptedTerms(!acceptedTerms)}
               >
-                <div className={`w-5 h-5 rounded-lg flex items-center justify-center transition-all border ${acceptedTerms ? 'bg-[#d97757] border-[#d97757] text-white' : 'bg-[#1A1A19] border-gray-700 text-transparent group-hover:border-gray-600'}`}>
+                <div className={`w-5 h-5 rounded flex items-center justify-center transition-all border ${acceptedTerms ? 'bg-black border-black text-white' : 'bg-white border-gray-300 text-transparent group-hover:border-gray-400'}`}>
                   <Check size={12} strokeWidth={4} />
                 </div>
-                <span className="text-xs text-gray-400 select-none group-hover:text-gray-300 transition-colors">
-                  Li e aceito os <button type="button" onClick={(e) => { e.stopPropagation(); setShowTerms(true); }} className="text-[#d97757] hover:underline font-medium">Termos de Uso</button> do sistema.
+                <span className="text-sm text-gray-600 select-none">
+                  Li e aceito os <button type="button" onClick={(e) => { e.stopPropagation(); setShowTerms(true); }} className="text-black font-semibold hover:underline">Termos de Uso</button> do sistema.
                 </span>
               </div>
 
@@ -729,19 +661,10 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   type="button"
                   onClick={handleContinueToPayment}
                   disabled={isLoading}
-                  className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
+                  className="w-full h-12 bg-[#d97757] hover:bg-[#c86445] text-white font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   Continuar para Pagamento
                   <ChevronRight size={18} />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft size={16} />
-                  Voltar
                 </button>
               </div>
             </div>
@@ -749,25 +672,24 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
         </div>
       </div>
 
-      {/* Terms Modal */}
       <UniversalModal
         isOpen={showTerms}
         onClose={() => setShowTerms(false)}
-        title="Termos de Uso"
-        subtitle="Leia com atenção antes de continuar"
+        title=""
+        subtitle=""
         icon={<FileText size={24} />}
       >
-        <div className="space-y-6 text-gray-300 leading-relaxed text-sm max-h-[60vh] overflow-y-auto no-scrollbar">
-          <h3 className="text-xl font-bold text-white mb-4">TERMOS DE USO – CONTROLAR+</h3>
+        <div className="space-y-6 text-gray-700 leading-relaxed text-sm max-h-[60vh] overflow-y-auto no-scrollbar">
+          <h3 className="text-xl font-bold text-gray-900 mb-4">TERMOS DE USO – CONTROLAR+</h3>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">1. Aceitação dos Termos</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">1. Aceitação dos Termos</h4>
             <p>Controlar Mais LTDA ("Controlar+"), pessoa jurídica de direito privado, com sede em São Bernardo do Campo/SP, disponibiliza ao usuário ("Usuário") a plataforma de gestão financeira Controlar+, acessível por meio de aplicativo mobile, web e/ou demais interfaces.</p>
             <p className="mt-2">Ao se cadastrar, acessar ou utilizar a Controlar+, o Usuário declara ter lido, compreendido e aceito integralmente estes Termos de Uso, incluindo a Política de Privacidade que integra este documento. A utilização contínua da plataforma após atualizações dos Termos implica aceitação das novas condições.</p>
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">2. Descrição do Serviço</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">2. Descrição do Serviço</h4>
             <p>A Controlar+ oferece ferramentas digitais para:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Acompanhamento e organização de finanças pessoais</li>
@@ -779,7 +701,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               <li>Utilização da assistente virtual "Coinzinha" para auxílio, insights e orientações de caráter informativo</li>
             </ul>
 
-            <h5 className="font-bold text-white mt-4 mb-2">2.1 Escopo e Limitações</h5>
+            <h5 className="font-bold text-gray-900 mt-4 mb-2">2.1 Escopo e Limitações</h5>
             <p>A Controlar+ atua como ferramenta de apoio à organização e acompanhamento financeiro pessoal. Eventuais orientações, simulações, conteúdos educativos ou sugestões fornecidas pela plataforma e pela Coinzinha possuem caráter informativo e educacional, não configurando consultoria financeira, contábil, jurídica, tributária ou de investimentos personalizada.</p>
             <p className="mt-2">O Usuário reconhece que:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
@@ -791,7 +713,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">3. Planos de Serviço</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">3. Planos de Serviço</h4>
             <p>A Controlar+ oferece diferentes planos:</p>
             <p className="mt-2"><strong>Plano Free:</strong> acesso a funcionalidades básicas de organização manual de finanças, sem integração de Open Finance e sem armazenamento de dados de cartão de pagamento.</p>
             <p className="mt-2"><strong>Plano Pro e Plano Family:</strong> acesso a funcionalidades avançadas, incluindo integração Open Finance, automações, relatórios detalhados e demais recursos indicados na plataforma. Sujeitos a cobrança recorrente mensal.</p>
@@ -799,7 +721,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">4. Cadastro e Elegibilidade</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">4. Cadastro e Elegibilidade</h4>
             <p>Para utilizar a Controlar+, o Usuário deverá:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Ser maior de 18 (dezoito) anos de idade</li>
@@ -811,15 +733,15 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">5. Cobrança e Assinatura</h4>
-            <h5 className="font-bold text-white mt-2 mb-1">5.1 Planos Pagos</h5>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">5. Cobrança e Assinatura</h4>
+            <h5 className="font-bold text-gray-900 mt-2 mb-1">5.1 Planos Pagos</h5>
             <p>Os Planos Pro e Family estão sujeitos a cobrança recorrente mensal, realizada por meio de parceiros de pagamento como a plataforma Asaas ou equivalentes.</p>
 
-            <h5 className="font-bold text-white mt-4 mb-1">5.2 Armazenamento de Dados de Cartão</h5>
+            <h5 className="font-bold text-gray-900 mt-4 mb-1">5.2 Armazenamento de Dados de Cartão</h5>
             <p>Somente em Planos Pro/Family, a Controlar+ poderá armazenar dados de cartão de pagamento do Usuário de forma criptografada e segura, exclusivamente para processamento de cobranças recorrentes de assinatura.</p>
             <p className="mt-2">No Plano Free, nenhum dado de cartão será armazenado ou coletado.</p>
 
-            <h5 className="font-bold text-white mt-4 mb-1">5.3 Renovação e Cancelamento</h5>
+            <h5 className="font-bold text-gray-900 mt-4 mb-1">5.3 Renovação e Cancelamento</h5>
             <p>As assinaturas dos Planos Pro serão renovadas automaticamente ao final de cada período, salvo cancelamento prévio pelo Usuário.</p>
             <p className="mt-2">Ao cancelar uma assinatura:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
@@ -829,7 +751,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">6. Restrições de Uso</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">6. Restrições de Uso</h4>
             <p>O Usuário compromete-se a utilizar a Controlar+ apenas para fins lícitos e pessoais, sendo vedado:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Violar leis, regulamentações, direitos de terceiros ou políticas de segurança da plataforma</li>
@@ -841,7 +763,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">7. Suspensão e Encerramento</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">7. Suspensão e Encerramento</h4>
             <p>A Controlar+ poderá, a seu exclusivo critério e sem aviso prévio, suspender ou encerrar a conta do Usuário em caso de:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Violação destes Termos de Uso ou da Política de Privacidade</li>
@@ -853,33 +775,33 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">8. Direitos de Propriedade Intelectual</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">8. Direitos de Propriedade Intelectual</h4>
             <p>Todos os conteúdos, funcionalidades e elementos da Controlar+ são protegidos por direitos autorais, marcas registradas e demais direitos de propriedade intelectual.</p>
             <p className="mt-2">O Usuário recebe licença limitada, não exclusiva, intransferível e revogável para uso pessoal da plataforma.</p>
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">9. Isenções e Limitações de Responsabilidade</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">9. Isenções e Limitações de Responsabilidade</h4>
             <p>A Controlar+ é disponibilizada "no estado atual" ("as is"), sem garantias expressas ou implícitas de disponibilidade, segurança, exatidão, adequação para fim específico ou não violação de direitos.</p>
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">10. Dados Pessoais e Privacidade</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">10. Dados Pessoais e Privacidade</h4>
             <p>A coleta, uso, armazenamento e proteção de dados pessoais do Usuário observará a Política de Privacidade, que integra estes Termos de Uso e deve ser lida atentamente.</p>
             <p className="mt-2">A Controlar+ atua como Controladora de Dados, em conformidade com a Lei Geral de Proteção de Dados Pessoais (Lei nº 13.709/2018 – LGPD).</p>
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">11. Legislação e Foro</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">11. Legislação e Foro</h4>
             <p>Estes Termos de Uso são regidos pela legislação brasileira. Fica eleito o foro da comarca de São Bernardo do Campo/SP como competente para dirimir quaisquer controvérsias decorrentes destes Termos.</p>
           </section>
 
-          <div className="border-t border-gray-700 my-8"></div>
+          <div className="border-t border-gray-200 my-8"></div>
 
-          <h3 className="text-xl font-bold text-white mb-4">POLÍTICA DE PRIVACIDADE – CONTROLAR+</h3>
+          <h3 className="text-xl font-bold text-gray-900 mb-4">POLÍTICA DE PRIVACIDADE – CONTROLAR+</h3>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">Dados Pessoais Tratados</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">Dados Pessoais Tratados</h4>
             <p>A Controlar+ poderá coletar e tratar os seguintes dados pessoais:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Dados Cadastrais: Nome completo, CPF, CEP, Endereço</li>
@@ -891,7 +813,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">Direitos do Titular de Dados</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">Direitos do Titular de Dados</h4>
             <p>Nos termos da LGPD, o Usuário poderá exercer direitos como:</p>
             <ul className="list-disc pl-5 mt-2 space-y-1">
               <li>Direito de Confirmação e Acesso</li>
@@ -904,17 +826,17 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
           </section>
 
           <section>
-            <h4 className="font-bold text-white mb-2 text-base">Contato e Suporte</h4>
+            <h4 className="font-bold text-gray-900 mb-2 text-base">Contato e Suporte</h4>
             <p>Para dúvidas sobre esta Política de Privacidade:</p>
-            <div className="mt-2 bg-[#272725]/50 p-4 rounded-lg border border-[#373734]">
-              <p className="font-bold text-white">Encarregado de Proteção de Dados (DPO)</p>
-              <p className="text-gray-400">E-mail: <span className="text-[#d97757]">rafael.maldanis@controlarmais.com.br</span></p>
-              <p className="text-gray-400 mt-2">Controlar Mais LTDA</p>
-              <p className="text-gray-400">São Bernardo do Campo/SP - Brasil</p>
+            <div className="mt-2 bg-gray-50 p-4 rounded-lg border border-gray-200">
+              <p className="font-bold text-gray-900">Encarregado de Proteção de Dados (DPO)</p>
+              <p className="text-gray-600">E-mail: <span className="text-gray-900 font-medium">rafael.maldanis@controlarmais.com.br</span></p>
+              <p className="text-gray-600 mt-2">Controlar Mais LTDA</p>
+              <p className="text-gray-600">São Bernardo do Campo/SP - Brasil</p>
             </div>
           </section>
 
-          <div className="text-xs text-gray-500 mt-8 pt-4 border-t border-gray-800">
+          <div className="text-xs text-gray-500 mt-8 pt-4 border-t border-gray-200">
             <p>Versão: 1.0</p>
           </div>
         </div>
@@ -930,28 +852,20 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -20 }}
       transition={{ duration: 0.3 }}
-      className="p-6"
+      className="p-2 sm:p-6"
     >
       <form onSubmit={handleSubmit}>
         <div className="flex justify-center">
-          {/* Formulário Centralizado */}
-          <div className="w-full max-w-2xl space-y-6">
-
-            {/* Payment Detail Card */}
-            <div className="rounded-[24px] border border-white/10 p-8 relative overflow-hidden shadow-[0_8px_40px_-10px_rgba(0,0,0,0.6)]" style={{ backgroundColor: "rgba(10, 10, 10, 0.65)", backdropFilter: "blur(24px) saturate(180%)", WebkitBackdropFilter: "blur(24px) saturate(180%)" }}>
-              <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/20 to-transparent opacity-50" />
-              <div className="flex items-center gap-3 mb-1">
-                <div className="w-8 h-8 rounded-full bg-white/5 border border-white/10 backdrop-blur-md flex items-center justify-center text-white/90 text-sm font-bold">
-                  {requiresRegistration ? '2' : '1'}
-                </div>
-                <h2 className="text-lg font-bold text-white">Informações de Pagamento</h2>
+          <div className="w-full space-y-6">
+            <div className="relative">
+              <div className="flex items-center gap-3 mb-2">
+                <h2 className="text-xl font-bold text-gray-900">Detalhes de pagamento</h2>
               </div>
-              <p className="text-sm text-gray-400 mb-6 ml-11">Preencha os dados do seu cartão de crédito</p>
+              <p className="text-sm text-gray-500 mb-6">Insira os dados do seu cartão</p>
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Número do Cartão</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Número do Cartão</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -964,7 +878,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                           setCardData(prev => ({ ...prev, number: value }));
                         }
                       }}
-                      className={inputStyle}
+                      className={`${inputStyle} px-4`}
                     />
                     {detectedBrand && (
                       <div className={`absolute right-3 top-1/2 -translate-y-1/2 ${detectedBrand.color} text-white text-xs font-bold px-2 py-0.5 rounded transition-all`}>
@@ -975,42 +889,40 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Nome no Cartão</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Nome no Cartão</label>
                   <input
                     type="text"
                     name="holderName"
                     placeholder="Nome completo"
                     value={cardData.holderName}
                     onChange={handleCardChange}
-                    className={inputStyle}
+                    className={`${inputStyle} px-4`}
                   />
                 </div>
 
                 <div className="grid grid-cols-3 gap-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Mês</label>
-                    <CustomSelect
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Mês</label>
+                    <SelectWhite
                       value={cardData.expiryMonth}
                       onChange={(value) => setCardData(prev => ({ ...prev, expiryMonth: value }))}
                       options={monthOptions}
                       placeholder="MM"
-                      portal={true}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Ano</label>
-                    <CustomSelect
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Ano</label>
+                    <SelectWhite
                       value={cardData.expiryYear}
                       onChange={(value) => setCardData(prev => ({ ...prev, expiryYear: value }))}
                       options={yearOptions}
                       placeholder="AAAA"
-                      portal={true}
                     />
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CVV</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">CVV</label>
                     <input
                       type="text"
                       name="cvv"
@@ -1018,13 +930,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       maxLength={4}
                       value={cardData.cvv}
                       onChange={handleCardChange}
-                      className={inputStyle}
+                      className={`${inputStyle} px-4`}
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">CPF/CNPJ do Titular</label>
+                  <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">CPF/CNPJ do Titular</label>
                   <input
                     type="text"
                     name="cpfCnpj"
@@ -1033,56 +945,61 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                     value={formatCPF(holderInfo.cpfCnpj)}
                     onChange={(e) => setHolderInfo(prev => ({ ...prev, cpfCnpj: e.target.value }))}
                     onBlur={registerAbandonedIntent}
-                    className={inputStyle}
+                    className={`${inputStyle} px-4`}
                   />
                 </div>
 
-                {/* Cupom de Desconto */}
-                {true && (
-                  <div className="pt-2">
-                    <label className="block text-xs font-semibold text-gray-400 mb-2 ml-1">Cupom de Desconto</label>
-                    {!appliedCoupon ? (
+                {/* Cupom de Desconto - Mobile */}
+                <div className="md:hidden">
+                  {appliedCoupon ? (
+                    <div className="bg-[#a5d6a7] border border-[#81c784] rounded-lg p-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm font-semibold text-[#2e7d32]">Cupom: {appliedCoupon.code}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-bold text-[#2e7d32]">-R$ {(typeof finalPrice === 'number' && finalPrice !== undefined ? (price - finalPrice) : 0).toFixed(2).replace('.', ',')}</span>
+                          <button
+                            type="button"
+                            onClick={handleRemoveCoupon}
+                            className="text-[#2e7d32] hover:text-[#1b5e20] transition-colors"
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Cupom de Desconto</label>
                       <div className="flex gap-2">
                         <input
                           type="text"
                           value={couponCode}
                           onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
                           placeholder="Código"
-                          className={`${inputStyle} flex-1 uppercase`}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              handleApplyCoupon();
+                            }
+                          }}
+                          className={`${inputStyle} flex-1 uppercase px-4`}
                         />
-                        <Button
+                        <button
                           type="button"
                           onClick={() => handleApplyCoupon()}
                           disabled={!couponCode || isValidatingCoupon}
                           isLoading={isValidatingCoupon}
-                          className="w-auto px-6 shadow-none"
+                          className="w-auto px-4 shadow-none bg-gray-200 hover:bg-gray-300 text-gray-900 border-none rounded-lg font-medium text-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          Aplicar
-                        </Button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center justify-between bg-green-500/10 border border-green-500/20 rounded-lg p-2.5 animate-fade-in">
-                        <div className="flex items-center gap-2">
-                          <div className="bg-green-500 rounded-full p-0.5">
-                            <Check size={10} className="text-black" />
-                          </div>
-                          <span className="text-green-500 font-bold text-sm tracking-wide">{appliedCoupon.code}</span>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={handleRemoveCoupon}
-                          className="text-gray-400 hover:text-white transition-colors"
-                        >
-                          <X size={16} />
+                          {isValidatingCoupon ? '...' : 'Aplicar'}
                         </button>
                       </div>
-                    )}
-                  </div>
-                )}
+                    </div>
+                  )}
+                </div>
 
                 {billingCycle === 'annual' && (
                   <div>
-                    <label className="block text-xs font-semibold text-gray-300 mb-2 ml-1">Parcelamento</label>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1.5 ml-1">Parcelamento</label>
                     <CustomSelect
                       value={installments.toString()}
                       onChange={(v) => setInstallments(Number(v))}
@@ -1093,34 +1010,13 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                   </div>
                 )}
 
-                {/* Total Display */}
-                <div className="pt-6 mt-6 border-t border-gray-800">
-                  <div className="flex justify-between items-center mb-6">
-                    <div>
-                      <span className="text-sm text-gray-400 block mb-1">Total a pagar</span>
-                      <span className="text-lg font-bold text-white uppercase text-[10px] tracking-widest opacity-50">Plano {planName}</span>
-                    </div>
-                    <div className="text-right">
-                      <span className="text-3xl font-bold text-[#d97757]">
-                        {installments > 1
-                          ? `${installments}x R$ ${(finalPrice / installments).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                          : `R$ ${finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
-                        }
-                      </span>
-                      {installments > 1 && (
-                        <div className="text-xs text-gray-400 mt-1">
-                          Total: R$ {finalPrice.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Buttons */}
+                {/* Total Display & Buttons */}
+                <div className="pt-6 mt-6 border-t border-gray-200">
                   <div className="space-y-3">
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="w-full h-12 bg-[#d97757] hover:bg-[#c56a4d] text-white font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 shadow-lg shadow-[#d97757]/20"
+                      className="w-full h-12 bg-[#d97757] hover:bg-[#c86445] text-white font-bold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                       {isLoading ? (
                         <>
@@ -1128,7 +1024,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                           Processando...
                         </>
                       ) : (
-                        "Confirmar pagamento"
+                        "Pagar"
                       )}
                     </button>
 
@@ -1136,7 +1032,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       <button
                         type="button"
                         onClick={() => setCurrentStep('registration')}
-                        className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+                        className="w-full h-10 text-gray-500 hover:text-gray-900 font-medium rounded-lg transition-all flex items-center justify-center gap-2"
                       >
                         <ArrowLeft size={16} />
                         Voltar para Cadastro
@@ -1145,7 +1041,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
                       <button
                         type="button"
                         onClick={onBack}
-                        className="w-full h-10 text-gray-400 hover:text-white font-medium rounded-xl transition-all flex items-center justify-center gap-2"
+                        className="w-full h-10 text-gray-500 hover:text-gray-900 font-medium rounded-lg transition-all flex items-center justify-center gap-2"
                       >
                         <ArrowLeft size={16} />
                         Voltar
@@ -1156,8 +1052,7 @@ export const CheckoutForm: React.FC<CheckoutFormProps> = ({
               </div>
             </div>
 
-            {/* Security Notice Minimal */}
-            <div className="flex items-center justify-center gap-2 text-gray-500 text-xs py-2">
+            <div className="flex items-center justify-center gap-2 text-gray-400 text-xs py-2">
               <Lock size={12} />
               <span>Pagamento 100% seguro com criptografia SSL</span>
             </div>

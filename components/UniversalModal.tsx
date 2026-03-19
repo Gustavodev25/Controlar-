@@ -59,7 +59,7 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
             style={isAnimating ? { backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)' } : undefined}
         >
             <div
-                className={`bg-gray-950 rounded-3xl shadow-2xl w-full ${width} overflow-hidden border border-gray-800 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}
+                className={`bg-white rounded-3xl shadow-2xl w-full ${width} overflow-hidden border border-gray-200 flex flex-col max-h-[90vh] relative transition-all duration-300 ease-[cubic-bezier(0.25,1,0.5,1)] ${isAnimating ? 'opacity-100 translate-y-0 scale-100' : 'opacity-0 translate-y-10 scale-95'}`}
             >
 
                 {/* Background Glow */}
@@ -69,7 +69,7 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
                 />
 
                 {/* Header */}
-                <div className="p-5 border-b border-gray-800/50 flex justify-between items-center relative z-10">
+                <div className="p-5 border-b border-gray-200 flex justify-between items-center relative z-10">
                     <div className="flex items-center gap-3">
                         {icon && (
                             <div
@@ -86,18 +86,18 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
                         )}
                         <div>
                             {typeof title === 'string' ? (
-                                <h3 className="text-base font-semibold text-white">{title}</h3>
+                                <h3 className="text-base font-semibold text-gray-900">{title}</h3>
                             ) : (
                                 title
                             )}
                             {subtitle && (
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-600">
                                     {subtitle}
                                 </p>
                             )}
                         </div>
                     </div>
-                    <button onClick={onClose} className="text-gray-500 hover:text-white p-2 hover:bg-gray-800/50 rounded-lg transition-all">
+                    <button onClick={onClose} className="text-gray-400 hover:text-gray-900 p-2 hover:bg-gray-100 rounded-lg transition-all">
                         <X size={18} />
                     </button>
                 </div>
@@ -112,7 +112,7 @@ export const UniversalModal: React.FC<UniversalModalProps> = ({
 
                 {/* Footer */}
                 {footer && (
-                    <div className="px-5 py-4 border-t border-gray-800/50 relative z-10">
+                    <div className="px-5 py-4 border-t border-gray-200 relative z-10">
                         {footer}
                     </div>
                 )}
@@ -143,5 +143,5 @@ export const ModalSection: React.FC<ModalSectionProps> = ({ icon, title, childre
 );
 
 export const ModalDivider = () => (
-    <div className="border-t border-gray-800/50 my-6" />
+    <div className="border-t border-gray-200 my-6" />
 );

@@ -1316,3 +1316,68 @@ export const TooltipIcon: React.FC<TooltipIconProps> = ({
     </>
   );
 };
+
+// --- WHITE SELECT ---
+interface SelectWhiteProps {
+  value: string | number;
+  onChange: (value: string) => void;
+  options: Option[] | string[];
+  placeholder?: string;
+  className?: string;
+}
+
+export const SelectWhite: React.FC<SelectWhiteProps> = ({ value, onChange, options, placeholder, className = "" }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const normalizedOptions: Option[] = options.map(opt =>
+    typeof opt === 'string' ? { value: opt, label: opt } : opt
+  );
+
+  const selectedOption = normalizedOptions.find(o => String(o.value) === String(value));
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div ref={containerRef} className={`relative w-full ${className}`}>
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-left text-gray-900 font-medium flex items-center justify-between hover:border-gray-400 transition-colors"
+      >
+        <span>{selectedOption?.label || placeholder || 'Selecione'}</span>
+        <ChevronDown size={18} className={`text-gray-600 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+          {normalizedOptions.map((option) => (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => {
+                onChange(String(option.value));
+                setIsOpen(false);
+              }}
+              className={`w-full px-4 py-2.5 text-left font-medium transition-colors ${
+                String(option.value) === String(value)
+                  ? 'bg-gray-100 text-gray-900 border-l-4 border-[#d97757]'
+                  : 'text-gray-700 hover:bg-gray-50'
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};

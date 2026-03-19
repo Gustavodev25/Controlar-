@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
-import { ChevronLeft, Sparkles } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { CheckoutForm } from './CheckoutForm';
 import { useToasts } from './Toast';
+import logoImg from '../assets/logo.png';
 import fogueteImg from '../assets/foguete.png';
 import { API_ENDPOINTS } from '../config/api';
 import { auth } from '../services/firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { updateUserProfile } from '../services/database';
 import { toLocalISODate } from '../utils/dateUtils';
-import { AnimatedGridPattern } from './AnimatedGridPattern';
 import { getCompleteUtmData } from '../services/utmService';
 
 interface LandingCheckoutPageProps {
@@ -31,6 +31,9 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
     onSuccess
 }) => {
     const [isLoading, setIsLoading] = useState(false);
+    const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; discount: number } | null>(null);
+    const [finalPrice, setFinalPrice] = useState<number | null>(null);
+    const [currentStep, setCurrentStep] = useState<'registration' | 'payment'>('registration');
     const toast = useToasts();
 
     const planConfig = {
@@ -41,6 +44,14 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
     };
 
     const price = billingCycle === 'monthly' ? planConfig.price : planConfig.annualPrice;
+
+    // Formata a data atual para o texto
+    const todayDate = new Date();
+    const formattedBillingDate = todayDate.toLocaleDateString('pt-BR', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric'
+    });
 
     const handleCheckoutSubmit = async (
         cardData: any,
@@ -64,19 +75,14 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
         setIsLoading(true);
 
         try {
-            // ⭐ FIXED: Process payment FIRST, then create account only if payment succeeds
-            // This prevents orphaned accounts without confirmed payment
             console.log('>>> Starting checkout: validation before payment...');
 
-            // 1. Calcular preço final
             const originalPrice = price;
             const finalValue = finalPrice !== undefined ? finalPrice : originalPrice;
 
-            // 2. SPECIAL CASE: Se o preço final for < R$ 5 (Asaas mínimo), criar conta direto
             if (finalValue < 5) {
                 console.log('>>> 100% coupon detected! Creating account directly...');
 
-                // Create the actual account
                 const userCredential = await createUserWithEmailAndPassword(
                     auth,
                     registrationData.email,
@@ -85,12 +91,10 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
                 const firebaseUser = userCredential.user;
 
-                // Update displayName
                 await updateProfile(firebaseUser, {
                     displayName: registrationData.name
                 });
 
-                // Save complete profile
                 const nextBillingDate = new Date();
                 if (billingCycle === 'annual') {
                     nextBillingDate.setFullYear(nextBillingDate.getFullYear() + 1);
@@ -131,7 +135,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 return;
             }
 
-            // 3. Create account FIRST, then process payment
             console.log('>>> Creating account...');
             const userCredential = await createUserWithEmailAndPassword(
                 auth,
@@ -141,12 +144,10 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             const firebaseUser = userCredential.user;
 
-            // Update displayName
             await updateProfile(firebaseUser, {
                 displayName: registrationData.name
             });
 
-            // Save complete profile (without subscription yet)
             await updateUserProfile(firebaseUser.uid, {
                 name: registrationData.name,
                 email: registrationData.email,
@@ -159,10 +160,8 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             console.log('>>> Account created:', firebaseUser.uid);
 
-            // 4. Get auth token for API requests
             const token = await firebaseUser.getIdToken();
 
-            // 5. Criar cliente no Asaas
             console.log('>>> Creating customer in Asaas...');
             const customerResponse = await fetch(API_ENDPOINTS.asaas.customer, {
                 method: 'POST',
@@ -190,8 +189,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
             console.log('>>> Customer created:', customerData.customer.id);
 
-            // 6. Criar assinatura/pagamento no Asaas
-            // Get UTM data for Utmify tracking
             const utmData = getCompleteUtmData();
 
             console.log('>>> Processing payment...');
@@ -233,11 +230,9 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
             console.log('>>> Payment response:', subscriptionData);
 
             if (!subscriptionResponse.ok || !subscriptionData.success) {
-                // Payment failed - delete the account we just created
                 console.error('>>> Payment failed, deleting account...');
 
                 try {
-                    // Delete from Firestore first
                     const db = (await import('firebase/firestore')).getFirestore();
                     const { deleteDoc, doc } = await import('firebase/firestore');
                     await deleteDoc(doc(db, 'users', firebaseUser.uid));
@@ -245,7 +240,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                     console.error('>>> Failed to delete user doc:', dbError);
                 }
 
-                // Then delete Firebase Auth user
                 try {
                     await firebaseUser.delete();
                 } catch (authError) {
@@ -255,7 +249,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 throw new Error(subscriptionData.error || 'Pagamento não foi aprovado. Verifique os dados do cartão.');
             }
 
-            // 7. Payment confirmed! Just update payment details in the profile
             if (subscriptionData.status === 'CONFIRMED' || subscriptionData.status === 'RECEIVED') {
                 console.log('>>> Payment confirmed! Updating account with payment details...');
 
@@ -274,7 +267,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
                 toast.success('🎉 Conta criada e pagamento confirmado! Bem-vindo ao Controlar+ Pro!');
                 onSuccess();
             } else {
-                // Payment status is not confirmed - delete the account
                 console.error('>>> Payment not confirmed, deleting account...');
 
                 try {
@@ -291,8 +283,6 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
 
         } catch (err: any) {
             console.error('Checkout error:', err);
-
-            // Se for erro do Firebase de email já em uso
             if (err.code === 'auth/email-already-in-use') {
                 toast.error('Este e-mail já está cadastrado. Faça login para continuar.');
             } else {
@@ -304,67 +294,124 @@ export const LandingCheckoutPage: React.FC<LandingCheckoutPageProps> = ({
     };
 
     return (
-        <div className="min-h-screen bg-[#1a0f0a] text-[#faf9f5] relative overflow-hidden font-sans selection:bg-[#d97757]/30">
-            {/* Background Gradients igual da Landing */}
-            <div className="fixed inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_0%,rgba(58,26,16,0.3)_0%,rgba(26,15,10,0)_100%)] pointer-events-none" />
-            <div className="fixed inset-0 bg-[radial-gradient(ellipse_60%_40%_at_50%_100%,rgba(58,26,16,0.2)_0%,rgba(26,15,10,0)_100%)] pointer-events-none" />
+        <div className="min-h-screen flex flex-col md:flex-row bg-white text-gray-900 font-sans">
 
-            {/* Background Pattern */}
-            <AnimatedGridPattern
-                width={60}
-                height={60}
-                numSquares={20}
-                maxOpacity={0.08}
-                duration={4}
-                repeatDelay={2}
-                className="[mask-image:radial-gradient(ellipse_80%_80%_at_50%_50%,white_0%,transparent_80%)] fill-white/5 stroke-white/[0.03] fixed inset-0 pointer-events-none"
-            />
+            {/* Lado Esquerdo - Resumo (Fundo Pastel) */}
+            <div className={`w-full md:w-auto bg-[#c8e6c9] p-6 md:p-8 text-gray-900 flex flex-col justify-start items-center md:items-start ${currentStep === 'registration' ? 'hidden md:flex' : 'flex'}`}>
+                <button
+                    onClick={onBack}
+                    className="w-fit p-2 hover:bg-gray-300/30 rounded-xl transition-colors mb-8 text-gray-700 self-start"
+                >
+                    <ChevronLeft size={24} />
+                </button>
 
-            {/* Header */}
-            {/* Header */}
-            <div
-                className="py-4 px-4 lg:px-6 sticky top-0 z-50 border-b border-white/10 overflow-hidden"
-                style={{
-                    backgroundColor: "rgba(10, 10, 10, 0.65)",
-                    backdropFilter: "blur(24px) saturate(180%)",
-                    WebkitBackdropFilter: "blur(24px) saturate(180%)"
-                }}
-            >
-                <div className="absolute inset-0 opacity-[0.04] pointer-events-none bg-[url('https://grainy-gradients.vercel.app/noise.svg')] contrast-125" />
+                <div className="mb-8">
+                    <img src={logoImg} alt="Controlar+" className="w-14 h-14 rounded-2xl object-contain" />
+                </div>
 
-                <div className="relative z-10 flex items-center gap-3">
-                    <button
-                        onClick={onBack}
-                        className="p-1.5 hover:bg-white/10 rounded-xl text-gray-400 hover:text-white transition-colors"
-                    >
-                        <ChevronLeft size={18} />
-                    </button>
-                    <div className="flex items-center gap-3">
-                        <img src={fogueteImg} alt="Pro" className="w-8 h-8 object-contain" />
-                        <div>
-                            <h1 className="text-lg font-bold text-white leading-tight flex items-center gap-2">
-                                Assinar Pro
+                <div className="max-w-md text-center md:text-left">
+                    <p className="text-lg font-medium mb-3 opacity-80">Assinar {planConfig.name}</p>
+
+                    <div className="text-[#2e7d32] mb-4 text-sm">
+                        Cancele em 7 dias grátis
+                    </div>
+
+                    {appliedCoupon ? (
+                        <div className="flex items-end justify-between mb-3 gap-4">
+                            <h1 className="text-4xl md:text-5xl font-bold tracking-tight text-center flex-1">
+                                R$ {(finalPrice !== null ? finalPrice : price).toFixed(2).replace('.', ',')}
                             </h1>
-                            <p className="text-[11px] text-gray-400">
-                                Crie sua conta e comece agora
-                            </p>
+                            <span className="text-sm line-through text-gray-500 font-medium">
+                                R$ {price.toFixed(2).replace('.', ',')}
+                            </span>
                         </div>
+                    ) : (
+                        <h1 className="text-4xl md:text-5xl font-bold mb-3 tracking-tight text-center">
+                            R$ {price.toFixed(2).replace('.', ',')}
+                        </h1>
+                    )}
+                    <p className="text-gray-700 text-sm md:text-base font-medium mb-12 text-center">
+                        Conexões bancárias ilimitadas
+                    </p>
+
+                    {/* Caixa de detalhes do plano */}
+                    <div className="hidden md:block py-5 border-t border-b border-gray-300 mb-8">
+                        <div className="flex justify-between font-bold text-sm md:text-base">
+                            <span>{planConfig.name}</span>
+                            <span>Plano mensal</span>
+                        </div>
+                        <div className="text-gray-600 text-xs md:text-sm mt-0.5">
+                            R$ {price.toFixed(2).replace('.', ',')}/{billingCycle === 'monthly' ? 'mês' : 'ano'}
+                        </div>
+                    </div>
+
+                    <div className="hidden md:flex justify-between font-semibold mb-6 text-gray-800">
+                        <span>Subtotal</span>
+                        <span className={appliedCoupon ? 'line-through text-gray-500' : ''}>R$ {price.toFixed(2).replace('.', ',')}</span>
+                    </div>
+
+                    {appliedCoupon ? (
+                        <div className="hidden md:block bg-[#a5d6a7] border border-[#81c784] rounded-lg p-3 mb-4">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-[#2e7d32]">Cupom: {appliedCoupon.code}</span>
+                                <span className="text-sm font-bold text-[#2e7d32]">-R$ {appliedCoupon.discount.toFixed(2).replace('.', ',')}</span>
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="hidden md:block mb-4">
+                            <label className="block text-xs font-semibold text-gray-700 mb-1.5">Adicionar Cupom</label>
+                            <input
+                                type="text"
+                                placeholder="Código do cupom"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:border-[#81c784] transition-colors"
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        const code = (e.target as HTMLInputElement).value;
+                                        if (code) {
+                                            (e.target as HTMLInputElement).value = '';
+                                        }
+                                    }
+                                }}
+                            />
+                            <p className="text-xs text-gray-500 mt-1">Pressione Enter para aplicar</p>
+                        </div>
+                    )}
+
+                    <div className="hidden md:flex justify-between text-sm text-gray-700 font-medium mb-3">
+                        <span>Total após período de avaliação</span>
+                        <span>R$ {(finalPrice !== null ? finalPrice : price).toFixed(2).replace('.', ',')}</span>
+                    </div>
+                    <div className="hidden md:flex justify-between font-bold text-lg md:text-xl text-gray-900">
+                        <span>Total devido hoje</span>
+                        <span>R$ {(finalPrice !== null ? finalPrice : price).toFixed(2).replace('.', ',')}</span>
                     </div>
                 </div>
             </div>
 
-            {/* Checkout Form com Registration */}
-            <div className="relative z-10 max-w-7xl mx-auto">
-                <CheckoutForm
-                    planName="Pro"
-                    price={price}
-                    billingCycle={billingCycle}
-                    onSubmit={handleCheckoutSubmit}
-                    onBack={onBack}
-                    isLoading={isLoading}
-                    initialCouponCode={couponCode}
-                    requiresRegistration={true}
-                />
+            {/* Lado Direito - Formulário (Fundo Branco) */}
+            <div className={`w-full md:flex-1 bg-white p-8 md:px-16 md:py-20 flex flex-col justify-center overflow-y-auto ${currentStep === 'registration' ? 'justify-center items-center' : ''}`}>
+                <div className="max-w-md w-full mx-auto">
+                    {/* O componente CheckoutForm deve renderizar apenas os inputs agora */}
+                    <CheckoutForm
+                        planName="Pro"
+                        price={price}
+                        billingCycle={billingCycle}
+                        onSubmit={handleCheckoutSubmit}
+                        onBack={onBack}
+                        isLoading={isLoading}
+                        initialCouponCode={couponCode}
+                        requiresRegistration={true}
+                        onCouponApplied={(code, discount, finalValue) => {
+                            setAppliedCoupon({ code, discount });
+                            setFinalPrice(finalValue);
+                        }}
+                        onCouponRemoved={() => {
+                            setAppliedCoupon(null);
+                            setFinalPrice(null);
+                        }}
+                        onStepChange={(step) => setCurrentStep(step)}
+                    />
+                </div>
             </div>
         </div>
     );
